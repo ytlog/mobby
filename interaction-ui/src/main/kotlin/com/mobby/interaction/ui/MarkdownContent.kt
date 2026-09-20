@@ -23,10 +23,13 @@ import org.commonmark.ext.gfm.strikethrough.*
 import org.commonmark.ext.autolink.AutolinkExtension
 import org.commonmark.ext.task.list.items.*
 import java.net.URI
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.withContext
 
 internal object ReplyMarkdown {
-    private val parser = Parser.builder().extensions(listOf(TablesExtension.create(), StrikethroughExtension.create(), AutolinkExtension.create(), TaskListItemsExtension.create())).build()
-    fun parse(text: String): Node = parser.parse(text)
+    private fun parser() = Parser.builder().extensions(listOf(TablesExtension.create(), StrikethroughExtension.create(), AutolinkExtension.create(), TaskListItemsExtension.create())).build()
+    fun parse(text: String): Node = parser().parse(text)
     fun children(node: Node): List<Node> = generateSequence(node.firstChild) { it.next }.toList()
     fun safeLink(destination: String): Boolean = runCatching {
         val uri = URI(destination)
@@ -35,9 +38,22 @@ internal object ReplyMarkdown {
     }.getOrDefault(false)
 }
 
+internal val LocalReplyParser = staticCompositionLocalOf<(String) -> Node> { ReplyMarkdown::parse }
+@OptIn(ExperimentalCoroutinesApi::class)
+private val replyParsingDispatcher = Dispatchers.Default.limitedParallelism(1)
+private data class ParsedReply(val source: String, val document: Node)
+
 @Composable internal fun ReplyContent(text: String, read: (String, String) -> Unit) {
-    val document = remember(text) { ReplyMarkdown.parse(text) }
-    MarkdownBlocks(ReplyMarkdown.children(document), read)
+    val parse = LocalReplyParser.current
+    val parsed by produceState<ParsedReply?>(null, text, parse) {
+        // withContext checks cancellation before returning, so superseded work cannot publish.
+        value = withContext(replyParsingDispatcher) { ParsedReply(text, parse(text)) }
+    }
+    val visible = parsed?.takeIf { text.startsWith(it.source) }
+    Column {
+        visible?.let { MarkdownBlocks(ReplyMarkdown.children(it.document), read) }
+        if (parsed?.source != text) Text(if (visible == null) "正在排版…" else "正在更新排版…", style = MaterialTheme.typography.labelSmall)
+    }
 }
 
 @Composable private fun MarkdownBlocks(nodes: List<Node>, read: (String, String) -> Unit) {
