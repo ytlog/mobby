@@ -95,6 +95,24 @@ class RunCoordinatorTest {
         assertEquals(1, journal.events.count { it.payload is RuntimeEvent.RunFinished })
         assertEquals(CommandResult.AlreadyTerminal, runtime.cancel(CancelRequest(CommandId("later"), id)))
     }
+    @Test fun `host timeout and shutdown wait for exit and cannot become success`() = runTest {
+        for ((cause, phase) in listOf(StopCause.TIMEOUT to RunPhase.TIMED_OUT, StopCause.HOST_STOP to RunPhase.INTERRUPTED)) {
+            val journal = MemoryJournal(); val allowExit = CompletableDeferred<Unit>()
+            val runtime = RunCoordinator(backgroundScope, environment, process { _, signal, emit ->
+                assertEquals(cause, signal.filterNotNull().first()); allowExit.await()
+                emit("""{"type":"turn.completed"}""", false)
+                ProcessResult(0, true)
+            }, journal, MemoryOutput())
+            runtime.recover(); val id = (runtime.submit(request()) as SubmitResult.Accepted).runId
+            runCurrent(); runtime.requestStop(id, cause)
+            assertEquals(RunPhase.CANCELLING, journal.states.getValue(id).phase)
+            assertEquals(id, runtime.active.value)
+            allowExit.complete(Unit); runCurrent()
+            assertEquals(phase, journal.states.getValue(id).phase)
+            assertTrue(journal.states.getValue(id).terminalEvidence!!.terminationConfirmed)
+            assertNull(runtime.active.value)
+        }
+    }
     @Test fun `cancel command replay remains idempotent after terminal and rejects ID reuse`() = runTest {
         val journal = MemoryJournal()
         val runtime = RunCoordinator(backgroundScope, environment, process { _, signal, _ ->

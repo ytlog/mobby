@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-internal class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagnosticsClient {
+internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagnosticsClient {
     inner class LocalBinder : Binder() { val service get() = this@RuntimeService }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val submission = Mutex()
@@ -29,6 +29,7 @@ internal class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagnostic
     private var shellStopCause: StopCause? = null
     private var recovered = false
     private var notificationStarted = false
+    @Volatile private var hostStopCause: StopCause? = null
     val client: RuntimeClient by lazy { object : RuntimeClient by coordinator {
         override suspend fun submit(request: RunRequest): SubmitResult = submission.withLock {
             if (environment.value.phase != EnvironmentPhase.READY) return@withLock SubmitResult.Rejected(RuntimeError(ErrorCode.NOT_READY, true))
@@ -196,31 +197,47 @@ internal class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagnostic
         return CommandResult.Accepted
     }
     private fun beginForeground() {
+        check(environment.value.phase == EnvironmentPhase.READY)
         if (notificationStarted) return
         startService(Intent(this, RuntimeService::class.java))
-        startForeground(1, Notification.Builder(this, "runtime").setSmallIcon(android.R.drawable.stat_notify_sync)
+        val notification = Notification.Builder(this, "runtime").setSmallIcon(android.R.drawable.stat_notify_sync)
             .setContentTitle("mobby 正在执行任务").setContentText("可返回应用查看进度或停止任务")
-            .setContentIntent(RuntimeHost.notificationIntent?.invoke()).setOngoing(true).build())
+            .setContentIntent(RuntimeHost.notificationIntent?.invoke()).setOngoing(true).build()
+        if (android.os.Build.VERSION.SDK_INT >= 34) startForeground(1, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+        else if (android.os.Build.VERSION.SDK_INT >= 29) startForeground(1, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_NONE)
+        else startForeground(1, notification)
+        hostStopCause = null
         notificationStarted = true
     }
     private suspend fun endForeground() = withContext(Dispatchers.Main) {
         if (notificationStarted) { stopForeground(STOP_FOREGROUND_REMOVE); notificationStarted = false; stopSelf() }
     }
-    override fun onTimeout(startId: Int, fgsType: Int) {
-        scope.launch {
-            if (coordinator.active.value == shellId) requestShellStop(StopCause.TIMEOUT)
-            else coordinator.active.value?.let { coordinator.requestStop(it, StopCause.TIMEOUT) }
-            // Process cancellation/cleanup has a bounded deadline in PipeProcess.
-            withTimeoutOrNull(3_000) { coordinator.active.first { it == null } }
-            endForeground()
+    internal open suspend fun stopForHost(cause: StopCause) {
+        if (coordinator.active.value == shellId) requestShellStop(cause)
+        else coordinator.active.value?.let { coordinator.requestStop(it, cause) }
+        withTimeoutOrNull(3_000) { coordinator.active.first { it == null } }
+    }
+    private suspend fun finishHostStop(cause: StopCause) {
+        try { submission.withLock { stopForHost(cause) } }
+        catch (e: CancellationException) { throw e }
+        catch (_: Exception) {
+            mutableEnvironment.value = EnvironmentSnapshot(EnvironmentPhase.FAILED, "停止结果无法确认，已有任务不会自动重发；请重启后核实", RuntimeError(ErrorCode.DISCONNECTED, true))
         }
     }
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        hostStopCause = StopCause.TIMEOUT
+        mutableEnvironment.value = EnvironmentSnapshot(EnvironmentPhase.FAILED, "系统要求结束后台任务，正在停止执行", RuntimeError(ErrorCode.TIMEOUT, true))
+        // The Android deadline must not depend on a journal lock or process cleanup completing.
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        notificationStarted = false
+        stopSelf()
+        scope.launch { finishHostStop(StopCause.TIMEOUT) }
+    }
     override fun onDestroy() {
+        val cause = hostStopCause ?: StopCause.HOST_STOP
+        mutableEnvironment.value = EnvironmentSnapshot(EnvironmentPhase.FAILED, "运行服务已停止，正在核实任务状态", RuntimeError(if (cause == StopCause.TIMEOUT) ErrorCode.TIMEOUT else ErrorCode.INTERRUPTED, true))
         scope.launch(NonCancellable) {
-            if (coordinator.active.value == shellId) requestShellStop(StopCause.HOST_STOP)
-            else coordinator.active.value?.let { coordinator.requestStop(it, StopCause.HOST_STOP) }
-            withTimeoutOrNull(3_000) { coordinator.active.first { it == null } }
-            scope.cancel()
+            try { finishHostStop(cause) } finally { scope.cancel() }
         }
         super.onDestroy()
     }

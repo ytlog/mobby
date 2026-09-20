@@ -221,3 +221,13 @@ UI 12 项测试与 Python 8 项通过，包含主线程隔离、解析暂停期�
 测试覆盖 110 轮首次仅加载 40 轮、向前加载、新消息不挤掉旧范围、未加载回复可查找、跳转与重开后的锚点恢复、旧占用任务可见，以及真实 SQLite 的 1→2 升级保留用户正文与输出块。当前分页按用户浏览累积保留已加载范围，尚未实现窗口淘汰；完整查找/分享快照也仍可能较大。这不等于无限历史内存或真机滚动性能验收。图片/拍照、资源回收、返回与焦点细节和真实网关设备验收仍需继续。
 
 本检查点 Domain 12、Data 21、UI 12 项测试及 Python 8 项通过；主 APK、辅助测试 APK 与 lint 构建通过。主 APK 已覆盖安装并启动，原加密网关配置摘要一致；未清空会话、HOME 或工作区。未重跑未改动的 CLI/桥接测试，也未把主机结果计入手机触摸/键盘/性能验收。
+
+## 前台服务用途与停止期限（2026-09-21）
+
+Runtime 承载用户启动的本地终端和编码 Agent 进程，需在切换应用时保留进程组、输出与停止入口。按这一用途将服务声明调整为 specialUse，并填写 subtype；Android 14 起显式传入对应类型，Android 10–13 使用未分类类型，更早系统使用原前台服务调用。移除 App 和合并依赖遗留的 dataSync 权限。此分类是基于本应用执行用途的实现选择，不代表已获得分发平台审核。依据：[前台服务类型](https://developer.android.com/develop/background-work/services/fgs/service-types#special-use)。
+
+先通过 Robolectric 回归复现超时回调在进程清理阻塞时未停止 Service，再修正生命周期：系统超时回调立即停止 Android 前台/started 服务并关闭新的任务接纳；进程停止、日志和退出确认在执行范围内继续处理，不让 Android 停止期限依赖存储锁或进程清理完成。超时后的 onDestroy 沿用 TIMEOUT 原因，普通销毁使用 HOST_STOP。清理异常通过环境失败与“结果无法确认”呈现，不伪装成进程已停止。依据：[系统超时停止要求](https://developer.android.com/develop/background-work/services/fgs/timeout)。
+
+验证：engine 28、runtime-android 16 项测试和 Python 8 项通过。Robolectric 使用 API 34 测试生命周期入口，覆盖阻塞清理、清理异常、超时后销毁原因；引擎测试确认超时/宿主关闭仍等待进程退出，迟到成功不能覆盖终态。主 APK、辅助测试 APK 与 lint 构建通过；aapt2 检查最终 APK 的 specialUse 类型、权限和 subtype，并确认没有 dataSync 权限。手机为 Android 13，不能代替 Android 15 系统前台服务验收；新生命周期入口的单测不等于真实操作系统触发该回调。
+
+本检查点主 APK 已覆盖安装并启动，原网关加密配置摘要一致；未清空 HOME、工作区或会话数据库。
