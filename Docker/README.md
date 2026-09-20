@@ -9,7 +9,7 @@
 | [构建与使用](getting-started.md) | 环境要求、构建命令、使用方式、当前状态和升级兼容 |
 | [项目需求](requirements.md) | 第一阶段本地 Agent 运行验证的目标与范围 |
 | [运行验证方案](design/runtime-test-plan.md) | 初始测试控制台方案；实际实现与验证进展以实施记录为准 |
-| [Android 对话 UI 评审稿](design/conversation-ui-review.html) | v3：参考截图的会话侧栏、语音/上下文、代码与执行流程、可点击原型及架构；尚未实施 |
+| [Android 对话 UI 评审稿](design/conversation-ui-review.html) | 当前交互规范：会话与执行、顶部菜单、输入、插件/技能、Android 行为、实现架构及可点击原型；原生层待接入 |
 | [网关接入](gateway.md) | 协议路径、限制和联调范围 |
 | [实施记录](implementation.md) | 已实现内容、验证证据及待验收事项 |
 

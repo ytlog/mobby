@@ -1,4 +1,4 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light dark"><title>mobby · Android 完整交互设计 v3</title><style>
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light dark"><title>mobby · Android UI 设计</title><style>
 :root{color-scheme:light dark;--bg:light-dark(#f6f7f9,#151719);--paper:light-dark(#fff,#1d2023);--text:light-dark(#20272c,#edf0f2);--muted:light-dark(#59646d,#b1bac2);--line:light-dark(#dce2e6,#3b4248);--soft:light-dark(#edf1f3,#2b3238);--accent:light-dark(#285d56,#a4d5c9);--onaccent:light-dark(#fff,#123a31);--warn:light-dark(#9e391e,#ffc1aa)}*{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:24px}body{margin:0;background:var(--bg);color:var(--text);font:16px/1.8 system-ui,-apple-system,"Noto Sans SC",sans-serif}a{color:var(--accent);text-underline-offset:4px}button,input,textarea,select{font:inherit;color:inherit}button,select{min-height:48px}button{cursor:pointer;border:1px solid var(--line);border-radius:12px;background:var(--paper);padding:8px 16px}button:hover{background:var(--soft)}button:disabled{cursor:default;opacity:.5}:focus-visible{outline:3px solid var(--accent);outline-offset:3px}[hidden]{display:none!important}.hero{max-width:1160px;margin:auto;padding:64px 32px 32px}.eyebrow{font-size:12px;letter-spacing:.16em;color:var(--accent);font-weight:650}h1{font-size:clamp(30px,5vw,48px);letter-spacing:-.04em;line-height:1.25;margin:18px 0}h1 span{display:block;color:var(--muted);font-weight:400;font-size:.6em;letter-spacing:0;margin-top:14px}.lead{max-width:720px;color:var(--muted);font-size:18px}.meta{display:flex;gap:12px;flex-wrap:wrap;font-size:13px;color:var(--muted)}.pill{padding:4px 12px;border:1px solid var(--line);border-radius:30px}.review-layout{max-width:1160px;margin:auto;display:grid;grid-template-columns:218px minmax(0,1fr);gap:36px;padding:0 32px 80px}.toc{align-self:start;position:sticky;top:24px;font-size:13px}.toc a{display:block;padding:8px 10px;min-height:40px;text-decoration:none;color:var(--muted);border-radius:8px}.toc a:hover{background:var(--soft);color:var(--text)}.toc strong{display:block;padding:10px}.doc{min-width:0}.doc h2{font-size:25px;line-height:1.45;letter-spacing:-.025em;margin:52px 0 20px;padding-top:20px;border-top:1px solid var(--line)}.doc h3{font-size:18px;margin:30px 0 12px}.doc p,.doc li{overflow-wrap:anywhere}.doc li{margin:8px 0}.doc code{font:13px/1.7 ui-monospace,SFMono-Regular,monospace;background:var(--soft);padding:2px 5px;border-radius:4px;overflow-wrap:anywhere}.doc pre{padding:18px;border-radius:12px;background:var(--soft);overflow:auto;max-width:100%}.doc pre code{white-space:pre;padding:0}.table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px}table{border-collapse:collapse;width:100%;font-size:14px;line-height:1.7}th,td{padding:13px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line);min-width:125px}th{background:var(--soft)}tr:last-child td{border-bottom:0}.prototype{background:var(--paper);border:1px solid var(--line);border-radius:20px;padding:24px}.prototype h2{border:0;padding:0;margin:0 0 8px}.caption{font-size:13px;color:var(--muted)}.demo-controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:20px 0}.demo-controls select{max-width:100%;background:var(--paper);border:1px solid var(--line);padding:8px;border-radius:10px}.demo-controls label{font-size:13px}.notice{font-size:13px;color:var(--muted)}.document-footer{font-size:13px;color:var(--muted);margin-top:32px}.print-action{margin-top:18px}@media(max-width:850px){.hero{padding:32px 20px 24px}.review-layout{display:block;padding:0 16px 40px}.toc{position:static;margin-bottom:24px;border:1px solid var(--line);border-radius:12px;padding:10px}.toc-links{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.prototype{padding:16px}}@media(max-width:420px){.review-layout{padding:0 10px 32px}.hero{padding:28px 16px}.toc-links{grid-template-columns:1fr}}@media print{.toc,.print-action,.demo-controls{display:none}.review-layout{display:block;padding:0}.hero{padding:0}.table-wrap{overflow:visible}th,td{min-width:0}.doc h2{break-after:avoid}}/* Product mockup: deliberately separate from the review document theme. */
 .prototype-heading{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}.prototype-heading h2{margin:8px 0}.reference-summary{display:flex;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:22px}.reference-summary span{background:var(--soft);padding:6px 10px;border-radius:20px}.phone-v3,.mobile-dialog{--p-bg:#111213;--p-raised:#222426;--p-control:#2c2e30;--p-text:#ededee;--p-sub:#aaaeb2;--p-border:#34373a;--p-blue:#80baff;--p-warning:#ffb69c;color-scheme:dark;background:var(--p-bg);color:var(--p-text);font:15px/1.65 system-ui,sans-serif}.phone-v3.light,.mobile-dialog.light{--p-bg:#fafafa;--p-raised:#efefef;--p-control:#e5e7e9;--p-text:#202326;--p-sub:#626870;--p-border:#d5d9dd;--p-blue:#145bb0;--p-warning:#a53418;color-scheme:light}.phone-v3{width:100%;max-width:412px;height:810px;margin:24px auto;border:1px solid var(--p-border);border-radius:28px;overflow:hidden;display:flex;flex-direction:column;position:relative;box-shadow:0 16px 44px #0002}.phone-v3 button,.mobile-dialog button{color:var(--p-text);background:transparent;border:0;border-radius:16px;min-width:48px;min-height:48px;padding:10px;font-size:14px;line-height:1.4;flex-shrink:0}.phone-v3 button:hover,.mobile-dialog button:hover{background:var(--p-control)}.phone-v3 button:focus-visible,.mobile-dialog button:focus-visible{outline-color:var(--p-blue)}.phone-v3 svg,.mobile-dialog svg{width:22px;height:22px;vertical-align:middle;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.android-status{height:30px;flex:none;display:flex;justify-content:space-between;padding:7px 22px;font-size:11px}.app-surface{display:flex;flex-direction:column;flex:1;min-height:0}.mobile-bar{display:flex;gap:8px;align-items:center;padding:10px 14px 4px;flex:none}.mobile-bar .round{background:var(--p-raised);border-radius:50%;position:relative}.unread{position:absolute;right:5px;top:4px;width:8px;height:8px;border-radius:50%;background:var(--p-blue)}.mobile-bar .agent-pill{background:var(--p-raised);border-radius:26px;display:flex;gap:8px;align-items:center;max-width:150px}.agent-pill svg{width:15px}.bar-actions{display:flex;background:var(--p-raised);border-radius:26px;margin-left:auto}.context-line{display:flex;justify-content:space-between;gap:10px;padding:9px 18px 12px;color:var(--p-sub);font-size:11px}.context-line span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.mobile-body{overflow:auto;overscroll-behavior:contain;min-height:0;flex:1;padding:12px 16px 24px;overflow-wrap:anywhere;scrollbar-width:thin}.mobile-body p{margin:14px 0}.user-bubble{background:var(--p-control);border-radius:21px 21px 6px 21px;padding:12px 16px;max-width:91%;margin:0 0 22px auto;width:fit-content}.run-card{border:1px solid var(--p-border);border-radius:16px;margin:20px 0 22px;overflow:hidden}.run-head{width:100%;text-align:left;display:flex;align-items:center;gap:8px}.run-head .spacer{flex:1}.run-head small{font-size:11px;color:var(--p-sub)}.run-rows{padding:0 10px 8px}.run-rows button{display:flex;align-items:center;gap:10px;width:100%;text-align:left;color:var(--p-sub);border-radius:10px;font-size:13px}.run-rows .step-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.step-dot{font-size:14px;color:var(--p-blue)}.step-error{color:var(--p-warning)}.public-progress{font-size:14px;color:var(--p-sub)}.phone-v3 h3{font-size:18px;margin:18px 0 10px;color:var(--p-text)}.phone-v3 code{background:var(--p-raised);color:var(--p-text);font:12px/1.75 ui-monospace,monospace;padding:2px 4px}.code-card{border:1px solid var(--p-border);background:var(--p-raised);border-radius:16px;overflow:hidden;margin:18px 0}.code-toolbar{display:flex;align-items:center;padding:0 4px 0 14px;background:var(--p-control)}.code-toolbar small{flex:1;color:var(--p-sub);font-size:12px}.code-toolbar button{padding:8px;border-radius:0}.code-toolbar svg{width:19px}.phone-v3 pre,.mobile-dialog pre{margin:0;border-radius:0;background:var(--p-raised);color:var(--p-text);padding:16px;white-space:pre;overflow:auto;max-width:100%;font:12px/1.85 ui-monospace,monospace}.phone-v3 pre.wrap,.mobile-dialog pre.wrap{white-space:pre-wrap;overflow-wrap:anywhere}.code-blue{color:var(--p-blue)}.source-chip{font-size:12px!important;background:var(--p-raised)!important;border-radius:25px!important;color:var(--p-sub)!important}.reply-actions{display:flex;gap:4px;flex-wrap:wrap;margin:16px 0 0;color:var(--p-sub)}.reply-actions button{font-size:12px;color:var(--p-sub)}.suggestions{display:flex;gap:8px;flex-direction:column;margin-top:18px}.suggestions button{text-align:left;border:1px solid var(--p-border);border-radius:14px;font-size:13px}.run-alert{border-left:3px solid var(--p-warning);padding:12px;background:var(--p-raised);border-radius:10px;margin-top:18px;color:var(--p-warning)}.run-alert button{display:block;color:var(--p-text);margin-top:4px}.jump-row{height:0;position:relative;z-index:1}.jump-row button{position:absolute;right:14px;bottom:10px;background:var(--p-control);border:1px solid var(--p-border);border-radius:26px;box-shadow:0 4px 20px #0003;font-size:12px;display:flex;align-items:center;gap:6px}.input-zone{flex:none;background:var(--p-bg);padding:8px 12px 0}.input-pill{display:flex;align-items:flex-end;gap:2px;border-radius:30px;background:var(--p-control);padding:6px}.input-pill textarea{flex:1;min-width:0;border:0;outline-offset:0;background:transparent;color:var(--p-text);font:16px/1.5 system-ui,sans-serif;resize:none;height:48px;max-height:112px;padding:12px 2px}.input-pill textarea::placeholder{color:var(--p-sub)}.input-pill button{border-radius:50%}.input-pill #primary-action{background:var(--p-text);color:var(--p-bg)}.input-meta{font-size:10px;color:var(--p-sub);text-align:center;margin:5px 0}.android-gesture{height:22px;flex:none;display:grid;place-items:center}.android-gesture:after{content:'';height:4px;width:90px;background:var(--p-sub);border-radius:5px}.fake-ime{padding:12px;background:var(--p-control);text-align:center;color:var(--p-sub);font-size:12px}.fake-ime div{padding:10px 0;letter-spacing:4px;background:var(--p-raised);border-radius:8px;margin-top:8px}.demo-feedback{font-size:13px;color:var(--muted);min-height:44px}.mobile-dialog{position:fixed;box-sizing:border-box;padding:0;margin:0;border:1px solid var(--p-border);overflow:hidden;max-width:100%;max-height:90dvh;box-shadow:0 15px 50px #0005}.mobile-dialog::backdrop{background:#0008}.mobile-dialog.drawer{border-radius:24px 0 0 24px}.mobile-dialog.sheet{border-radius:26px 26px 0 0}.mobile-dialog.full{border-radius:24px}.dialog-header{display:flex;align-items:center;padding:10px 14px;gap:10px;border-bottom:1px solid var(--p-border);flex:none}.dialog-header h3{margin:0;flex:1;font-size:18px}.mobile-dialog[open]{display:flex;flex-direction:column}#overlay-content{padding:16px;overflow:auto;min-height:0;flex:1;display:flex;flex-direction:column}.mobile-dialog p{font-size:14px;margin:10px 0}.mobile-dialog small{color:var(--p-sub);font-size:12px}.mobile-dialog input:not([type=radio]),.mobile-dialog textarea,.mobile-dialog select{width:100%;min-height:48px;background:var(--p-control);color:var(--p-text);border:1px solid var(--p-border);border-radius:12px;padding:10px;font:16px/1.5 system-ui}.mobile-dialog label{display:block;margin:10px 0;color:var(--p-sub);font-size:13px}.mobile-dialog .choice{display:flex;align-items:center;gap:12px;min-height:52px;color:var(--p-text)}.mobile-dialog .filled{background:var(--p-text);color:var(--p-bg);margin-top:12px;width:100%;border-radius:25px}.mobile-dialog .menu-row{width:100%;display:flex;align-items:center;text-align:left;gap:12px;border-bottom:1px solid var(--p-border);border-radius:0}.mobile-dialog .filled:hover{background:var(--p-text);color:var(--p-bg);filter:brightness(.92)}.mobile-dialog .muted{color:var(--p-sub)}.drawer-list{flex:1;overflow:auto;min-height:0}.drawer-group{font-size:12px;color:var(--p-sub);margin:18px 0 6px}.drawer-conversation{width:100%;text-align:left;display:block;padding:12px!important}.drawer-conversation.selected{background:var(--p-control)}.drawer-conversation small{display:block;font-size:11px;margin-top:5px}.drawer-search{margin-top:auto;padding-top:14px}.voice-orb{height:80px;display:flex;align-items:center;justify-content:center;gap:7px;margin:22px 0}.voice-orb span{width:4px;border-radius:6px;background:var(--p-blue);height:18px}.voice-orb span:nth-child(3n){height:42px}.voice-orb span:nth-child(2n){height:30px}.voice-caption{text-align:center}.attachment-token{display:inline-flex;align-items:center;gap:4px;font-size:12px;background:var(--p-raised);border-radius:20px;padding-left:12px;margin-bottom:6px}.attachment-token button{min-height:48px}.empty-chat{text-align:center;padding:54px 4px 24px}.empty-chat h3{font-size:25px}.empty-chat p{color:var(--p-sub);font-size:14px}#busy-banner{font-size:12px;color:var(--p-warning);padding:6px}#busy-banner button{font-size:12px;padding:4px}.detail-actions{display:flex;gap:8px;flex-wrap:wrap}.v3-mini{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:22px 0}.v3-mini>div{padding:14px;background:var(--soft);border-radius:14px;font-size:13px}.v3-mini b{display:block;margin-bottom:6px}
 @media(max-width:420px){.mobile-bar{gap:4px;padding:8px 10px 4px}.mobile-bar .agent-pill{max-width:120px;padding:8px}.phone-v3{border-radius:22px}.mobile-body{padding:12px}.prototype{padding:10px}.v3-mini{grid-template-columns:1fr}.input-pill textarea{font-size:15px}.reply-actions{gap:0}.phone-v3 pre{font-size:11px}}
@@ -36,7 +36,9 @@
 .mobile-dialog.catalog-page{border-radius:24px;background:var(--p-bg)}.catalog-page #overlay-content{padding:12px 16px}.catalog-nav{position:sticky;top:-12px;z-index:1;background:var(--p-bg);flex-shrink:0;display:flex;gap:8px;align-items:center;margin-bottom:12px}.catalog-nav strong{flex:1;text-align:center;font-size:20px}.catalog-nav button:last-child{background:var(--p-control);border-radius:24px}.catalog-tabs{display:flex;gap:6px;overflow:auto;flex-shrink:0;margin:14px 0}.catalog-tabs button{white-space:nowrap;color:var(--p-sub)}.catalog-tabs button[aria-pressed=true]{background:var(--p-control);color:var(--p-text)}.catalog-hero{border:1px solid var(--p-border);border-radius:24px;padding:24px 16px;text-align:center;background:linear-gradient(150deg,var(--p-raised),var(--p-bg));margin:16px 0 4px}.catalog-hero svg{width:48px;height:48px;color:var(--p-blue)}.catalog-card{display:flex;gap:12px;align-items:center;padding:16px 12px;background:var(--p-raised);border-radius:22px;margin:12px 0}.catalog-card .catalog-icon{width:44px;height:48px;display:grid;place-items:center;background:var(--p-control);border-radius:14px;color:var(--p-blue);flex-shrink:0}.catalog-card .catalog-copy{flex:1;min-width:0}.catalog-card strong{font-size:16px;display:block;overflow-wrap:anywhere}.catalog-card small{display:block;line-height:1.6}.catalog-card button{background:var(--p-control);border-radius:24px;padding:8px 12px}.catalog-page .dialog-header{display:none}.capability-token{display:inline-flex;align-items:center;background:var(--p-raised);border-radius:20px;padding-left:12px;font-size:12px;margin:4px}.danger-text{color:var(--p-warning)!important}.settings-summary{font-size:10px;color:var(--p-sub);padding:0 18px 6px}.catalog-list{min-height:60px}.catalog-page #catalog-search{border-radius:28px;flex-shrink:0}.catalog-hero{flex-shrink:0}
 
 #skill-add-sheet{overflow:auto;border-radius:28px 28px 0 0;background:var(--p-raised);animation:attach-rise .22s ease-out both}#skill-add-sheet .menu-row{padding:16px;gap:14px;min-height:76px}#skill-add-sheet .menu-row span{display:flex;flex-direction:column;text-align:left}#skill-add-sheet h3{font-size:18px;margin:12px 16px 4px}.skill-form textarea{min-height:96px}.skill-preview{max-height:260px;overflow:auto;white-space:pre-wrap!important}.nav-spacer{width:48px;flex:none}@media(prefers-reduced-motion:reduce){#skill-add-sheet{animation:none}}
-</style></head><body><header class="hero"><div class="eyebrow">MOBBY / ANDROID / DESIGN REVIEW 03</div><h1>专注对话，随时掌握执行。<span>基于参考图的完整手机 UI 交互</span></h1><p class="lead">会话侧栏、胶囊工具栏、执行卡片与语音输入，组合成一套连贯的 Android 体验。</p><div class="meta"><span class="pill">v3 · 待 Review</span><span class="pill">参考图驱动</span><span class="pill">本机 Agent</span></div><button class="print-action" onclick="window.print()">打印 / 保存 PDF</button></header><div class="review-layout"><aside class="toc"><strong>设计文档目录</strong><div class="toc-links"><a href="#prototype">可点击的手机原型</a><a href="#section-1">1. 整体设计方向</a><a href="#section-2">2. 参考来源与适用范围</a><a href="#section-3">3. 代码现状与设计前提</a><a href="#section-4">4. 完整页面与 Android 导航</a><a href="#section-5">5. 时间线结构</a><a href="#section-6">6. 展开与折叠：明确规则</a><a href="#section-7">7. 具体交互流程</a><a href="#section-8">8. 实现架构建议</a><a href="#section-9">9. 分阶段实施与验收门槛</a><a href="#section-10">10. 交付范围与 Review 决策</a><a href="#section-11">11. 本次验证</a></div></aside><main class="doc"><section class="prototype" id="prototype">
+
+.design-section{margin-top:48px;padding-top:12px;border-top:1px solid var(--line)}.design-section h2{margin-top:12px}.reference-notes{border:1px solid var(--line);border-radius:14px;padding:12px 16px;margin:24px 0}.reference-notes summary{cursor:pointer;font-weight:600}.reference-notes p{font-size:14px}.design-section table td:first-child{min-width:100px}
+</style></head><body><header class="hero"><div class="eyebrow">MOBBY / ANDROID / UI DESIGN</div><h1>专注对话，随时掌握执行。<span>对话、执行过程与能力管理</span></h1><p class="lead">会话侧栏、胶囊工具栏、执行卡片与语音输入，组合成一套连贯的 Android 体验。</p><div class="meta"><span class="pill">当前交互规范 · 待 Review</span><span class="pill">2026-09-21</span><span class="pill">本机 Agent</span></div><button class="print-action" onclick="window.print()">打印 / 保存 PDF</button></header><div class="review-layout"><aside class="toc"><strong>设计文档目录</strong><div class="toc-links"><a href="#prototype">可点击的手机原型</a><a href="#section-1">1. 页面结构与会话导航</a><a href="#section-2">2. 对话内容与执行状态</a><a href="#section-3">3. 顶部配置与更多菜单</a><a href="#section-4">4. 输入与底部面板</a><a href="#section-5">5. 插件与技能</a><a href="#section-6">6. Android 布局与返回</a><a href="#section-7">7. 实现架构与交付顺序</a><a href="#section-8">8. 原型范围与验收</a></div></aside><main class="doc"><section class="prototype" id="prototype">
 <div class="prototype-heading"><div><div class="eyebrow">INTERACTION PREVIEW / 03</div><h2>对话始终在中心。</h2></div><span class="pill">Android · 触摸优先</span></div>
 <p class="caption">参考你提供的截图重新设计；技能/插件目录、顶部模型选择和更多下拉菜单已补齐。点击菜单、Agent、加号、语音、过程步骤和代码工具栏，体验整条路径。所有任务、文件和语音均为示例，不访问设备或网络。</p>
 <div class="demo-controls"><label>运行状态 <select id="scenario"><option value="running">执行中</option><option value="success">完成</option><option value="failed">失败</option><option value="approval">待确认</option><option value="cancelled">已停止</option><option value="interrupted">异常中断</option></select></label><label>外观 <select id="appearance"><option value="dark">深色</option><option value="light">浅色</option></select></label><button id="system-back">模拟返回</button><button id="ime-toggle" aria-pressed="false">键盘占位</button><button id="reset-demo">重置</button></div>
@@ -53,110 +55,161 @@
 <dialog id="skill-add-sheet" class="mobile-dialog" aria-labelledby="skill-add-title"><button class="sheet-handle" id="close-skill-add" aria-label="关闭添加技能面板"><span></span></button><h3 id="skill-add-title">添加技能</h3><button class="menu-row" data-skill-route="skill-import"><span data-icon="file"></span><span>导入技能文件<small>从本地导入已有技能说明</small></span></button><button class="menu-row" data-skill-route="skill-create"><span data-icon="plus"></span><span>与moddy对话创建<small>使用 Skill Creator 创建 Skill</small></span></button></dialog>
 <div class="reference-summary"><span>01 语音半屏</span><span>02 会话侧栏</span><span>03 代码工具栏</span><span>04 回复操作</span><span>05–06 执行卡片</span></div>
 </section>
-<h2 id="section-1">1. 整体设计方向</h2>
-<p><strong>主界面就是对话，左侧抽屉管理会话，底部输入区承接文本、上下文与语音。</strong>这版依据用户提供的参考截图，替换 v2 的“列表首页”路径。抽屉是模态导航，不是缩小的桌面常驻侧栏；打开时保留主界面位置，关闭后继续阅读。</p>
-<div class="v3-mini"><div><b>阅读优先</b>回复直接排版，过程紧凑成组；正文不被固定工具栏遮住。</div><div><b>操作就近</b>代码工具在代码顶部，消息操作在回复底部；输入操作在拇指区域。</div><div><b>状态可信</b>运行、待确认、失败、中断分别呈现；原型能力和真实运行能力明确区分。</div></div>
-<p>执行开始自动展开当前过程，确认成功后收起未被用户手动操作的过程。最终答复、失败摘要和待确认事项保留可见。本文是完整 UI 交互设计与浏览器原型，不是 Android 运行代码实现。</p>
-<h2 id="section-2">2. 参考来源与适用范围</h2>
-<div class="table-wrap"><table><thead><tr><th>已查阅的一手来源</th><th>可借鉴的结构</th><th>本项目的取舍</th></tr></thead><tbody><tr><td><a href="https://learn.chatgpt.com/docs/changelog#codex-app" target="_blank" rel="noreferrer">Codex 官方更新记录</a></td><td>项目侧栏、任务列表、审阅区域</td><td>手机以对话为主屏、抽屉管理会话；借鉴内容层级</td></tr><tr><td><a href="https://developers.openai.com/codex/app/features" target="_blank" rel="noreferrer">Codex 功能文档</a></td><td>项目与对话、文件与产物查看</td><td>将产物作为可打开的结果入口</td></tr><tr><td><a href="https://code.claude.com/docs/en/desktop" target="_blank" rel="noreferrer">Claude Code Desktop 官方文档</a></td><td>会话导航、输入区、代码差异与终端面板</td><td>对话列表和执行详情分工明确</td></tr><tr><td><a href="https://claude.com/blog/claude-code-desktop-redesign" target="_blank" rel="noreferrer">Claude 桌面端改版说明</a></td><td>集中查看活跃和最近会话</td><td>状态可见，避免切换后丢失当前执行位置</td></tr></tbody></table></div>
-<p>以上资料支持布局参考，<strong>没有据此认定两款客户端拥有与本文完全一致的自动折叠规则</strong>。下面的页面结构、状态机和动画参数均为 mobby 的设计建议。资料检索日期为文档日期；不照搬参考产品的云任务、并行能力或权限模式。</p>
-<h3>参考截图的映射</h3><p>仅参考截图可见的界面结构。截图中的账户名称、具体问答、技术代码与价格说法不是本项目需求或已验证事实；不复制进产品内容，也不把截图文件导入 Git。</p><div class="table-wrap"><table><thead><tr><th>参考图</th><th>沿用的交互</th><th>mobby 的落地与修正</th></tr></thead><tbody><tr><td>图 1</td><td>语音半屏面板、取消与编辑</td><td>按下开始、结束转文字、编辑确认；只插入草稿，不自动发送</td></tr><tr><td>图 2</td><td>侧栏、置顶、项目、历史、底部搜索</td><td>本机身份与工作区，当前对话选中态；去掉账号、扫码、定时任务等无实际能力入口</td></tr><tr><td>图 3</td><td>代码卡工具栏、滚动与回到底部</td><td>语言、全屏、复制、换行；保留 Android 系统返回</td></tr><tr><td>图 4</td><td>最终回复与后续操作</td><td>复制、分享、追问；不增加无存储链路的点赞，不预置生成 PPT 等无关工具</td></tr><tr><td>追加参考图</td><td>加号底部面板：附件卡片与能力列表</td><td>拍照、照片、本地文件；插件、技能、联网搜索；提供二级返回与关闭，保留输入草稿</td></tr><tr><td>图 5–6</td><td>三行执行卡、步骤右箭头、消息分层</td><td>展示真实公开进度和工具事件；不展示隐藏推理，不泄露 citation 内部标记</td></tr></tbody></table></div><p>不照搬 iOS 灵动岛、状态栏样式、屏幕边缘手势或悬浮顶栏遮挡正文的效果；不把“快速 / 进阶”直接变成无法解释的模型档位。</p>
-<h3>Android 交互依据</h3>
-<ul><li><a href="https://developer.android.com/design/ui/mobile/guides/layout-and-content/layout-and-nav-patterns" target="_blank" rel="noreferrer">Android 布局和导航</a>：选择用户熟悉的页面导航与主操作；本文采用对话主屏、模态抽屉与详情路径，新建入口在顶部和抽屉内。</li><li><a href="https://developer.android.com/develop/ui/compose/system/predictive-back" target="_blank" rel="noreferrer">Compose Predictive Back</a>：系统返回预览实际目的地，取消手势不能提前更改页面或草稿。</li><li><a href="https://developer.android.com/develop/ui/compose/system/insets" target="_blank" rel="noreferrer">Compose Window Insets</a>：按状态栏、导航栏、显示切口和 IME 的实际 inset 布局。</li><li><a href="https://developer.android.com/develop/ui/compose/accessibility/api-defaults" target="_blank" rel="noreferrer">Compose 无障碍默认行为</a>：保证交互目标至少 48 × 48dp，并提供清楚的语义描述。</li></ul>
-<p>Android 规范支持的是平台行为；对话主屏、抽屉管理会话等仍是本项目的产品设计决策。本文不承诺当前依赖版本已覆盖全部预测返回动画，实施时需检查并做设备验证。</p>
-<h2 id="section-3">3. 代码现状与设计前提</h2>
-<p>以下是静态代码检查事实，未据此声称手机运行验收通过：</p>
-<ul><li><code>MainActivity.kt</code> 的 <code>TestConsoleScreen</code> 当前展示运行状态、Agent 切换、文本输出列表和输入框。</li><li><code>TestConsoleViewModel.kt</code> 绑定 <code>RuntimeService</code>，只有一个输入草稿和一个运行状态。</li><li><code>RuntimeService.kt</code> 只允许一个忙碌任务，输出存于内存；最多保留 2,000 行、约 1,000,000 字符，单项会截断。不能直接用它作完整会话数据库。</li><li><code>AgentAdapter.kt</code> 将 Claude stream-json / Codex exec --json 事件转为 <code>AgentOutput(text, error)</code>，UI 已失去工具调用 ID、轮次和事件阶段。</li><li>当前命令参数没有恢复既有 CLI 会话的路径。增加历史列表并不自动获得多轮上下文连续性。</li><li>已有 Compose、协程、libtermux、前台服务和加密网关存储应继续使用。</li></ul>
-<p>因此需先改事件模型、会话持久化与 CLI 会话绑定，再构建交互。不能从日志里匹配“完成”几个字来折叠，不能把 stdout 每一行当作一条完整回复。</p>
-<h2 id="section-4">4. 完整页面与 Android 导航</h2>
-<h3>4.1 页面地图</h3><pre><code>对话主屏（最近对话 / 新对话空态）
-├─ 左上菜单 → 会话抽屉
-│  ├─ 新对话、置顶、项目、历史会话
-│  ├─ 底部搜索 → 按标题过滤
-│  └─ 设置 → 网关 / 运行环境 / 外观 / 归档
-├─ Agent 胶囊 → 锚定下拉弹窗：Agent / 模型 / 思考程度
-├─ 顶部新建 → Agent + 项目配置面板 → 空对话
-├─ 更多 → 右上锚定下拉：分享 / 置顶 / 项目 / 附件 / 查找 / 快捷方式 / 重命名 / 归档 / 删除
-├─ 执行卡 → 普通步骤原地展开；网页结果 → 底部近满屏面板
-├─ 代码卡 → 底部代码阅读面板；来源 → 自适应底部面板
-└─ 底部输入 → 上下文面板 / 语音面板 / 发送或停止</code></pre>
-<p>首启显示空对话；后续恢复最近访问的对话和阅读位置。抽屉切换对话不堆叠导航历史；Android 返回不会逐个遍历之前切过的对话。设置页入栈，内容详情使用原地展开或底部面板，同级面板替换而不无限叠加；技能目录上的添加菜单是单独的底部覆盖层，关闭只回到技能目录。</p>
-<h3>4.2 顶部与侧栏</h3><p>顶部由三个视觉组构成：48dp 圆形菜单按钮；显示实际 Agent 的胶囊；新建与更多组合胶囊。下方一行显示项目、会话标题和真实状态。工具栏占据布局空间，不覆盖正文，不做重度模糊。未读变化只在有真实未读事件时显示圆点。</p><p>抽屉宽度建议 min(360dp, 可用宽度 − 32dp)。顶端显示 mobby / 本机与新建；置顶、项目、历史分组；底部固定搜索和设置。中部独立滚动，IME 出现后搜索上移，历史区域收缩。点击遮罩、关闭按钮或系统返回都可收起；不通过自定义左边缘滑动与系统返回抢手势。选中行用浅层背景、标题与状态识别，运行中切换不停止任务。</p><p>项目是“目录 + 对话归属”，不等于新容器或云工作区。选择项目后默认新建该项目下的对话；新建项目要先验证目录可访问。移除项目分组不得删除目录。第一版不承诺后台多 Agent 并行。</p>
-<h3>4.3 对话与详情</h3><p>单栏正文左右 16dp，用户气泡靠右，Agent 正文不加大气泡。执行卡细边框、圆角 16dp，内部按顺序排列公开进度和工具；默认展示已接收的真实步骤。成功摘要示例“已完成 · 4 个步骤 · 18 秒”，正在执行不显示虚构完成时间。长过程可分页加载；没有工具事件时不补假步骤。</p><p>普通工具步骤在卡片内展开名称、状态、参数摘要、工作目录、耗时、退出码和可用输出，正文最高 240dp，超过后内部滚动。网页结果集合使用底部阅读面板，较长输出按需读取。代码块提供语言、全屏、复制、换行，默认保留格式并可横向滚动；全屏返回恢复原位置。来源只展示可解析的标题/域名/本地路径，引用标记由专用渲染器处理；无法解析时显示“来源不可用”，不把协议 token 当正文。</p>
-<h3>4.4 输入区</h3><p>底部为圆角输入容器，左侧加号，多行输入居中。空闲且无文本时右侧为语音；有文本或上下文时变为发送；执行中固定为停止，不随草稿变化。执行时仍能写下一轮草稿，当前不支持偷偷排队或直接注入。其他对话运行时显示“查看任务”入口，发送禁用；上下文和草稿继续保留。</p><p>正文建议 16sp，次要信息 12–14sp，系统字重与行距随无障碍设置。输入 1–5 行，超过后内部滚动；长路径省略中段；所有动作至少 48 × 48dp。顶栏与输入区颜色由主题决定，默认跟随系统，深浅两套均可读。原型默认深色是为了对照参考图，不规定产品强制深色。</p>
-<h3>4.5 返回、键盘与小屏</h3><div class="table-wrap"><table><thead><tr><th>当前层级</th><th>系统返回</th></tr></thead><tbody><tr><td>输入法可见</td><td>交给系统先收 IME，保留草稿；面板内编辑也一样</td></tr><tr><td>抽屉 / 底部面板</td><td>关闭顶层；语音结束采集；关闭待确认面板不等于允许或拒绝</td></tr><tr><td>设置详情</td><td>回到打开它的对话与滚动锚点；工具栏返回直接向上导航</td></tr><tr><td>对话根页</td><td>交给系统回到桌面或启动来源，不自动打开侧栏、不停止服务</td></tr></tbody></table></div>
-<p>使用 Navigation Compose 与 Material 模态组件的返回能力；预测返回取消时不提前弹栈。真实 IME 回车用于换行，不在中文组词确认时发送。进入历史或返回详情不自动弹键盘。edge-to-edge 由 WindowInsets 处理状态栏、切口、三键/手势导航栏和 IME，避免重复累计底部空白。</p><p>320dp、360dp、412dp、横屏和分屏均保持手机单栏；大字体时控件可增高，短横屏面板可全屏。不把桌面三栏缩进手机。TalkBack 只播报完成、异常与待处理，不逐 token 报读；抽屉/面板打开后焦点移入，关闭恢复触发按钮；长按文本走原生选择菜单。</p>
-<h2 id="section-5">5. 时间线结构</h2>
-<p>一段对话包含多个轮次，每轮按以下顺序组织：用户消息 → Agent 的公开进度说明与工具事件 → 最终答复 → 产物入口。过程按真实时间顺序显示，不将晚到日志插入其他轮次。</p>
-<div class="table-wrap"><table><thead><tr><th>内容</th><th>默认呈现</th><th>允许折叠</th></tr></thead><tbody><tr><td>用户消息</td><td>浅色气泡、保留原文</td><td>长文本可“展开全文”，不随运行结束折叠</td></tr><tr><td>公开进度说明</td><td>普通段落；过程中按事件顺序显示</td><td>完成后随过程组收起</td></tr><tr><td>计划</td><td>CLI 确有计划事件才显示步骤与状态</td><td>可折叠，不能伪造完成百分比</td></tr><tr><td>工具调用</td><td>名称、简述、状态、耗时</td><td>外层过程初始展开，内部长输出默认只露摘要</td></tr><tr><td>最终回复</td><td>Markdown 正文</td><td>不自动收起</td></tr><tr><td>文件 / 产物</td><td>紧凑入口，显示真实可用项目数</td><td>详情单独打开</td></tr><tr><td>权限请求</td><td>待处理卡片 + 操作范围</td><td>未处理时不可被父级折叠遮住</td></tr><tr><td>失败 / 超时 / 停止</td><td>明确结果与后续动作</td><td>状态摘要始终可见，日志可折叠</td></tr><tr><td>未识别事件</td><td>“暂不支持展示的事件” + 脱敏详情</td><td>不丢弃、不算成功步骤</td></tr></tbody></table></div>
-<p>“过程”仅指 CLI 提供的公开说明、工具活动与输出，不展示或推测模型隐藏思维链。非流式网关等待期间显示“等待响应”，收到真实事件后再更新；不伪造逐字输出、步骤或进度。</p>
-<h2 id="section-6">6. 展开与折叠：明确规则</h2>
-<p>每轮设 <code>expansionOverride = AUTO | OPEN | CLOSED</code>，每个工具详情另有独立开关。业务状态与展开状态分开保存。</p>
-<div class="table-wrap"><table><thead><tr><th>触发</th><th>AUTO 默认行为</th><th>已有用户选择时</th></tr></thead><tbody><tr><td>新轮次开始</td><td>过程组展开；当前步骤显示摘要</td><td>新轮次有独立状态</td></tr><tr><td>步骤正常完成、整轮仍在运行</td><td>保留步骤行；长输出收为摘要</td><td>手动打开的步骤详情保留</td></tr><tr><td>整轮确认成功</td><td>最终回复已写入后，过程组收为一行</td><td>OPEN 保持展开；CLOSED 保持收起</td></tr><tr><td>失败、超时、取消、异常中断</td><td>过程保留展开；显示常驻结果条</td><td>可保持过程收起，但异常摘要必须在组外</td></tr><tr><td>权限请求或需要回答</td><td>待处理卡片放组外；列表标“待处理”</td><td>折叠选择不影响卡片</td></tr><tr><td>切换对话 / 屏幕旋转</td><td>恢复该轮选择与阅读位置</td><td>不重置</td></tr><tr><td>打开历史成功轮次</td><td>默认折叠</td><td>持久化 OPEN / CLOSED 优先</td></tr></tbody></table></div>
-<p>完成时的自动折叠须同时满足：没有未完成步骤或待处理请求、结果事件及退出状态一致、用户未手动选择、用户没有在过程内选中文本或停留阅读。用户上滑阅读时推迟本次自动折叠，提供“收起过程”入口；不要一空闲就突然收起。回到底部或重新进入对话后才重新应用 AUTO 默认值。</p>
-<p>展开动画建议 160–220ms，遵守减少动画设置。折叠前记住首个可见项 ID 与偏移并恢复，保持视口锚点。焦点位于即将隐藏区域时延迟折叠。展开按钮语义包含“已展开/已折叠、步骤数、状态”。</p>
-<p>摘要示例：<code>已完成 · 5 个步骤 · 32 秒</code>、<code>已结束 · 1 个步骤失败</code>、<code>已停止 · 部分操作可能已执行</code>。工具失败后恢复成功时仍保留“含 1 次失败，后续已恢复”标记与入口；不得把错误历史改写为全部成功。</p>
-<h3>原地展开与长内容面板（按追加参考图修订）</h3><p>普通过程步骤点整行后，在同一张执行卡内展开，箭头转向下方；再次点击收起，不打开新窗口。各步骤独立保存展开状态，更新输出不重置用户选择。步骤正文高度为 min(内容自然高度, 240dp)，达到上限后仅正文内部滚动，标题和其他步骤仍可访问；短内容不留空白。展开或收起不强制滚到对话底部。</p><p>网页搜索结果、长资料集合和用户主动放大的代码，从底部打开阅读面板；不按字数突然把已展开步骤切换成窗口。面板高度为 min(内容自然高度, 可用屏幕高度 − 48dp)，长内容接近满屏，短内容按实际高度。拖动条、标题与关闭按钮固定，正文单独滚动，避免正文与外层同时滚动。支持下拉收起、点遮罩和系统返回；关闭后恢复原消息位置与入口焦点。</p><p>Compose 使用 heightIn(max = …) 限高；内联正文由 rememberScrollState 管理，搜索列表使用有界 LazyColumn。面板使用 ModalBottomSheet，在安全区和 IME 扣除后的可用高度内布局；下拉关闭交给 Sheet 的嵌套滚动，正文未到顶部时先滚动正文。字体增大时重新测量，不锁死像素高度。ExpandedStepIds 与步骤内部滚动位置按 conversationId / turnId / stepId 保存；公开进度摘要与工具结果可以展开，隐藏推理不作为展示内容。</p>
-<h2 id="section-7">7. 具体交互流程</h2>
-<h3>新建与继续</h3>
-<p>首次进入显示“今天，做点什么？”和任务输入；缺少依赖时显示初始化入口。点击新对话打开底部配置面板，选择 Shell / Claude Code / Codex 与已授权工作区后进入空对话页。首条发送后固定 Agent 和工作区，切换 Agent 新建对话。模型改动仅影响后续轮次，历史只存配置引用。缺少依赖或网关时显示配置入口并保留草稿。只有服务确认接收并持久化轮次后才清空输入；提交失败保留原文并提示原因。首条消息生成可编辑标题；首版可用本地截取，不额外调用模型。</p>
-<p>继续对话使用绑定的 CLI session ID，恢复能力需对内置 CLI 的实际版本验证。恢复失败必须说明“无法恢复会话”，提供重试恢复或新对话，不得悄悄启动无上下文的新任务。Shell 每次启动独立命令，标题旁注明“工作目录保留，进程内变量不跨轮次保留”。</p>
+
+<section class="design-section" aria-labelledby="section-1">
+<h2 id="section-1">1. 页面结构与会话导航</h2>
+<p>以对话为主屏：顶部切换 Agent 与管理会话，中部阅读回复和执行过程，底部输入任务。会话列表放在左侧抽屉；插件、技能和设置使用独立页面。本文定义当前目标交互，HTML 的演示范围见第 8 节。</p>
+<pre><code>对话主屏
+├─ 菜单 → 会话抽屉 → 置顶 / 项目 / 历史 / 搜索 / 设置
+├─ Agent 胶囊 → 下拉弹窗：Agent / 模型 / 思考程度
+├─ 新建 → 选择 Agent 与工作区 → 空对话
+├─ 更多 → 会话操作下拉菜单
+├─ 执行卡 → 步骤原地展开
+│  └─ 网页结果 / 放大代码 → 底部阅读面板
+└─ 输入区
+   ├─ 加号 → 拍照 / 照片 / 本地文件 / 插件 / 技能 / 联网搜索
+   │  ├─ 插件页 → 查看 / 使用
+   │  └─ 技能页 → 添加 → 与moddy对话创建 / 导入技能文件
+   ├─ 语音 → 录音 / 校对 → 文字草稿
+   └─ 发送 / 停止</code></pre>
+<h3>会话抽屉</h3>
+<p>顶端为本机身份和新建按钮，中部按置顶、项目、历史分组，底部固定搜索与设置。搜索过滤会话标题，选中项显示标题、Agent 和运行状态。点击会话恢复各自的草稿、附件与阅读位置；切换会话不停止任务，也不逐次堆叠返回历史。</p>
+<p>首次进入显示空对话，后续恢复最近访问的对话。新建时选择 Agent 与可访问的工作区，发送首条任务前允许调整。已有会话通过 CLI session ID 延续上下文；恢复失败时提示重试或新建，不静默丢失上下文。</p>
+<p>项目同时提供新对话的默认工作区和会话分组。已有对话“添加到项目”只改变分组，保留该会话的执行目录；移除分组不删除工作区。侧栏设置包含网关、运行环境、外观与已归档会话。</p>
+</section>
+<section class="design-section" aria-labelledby="section-2">
+<h2 id="section-2">2. 对话内容与执行状态</h2>
+<p>每轮按“用户消息 → 公开进度与工具步骤 → 最终回复 → 产物”排列。用户消息为右侧气泡，回复直接排版，过程收在细边框卡片中。仅展示 Agent 已提供的公开进度和工具结果。</p>
+<h3>原地展开与阅读面板</h3>
+<div class="table-wrap"><table><thead><tr><th>内容</th><th>打开方式</th><th>高度与滚动</th></tr></thead><tbody>
+<tr><td>普通步骤、工具输出</td><td>点击步骤行，在同一卡片内展开；再次点击收起</td><td>正文自然高度，上限 240dp；超出后正文内部滚动，步骤标题保留</td></tr>
+<tr><td>网页结果、来源集合、主动放大的代码</td><td>从底部打开阅读面板</td><td>自然高度，上限为可用屏幕高度减 48dp；长内容接近满屏，标题固定、正文滚动</td></tr>
+<tr><td>最终回复、错误摘要、待确认事项</td><td>保留在时间线中</td><td>随对话滚动，不随过程自动收起</td></tr>
+</tbody></table></div>
+<p>高度上限按安全区与输入法占用后的空间计算；短内容不强行撑满。普通步骤变长仍在原处滚动，不突然切换成弹窗。代码支持复制、换行与放大，复制保留原始文本；来源显示可解析的标题、域名或本地路径。</p>
+<h3>折叠规则</h3>
+<div class="table-wrap"><table><thead><tr><th>事件</th><th>默认行为</th><th>用户选择</th></tr></thead><tbody>
+<tr><td>新轮次开始</td><td>过程组展开，当前步骤显示摘要</td><td>每轮独立记录展开状态</td></tr>
+<tr><td>整轮确认成功</td><td>最终回复就绪后，过程组收为状态摘要</td><td>手动展开保持展开；手动收起保持收起</td></tr>
+<tr><td>失败、超时、停止、中断</td><td>过程保留，组外显示结果摘要</td><td>允许收起过程，异常仍可见</td></tr>
+<tr><td>等待权限或用户回答</td><td>待处理卡片放在过程组外</td><td>关闭详情不等于批准或拒绝</td></tr>
+<tr><td>切换会话或旋转屏幕</td><td>恢复展开选择与阅读位置</td><td>不因刷新重置</td></tr>
+</tbody></table></div>
+<p>用户正在阅读过程、选择文字或焦点位于详情内时，延迟自动折叠。展开与折叠保持当前可见消息的锚点；新输出仅在用户已位于底部时跟随，上滑后显示“最新消息”入口。步骤展开状态与运行状态分别保存。</p>
 <h3>执行、停止与重试</h3>
-<p>首版全局单任务运行。用户可切换并阅读其他对话、编辑各自草稿；其他对话发送区显示“另一个对话正在执行”及跳转入口，不自动排队，也不通过 UI 暗示已接受任务。运行中继续输入仅保存草稿，首版不做中途消息注入。</p>
-<p>停止按钮立即转为“停止中”，重复点击禁用。确认进程组终止后才标“已停止”；终止确认失败显示“停止状态待核实”，不释放运行锁或伪装成功。停止与完成竞态由已记录终态和执行证据判定，不由最后一条 UI 文案决定。</p>
-<p>失败提供“编辑后重试”；重试创建新轮次，旧轮次保留。不得自动重发已可能产生副作用的命令。后台通知点按回到实际运行对话；后台期间折叠规则与前台一致。系统通知权限被拒绝时仍在应用列表和对话页显示真实运行状态；不得声称通知已送达。前台服务遵守系统启动与时限约束，切到后台不承诺永不终止。通知锁屏内容默认只显示任务状态，不包含命令、密钥或正文。</p>
-<h3>权限与中断</h3>
-<p>仅在适配器能接收真实请求并可靠回传决定时启用“允许本次 / 拒绝”。显示命令、目录、影响范围；默认不提供绕过沙箱或永远允许。当前非交互执行路径能否支持此交互尚未验证：未接通时显示能力限制与错误，不展示无效批准按钮。</p>
-<p>进程重建先检查运行服务是否仍持有执行实例；若无法关联活跃实例，则记录“上次执行中断，结果未确认”，保留输出与草稿，不自动重发。切换对话不会停止任务；归档不等于停止。首版禁止归档运行中的对话，并明确说明原因。</p>
-<h3>滚动和详情</h3>
-<p>处于底部时跟随新输出；用户上滑、选中文本时暂停跟随，底部显示“有新内容 ↓”。详情返回保持原轮次、草稿和滚动锚点。正文代码块允许独立横向滚动，页面本身不横向溢出。系统返回与工具栏返回按第 4.5 节区分处理，不附带停止副作用。</p>
-<h3>对话管理</h3>
-<p>抽屉标题最多两行，工具栏上下文单行省略；长按/更多菜单支持重命名、置顶和归档。归档支持撤销，不删除 HOME 或工作区。搜索首版仅标题；列表按最近用户提交或轮次结束更新排序，流式 token 不触发重排。选中的对话不因排序跳走；未读完成标记在用户打开后清除。永久删除和全文搜索后置。</p>
-<h3>语音输入完整流程</h3><p>点击语音 → 说明用途并按需申请麦克风权限 → 就绪 → 开始录音 → 用户结束 → 转写中 → 可编辑文字 → 放入输入框。插入位置为当前光标；选中文本时仅替换所选部分。取消录音不修改原草稿，关闭面板/切到后台立即停止采集，电话或音频焦点中断显示中断状态。永久拒绝权限提供系统设置入口，普通拒绝提供文字输入替代。无识别服务、空音频、超时或离线错误有明确提示，可重录。</p><p>语音能力先检查 Android 识别服务与语言可用性；是否经过网络取决于选定的识别实现，不承诺全部本地。音频默认不持久化，转写服务和隐私说明明确后才接入。HTML 只模拟就绪/录音/文字校对，不申请权限或采集声音。</p>
-<h3>技能与插件：分开管理</h3><p>插件页面仅展示应用提供的可用插件，提供分类、搜索、详情与“使用”。不显示顶部添加按钮、卡片添加按钮、安装或外部导入入口；使用只加入本轮草稿，不自动执行。不可用插件说明原因，不能通过 UI 伪装可调用。</p><p>技能页面保留右上“添加”。点击后在当前技能页上方从底部弹出两项菜单：<strong>导入技能文件</strong>、<strong>与moddy对话创建</strong>（说明：使用 Skill Creator 创建 Skill）。面板短内容自然撑高，超出可用高度内部滚动；点击遮罩、下拉或返回仅关闭该面板，保留技能页搜索、分类和滚动位置。</p><p>导入路径：系统文件选择器 → 选中 .md → 解析与预览 → 确认导入。支持含 name/description frontmatter 的 SKILL.md；普通 Markdown 进入名称与触发描述补全，不能仅改扩展名就声称有效。显示校验错误与同名冲突，不自动覆盖；取消、读取失败不改变技能列表。仅导入说明文本，不执行文件中的指令或脚本。</p><p>创建路径：填写名称、任务目标、使用场景 → 调用 Skill Creator → 可编辑 SKILL.md 预览 → 校验 → 保存并返回“已添加”。遵循 Skill Creator 的精简说明、明确触发范围与按需辅助资源原则；需要时澄清影响结果的缺失信息，生成 name、description 与 Markdown 指令正文。名称使用小写字母、数字、短横线，少于 64 个字符。普通 Skill 不生成无用目录和 README。</p><p>SkillCreatorCoordinator 通过现有 Agent 执行路径显式调用已发现的 skill-creator，保持现有权限和沙箱。全局已有任务时保留创建表单，提示先处理当前任务；缺少 Skill Creator 时明确提示不可用，不降级成假成功。校验通过后写入目标 Agent 的可发现技能目录；失败/取消保留输入但不登记为已创建。预览保存仅作用于用户确认的技能，不触发外部业务操作。</p><p>HTML 使用示例 Markdown 与本地模板演示输入、预览、同名检查和保存到本页列表，不读取真实文件、不实际调用 Skill Creator、不写设备目录。原生验收需覆盖文件选择取消、无效 Markdown、同名冲突、Creator 不可用、执行失败、取消及成功后的发现与调用。插件示例不会发生安装。</p>
-<h3>顶部 Agent / 模型 / 思考程度下拉</h3><p>点 Codex 胶囊，弹窗锚定按钮下沿，圆角 24dp；同一弹窗分三组：Agent、对应模型、思考程度，选中项明确标记。先暂选再应用；点外部或返回取消暂选。切换 Agent 后刷新模型列表，切换模型后只保留支持的等级；不支持思考配置的模型隐藏该组，Shell 显示不适用。列表来自实际网关配置与 CLI 能力描述，不能把其他产品的档位直接映射成参数。原型使用“已配置模型 A/B/C/D”演示依赖关系，不宣称具体真实模型支持这些等级。</p><p>同 Agent 的模型/等级变更用于下一轮，运行中的配置快照保持不变；若 CLI 不支持会话内更换，则明确提示新建。更换 Agent 的操作在同一弹窗完成：空对话直接应用，已有记录则按钮明确写“新建并使用此配置”，保留原会话和运行，复制文字草稿、不默默迁移历史与附件。应用后胶囊与配置说明反映所选项，发送前再验证网关兼容性。</p>
-<h3>更多：右上角锚定菜单</h3><p>右对齐更多按钮，从其下沿展开，顶部显示当前对话名；依次提供分享、置顶、添加到项目、对话附件、在聊天中查找、添加到主屏幕、重命名、归档与删除。长菜单内部滚动，短菜单按内容高度；点击遮罩/返回关闭。手机小屏时限制在安全区域内，不超出屏幕。</p><p>添加到项目只改分组，不搬迁运行工作目录。附件区区分已发送与草稿；查找正式版本跨整段对话并跳转消息（HTML 仅演示当前轮次文本匹配）。分享默认排除日志和配置；快捷方式交给 Android 系统确认。运行中不能归档/删除，删除要单独确认，工作区文件不随之删除；原型仅展示删除说明，不实施删除。设置仍从会话侧栏进入。</p>
-<h3>加号面板：从底部展开</h3><p>点击输入框左侧加号：先保存草稿和选择区，收起 IME，再以约 220ms 的上移动画从屏幕底部展开，背景加遮罩；内容区覆盖输入栏，但不改变对话滚动位置。面板自然高度约半屏至三分之二屏，小屏和大字体下允许内部滚动。圆角建议 28dp，首排卡片约 96–110dp 高；所有行可整行点击。左右不出现桌面弹窗边距，底部处理系统导航 inset。</p><p>点击遮罩、系统返回、拖动条点击或从拖动条下滑可关闭；内容滚动与下滑关闭不能抢手势。二级项目页返回本面板，关闭后焦点回到加号，草稿与附件保持。减少动画开启时取消位移动画。原型实现底部展开、拖动条下滑/点击和 Escape 返回；实际 Android 使用 ModalBottomSheet。</p><p>插件/技能使用独立目录页，支持搜索、分类、详情；插件仅使用，技能支持导入/创建与使用；真实目录为空时展示空态；联网搜索的自动/开启/关闭是任务偏好，不能覆盖 Agent 权限和沙箱，也不能在不支持的网关上伪装生效。此原型允许体验选项，正式版本必须按能力启用。相机/照片仅展示后续流程说明，本地文件可添加明确标注的示例。技能与插件目录均使用演示条目。</p><h3>上下文与附件</h3><p>加号采用新增参考图的底部模态面板：顶部拖动条，首排三个等宽圆角入口“拍照 / 照片 / 本地文件”；下方依次为“插件 / 技能 / 联网搜索”，搜索行右侧显示当前偏好（默认“自动”）。语音仍由输入框的语音入口进入，不混入本面板主列表。图片和拍照只有 CLI、协议和网关全链路验证支持后才开放。用系统选择器获取用户选择的 URI，展示名称、大小、处理状态与移除按钮，不申请宽泛文件访问权限。对任意 Android URI 先导入到 app 私有可用区，不能直接当 CLI 文件路径。</p><p>加载失败可重试/移除；处理中发送禁用，取消选择不变更原草稿。格式、字节上限和 token 预算由能力描述给出并在发送前校验；失败说明具体限制，不静默裁切后提交。上下文仅属于当前对话草稿，切换对话不串附件，重启后失效授权需重新选择。工具原始输出及附件全文不进入普通日志。</p>
-<h3>回复操作与设置</h3><p>最终回复下提供复制、系统分享和追问；追问建议只写入输入框，需要用户再点发送。分享先显示所选内容范围，默认只有最终回复，不带日志、密钥与工作区完整路径；再调用 Android Sharesheet。重试创建新轮次，不能用“重新生成”隐藏已执行的副作用。点赞、朗读与导出工具只有完整功能存在时再加入。</p><p>网关页分别选择 Claude Code / Codex，显示协议、地址、模型、密钥与保存。输入错误就地提示，返回未保存改动时提供保留编辑/放弃；保存成功仅表示设备加密存储完成。若后续提供连接测试，必须单独展示测试范围与结果。运行中的任务使用启动时配置快照，新设置只影响后续轮次。Shell 不使用网关密钥。运行环境页展示真实依赖状态及重试初始化；主题提供跟随系统/浅色/深色。</p>
-<h3>必备空态和异常</h3><div class="table-wrap"><table><thead><tr><th>情形</th><th>用户可见与后续动作</th></tr></thead><tbody><tr><td>首次使用 / 空历史</td><td>任务输入、新对话配置；没有虚构历史</td></tr><tr><td>搜索无结果</td><td>说明只搜索标题，保留查询，可清除</td></tr><tr><td>依赖或网关未就绪</td><td>保留草稿，配置/初始化入口；发送前说明原因</td></tr><tr><td>网络错误 / 超时</td><td>失败结果与已发生操作提示，查看详情、编辑后重试</td></tr><tr><td>进程被杀</td><td>中断/结果未确认，不自动重放，不丢既有事件</td></tr><tr><td>日志/附件超过预算</td><td>显式截断或拒绝；保持终态与诊断，不伪装完整内容</td></tr></tbody></table></div>
-<h2 id="section-8">8. 实现架构建议</h2>
-<pre><code>Compose UI
-  ConversationDrawer / ConversationScreen / ProcessGroup / StepDetail / Composer
-       ↓ 用户 Intent                         ↑ StateFlow&lt;UiState&gt;
-ConversationViewModel + UI 状态投影
-       ↓                                     ↑
-ConversationRepository（Room） ← EventReducer ← ExecutionCoordinator
-       │                             ↑                  │
-  对话/轮次/事件/草稿            统一 AgentEvent       RuntimeService
-                                     ↑                  │
-                         Claude / Codex / Shell Adapter │
-                                     ↑                  ↓
-                            CLI 结构化流 ← RuntimeEnvironment / libtermux
-
-GatewayStore：继续负责加密配置，UI/Repository 仅持有非敏感引用</code></pre>
-<p>导航根为 Conversation(id?)，抽屉切换只替换 id；Settings、SkillsCatalog、PluginsCatalog 为独立目的地；步骤详情属于时间线内状态，CodeDetail、SearchResults、SourceDetail 为底部阅读面板；Drawer、AgentPicker、ContextPicker、Voice、More 用互斥的 OverlayState 管理。SavedStateHandle 只放目的地 ID 与轻量状态；长消息与日志放数据库/文件，避免 Bundle 过大。输入草稿持续持久化，不能只依赖 remember；Lifecycle 恢复后按 runId 重新订阅既有执行，不重发命令。</p>
-<p>在现有 app module 中按 <code>conversation/ui</code>、<code>conversation/domain</code>、<code>conversation/data</code>、<code>runtime/adapter</code> 分包即可；首版不急于拆成多个 Gradle module。保留 RuntimeService 执行归属，Compose 和 ViewModel 不直接持有子进程。</p>
-<h3>Android 交互扩展</h3><p>新增 CapabilityCatalogRepository 管理只读插件目录与技能记录；SkillImportService 解析 Markdown 并校验，SkillCreatorCoordinator 调用 Skill Creator 生成并验证技能，ModelCapabilityProvider 提供模型与思考等级依赖，NextTurnConfig 保存待应用配置，RunConfigSnapshot 保持运行中的配置不变。ProjectRepository 管理 workspace 关联，AttachmentRepository 管理 URI 授权、导入及预算，SpeechInputController 管理录音/转写生命周期。Clipboard 与系统分享通过平台接口执行。语音、面板开关、代码换行不改变运行状态；审批决定必须通过 ExecutionCoordinator 的真实 requestId 回传。</p><p>CapabilityDescriptor 按 Agent 与网关暴露 supportsImages、supportsAttachments、supportsApprovalResponse、supportsResume 等已验证能力；控件由能力决定启用，不仅靠 UI 选项。模型显示采用已配置名称，不虚构快速/高级能力。MessageRenderer 分离 Markdown、代码、来源，HTML/链接只允许安全渲染，不执行模型提供的脚本或任意 scheme。</p><h3>核心模型</h3>
-<div class="table-wrap"><table><thead><tr><th>模型</th><th>建议字段与约束</th></tr></thead><tbody><tr><td>Conversation</td><td>id、title、agent、workspaceId、cliSessionId、pinned、archivedAt、updatedAt</td></tr><tr><td>Turn</td><td>id、conversationId、userMessageId、runId、status、startedAt、endedAt、configRef</td></tr><tr><td>Message</td><td>id、turnId、role、content、streamState；最终回复与进度有不同类型</td></tr><tr><td>AgentEvent</td><td>id、runId、turnId、sequence、sourceEventId?、type、payload、receivedAt、schemaVersion</td></tr><tr><td>ToolStep</td><td>id、turnId、providerCallId、kind、title、status、outputRef、exitCode?</td></tr><tr><td>UiPreference</td><td>conversationId、turnId、expansionOverride、stepOverrides、scrollAnchor</td></tr><tr><td>Draft</td><td>conversationId、text、selection、attachmentIds、updatedAt</td></tr><tr><td>Project</td><td>id、displayName、workspaceRef、accessState；分组不拥有删除目录的权限</td></tr><tr><td>Attachment</td><td>id、conversationId、uriRef、type、size、importStatus、localRef、error；不记录真实文件正文到日志</td></tr><tr><td>OverlayState / VoiceState</td><td>互斥面板类型、返回焦点；语音 ready / recording / transcribing / review / error，后台停止采集</td></tr></tbody></table></div>
-<p>事件包括 RunStarted、Progress、TextDelta、ToolStarted、ToolOutput、ToolFinished、ApprovalRequested、ArtifactProduced、FinalMessage、RunFinished、UnknownEvent。这是内部模型草案，不声称是两套 CLI 的原生字段名。</p>
-<p>同一 run 内串行接收并分配单调序号；以真实 event ID 去重，缺少 ID 时通过适配器区分快照与增量，不能仅凭相同文本去重。以 providerCallId 配对工具事件；终态不被迟到进度覆盖。结果文本去重依赖消息 ID 与协议角色，不使用全文相同判断，避免丢掉合法重复内容。</p>
-<h3>状态与成功判定</h3>
-<p><code>CREATED → STARTING → RUNNING ↔ WAITING_FOR_USER → SUCCEEDED / FAILED / TIMED_OUT / CANCELLED / INTERRUPTED</code>；停止请求进入 <code>CANCELLING</code>。状态由 reducer 处理，不在 Composable 内凭字符串决定。</p>
-<p>Agent 成功需要实际版本对应的完成事件、正常退出和无未决致命错误；退出码 0 但缺少协议结束事件显示“结果未确认”。Shell 使用进程退出码，不要求 Agent 结束事件。stderr 作为诊断通道，不能一概视作任务失败；工具非零退出要记录失败，但与整轮最终状态区分。未知事件保留，协议解析失败不可被当作普通成功回复。</p>
-<h3>存储与性能</h3>
-<p>引入 Room 保存会话索引、轮次及事件投影，事务写入最终回复与终态。重要生命周期事件立即落盘；文本增量可 50–100ms 合并刷新 UI，最终 flush 后才结束。采用带背压的单写入队列，不让数据库或界面卡顿导致丢终态事件。</p>
-<p>长输出以分块文件存于 app 私有目录，数据库保存索引；UI 首屏仅加载最近轮次，历史按需分页，LazyColumn 使用稳定 key。建议首版每 run 输出预算 10 MiB，达到预算显示“日志已截断”并保存状态事件、失败摘要及结尾窗口；阈值须设备测试再定，不能默默删旧输出。</p>
-<p>网关密钥和真实配置继续只进现有加密存储。CLI 输出在持久化、显示和导出前经过脱敏；不保存包含凭证的启动命令、环境变量或完整请求头。运行参数记录只含配置引用；未知协议事件也必须脱敏。会话数据库退出系统自动备份；对话内容本身仍可能敏感，后续若加导出必须让用户选择范围。</p>
-<h2 id="section-9">9. 分阶段实施与验收门槛</h2>
-<div class="table-wrap"><table><thead><tr><th>阶段</th><th>实施内容</th><th>完成证据</th></tr></thead><tbody><tr><td>A：结构基础</td><td>用结构化事件替换文本压平；分离诊断日志；不改变网关主路径</td><td>固定 CLI 版本的脱敏真实事件夹具覆盖工具、失败、完成、未知事件</td></tr><tr><td>B：可继续的历史</td><td>Room、CLI session 绑定、草稿、单运行实例路由</td><td>切换/旋转/重建后不串会话；两种 CLI 实测恢复上下文；异常如实呈现</td></tr><tr><td>C：对话界面</td><td>对话主屏、抽屉、Navigation Compose、时间线、原地折叠、底部阅读面板、IME 与停止</td><td>Compose 交互测试 + 320/360/412dp、横屏、IME、200% 字号验收</td></tr><tr><td>D：强化交互</td><td>真实审批回传、语音/上下文能力、文件差异</td><td>真 CLI + 模拟网关，再以手机真实网关验收</td></tr></tbody></table></div>
-<p>阶段 C 可先用明确标注的演示事件验证交互；产品入口不能在 B 未完成时声称支持连续对话。阶段 D 的审批未验证前不开放对应按钮。只在实际获取到文件改动信息时显示“查看改动”，不从回复文字推断。</p>
-<p>关键验收用例：</p>
-<ol><li>新运行默认展开；正常结束时最终答复可见、过程变摘要；点摘要恢复步骤。</li><li>用户手动打开详情，完成事件不能关闭它；用户手动收起后新 token 不能再打开。</li><li>上滑查看历史时新输出不抢滚动，完成折叠不造成视口跳跃。</li><li>失败、超时、取消、权限请求不被父组折叠遮住；重试保留旧轮次。</li><li>切换到 B 后，A 的日志仍写 A；B 的草稿保持；全局执行锁不失效。</li><li>旋转与进程重建后历史、手动折叠、草稿恢复；无运行证据时不显示完成或自动重发。</li><li>未知事件、重复快照、迟到输出、缺少结束事件均不造成重复回复或假成功。</li><li>10,000 个输出事件下可滚动、停止可响应、内存有界；截断显式可见。</li><li>TalkBack 可读出状态和展开语义；目标触区 ≥48dp；200% 大字体与键盘不遮住发送/停止；深浅色可读。</li><li>系统返回先收 IME，详情返回恢复位置；预测返回取消不改变导航；归档撤销有效；通知冷启动直达运行对话；根页返回交给系统。</li><li>覆盖升级保留 applicationId、Keystore 别名、SharedPreferences、HOME、工作区；既有日志无法可靠迁移为对话时不伪造历史。</li><li>侧栏搜索/切换/新建项目后草稿与附件不串；关闭抽屉恢复阅读。</li><li>语音取消不发消息；录音中后台切换、拒绝权限、转写失败均可恢复到文字输入。</li><li>代码复制的是原始代码，切换换行不改内容；全屏返回恢复焦点与位置；引用解析失败不露内部标记。</li></ol>
-<p>实施时对可复现问题先补失败回归测试，再改代码。执行项目约定的 Node/Python 测试和 JDK 17 下的 assembleDebug、单元测试、lint；变更涉及网关或 CLI 时跑对应 cli-smoke。模拟成功不等于手机或真实网关通过。本次仅设计文档，不执行完整 Android 构建。</p>
-<h2 id="section-10">10. 交付范围与 Review 决策</h2><ul><li>主交互采用对话主屏、模态会话侧栏、胶囊工具栏、底部输入、原地展开步骤卡与底部代码阅读面板。</li><li>首版必须打通文本对话、CLI 会话恢复、单执行锁、历史、草稿、折叠、停止、网关配置与真实异常。</li><li>项目分组只组织可用工作区；语音、文件/图片、审批回传按能力分阶段开放。HTML 原型中的这些流程均明确为示例。</li><li>参考图的“快速/进阶”改为实际 Agent 和模型信息；隐藏推理、乱码引用、账号/扫码、定时任务与生成 PPT 不照搬。</li><li>HTML 可体验侧栏搜索、新建项目/对话、重命名、置顶/归档/恢复、状态折叠、详情、代码、语音校对、附件移除与主题；设置为只读布局预览，不保存真实配置。</li></ul><p>评审重点：侧栏分组与入口是否顺手；执行卡的信息密度是否合适；语音先校对再入草稿是否符合预期；首版与后续能力边界是否清晰。HTML 不替代 Android 手势、真实键盘、TalkBack、真实语音和模型调用验收。</p>
-<h2 id="section-11">11. 本次验证</h2><p>单文件 HTML，CSS 与脚本内嵌，不依赖远程资源。示例语音不读取麦克风，示例上下文不读取用户文件，网关表单为只读预览。文档与原型使用同一导航设计，已替换 v2 的列表首页描述；既有事件模型、存储与项目边界保留。</p><p id="verification-note">已验证执行完成自动收起、手动展开保留、错误常驻、代码详情、语音校对入草稿、会话搜索与草稿隔离、新建项目/对话、重命名、归档撤销和附件移除。同时检查了 320px / 360px 深浅色布局，页面与手机内容无横向溢出，可见按钮触区至少 48 CSS px，目录锚点有效，JavaScript 语法检查通过。未验收真实 IME、预测返回、TalkBack、麦克风、CLI、设备大字体和逐页打印。追加加号面板已验证三张附件卡片、三项能力入口、联网搜索模式保存、关闭后草稿保留和示例文件添加；320px 面板内容无横向溢出，浏览器无 JavaScript 错误。本次追加验证：步骤点击不打开模态窗；短摘要高度 80px，长步骤限制 240px 且可内部滚动；长网页结果面板接近可用屏幕高度并内部滚动，短来源面板随内容收缩，步骤可再次收起，浏览器未报告脚本错误。HTML 的拖动仅在面板标题区域演示；Android 嵌套手势仍需真机验收。本轮追加验证：Agent/模型/思考程度联动、跨 Agent 新建并保留原运行及文字草稿、技能筛选与加入草稿、插件已安装/精选筛选、项目分组切换；320px 下目录与菜单无横向溢出，浏览器无脚本错误。本版本插件不提供添加/安装；系统快捷方式、整段对话查找和真实模型配置仍未接入。已验证插件列表无添加按钮；技能添加底部菜单使用“导入技能文件”“与moddy对话创建”；示例导入与创建预览均可保存到演示列表，浏览器无脚本错误。实际文件导入与 Skill Creator 调用尚未接入。Android 原生运行代码未修改。</p>
-
-<footer class="document-footer">mobby · Android design review v3 · 设计与原型，尚未接入原生运行层。</footer></main></div><script>(()=>{'use strict';
+<p>首版全局只运行一个任务。其他会话可阅读与编辑草稿，发送区提示当前占用任务。运行中改写输入框只保存下一轮草稿，不注入当前执行。</p>
+<p>停止先显示“停止中”，收到进程终止确认后才显示“已停止”；无法确认时显示状态待核实。成功、失败、超时、中断依据真实事件与退出状态区分。重试创建新轮次，保留原结果和已产生的文件变化。权限操作必须通过真实请求 ID 回传，执行能力未接通时明确显示不可用。</p>
+</section>
+<section class="design-section" aria-labelledby="section-3">
+<h2 id="section-3">3. 顶部配置与更多菜单</h2>
+<h3>Agent / 模型 / 思考程度</h3>
+<p>点击顶部 Agent 胶囊，在按钮下沿展开圆角下拉弹窗，同一弹窗内依次选择 Agent、对应模型和思考程度。选中项有明确标记；选择暂存，点击应用才生效，点击遮罩或返回取消暂选。</p>
+<p>切换 Agent 更新模型列表；切换模型后仅保留该模型支持的思考等级。Shell 显示模型与思考程度不适用。可选项由网关配置和实际 CLI 能力提供；顶部配置摘要显示下一轮将使用的模型与等级。</p>
+<div class="table-wrap"><table><thead><tr><th>变更</th><th>应用方式</th></tr></thead><tbody>
+<tr><td>同 Agent 更换模型或思考程度</td><td>下一轮生效，当前运行保留启动时的配置；若 CLI 不支持会话内切换，明确提示新建</td></tr>
+<tr><td>空对话更换 Agent</td><td>直接更新选择，保留文字草稿</td></tr>
+<tr><td>已有记录的对话更换 Agent</td><td>按钮显示“新建并使用此配置”；保留原会话和任务，复制文字草稿，不自动迁移历史、附件或权限</td></tr>
+</tbody></table></div>
+<h3>更多菜单</h3>
+<p>菜单右对齐更多按钮，在其下方展开，顶部显示当前会话名。高度随内容变化，超出屏幕剩余空间后内部滚动。</p>
+<div class="table-wrap"><table><thead><tr><th>操作</th><th>行为</th></tr></thead><tbody>
+<tr><td>分享</td><td>选择消息后调用系统分享，默认排除日志和配置</td></tr>
+<tr><td>置顶 / 取消置顶</td><td>更新会话抽屉分组</td></tr>
+<tr><td>添加到项目</td><td>选择项目分组，执行工作区不变</td></tr>
+<tr><td>对话附件</td><td>区分已发送附件与本轮草稿附件</td></tr>
+<tr><td>在聊天中查找</td><td>显示匹配消息并定位结果；无结果时保留查询</td></tr>
+<tr><td>添加到主屏幕</td><td>交给 Android 快捷方式确认界面</td></tr>
+<tr><td>重命名</td><td>保存非空标题，取消保留原名</td></tr>
+<tr><td>归档</td><td>移出正常列表，可撤销或从归档恢复</td></tr>
+<tr><td>删除</td><td>单独说明影响范围并确认；提供可撤销删除，不删除工作区文件</td></tr>
+</tbody></table></div>
+<p>运行中的会话不能归档或删除。菜单、详情与返回操作均不停止任务。设置从会话抽屉进入。</p>
+</section>
+<section class="design-section" aria-labelledby="section-4">
+<h2 id="section-4">4. 输入与底部面板</h2>
+<p>输入区固定在底部：左侧加号，中间多行文本，右侧按状态显示语音、发送或停止。输入超过 5 行后内部滚动，回车用于换行，中文组词确认不发送。收到服务接收确认后才清空已提交草稿；发送失败保留原文。</p>
+<h3>加号面板</h3>
+<p>点击加号保存草稿与选择区，收起输入法，从底部展开面板。顶部为拖动条，上排三个等宽入口“拍照 / 照片 / 本地文件”，下方为“插件 / 技能 / 联网搜索”。联网搜索右侧显示当前偏好，默认自动。面板自然高度、设可用高度上限，超出后滚动；关闭恢复输入草稿与原阅读位置。</p>
+<p>拍照和照片进入系统采集/选择流程，本地文件使用系统文件选择器。选择后预览名称、大小、状态和移除按钮；处理中暂不可发送，失败提供重试或移除。图片、文件和联网搜索仅在当前 Agent 与网关有实际支持路径时开放；不支持时说明原因，不静默丢弃内容。</p>
+<h3>语音</h3>
+<p>语音入口打开底部面板，流程为“开始录音 → 结束 → 转写 → 编辑校对 → 放入输入框”。文字插入原光标位置，仅替换原选区，不自动发送。取消保持草稿不变；关闭面板、进入后台或失去音频焦点时停止采集。权限拒绝、无识别服务和转写失败允许返回文字输入。</p>
+<h3>草稿与配置</h3>
+<p>文字、选择区、附件、选中的插件与技能归属当前会话草稿，切换会话不串用。使用能力仅加入草稿，可移除，发送时再验证可用性。网关设置包含协议、地址、模型与密钥，保存成功与连通性检查分别呈现；密钥和真实配置保存在设备加密存储。</p>
+</section>
+<section class="design-section" aria-labelledby="section-5">
+<h2 id="section-5">5. 插件与技能</h2>
+<h3>插件：只查看与使用</h3>
+<p>独立插件页包含返回、标题、搜索、分类和插件卡片。仅展示应用提供的插件，卡片可查看说明与使用；不提供添加、安装或导入入口。详情说明用途、适用 Agent、访问范围和可用状态，不可用时显示原因。</p>
+<h3>技能：目录与添加</h3>
+<p>技能页包含返回、标题、右上添加、搜索、介绍卡、分类和技能列表。可查看技能说明、来源与状态，将可用技能加入本轮草稿。搜索与分类共同过滤，返回详情后保留目录位置与筛选条件。</p>
+<p>右上“添加”在技能页上方弹出底部双选项面板，标题固定为“与moddy对话创建”和“导入技能文件”。遮罩、下拉或返回仅关闭此面板，保留技能页。</p>
+<div class="table-wrap"><table><thead><tr><th>入口</th><th>目标流程</th><th>完成条件</th></tr></thead><tbody>
+<tr><td>与moddy对话创建<br><small>使用 Skill Creator 创建 Skill</small></td><td>描述目标与使用场景 → Skill Creator 根据需要澄清并生成 → 审阅与修改 → 校验保存</td><td>有效 SKILL.md 写入目标 Agent 可发现的技能目录，并能重新发现</td></tr>
+<tr><td>导入技能文件<br><small>支持 Markdown 文件</small></td><td>系统选择 .md 文件 → 解析与预览 → 补全缺失信息 → 校验导入</td><td>名称、触发描述与正文有效，同名冲突已处理，导入成功后更新目录</td></tr>
+</tbody></table></div>
+<p>Skill Creator 输出包含 <code>name</code>、<code>description</code> frontmatter 与 Markdown 指令正文。名称使用小写字母、数字、短横线，少于 64 个字符；说明简洁、触发范围明确，辅助脚本和资源按实际需要提供。</p>
+<p>普通 Markdown 缺少元信息时进入补全流程。读取文件只用于预览与导入，不执行其内容；同名技能不自动覆盖。生成或导入失败保留输入，取消不新增技能，校验和写入完成后才登记成功。</p>
+<p>创建 Skill 通过现有 Agent 执行路径调用实际可用的 skill-creator，遵守权限与沙箱。全局已有任务时保留创建需求并提示任务占用；Creator 不可用时说明原因。生成过程与普通任务共用进度、停止和错误展示，保存后返回“已添加”列表。</p>
+</section>
+<section class="design-section" aria-labelledby="section-6">
+<h2 id="section-6">6. Android 布局与返回</h2>
+<div class="table-wrap"><table><thead><tr><th>项目</th><th>设计约定</th></tr></thead><tbody>
+<tr><td>手机布局</td><td>320 / 360 / 412dp 单栏；正文左右 16dp，建议 16sp；触区至少 48 × 48dp；支持深浅主题与字体放大</td></tr>
+<tr><td>顶部与底部</td><td>工具栏占据布局空间；输入区跟随 IME 上移；统一处理状态栏、切口和系统导航 inset</td></tr>
+<tr><td>下拉菜单</td><td>锚定对应按钮，限制在可用屏幕内；内容不足自然高度，超出后滚动</td></tr>
+<tr><td>底部面板</td><td>顶部圆角约 28dp；开合约 220ms，减少动画设置下取消位移动画；下拉与正文滚动由嵌套滚动协调</td></tr>
+<tr><td>无障碍</td><td>按钮提供操作名与展开状态；打开面板转移焦点，关闭恢复入口；只播报关键状态，不逐 token 报读</td></tr>
+</tbody></table></div>
+<h3>返回顺序</h3>
+<p>输入法可见时先收起输入法；随后关闭最上层下拉或底部面板。技能添加面板回技能页，技能/插件详情回目录，目录回加号面板，加号面板回对话。设置回原会话；对话根页交给系统返回，不停止后台执行。预测返回取消时保留原状态。</p>
+<p>独立页面使用导航栈；同级弹窗互相替换。技能添加是目录页上的单个覆盖层。正文滚动、步骤内部滚动与面板滚动分别记录，关闭阅读面板后恢复触发消息位置。大字体、横屏和分屏下重新计算高度上限，保留可访问的关闭与返回入口。</p>
+</section>
+<section class="design-section" aria-labelledby="section-7">
+<h2 id="section-7">7. 实现架构与交付顺序</h2>
+<pre><code>Compose 页面与组件
+会话 / 抽屉 / 执行卡 / 下拉菜单 / 底部面板 / 插件与技能目录
+            ↓ 用户操作               ↑ UiState
+       ViewModel：页面状态、草稿与配置暂选
+            ↓                        ↑
+Repository：会话、消息、步骤、技能、附件与配置引用
+            ↑                        ↓
+       EventReducer ← ExecutionCoordinator
+                             ↓
+       RuntimeService → Claude / Codex / Shell Adapter
+                             ↓
+              RuntimeEnvironment / libtermux</code></pre>
+<p>保留 Compose、内置 libtermux 和三种执行能力。ViewModel 不持有子进程；运行归属 RuntimeService，界面恢复后按 runId 订阅既有执行。导航目的地与覆盖面板分开管理，关闭页面不取消任务。</p>
+<div class="table-wrap"><table><thead><tr><th>模块</th><th>职责</th></tr></thead><tbody>
+<tr><td>ConversationRepository / Room</td><td>保存会话、轮次、消息、CLI session、草稿、展开选择及滚动锚点；工作区引用与项目分组分离</td></tr>
+<tr><td>AgentAdapter / EventReducer</td><td>归一化公开进度、工具开始/输出/结束、最终回复与终态；按 runId 和工具 ID 路由，去重并处理迟到事件</td></tr>
+<tr><td>ExecutionCoordinator</td><td>全局运行锁、配置快照、停止与审批回传；中断恢复不自动重放命令</td></tr>
+<tr><td>ModelCapabilityProvider / NextTurnConfig</td><td>提供真实模型与等级依赖，保存下一轮选择；与当前 RunConfigSnapshot 分离</td></tr>
+<tr><td>CapabilityCatalogRepository</td><td>只读插件目录、技能记录、兼容性和可用状态；草稿中的能力引用按会话隔离</td></tr>
+<tr><td>SkillImportService / SkillCreatorCoordinator</td><td>Markdown 解析校验、同名处理；调用 Creator、预览、验证、写入及重新发现</td></tr>
+<tr><td>AttachmentRepository / SpeechInputController</td><td>URI 授权、导入与容量校验；录音、转写、后台停止与草稿插入</td></tr>
+<tr><td>GatewayStore</td><td>设备加密配置；数据库与 UI 只持有非敏感引用</td></tr>
+</tbody></table></div>
+<p>运行状态与 UI 展开状态独立。完成由协议结束事件与退出证据确定，不匹配输出中的“完成”文字。未知事件保留为可诊断状态，缺少终态显示结果未确认。网关支持 CLI 原生协议时优先直连，确需适配时才使用桥接。</p>
+<p>消息按轮次持久化，流式增量合并刷新；长输出按需分页，超过预算明确标记截断。持久化和导出前脱敏，设备配置不进入日志。升级保持 applicationId、Keystore、HOME、工作区和用户数据。</p>
+<h3>交付顺序</h3>
+<ol><li><strong>数据与执行：</strong>结构化事件、会话存储、CLI 恢复、配置快照与真实停止，先确保状态可信。</li><li><strong>对话主路径：</strong>侧栏、时间线、原地展开、阅读面板、输入与两个顶部下拉，完成会话隔离和返回恢复。</li><li><strong>能力接入：</strong>只读插件目录、技能导入与 Creator、附件、语音和系统分享；按真实能力开放入口。</li><li><strong>设备验收：</strong>小屏、大字体、IME、TalkBack、后台恢复与真实 CLI/网关执行，覆盖安装保留数据。</li></ol>
+</section>
+<section class="design-section" aria-labelledby="section-8">
+<h2 id="section-8">8. 原型范围与验收</h2>
+<p>当前文件为单页、离线可打开的设计原型；交互数据仅保存在页面内，刷新后重置。尚未接入 Android 原生运行层。原型展示与目标实现的边界如下。</p>
+<div class="table-wrap"><table><thead><tr><th>范围</th><th>HTML 可体验</th><th>原生接入要求</th></tr></thead><tbody>
+<tr><td>会话与过程</td><td>搜索、切换、草稿隔离、重命名、归档恢复、状态切换、原地折叠与阅读面板</td><td>真实消息、CLI session、持久化、权限与终态事件；HTML 停止确认由演示计时器模拟</td></tr>
+<tr><td>顶部配置与更多</td><td>Agent、示例模型与等级联动，项目分组，当前已渲染内容查找</td><td>真实模型能力、整段会话检索、系统分享/快捷方式；删除目前只预览说明</td></tr>
+<tr><td>插件与技能</td><td>插件只使用；技能双选项菜单、示例导入、创建信息填写与模板预览、保存至演示列表</td><td>真实文件选择与校验；“与moddy对话创建”接入 Skill Creator 对话生成，替换模板演示</td></tr>
+<tr><td>输入与设置</td><td>示例附件、语音校对、搜索偏好、深浅主题与只读网关预览</td><td>相机、文件、麦克风、转写、IME、设备加密设置与网关验证</td></tr>
+</tbody></table></div>
+<h3>交互验收清单</h3>
+<ul><li>普通步骤点击只在卡片内展开；短内容自然撑高，长内容限高滚动；网页结果从底部打开，关闭恢复阅读位置。</li><li>默认展开的过程在确认成功后收起，用户手动选择与正在阅读的位置得到保留；错误和待确认信息始终可见。</li><li>Agent/模型/等级依赖正确；取消暂选不生效，应用不修改当前执行；跨 Agent 新建保留原任务。</li><li>插件所有层级没有添加或安装入口；技能添加只提供两个指定选项，关闭底部面板保留目录状态。</li><li>技能导入取消、无效文件、同名冲突、Creator 不可用或失败均不登记成功；成功后可发现并用于草稿。</li><li>会话切换、屏幕旋转与进程恢复不串草稿、附件、能力或日志；没有执行证据时不自动重发任务。</li><li>320dp、360dp、412dp、横屏、200% 字号与 IME 下主要操作可见；返回层级、焦点与滚动恢复正确。</li><li>真 CLI 与真实网关验证发送、审批、停止、失败和恢复；模拟结果不替代设备验收。</li></ul>
+<p id="verification-note">原型已验证主要菜单、筛选、草稿隔离、展开收起、配置联动和技能示例流程。真实文件、Skill Creator、CLI、网关、系统分享及 Android 手势与无障碍仍需接入后验收。</p>
+<details class="reference-notes"><summary>实现参考</summary><p>产品交互以本文为准。布局参考 <a href="https://developers.openai.com/codex/app/features">Codex 客户端功能</a>；Android 实现可查阅 <a href="https://developer.android.com/design/ui/mobile/guides/layout-and-content/layout-and-nav-patterns">布局与导航</a>、<a href="https://developer.android.com/develop/ui/compose/system/insets">Window Insets</a>、<a href="https://developer.android.com/develop/ui/compose/system/predictive-back">预测返回</a>与<a href="https://developer.android.com/develop/ui/compose/accessibility/api-defaults">无障碍语义</a>。</p></details>
+</section>
+<footer class="document-footer">mobby · Android UI 设计 · 当前交互规范 · 2026-09-21</footer></main></div>
+<script>(()=>{'use strict';
 const $=id=>document.getElementById(id),phone=$('phone'),dialog=$('overlay');
 const paths={camera:'M3 7h4l2-3h6l2 3h4v14H3zM16 13a4 4 0 1 1-8 0 4 4 0 0 1 8 0',photo:'M3 3h18v18H3zM3 17l6-6 4 4 3-3 5 5M8 7h.01',upload:'M3 6h7l2 3h9v12H3zM12 18v-6m-3 3 3-3 3 3',plug:'m8 3 3 4m5-4 3 4M7 8l9-3 3 8-6 6-6-6zM7 17l-4 4',skill:'M5 3h14v18H5zM8 7h8M8 11h8M8 15h5',globe:'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0M3 12h18M12 3c-5 5-5 13 0 18M12 3c5 5 5 13 0 18',menu:'M4 6h16M4 12h16M4 18h16',down:'m6 9 6 6 6-6',new:'M12 5v14M5 12h14',more:'M12 5h.01M12 12h.01M12 19h.01',plus:'M12 5v14M5 12h14',mic:'M9 5a3 3 0 0 1 6 0v7a3 3 0 0 1-6 0zM5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8',stop:'M7 7h10v10H7z',send:'m5 12 7-7 7 7M12 5v15',close:'m6 6 12 12M18 6 6 12',right:'m9 5 7 7-7 7',arrowDown:'M12 4v16m-6-6 6 6 6-6',copy:'M9 9h11v11H9zM5 15H3V3h12v2',expand:'M9 3H3v6M15 3h6v6M3 15v6h6M21 15v6h-6',wrap:'M3 5h18M3 10h14a4 4 0 0 1 0 8h-5m3-3-3 3 3 3M3 16h4',file:'M6 2h8l4 4v16H6zM14 2v5h5',folder:'M3 6h7l2 3h9v11H3z',search:'M16 16l5 5M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0',settings:'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2',back:'m14 5-7 7 7 7',share:'M12 16V3m-5 5 5-5 5 5M5 12v9h14v-9',pin:'M8 3h8l-1 7 4 4H5l4-4zM12 14v8'};
 const icon=k=>`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${paths[k]||paths.file}"/></svg>`;
