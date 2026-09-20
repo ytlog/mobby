@@ -33,19 +33,6 @@ internal fun ExecutionPhase?.label(): String = when (this) {
 @Composable internal fun ActionIcon(label: String, onClick: () -> Unit, icon: androidx.compose.ui.graphics.vector.ImageVector, enabled: Boolean = true) {
     IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.size(48.dp)) { Icon(icon, label) }
 }
-@Composable internal fun ReplyContent(text: String, read: (String, String) -> Unit) {
-    val parts = remember(text) { text.split("```") }
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        parts.forEachIndexed { index, part ->
-            if (index % 2 == 0) { if (part.isNotBlank()) SelectionContainer { Text(part.trim(), style = MaterialTheme.typography.bodyLarge) } }
-            else {
-                val language = part.substringBefore('\n').trim()
-                val code = if ('\n' in part) part.substringAfter('\n').removeSuffix("\n") else part
-                CodeContent(language.ifBlank { "代码" }, code, read)
-            }
-        }
-    }
-}
 @Composable internal fun CodeContent(title: String, text: String, read: (String, String) -> Unit) {
     val clipboard = LocalClipboardManager.current
     var wrap by rememberSaveable { mutableStateOf(false) }
