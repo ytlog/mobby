@@ -24,6 +24,7 @@ sealed interface AdminResult<out T> {
     data class Failed(val error: RuntimeError) : AdminResult<Nothing>
 }
 interface RuntimeAdminClient {
+    suspend fun previewResource(ref: ResourceRef, workspace: WorkspaceRef, expanded: Boolean): AdminResult<ResourcePreview>
     suspend fun importResource(request: ImportResourceRequest): AdminResult<ResourceSummary>
     suspend fun resource(ref: ResourceRef, workspace: WorkspaceRef): AdminResult<ResourceSummary>
     val environment: StateFlow<EnvironmentSnapshot>
@@ -60,3 +61,6 @@ class ImportResourceRequest(val workspaceRef: WorkspaceRef, val name: String, va
     override fun toString() = "ImportResourceRequest(bytes=${bytes.size})"
 }
 data class ResourceSummary(val ref: ResourceRef, val name: String, val sizeBytes: Int, val mediaType: String)
+
+/** Transient, bounded PNG preview; never persisted in conversation state. */
+class ResourcePreview(val bytes: ByteArray)

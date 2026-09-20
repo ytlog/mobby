@@ -29,6 +29,7 @@ class RoomInteractionRepositoryTest {
     private val system = object : SystemPort {
         override suspend fun retainAttachmentGrants(locations: Set<String>) { retainedGrants = locations }
         override suspend fun importAttachment(workspace: String, location: String): DataResult<Attachment> { importStarted.complete(Unit); return importGate?.await() ?: DataResult.Failed("unused") }
+        override suspend fun previewAttachment(workspace: String, ref: String, expanded: Boolean): DataResult<AttachmentPreview> = DataResult.Failed("unused")
         override suspend fun attachment(workspace: String, ref: String): DataResult<Attachment> = DataResult.Failed("unused")
         override suspend fun skills(agent: DomainAgent) = DataResult.Loaded(emptyList<Skill>())
         override suspend fun readSkill(ref: String) = DataResult.Failed("unavailable")

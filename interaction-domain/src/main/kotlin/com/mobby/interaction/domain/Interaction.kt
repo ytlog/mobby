@@ -40,10 +40,12 @@ sealed interface DataResult<out T> {
     data class Loaded<T>(val value: T) : DataResult<T>
     data class Failed(val message: String) : DataResult<Nothing>
 }
-data class Attachment(val ref: String, val name: String, val sizeBytes: Int)
+data class Attachment(val ref: String, val name: String, val sizeBytes: Int, val mediaType: String = "text/plain")
+class AttachmentPreview(val bytes: ByteArray)
 interface SystemPort {
     suspend fun retainAttachmentGrants(locations: Set<String>)
     suspend fun importAttachment(workspace: String, location: String): DataResult<Attachment>
+    suspend fun previewAttachment(workspace: String, ref: String, expanded: Boolean): DataResult<AttachmentPreview>
     suspend fun attachment(workspace: String, ref: String): DataResult<Attachment>
     suspend fun skills(agent: AgentId): DataResult<List<Skill>>
     suspend fun readSkill(ref: String): DataResult<SkillContent>
@@ -147,6 +149,7 @@ class InteractionUseCases(
         result
     }.await()
     suspend fun discardAttachment(id: ConversationId, pendingId: String) = repository.discardAttachment(id, pendingId)
+    suspend fun previewAttachment(workspace: String, ref: String, expanded: Boolean) = system.previewAttachment(workspace, ref, expanded)
     suspend fun attachment(workspace: String, ref: String) = system.attachment(workspace, ref)
     suspend fun restoreDraft(id: ConversationId, turn: Turn) = repository.restoreDraft(id, turn.userText, turn.attachments)
     suspend fun removeAttachment(id: ConversationId, ref: String) = repository.setAttachment(id, ref, false)

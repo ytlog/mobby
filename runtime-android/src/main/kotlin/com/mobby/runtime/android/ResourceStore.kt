@@ -81,6 +81,10 @@ internal class ResourceStore(private val root: File) {
         require(bytes.size <= MAX_IMAGE_BYTES && imageType(bytes) == document.mediaType)
         return Image(document.name, document.mediaType, bytes)
     }
+    fun preview(ref: ResourceRef, workspace: WorkspaceRef, expanded: Boolean): ByteArray {
+        val image = image(ref, workspace)
+        return ImagePreview.render(image.bytes, if (expanded) 1024 else 256)
+    }
     fun summary(ref: ResourceRef, workspace: WorkspaceRef): ResourceSummary = if (ref.value.startsWith("image:")) {
         val image = image(ref, workspace)
         ResourceSummary(ref, image.name, image.bytes.size, image.mediaType)

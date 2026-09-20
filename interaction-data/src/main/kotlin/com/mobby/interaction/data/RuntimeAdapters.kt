@@ -71,8 +71,12 @@ internal class RuntimeSystemAdapter(private val context: android.content.Context
         }
         synchronized(grantLock) { check(grants.edit().putStringSet("owned", owned.intersect(locations)).commit()) }
     }
+    override suspend fun previewAttachment(workspace: String, ref: String, expanded: Boolean): DataResult<AttachmentPreview> = when (val result = admin.previewResource(ResourceRef(ref), WorkspaceRef(workspace), expanded)) {
+        is AdminResult.Success -> DataResult.Loaded(AttachmentPreview(result.value.bytes))
+        is AdminResult.Failed -> DataResult.Failed(result.error.message())
+    }
     override suspend fun attachment(workspace: String, ref: String): DataResult<Attachment> = when (val result = admin.resource(ResourceRef(ref), WorkspaceRef(workspace))) {
-        is AdminResult.Success -> DataResult.Loaded(Attachment(result.value.ref.value, result.value.name, result.value.sizeBytes))
+        is AdminResult.Success -> DataResult.Loaded(Attachment(result.value.ref.value, result.value.name, result.value.sizeBytes, result.value.mediaType))
         is AdminResult.Failed -> DataResult.Failed(result.error.message())
     }
     override suspend fun importAttachment(workspace: String, location: String): DataResult<Attachment> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -97,7 +101,7 @@ internal class RuntimeSystemAdapter(private val context: android.content.Context
                 while (true) { val n = input.read(buffer); if (n < 0) break; bytes.write(buffer, 0, n); require(bytes.size() <= 2 * 1024 * 1024) }
             } ?: return@withContext DataResult.Failed("无法读取所选文件")
             when (val result = admin.importResource(ImportResourceRequest(WorkspaceRef(workspace), name, bytes.toByteArray()))) {
-                is AdminResult.Success -> DataResult.Loaded(Attachment(result.value.ref.value, result.value.name, result.value.sizeBytes))
+                is AdminResult.Success -> DataResult.Loaded(Attachment(result.value.ref.value, result.value.name, result.value.sizeBytes, result.value.mediaType))
                 is AdminResult.Failed -> DataResult.Failed(if (result.error.code in setOf(ErrorCode.INVALID_CONFIG, ErrorCode.UNSUPPORTED_CAPABILITY)) "支持 32 KiB 内 UTF-8 文本或 2 MiB 内 PNG/JPEG（最长边 4096、最多 800 万像素），不支持 PDF 与其他格式" else result.error.message())
             }
         } catch (e: CancellationException) { throw e }

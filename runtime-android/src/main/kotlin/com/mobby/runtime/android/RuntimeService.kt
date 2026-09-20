@@ -77,14 +77,21 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
         if (coordinator.active.value != null) AdminResult.Failed(RuntimeError(ErrorCode.BUSY, true))
         else { startInitialization(); AdminResult.Success(Unit) }
     }
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val resourceDispatcher = Dispatchers.IO.limitedParallelism(1)
+    override suspend fun previewResource(ref: ResourceRef, workspace: WorkspaceRef, expanded: Boolean): AdminResult<ResourcePreview> = withContext(resourceDispatcher) {
+        try { AdminResult.Success(ResourcePreview(resources().preview(ref, workspace, expanded))) }
+        catch (e: CancellationException) { throw e }
+        catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.RESOURCE_MISSING)) }
+    }
     private fun resources() = ResourceStore(java.io.File(filesDir, "input-resources"))
-    override suspend fun importResource(request: ImportResourceRequest): AdminResult<ResourceSummary> = withContext(Dispatchers.IO) {
+    override suspend fun importResource(request: ImportResourceRequest): AdminResult<ResourceSummary> = withContext(resourceDispatcher) {
         try { AdminResult.Success(resources().save(request)) }
         catch (_: IllegalArgumentException) { AdminResult.Failed(RuntimeError(ErrorCode.INVALID_CONFIG)) }
         catch (_: java.nio.charset.CharacterCodingException) { AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY)) }
         catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.STORAGE_FULL, true)) }
     }
-    override suspend fun resource(ref: ResourceRef, workspace: WorkspaceRef): AdminResult<ResourceSummary> = withContext(Dispatchers.IO) {
+    override suspend fun resource(ref: ResourceRef, workspace: WorkspaceRef): AdminResult<ResourceSummary> = withContext(resourceDispatcher) {
         try { AdminResult.Success(resources().summary(ref, workspace)) }
         catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.RESOURCE_MISSING)) }
     }
