@@ -1,5 +1,8 @@
 package com.mobby.app
 
+import com.mobby.runtime.api.*
+import kotlinx.coroutines.launch
+
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -52,7 +55,7 @@ fun TestConsoleScreen(vm: TestConsoleViewModel = viewModel()) {
             TextButton(onClick = { gatewaySettings = true }, enabled = !runtime.busy) { Text("网关设置") }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            AgentMode.values().forEach { mode ->
+            ConsoleMode.values().forEach { mode ->
                 FilterChip(selected = state.mode == mode, onClick = { vm.mode(mode) }, label = { Text(mode.label) }, enabled = !runtime.busy)
             }
         }
@@ -73,7 +76,7 @@ fun TestConsoleScreen(vm: TestConsoleViewModel = viewModel()) {
             }
         }
         OutlinedTextField(value = state.input, onValueChange = vm::input, modifier = Modifier.fillMaxWidth(),
-            label = { Text(if (state.mode == AgentMode.SHELL) "输入命令" else "输入任务") }, minLines = 2, maxLines = 5)
+            label = { Text(if (state.mode == ConsoleMode.SHELL) "输入命令" else "输入任务") }, minLines = 2, maxLines = 5)
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Button(onClick = { followOutput = true; vm.send() }, enabled = runtime.ready && !runtime.busy && state.input.isNotBlank()) { Text("发送") }
             OutlinedButton(onClick = vm::stop, enabled = runtime.busy) { Text("停止") }
@@ -85,44 +88,65 @@ fun TestConsoleScreen(vm: TestConsoleViewModel = viewModel()) {
 @Composable
 private fun GatewaySettings(onDismiss: () -> Unit) {
     val context = LocalContext.current
-    val store = remember { GatewayStore(context) }
-    var mode by remember { mutableStateOf(AgentMode.CLAUDE) }
-    var config by remember { mutableStateOf(GatewayConfig(protocol = GatewayProtocol.MESSAGES)) }
-    var error by remember { mutableStateOf("") }
+    val admin = (context.applicationContext as MobbyApplication).runtime.admin
+    val scope = rememberCoroutineScope()
+    var agent by remember { mutableStateOf(AgentId.CLAUDE_CODE) }
+    var endpoint by remember { mutableStateOf("") }
+    var model by remember { mutableStateOf("") }
+    var protocol by remember { mutableStateOf(GatewayProtocol.MESSAGES) }
+    var key by remember { mutableStateOf("") }
+    var hasCredential by remember { mutableStateOf(false) }
+    var keyEdited by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf("") }
-    LaunchedEffect(mode) {
-        runCatching { store.load(mode) }.onSuccess { config = it; error = ""; notice = "" }
-            .onFailure { config = GatewayConfig(); error = "无法读取保存的配置，请重新填写" }
+    var saving by remember { mutableStateOf(false) }
+    LaunchedEffect(agent) {
+        when (val result = admin.listGatewayProfiles()) {
+            is AdminResult.Success -> result.value.firstOrNull { it.agent == agent }?.let {
+                endpoint = it.endpoint; model = it.model; protocol = it.protocol
+                hasCredential = it.hasCredential; key = ""; keyEdited = false; notice = ""
+            }
+            is AdminResult.Failed -> notice = "无法读取网关配置"
+        }
     }
     AlertDialog(onDismissRequest = onDismiss, title = { Text("网关设置") }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(AgentMode.CLAUDE, AgentMode.CODEX).forEach { agent ->
-                    FilterChip(selected = mode == agent, onClick = { mode = agent }, label = { Text(agent.label) })
+                AgentId.values().forEach { value ->
+                    FilterChip(selected = value == agent, onClick = { agent = value }, enabled = !saving,
+                        label = { Text(if (value == AgentId.CODEX) "Codex" else "Claude Code") })
                 }
             }
-            Text("两个 Agent 分别保存配置。填写后即可使用网关，无需官方账号登录。", style = MaterialTheme.typography.bodySmall)
-            GatewayProtocol.values().forEach { protocol ->
+            GatewayProtocol.values().forEach { value ->
                 Row {
-                    RadioButton(selected = config.protocol == protocol, onClick = { config = config.copy(protocol = protocol) })
-                    TextButton(onClick = { config = config.copy(protocol = protocol) }) { Text(protocol.label) }
+                    RadioButton(selected = protocol == value, onClick = { protocol = value })
+                    TextButton(onClick = { protocol = value }) { Text(when (value) {
+                        GatewayProtocol.CHAT -> "Chat Completions"
+                        GatewayProtocol.RESPONSES -> "Responses"
+                        GatewayProtocol.MESSAGES -> "Messages"
+                    }) }
                 }
             }
-            OutlinedTextField(value = config.endpoint, onValueChange = { config = config.copy(endpoint = it.trim()) },
-                label = { Text("网关地址") }, placeholder = { Text("https://gateway.example/v1") }, singleLine = true)
-            Text("可填 API 基础地址或完整接口路径。", style = MaterialTheme.typography.bodySmall)
-            OutlinedTextField(value = config.model, onValueChange = { config = config.copy(model = it.trim()) }, label = { Text("模型名称") }, singleLine = true)
-            OutlinedTextField(value = config.key, onValueChange = { config = config.copy(key = it.trim()) }, label = { Text("API Key（无鉴权可留空）") },
+            OutlinedTextField(value = endpoint, onValueChange = { endpoint = it.trim() }, label = { Text("网关地址") }, singleLine = true)
+            OutlinedTextField(value = model, onValueChange = { model = it.trim() }, label = { Text("模型名称") }, singleLine = true)
+            OutlinedTextField(value = key, onValueChange = { key = it; keyEdited = true },
+                label = { Text(if (hasCredential && !keyEdited) "已保存密钥（输入可替换）" else "API Key（无鉴权可留空）") },
                 visualTransformation = PasswordVisualTransformation(), singleLine = true)
-            if (config.endpoint.startsWith("http://")) Text("当前使用 HTTP，密钥和内容会明文传输。", color = MaterialTheme.colorScheme.error)
-            Text("密钥加密保存在本机。跨协议支持文本和工具调用；回复在网关生成完成后显示。", style = MaterialTheme.typography.bodySmall)
-            if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error)
+            if (hasCredential) TextButton(onClick = { key = ""; keyEdited = true }) { Text("移除已保存密钥") }
+            Text("密钥仅保存在本机加密存储。保存与连通性验证是不同操作。", style = MaterialTheme.typography.bodySmall)
             if (notice.isNotEmpty()) Text(notice)
         }
     }, confirmButton = {
-        TextButton(onClick = {
-            runCatching { store.save(mode, config) }.onSuccess { error = ""; notice = "${mode.label} 已保存" }
-                .onFailure { error = it.message ?: "保存失败"; notice = "" }
+        TextButton(enabled = !saving, onClick = {
+            saving = true
+            val request = SaveGatewayRequest(agent, endpoint, model, protocol,
+                if (keyEdited) SecretInput(key.toCharArray()) else null)
+            scope.launch {
+                when (val result = admin.saveGatewayProfile(request)) {
+                    is AdminResult.Success -> { notice = "配置已保存，尚未测试连接"; hasCredential = result.value.hasCredential; key = ""; keyEdited = false }
+                    is AdminResult.Failed -> notice = "保存失败，请检查地址、模型和密钥格式"
+                }
+                saving = false
+            }
         }) { Text("保存当前配置") }
     }, dismissButton = { TextButton(onClick = onDismiss) { Text("关闭") } })
 }

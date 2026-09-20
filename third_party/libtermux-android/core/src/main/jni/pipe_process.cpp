@@ -57,7 +57,8 @@ Java_com_libtermux_executor_PipeProcess_poll(JNIEnv*, jobject, jint pid) {
     siginfo_t info{};
     int result = waitid(P_PID, pid, &info, WEXITED | WNOHANG | WNOWAIT);
     if ((result == 0 && info.si_pid == 0) || (result < 0 && errno == EINTR)) return -1;
-    if (result < 0) return 255;
+    // A wait error is not process-exit evidence. Keep it distinct from every valid exit code.
+    if (result < 0) return -2;
     // Keep the leader unreaped until group cleanup, preventing PID reuse.
     return info.si_code == CLD_EXITED ? info.si_status : 128 + info.si_status;
 }

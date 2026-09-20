@@ -18,7 +18,8 @@ object PipeProcess {
     private external fun reap(pid: Int)
     private external fun signalGroup(pid: Int, signal: Int)
 
-    fun stream(args: List<String>, directory: File, environment: Map<String, String>, timeoutMs: Long): Flow<OutputLine> = channelFlow {
+    fun stream(args: List<String>, directory: File, environment: Map<String, String>, timeoutMs: Long,
+        onStarted: (Int) -> Unit = {}, onTerminated: (Int?) -> Unit = {}): Flow<OutputLine> = channelFlow {
         require(args.isNotEmpty() && args.none { '\u0000' in it })
         val child = spawn(args.toTypedArray(), environment.map { "${it.key}=${it.value}" }.toTypedArray(), directory.absolutePath)
             ?: error("Unable to create runtime process")
@@ -35,13 +36,16 @@ object PipeProcess {
         }
         val readers = listOf(reader(stdout, false), reader(stderr, true))
         var reaped = false
+        var exitCode: Int? = null
         try {
+            onStarted(pid)
             withTimeout(timeoutMs) {
                 var exit: Int
                 while (true) {
                     failure.get()?.let { throw it }
                     exit = poll(pid)
-                    if (exit >= 0) { reaped = true; break }
+                    check(exit != -2) { "Cannot observe runtime process exit" }
+                    if (exit >= 0) { reaped = true; exitCode = exit; break }
                     delay(25)
                 }
                 // A completed task must not leave ordinary descendants holding the pipes open.
@@ -55,14 +59,15 @@ object PipeProcess {
                 signalGroup(pid, 15)
                 if (!reaped) {
                     repeat(20) {
-                        if (!reaped) { reaped = poll(pid) >= 0; if (!reaped) delay(25) }
+                        if (!reaped) { val observed = poll(pid); reaped = observed >= 0; if (reaped) exitCode = observed; if (!reaped) delay(25) }
                     }
                 }
                 signalGroup(pid, 9)
-                if (!reaped) { repeat(40) { if (!reaped) { reaped = poll(pid) >= 0; if (!reaped) delay(25) } } }
+                if (!reaped) { repeat(40) { if (!reaped) { val observed = poll(pid); reaped = observed >= 0; if (reaped) exitCode = observed; if (!reaped) delay(25) } } }
                 stdout.close(); stderr.close()
                 readers.forEach { it.join(200) }
                 if (reaped) reap(pid)
+                onTerminated(exitCode)
                 check(reaped) { "Could not confirm runtime process termination" }
             }
         }

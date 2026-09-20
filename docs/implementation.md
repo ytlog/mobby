@@ -81,3 +81,18 @@ CLI 协议参考：[Claude Code](https://code.claude.com/docs/en/headless)、[Co
 验证：新增 Runtime 8 项、Domain 10 项测试通过；空会话调整工作区的边界先由失败测试复现，再修正。JDK 17 下 `:runtime-api:test :interaction-domain:test :app:assembleDebug :app:testDebugUnitTest :termux-core:testDebugUnitTest :app:lintDebug` 通过；现有 App 8 项、SDK 32 项测试保持通过。Node.js 网关 17 项、Python 打包 6 项通过，合计 81 项测试。未重复运行真 CLI 模拟网关联调（本轮未改执行/桥接代码），未覆盖安装或声称通过手机交互验收。
 
 后续仍需落实：管理接口及领域管理端口、runtime-engine/runtime-android 提取、持久幂等日志、Service 客户端、interaction-data/Room、Compose 页面与 App 装配。管理接口尚未作为已完成 API 发布；当前契约也未宣称冻结为最终稳定版本。推开抽屉、面板高度、焦点与阅读锚点、IME、技能导入/保存、真实审批和进程停止均待原生接入及验收。当前测试证明领域规则和假实现契约，不能证明真实执行、持久恢复或视觉交互已完成。
+
+## 真实 Runtime 提取与接通（2026-09-21）
+
+- 新增 `:runtime-engine` 和 `:runtime-android`。Service、环境安装、加密网关、桥接 assets 归平台模块；协议归一化、命令构建、执行协调归 JVM 核心。库不引用 app 或交互模块，通知点击目标由 Application 注入。Manifest 的 libtermux 合并规则随平台模块迁移；bootstrap/JNI 仍由明确的模块依赖进入 APK。
+- 测试控制台已改用 RuntimeClient / RuntimeAdminClient / 内部 RuntimeDiagnosticsClient；删除 app 中旧 Service 和旧扁平协议解析器。Shell 与 Agent 使用同一个执行槽，Shell 不进入产品 AgentId。后续对话 UI 仍需通过 Domain/Data 使用这些客户端。
+- Runtime 使用独立 SQLite 日志，原子记录请求摘要、接纳、事件序号与当前快照；取消 commandId 回执持久化，冲突复用被拒绝。运行输出存入受控分段文件，观察者以快照替换投影，随后按序补读日志。进程身份在平台层记录，重启先清理核实遗留进程，再将未完成请求标为中断，不自动重发。
+- 普通 stderr 仅作为诊断。整轮成功要求 CLI 明确成功终态与退出码 0 一致；Claude 权限拒绝不显示成功，assistant 与 result 的重复正文去重；私有 thinking/reasoning 块不作为公开进度展示。CLI session ID 可随请求恢复，参数始终使用 argv，没有权限或沙箱绕过参数。
+- SDK 新增启动/退出观察回调，取消清理后返回真实退出证据；native wait 错误不再伪装为退出码。退出无法确认时记录 OutcomeUnknown 并保留执行槽。已接纳取消优先于迟到成功片段；旧终态不重复写入。
+- 网关继续保留原 SharedPreferences 与 Keystore 别名；配置版本历史同样加密，用于冻结运行配置。普通管理读取不返回密钥，保存请求只短暂持有内存凭据，输出在平台边界脱敏。
+
+验证：71 项 Kotlin/JVM 与 Android library 单测通过（API 8、engine 18、runtime-android 3、Domain 10、SDK 32）；Node.js 17、Python 8 项（含模块边界检查）通过，共 96 项。新增取消命令终态后重放的测试先失败再修复。Debug 主 APK、辅助测试 APK 和 lint 构建通过。真实主机 CLI 经三种网关协议的六种组合均通过工具执行/结果回传联调，使用隔离 HOME 与虚假测试密钥。
+
+手机主 APK 已覆盖安装并启动新 Runtime，确认 Runtime 日志数据库已建立；安装前后原网关加密配置摘要一致、原工作区存在。辅助测试 APK 被手机拒绝（INSTALL_FAILED_USER_RESTRICTED），设备仍锁屏，因此新增真实 Service 停止、真实网关与 session 恢复仪器测试只完成编译，尚未计入通过。待解锁与允许测试安装后继续运行；未以主机模拟网关代替设备验收。
+
+仍需继续：交互 Room 存储与事件投影、完整 Compose 对话页面、技能/资源管理和系统交互；Runtime 日志保留清理、管理连通性测试及输出容量/异常恢复仍需补充验证。当前 CLI exec/print 路径不提供可回传交互审批，能力接口明确报告不支持，不显示伪审批按钮。前台服务仍沿用 dataSync，Android 15 服务用途/超时验收未完成。整体“真实可用”目标保持进行中。

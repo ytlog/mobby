@@ -1,0 +1,12 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <application>
+        <service android:name="com.mobby.runtime.android.RuntimeService" android:exported="false" android:foregroundServiceType="dataSync" />
+        <service android:name="com.libtermux.service.TermuxBackgroundService" tools:node="remove" />
+        <provider android:name="androidx.startup.InitializationProvider" android:authorities="${applicationId}.androidx-startup" android:exported="false" tools:node="merge">
+            <meta-data android:name="com.libtermux.initializer.LibTermuxInitializer" tools:node="remove" />
+        </provider>
+    </application>
+</manifest>

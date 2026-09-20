@@ -1,4 +1,4 @@
-package com.mobby.app
+package com.mobby.runtime.android
 
 import org.junit.Assert.*
 import org.junit.Test

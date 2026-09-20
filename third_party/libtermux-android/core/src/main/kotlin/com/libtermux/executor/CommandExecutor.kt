@@ -76,7 +76,9 @@ class CommandExecutor(
         args: List<String>,
         workDir: File? = null,
         extraEnv: Map<String, String> = emptyMap(),
-    ): Flow<OutputLine> = PipeProcess.stream(args, workDir ?: vfs.homeDir, vfs.buildEnv(extraEnv), config.maxCommandTimeoutMs)
+        onStarted: (Int) -> Unit = {},
+        onTerminated: (Int?) -> Unit = {},
+    ): Flow<OutputLine> = PipeProcess.stream(args, workDir ?: vfs.homeDir, vfs.buildEnv(extraEnv), config.maxCommandTimeoutMs, onStarted, onTerminated)
 
     fun executeStreaming(
         command: String,

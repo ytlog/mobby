@@ -195,7 +195,7 @@ Runtime 不依赖任何 interaction 模块。</code></pre>
 <p>执行状态与 UI 展开状态独立。完成必须有协议和进程证据；接口断开不表示完成，取消接纳不表示已停止。正文长输出按有界分段读取，进度只展示公开摘要。凭据留在设备加密存储，常规执行请求只使用配置引用。</p>
 <h3>交付顺序</h3>
 <ol><li>定义纯 Kotlin 领域端口与 Runtime API，完成契约测试。</li><li>提取 Runtime 引擎与 Android 宿主，消除对 app/UI 的反向依赖。</li><li>落地交互三层和 Compose 页面，先接假 Runtime 验证交互，再由 app 装配真实实现。</li><li>完成真实 CLI/网关、手机交互、前后台恢复与覆盖安装数据保留验收。</li></ol>
-<p>已开始建立 Runtime API 与交互领域契约；其余模块仍为目标架构，当前应用入口仍为测试控制台。版本、Gradle 依赖图、事件语义、数据所有权及迁移验收统一维护在技术文档，不在本页重复定义。</p>
+<p>Runtime API、交互领域契约和独立执行模块已建立；交互 Data/UI 仍待实施，当前应用入口仍为接入真实 Runtime 的测试控制台。版本、Gradle 依赖图、事件语义、数据所有权及迁移验收统一维护在技术文档，不在本页重复定义。</p>
 </section>
 <section class="design-section" aria-labelledby="section-8">
 <h2 id="section-8">8. 原型范围与验收</h2>

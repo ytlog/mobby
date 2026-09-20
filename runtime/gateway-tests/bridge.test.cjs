@@ -3,7 +3,7 @@ const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
 const {once} = require('node:events');
-const {endpoint, canonical, encode, decode, nativeResponse, createBridge} = require('../../app/src/main/assets/gateway/bridge.cjs');
+const {endpoint, canonical, encode, decode, nativeResponse, createBridge} = require('../../runtime-android/src/main/assets/gateway/bridge.cjs');
 const tool = {name:'read_file', description:'Read file', parameters:{type:'object', properties:{path:{type:'string'}}, required:['path']}};
 const call = {id:'call_1', type:'function', function:{name:'read_file', arguments:'{"path":"a.txt"}'}};
 const reply = {content:'好', calls:[call], input:10, output:4};
@@ -128,7 +128,7 @@ test('broken upstream SSE terminates the connection, never appends JSON to an SS
   } finally {bridge.close();upstream.close();}
 });
 test('native protocols configure direct CLI connections without conversion-only restrictions',()=>{
-  const {agentLaunch}=require('../../app/src/main/assets/gateway/bridge.cjs');
+  const {agentLaunch}=require('../../runtime-android/src/main/assets/gateway/bridge.cjs');
   for(const mode of ['CLAUDE','CODEX']) {
     const config={endpoint:'https://gateway.example/v1',protocol:mode==='CLAUDE'?'messages':'responses',model:'m',key:'test-secret'};
     const launch=agentLaunch(mode,['exec'],config,{},null);

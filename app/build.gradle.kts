@@ -20,9 +20,10 @@ android {
     packaging { jniLibs { useLegacyPackaging = true; keepDebugSymbols += "**/*.so" } }
 }
 dependencies {
-    implementation(project(":termux-core"))
-    implementation("androidx.startup:startup-runtime:1.1.1")
-    implementation(project(":bootstrap-arm64"))
+    implementation(project(":runtime-api"))
+    androidTestImplementation(project(":runtime-engine"))
+    implementation(project(":runtime-android"))
+    androidTestImplementation(project(":termux-core"))
     implementation(platform("androidx.compose:compose-bom:2024.04.01"))
     implementation("androidx.activity:activity-compose:1.9.0")
     implementation("androidx.compose.material3:material3")

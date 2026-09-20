@@ -1,4 +1,6 @@
-package com.mobby.app
+package com.mobby.runtime.android
+
+import com.mobby.runtime.engine.AgentMode
 
 import android.content.Context
 import android.os.Build
@@ -139,16 +141,8 @@ class RuntimeEnvironment(private val context: Context) {
             ?: error("$name 尚未安装。请先在本运行环境安装 CLI 并完成认证。")
     }
 
-    fun validateGateway(mode: AgentMode) {
-        if (mode != AgentMode.SHELL) GatewayStore(context).load(mode).validate()
-    }
-
-    fun run(mode: AgentMode, input: String): kotlinx.coroutines.flow.Flow<OutputLine> {
-        val args = AgentAdapter.arguments(mode, executable(mode), input)
-        if (mode == AgentMode.SHELL) return sdk.executor.executeArgsStreaming(args, workspace)
-        val config = GatewayStore(context).load(mode).also { it.validate() }
-        return sdk.executor.executeArgsStreaming(listOf(File(sdk.vfs.binDir, "node").absolutePath,
-            File(context.filesDir, "gateway.cjs").absolutePath, mode.name) + args,
-            workspace, mapOf("MOBBY_GATEWAY_CONFIG" to config.json()))
-    }
+    /** Internal Shell diagnostics; Agent runs go through RuntimeClient and ProcessPort. */
+    fun runShell(input: String, onStarted: (Int) -> Unit = {}, onTerminated: (Int?) -> Unit = {}): kotlinx.coroutines.flow.Flow<OutputLine> =
+        sdk.executor.executeArgsStreaming(listOf(executable(AgentMode.SHELL), "-c", input), workspace,
+            onStarted = onStarted, onTerminated = onTerminated)
 }
