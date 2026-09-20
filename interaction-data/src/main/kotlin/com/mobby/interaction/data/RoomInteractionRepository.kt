@@ -17,6 +17,7 @@ internal class RoomInteractionRepository(
     private val now: () -> Long = System::currentTimeMillis, private val id: () -> String = { UUID.randomUUID().toString() }
 ) : InteractionRepository {
     private val dao = db.dao()
+    private val importRecovery = CompletableDeferred<Unit>()
     private val startupError = MutableStateFlow<String?>(null)
     private val observers = mutableMapOf<String, Job>()
     private val inFlight = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
@@ -37,6 +38,17 @@ internal class RoomInteractionRepository(
     init {
         scope.launch {
             try {
+                db.withTransaction {
+                    dao.allConversations().forEach { row ->
+                        val c = row.domain()
+                        val pending = c.draft.pendingAttachment
+                        if (pending != null && pending.error == null) dao.save(c.copy(draft = c.draft.copy(
+                            pendingAttachment = pending.copy(error = "上次导入已中断，请重试或移除；原草稿已保留")
+                        )).row())
+                    }
+                }
+                system.retainAttachmentGrants(dao.allConversations().mapNotNull { it.domain().draft.pendingAttachment?.location }.toSet())
+                importRecovery.complete(Unit)
                 if (dao.allConversations().isEmpty()) {
                     val profile = runCatching { system.gateways().firstOrNull { it.agent == DomainAgent.CODEX } }.getOrNull()
                     create(NextTurnConfig(DomainAgent.CODEX, profile?.model.orEmpty(), null, "default", profile?.id ?: "CODEX", profile?.version ?: 0))
@@ -50,8 +62,30 @@ internal class RoomInteractionRepository(
                     }
                 }
             } catch (e: CancellationException) { throw e }
-            catch (_: Exception) { startupError.value = "会话恢复未完成，原数据已保留；请重启应用后重试" }
+            catch (e: Exception) { importRecovery.completeExceptionally(e); startupError.value = "会话恢复未完成，原数据已保留；请重启应用后重试" }
         }
+    }
+    override suspend fun beginAttachment(id: ConversationId, pending: PendingAttachment) {
+        importRecovery.await()
+        mutate(id) { c ->
+            require(!c.archived && !c.deleted && c.config.workspace == pending.workspace && c.draft.attachments.size < 4)
+            require(c.draft.pendingAttachment?.let { it.error != null } != false)
+            c.copy(draft = c.draft.copy(revision = c.draft.revision + 1, pendingAttachment = pending))
+        }
+    }
+    override suspend fun finishAttachment(id: ConversationId, pendingId: String, result: DataResult<Attachment>) = mutate(id) { c ->
+        val pending = c.draft.pendingAttachment
+        if (pending?.id != pendingId) c else when (result) {
+            is DataResult.Failed -> c.copy(draft = c.draft.copy(pendingAttachment = pending.copy(error = result.message)))
+            is DataResult.Loaded -> {
+                if (c.archived || c.deleted || c.config.workspace != pending.workspace || (c.draft.attachments + result.value.ref).distinct().size > 4)
+                    c.copy(draft = c.draft.copy(pendingAttachment = pending.copy(error = "会话或附件状态已变化，请恢复会话后重试或移除")))
+                else c.copy(draft = c.draft.copy(revision = c.draft.revision + 1, attachments = (c.draft.attachments + result.value.ref).distinct(), pendingAttachment = null))
+            }
+        }
+    }
+    override suspend fun discardAttachment(id: ConversationId, pendingId: String) = mutate(id) { c ->
+        if (c.draft.pendingAttachment?.id == pendingId) c.copy(draft = c.draft.copy(revision = c.draft.revision + 1, pendingAttachment = null)) else c
     }
     override suspend fun restoreDraft(id: ConversationId, text: String, attachments: List<String>) = mutate(id) { c ->
         require(!c.archived && !c.deleted && attachments.size <= 4)
@@ -99,6 +133,7 @@ internal class RoomInteractionRepository(
         val c = dao.conversation(conversationId.value)?.domain() ?: return@withTransaction PrepareTurnResult.Rejected(Failure.UNAVAILABLE)
         if (c.archived || c.deleted) return@withTransaction PrepareTurnResult.Rejected(Failure.UNAVAILABLE)
         if (dao.conversationTurns(c.id.value).any { it.pending }) return@withTransaction PrepareTurnResult.Rejected(Failure.PENDING_SUBMISSION)
+        if (c.draft.pendingAttachment != null) return@withTransaction PrepareTurnResult.Rejected(Failure.PENDING_ATTACHMENT)
         if (c.draft.text.isBlank() && c.draft.attachments.isEmpty()) return@withTransaction PrepareTurnResult.Rejected(Failure.EMPTY_DRAFT)
         if (dao.turn(turnId.value) != null) return@withTransaction PrepareTurnResult.Rejected(Failure.PENDING_SUBMISSION)
         val frozen = c.copy(draft = c.draft.copy(capabilities = c.draft.capabilities + listOfNotNull(c.creator)))
@@ -118,6 +153,7 @@ internal class RoomInteractionRepository(
                     dao.save(c.copy(draft = ConversationRules.afterSubmission(c.draft, turn.draft.revision, result)).row())
                 }
                 is Submission.Rejected -> dao.save(row.copy(pending = false, occupied = false, error = when (result.reason) {
+                    Failure.PENDING_ATTACHMENT -> "请求未接纳：请完成或移除待处理附件"
                     Failure.INPUT_TOO_LARGE -> "请求未接纳：文字与附件合计超出输入上限，请缩短文字或移除附件；草稿已保留"
                     Failure.BUSY -> "请求未接纳：已有任务占用运行环境；草稿已保留"
                     Failure.INVALID_CONFIG -> "请求未接纳：请检查网关、模型或权限；草稿已保留"

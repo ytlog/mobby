@@ -7,10 +7,11 @@ import kotlinx.coroutines.flow.Flow
 @JvmInline value class ExecutionId(val value: String)
 enum class AgentId { CODEX, CLAUDE_CODE }
 data class NextTurnConfig(val agent: AgentId, val model: String, val reasoning: String?, val workspace: String, val gatewayProfile: String, val gatewayVersion: Long = 0)
+data class PendingAttachment(val id: String, val workspace: String, val location: String, val error: String? = null)
 data class Draft(
     val revision: Long = 0, val text: String = "", val selectionStart: Int = text.length,
     val selectionEnd: Int = selectionStart, val attachments: List<String> = emptyList(),
-    val capabilities: Set<String> = emptySet()
+    val capabilities: Set<String> = emptySet(), val pendingAttachment: PendingAttachment? = null
 ) {
     init { require(selectionStart in 0..text.length); require(selectionEnd in 0..text.length) }
 }
@@ -22,7 +23,7 @@ data class Conversation(
     val anchor: String? = null, val anchorOffset: Int = 0, val updatedAt: Long = 0, val creator: String? = null
 )
 data class TurnExecution(val turnId: TurnId, val conversationId: ConversationId, val draft: Draft, val config: NextTurnConfig, val session: String?, val creatingSkill: Boolean = false)
-enum class Failure { INPUT_TOO_LARGE, BUSY, INVALID_CONFIG, UNSUPPORTED_CAPABILITY, UNAVAILABLE, EMPTY_DRAFT, PENDING_SUBMISSION }
+enum class Failure { PENDING_ATTACHMENT, INPUT_TOO_LARGE, BUSY, INVALID_CONFIG, UNSUPPORTED_CAPABILITY, UNAVAILABLE, EMPTY_DRAFT, PENDING_SUBMISSION }
 sealed interface Submission {
     data class Accepted(val executionId: ExecutionId) : Submission
     data class Rejected(val reason: Failure, val activeExecution: ExecutionId? = null) : Submission

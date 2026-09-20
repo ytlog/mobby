@@ -42,6 +42,7 @@ sealed interface DataResult<out T> {
 }
 data class Attachment(val ref: String, val name: String, val sizeBytes: Int)
 interface SystemPort {
+    suspend fun retainAttachmentGrants(locations: Set<String>)
     suspend fun importAttachment(workspace: String, location: String): DataResult<Attachment>
     suspend fun attachment(workspace: String, ref: String): DataResult<Attachment>
     suspend fun skills(agent: AgentId): DataResult<List<Skill>>
@@ -61,6 +62,9 @@ interface SystemPort {
     suspend fun stopShell(): OperationResult
 }
 interface InteractionRepository : ConversationRepository {
+    suspend fun beginAttachment(id: ConversationId, pending: PendingAttachment)
+    suspend fun finishAttachment(id: ConversationId, pendingId: String, result: DataResult<Attachment>)
+    suspend fun discardAttachment(id: ConversationId, pendingId: String)
     suspend fun restoreDraft(id: ConversationId, text: String, attachments: List<String>)
     suspend fun setAttachment(id: ConversationId, ref: String, enabled: Boolean)
     val state: Flow<InteractionState>
@@ -127,11 +131,16 @@ class InteractionUseCases(
             ?: return DataResult.Failed("当前 Agent 没有可用的 Skill Creator；请返回技能页选择其他创建方式")
         return DataResult.Loaded(repository.createSkillConversation(id, creator.ref))
     }
-    suspend fun importAttachment(id: ConversationId, workspace: String, location: String): DataResult<Attachment> {
-        val result = system.importAttachment(workspace, location)
-        if (result is DataResult.Loaded) repository.setAttachment(id, result.value.ref, true)
-        return result
-    }
+    suspend fun importAttachment(id: ConversationId, workspace: String, location: String): DataResult<Attachment> = submissionScope.async {
+        val pending = PendingAttachment(nextId(), workspace, location)
+        repository.beginAttachment(id, pending)
+        val result = try { system.importAttachment(workspace, location) }
+            catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (_: Exception) { DataResult.Failed("导入未完成，请重试或移除") }
+        repository.finishAttachment(id, pending.id, result)
+        result
+    }.await()
+    suspend fun discardAttachment(id: ConversationId, pendingId: String) = repository.discardAttachment(id, pendingId)
     suspend fun attachment(workspace: String, ref: String) = system.attachment(workspace, ref)
     suspend fun restoreDraft(id: ConversationId, turn: Turn) = repository.restoreDraft(id, turn.userText, turn.attachments)
     suspend fun removeAttachment(id: ConversationId, ref: String) = repository.setAttachment(id, ref, false)

@@ -60,6 +60,17 @@ internal class RuntimeExecutionAdapter(private val client: RuntimeClient) : Exec
     }
 }
 internal class RuntimeSystemAdapter(private val context: android.content.Context, private val client: RuntimeClient, private val admin: RuntimeAdminClient, private val diagnostics: RuntimeDiagnosticsClient) : SystemPort {
+    private val grants = context.getSharedPreferences("attachment-grants", android.content.Context.MODE_PRIVATE)
+    private val grantLock = Any()
+    override suspend fun retainAttachmentGrants(locations: Set<String>) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val resolver = context.contentResolver
+        val owned = synchronized(grantLock) { grants.getStringSet("owned", emptySet())!!.toSet() }
+        resolver.persistedUriPermissions.filter { it.uri.toString() in owned && it.uri.toString() !in locations }.forEach { grant ->
+            try { resolver.releasePersistableUriPermission(grant.uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+            catch (_: SecurityException) { /* Provider already revoked the grant. */ }
+        }
+        synchronized(grantLock) { check(grants.edit().putStringSet("owned", owned.intersect(locations)).commit()) }
+    }
     override suspend fun attachment(workspace: String, ref: String): DataResult<Attachment> = when (val result = admin.resource(ResourceRef(ref), WorkspaceRef(workspace))) {
         is AdminResult.Success -> DataResult.Loaded(Attachment(result.value.ref.value, result.value.name, result.value.sizeBytes))
         is AdminResult.Failed -> DataResult.Failed(result.error.message())
@@ -69,6 +80,14 @@ internal class RuntimeSystemAdapter(private val context: android.content.Context
             val uri = android.net.Uri.parse(location)
             require(uri.scheme == "content")
             val resolver = context.contentResolver
+            // Some providers offer only a transient grant. Import still works now; a later
+            // retry reports permission loss explicitly and asks the user to select again.
+            try {
+                val alreadyGranted = resolver.persistedUriPermissions.any { it.uri == uri && it.isReadPermission }
+                resolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                if (!alreadyGranted) synchronized(grantLock) { check(grants.edit().putStringSet("owned", grants.getStringSet("owned", emptySet())!!.toSet() + location).commit()) }
+            }
+            catch (_: SecurityException) { /* transient grant remains valid for this import */ }
             val name = resolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
                 if (it.moveToFirst()) it.getString(0) else null
             } ?: "文本附件"

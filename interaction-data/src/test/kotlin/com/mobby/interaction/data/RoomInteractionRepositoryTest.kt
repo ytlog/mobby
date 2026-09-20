@@ -21,8 +21,12 @@ class RoomInteractionRepositoryTest {
     private lateinit var scope: CoroutineScope
     private lateinit var repository: RoomInteractionRepository
     private val runtime = TestRuntime()
+    private var importGate: CompletableDeferred<DataResult<Attachment>>? = null
+    private var retainedGrants = emptySet<String>()
+    private val importStarted = CompletableDeferred<Unit>()
     private val system = object : SystemPort {
-        override suspend fun importAttachment(workspace: String, location: String): DataResult<Attachment> = DataResult.Failed("unused")
+        override suspend fun retainAttachmentGrants(locations: Set<String>) { retainedGrants = locations }
+        override suspend fun importAttachment(workspace: String, location: String): DataResult<Attachment> { importStarted.complete(Unit); return importGate?.await() ?: DataResult.Failed("unused") }
         override suspend fun attachment(workspace: String, ref: String): DataResult<Attachment> = DataResult.Failed("unused")
         override suspend fun skills(agent: DomainAgent) = DataResult.Loaded(emptyList<Skill>())
         override suspend fun readSkill(ref: String) = DataResult.Failed("unavailable")
@@ -48,6 +52,49 @@ class RoomInteractionRepositoryTest {
     }
     @After fun close() = runBlocking { scope.coroutineContext[Job]!!.cancelAndJoin(); db.close() }
     private suspend fun state(predicate: (InteractionState) -> Boolean = { it.selected != null }) = withTimeout(10_000) { repository.state.first(predicate) }
+    @Test fun `send cannot freeze an incomplete attachment import`() = runBlocking {
+        val c = state().selected!!.conversation
+        repository.editDraft(c.id, "review", 6, 6)
+        val gate = CompletableDeferred<DataResult<Attachment>>(); importGate = gate
+        val actions = InteractionUseCases(repository, RuntimeExecutionAdapter(runtime), system, { UUID.randomUUID().toString() }, scope, InteractionPreferences(ApplicationProvider.getApplicationContext()))
+        val job = async { actions.importAttachment(c.id, c.config.workspace, "content://fixture/document") }
+        try {
+            withTimeout(5_000) { importStarted.await() }
+            assertTrue(repository.prepareTurn(c.id, TurnId("too-early")) is PrepareTurnResult.Rejected)
+        } finally { gate.complete(DataResult.Failed("fixture failure")); job.await() }
+    }
+    @Test fun `interrupted import reopens with original draft and late completion cannot replace a retry`() = runBlocking {
+        val c = state().selected!!.conversation
+        repository.editDraft(c.id, "original", 3, 5)
+        val pending = PendingAttachment("first", c.config.workspace, "content://fixture/document")
+        repository.beginAttachment(c.id, pending)
+        scope.coroutineContext[Job]!!.cancelAndJoin(); db.close(); start()
+        val restored = state { it.selected?.conversation?.draft?.pendingAttachment?.error != null }.selected!!.conversation
+        assertEquals("original", restored.draft.text)
+        assertEquals(3, restored.draft.selectionStart); assertEquals(5, restored.draft.selectionEnd)
+        assertEquals(pending.location, restored.draft.pendingAttachment!!.location)
+        assertTrue(repository.prepareTurn(c.id, TurnId("blocked")) is PrepareTurnResult.Rejected)
+        repository.beginAttachment(c.id, pending.copy(id = "retry"))
+        assertEquals(setOf(pending.location), retainedGrants)
+        repository.finishAttachment(c.id, "first", DataResult.Loaded(Attachment("text:old", "old", 1)))
+        assertTrue(db.dao().conversation(c.id.value)!!.domain().draft.attachments.isEmpty())
+        repository.finishAttachment(c.id, "retry", DataResult.Loaded(Attachment("text:new", "new", 1)))
+        val finished = db.dao().conversation(c.id.value)!!.domain().draft
+        assertNull(finished.pendingAttachment); assertEquals(listOf("text:new"), finished.attachments)
+    }
+    @Test fun `losing import caller does not lose result and discarding prevents late attachment`() = runBlocking {
+        val c = state().selected!!.conversation
+        val gate = CompletableDeferred<DataResult<Attachment>>(); importGate = gate
+        val actions = InteractionUseCases(repository, RuntimeExecutionAdapter(runtime), system, { UUID.randomUUID().toString() }, scope, InteractionPreferences(ApplicationProvider.getApplicationContext()))
+        val caller = launch { actions.importAttachment(c.id, c.config.workspace, "content://fixture/document") }
+        withTimeout(5_000) { importStarted.await() }; caller.cancelAndJoin()
+        gate.complete(DataResult.Loaded(Attachment("text:survived", "file", 2)))
+        state { it.selected?.conversation?.draft?.attachments == listOf("text:survived") }
+        repository.beginAttachment(c.id, PendingAttachment("discard", c.config.workspace, "content://fixture/other"))
+        repository.discardAttachment(c.id, "discard")
+        repository.finishAttachment(c.id, "discard", DataResult.Loaded(Attachment("text:late", "late", 3)))
+        assertEquals(listOf("text:survived"), db.dao().conversation(c.id.value)!!.domain().draft.attachments)
+    }
     @Test fun `attachment only turn freezes references and new draft edits survive acceptance and restart`() = runBlocking {
         val c = state().selected!!.conversation
         repository.setAttachment(c.id, "text:original", true)

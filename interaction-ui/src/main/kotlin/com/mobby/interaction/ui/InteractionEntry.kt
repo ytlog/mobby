@@ -44,7 +44,6 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
     val state by vm.state.collectAsStateWithLifecycle()
     val system by vm.status.collectAsStateWithLifecycle()
     val agentOptions by vm.agents.collectAsStateWithLifecycle()
-    val importing by vm.importing.collectAsStateWithLifecycle()
     var fileTarget by rememberSaveable { mutableStateOf<String?>(null) }
     var fileWorkspace by rememberSaveable { mutableStateOf<String?>(null) }
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -117,7 +116,7 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                             val target = state.selected?.conversation
                             TextButton(onClick = {
                                 if (target != null) { fileTarget = target.id.value; fileWorkspace = target.config.workspace; route = "conversation"; filePicker.launch(arrayOf("*/*")) }
-                            }, enabled = target != null && !target.archived && !target.deleted && importing == null && target.draft.attachments.size < 4 && agentOptions.any { it.agent == target.config.agent && it.resources && it.unavailable == null }) { Text("本地文件") }
+                            }, enabled = target != null && !target.archived && !target.deleted && target.draft.pendingAttachment == null && target.draft.attachments.size < 4 && agentOptions.any { it.agent == target.config.agent && it.resources && it.unavailable == null }) { Text("本地文件") }
                         }
                         Text("支持 UTF-8 文本文件，每个最多 32 KiB、每轮最多 4 个，文字与附件编码后合计最多 64 KiB。图片、拍照和 PDF 尚不可用；运行环境与网关就绪后可选择文件。", style = MaterialTheme.typography.bodySmall)
                         TextButton(onClick = { route = "conversation"; voice = vm.composer.value }) { Text("语音输入") }
@@ -233,7 +232,6 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
 
 @Composable private fun Composer(detail: ConversationDetail, state: InteractionState, system: SystemStatus, vm: ConversationViewModel, onAdd: () -> Unit, onVoice: () -> Unit) {
     val composer by vm.composer.collectAsStateWithLifecycle()
-    val importing by vm.importing.collectAsStateWithLifecycle()
     val active = detail.turns.lastOrNull { it.occupied }
     val unavailable = detail.conversation.archived || detail.conversation.deleted
     Column(Modifier.fillMaxWidth().padding(12.dp)) {
@@ -248,11 +246,11 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
         Column(Modifier.heightIn(max = 160.dp).verticalScroll(rememberScrollState())) {
             AttachmentList(detail.conversation.draft.attachments, detail.conversation.config.workspace, vm) { ref -> vm.enqueue { vm.actions.removeAttachment(detail.conversation.id, ref) } }
         }
-        importing?.takeIf { it.id == detail.conversation.id }?.let { pending ->
+        detail.conversation.draft.pendingAttachment?.let { pending ->
             Text(pending.error ?: "正在导入附件，完成后可发送…", style = MaterialTheme.typography.bodySmall)
             if (pending.error != null) Row {
-                TextButton(onClick = { vm.importAttachment(pending.id, pending.workspace, pending.location) }) { Text("重试") }
-                TextButton(onClick = { vm.importing.value = null }) { Text("移除待处理附件") }
+                TextButton(onClick = { vm.importAttachment(detail.conversation.id, pending.workspace, pending.location) }) { Text("重试") }
+                TextButton(onClick = { vm.enqueue { vm.actions.discardAttachment(detail.conversation.id, pending.id) } }) { Text("移除待处理附件") }
             }
         }
         Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
@@ -264,7 +262,7 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                 if (active?.execution != null) ActionIcon("停止当前任务", { vm.stop(active.execution!!) }, Icons.Outlined.Stop, active.phase != ExecutionPhase.CANCELLING)
                 else if (composer.value.text.isEmpty() && detail.conversation.draft.attachments.isEmpty()) ActionIcon("语音输入", onVoice, Icons.Outlined.Mic, !unavailable)
                 else ActionIcon("发送任务", vm::send, Icons.Outlined.ArrowUpward,
-                    !unavailable && system.ready && system.connected && !system.diagnosticBusy && state.occupied == null && importing?.id != detail.conversation.id && (composer.value.text.isNotBlank() || detail.conversation.draft.attachments.isNotEmpty()))
+                    !unavailable && system.ready && system.connected && !system.diagnosticBusy && state.occupied == null && detail.conversation.draft.pendingAttachment == null && (composer.value.text.isNotBlank() || detail.conversation.draft.attachments.isNotEmpty()))
             }
         }
         if (active?.pending == true) TextButton(onClick = { vm.enqueue { vm.actions.reconcile(detail.conversation.id) } }) { Text("查询待确认请求") }
