@@ -1,0 +1,95 @@
+package com.mobby.interaction.domain
+
+import kotlinx.coroutines.flow.Flow
+
+@JvmInline value class ConversationId(val value: String)
+@JvmInline value class TurnId(val value: String)
+@JvmInline value class ExecutionId(val value: String)
+enum class AgentId { CODEX, CLAUDE_CODE }
+data class NextTurnConfig(val agent: AgentId, val model: String, val reasoning: String?, val workspace: String, val gatewayProfile: String)
+data class Draft(
+    val revision: Long = 0, val text: String = "", val selectionStart: Int = text.length,
+    val selectionEnd: Int = selectionStart, val attachments: List<String> = emptyList(),
+    val capabilities: Set<String> = emptySet()
+) {
+    init { require(selectionStart in 0..text.length); require(selectionEnd in 0..text.length) }
+}
+data class Conversation(
+    val id: ConversationId, val config: NextTurnConfig, val draft: Draft = Draft(),
+    val hasTurns: Boolean = false, val session: String? = null
+)
+data class TurnExecution(val turnId: TurnId, val conversationId: ConversationId, val draft: Draft, val config: NextTurnConfig, val session: String?)
+enum class Failure { BUSY, INVALID_CONFIG, UNSUPPORTED_CAPABILITY, UNAVAILABLE, EMPTY_DRAFT, PENDING_SUBMISSION }
+sealed interface Submission {
+    data class Accepted(val executionId: ExecutionId) : Submission
+    data class Rejected(val reason: Failure, val activeExecution: ExecutionId? = null) : Submission
+    /** Response lost: retain this request and look it up, never generate a replacement request. */
+    data object Unconfirmed : Submission
+}
+sealed interface StopResult {
+    data object Accepted : StopResult
+    data object AlreadyTerminal : StopResult
+    data class Rejected(val reason: Failure) : StopResult
+}
+enum class ExecutionPhase { ACCEPTED, RUNNING, AWAITING_APPROVAL, CANCELLING, SUCCEEDED, FAILED, CANCELLED, TIMED_OUT, INTERRUPTED, OUTCOME_UNKNOWN }
+data class ExecutionFact(val executionId: ExecutionId, val phase: ExecutionPhase)
+interface ExecutionPort {
+    suspend fun submit(turn: TurnExecution): Submission
+    suspend fun lookup(turnId: TurnId): Submission
+    suspend fun cancel(executionId: ExecutionId): StopResult
+    fun observe(executionId: ExecutionId): Flow<ExecutionFact>
+}
+sealed interface PrepareTurnResult {
+    data class Prepared(val turn: TurnExecution) : PrepareTurnResult
+    data class Rejected(val reason: Failure) : PrepareTurnResult
+}
+interface ConversationRepository {
+    /** Atomic: freeze draft/config and persist pending request. Reject if one is unresolved. */
+    suspend fun prepareTurn(conversationId: ConversationId, turnId: TurnId): PrepareTurnResult
+    /** Atomic: persist result; clear only matching draft revision on Accepted. Keep unconfirmed pending. */
+    suspend fun recordSubmission(turn: TurnExecution, result: Submission)
+    suspend fun pendingTurn(conversationId: ConversationId): TurnExecution?
+}
+class SubmitTurnUseCase(private val repository: ConversationRepository, private val execution: ExecutionPort) {
+    suspend operator fun invoke(conversationId: ConversationId, turnId: TurnId): Submission =
+        when (val prepared = repository.prepareTurn(conversationId, turnId)) {
+            is PrepareTurnResult.Rejected -> Submission.Rejected(prepared.reason)
+            is PrepareTurnResult.Prepared -> execution.submit(prepared.turn).also { repository.recordSubmission(prepared.turn, it) }
+        }
+
+    suspend fun reconcile(conversationId: ConversationId): Submission? {
+        val pending = repository.pendingTurn(conversationId) ?: return null
+        return execution.lookup(pending.turnId).also { repository.recordSubmission(pending, it) }
+    }
+}
+class StopRunUseCase(private val execution: ExecutionPort) {
+    suspend operator fun invoke(executionId: ExecutionId): StopResult = execution.cancel(executionId)
+}
+
+/** Pure interaction policies, shared by future repository and Compose projections. */
+object ConversationRules {
+    fun afterSubmission(current: Draft, submittedRevision: Long, result: Submission): Draft =
+        if (result is Submission.Accepted && current.revision == submittedRevision) Draft(revision = current.revision + 1) else current
+
+    fun applyConfig(current: Conversation, config: NextTurnConfig, newId: ConversationId): Conversation {
+        require(!current.hasTurns || config.workspace == current.config.workspace) { "Existing workspace must be preserved" }
+        return if (current.hasTurns && config.agent != current.config.agent) {
+            require(newId != current.id)
+            Conversation(newId, config, Draft(text = current.draft.text))
+        } else current.copy(config = config, session = if (current.config.agent == config.agent) current.session else null)
+    }
+
+    fun createSkillConversation(current: Conversation, newId: ConversationId, creator: String?): Conversation? {
+        if (creator == null) return null
+        require(newId != current.id)
+        return Conversation(newId, current.config, Draft(
+            text = "请用 /skill-creator 帮我创建技能，要求是：", capabilities = setOf(creator)
+        ))
+    }
+}
+
+/** Manual expansion is independent of execution; errors/approvals render outside the card. */
+data class ExecutionExpansion(val manual: Boolean? = null) {
+    fun expanded(phase: ExecutionPhase, readingDetails: Boolean = false): Boolean =
+        manual ?: (phase != ExecutionPhase.SUCCEEDED || readingDetails)
+}

@@ -66,3 +66,18 @@ CLI 协议参考：[Claude Code](https://code.claude.com/docs/en/headless)、[Co
 ## mobby 改名
 
 项目与目录名、源码包名、界面品牌、脚本环境变量和 SDK 适配构建文件统一改为 mobby。Android 安装标识及 Keystore 别名保留兼容值，覆盖升级前后设备网关加密配置摘要一致。改名后构建、lint、63 项测试和六种 CLI 联调通过，已覆盖安装到原手机并成功启动新入口。
+
+## 交互方案实施：首个契约检查点（2026-09-21）
+
+已按两份设计的迁移顺序开始实施，新增 `:runtime-api` 与 `:interaction-domain` 两个纯 Kotlin/JVM 模块，沿用 Kotlin 1.9.0、coroutines 1.7.3 和 JDK 17。两模块均无项目依赖，领域层不引用 Runtime DTO、Android 或 Compose。应用仍使用现有测试控制台；新增契约尚未接入生产执行路径。
+
+- Runtime 核心 API：提交、按请求查询、取消、审批、能力、快照、事件观察和有界产物读取。请求只含受控引用；产品 Agent 仅 Codex / Claude Code，Shell 后续保留于内部诊断。
+- 明确区分执行阶段与连接状态、取消接纳与进程退出、消息完成与整轮成功。事件包含运行 ID 和单调序号；基线恢复替换投影，后续事件按游标消费，不再次追加基线已有输出。
+- 测试目录中的 FakeRuntimeClient 验证幂等请求、全局 Busy、取消与完成竞态、审批版本、基线与事件衔接；它不执行 CLI、不持久化，也不打包进应用。下一阶段必须将相同契约验证用于真实执行核心和日志实现。
+- 领域用例要求先原子保存待提交轮次及草稿版本，再调用执行端口；应答未知时查询原请求，不自动生成新任务。取消等待后也可通过已有待提交记录核实结果。
+- 统一交互规则：接纳后仅清除对应版本草稿；运行期间编辑保留为下一轮；已有会话跨 Agent 新建并仅复制文字；空对话可调整工作区，已有记录后不可修改执行目录；技能对话另建并绑定 Creator；过程折叠遵守手动选择与阅读状态。
+- 数据投影序号策略拒绝跨运行事件、跳号和重复增量；未来 Data 实现必须在同一事务中写入投影与消费游标。
+
+验证：新增 Runtime 8 项、Domain 10 项测试通过；空会话调整工作区的边界先由失败测试复现，再修正。JDK 17 下 `:runtime-api:test :interaction-domain:test :app:assembleDebug :app:testDebugUnitTest :termux-core:testDebugUnitTest :app:lintDebug` 通过；现有 App 8 项、SDK 32 项测试保持通过。Node.js 网关 17 项、Python 打包 6 项通过，合计 81 项测试。未重复运行真 CLI 模拟网关联调（本轮未改执行/桥接代码），未覆盖安装或声称通过手机交互验收。
+
+后续仍需落实：管理接口及领域管理端口、runtime-engine/runtime-android 提取、持久幂等日志、Service 客户端、interaction-data/Room、Compose 页面与 App 装配。管理接口尚未作为已完成 API 发布；当前契约也未宣称冻结为最终稳定版本。推开抽屉、面板高度、焦点与阅读锚点、IME、技能导入/保存、真实审批和进程停止均待原生接入及验收。当前测试证明领域规则和假实现契约，不能证明真实执行、持久恢复或视觉交互已完成。

@@ -12,7 +12,7 @@
 | [Android 对话 UI 评审稿](design/conversation-ui-review.html) | 当前交互规范：会话与执行、顶部菜单、输入、插件/技能、Android 行为、实现架构及可点击原型；原生层待接入 |
 | [交互三层架构与 Runtime 技术设计](design/interaction-runtime-architecture.html) | Compose 独立模块、三层职责、Runtime 模块、固定接口与事件协议、数据所有权和迁移验收 |
 | [网关接入](gateway.md) | 协议路径、限制和联调范围 |
-| [实施记录](implementation.md) | 已实现内容、验证证据及待验收事项 |
+| [实施记录](implementation.md) | 已实现内容、交互契约实施检查点、验证证据及待验收事项 |
 
 ## 维护约定
 
