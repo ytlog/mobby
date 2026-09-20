@@ -16,6 +16,19 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
     val composer = MutableStateFlow(ComposerState())
     val agents = MutableStateFlow<List<AgentOption>>(emptyList())
     val gateways = MutableStateFlow<List<GatewayProfile>>(emptyList())
+    val skills = MutableStateFlow<List<Skill>>(emptyList())
+    val skillsError = MutableStateFlow<String?>(null)
+    val skillsLoading = MutableStateFlow(false)
+    val skillEditor = MutableStateFlow<SkillEditor?>(null)
+    fun loadSkills(agent: AgentId) = enqueue {
+        skillsLoading.value = true; skillsError.value = null
+        try {
+            when (val result = actions.skills(agent)) {
+                is DataResult.Loaded -> skills.value = result.value
+                is DataResult.Failed -> { skills.value = emptyList(); skillsError.value = result.message }
+            }
+        } finally { skillsLoading.value = false }
+    }
     val feedback = Channel<String>(Channel.BUFFERED)
     private val queue = Channel<suspend () -> Unit>(Channel.UNLIMITED)
     private val edits = mutableMapOf<ConversationId, Int>()

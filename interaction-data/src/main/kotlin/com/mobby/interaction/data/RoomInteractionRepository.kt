@@ -53,6 +53,18 @@ internal class RoomInteractionRepository(
             catch (_: Exception) { startupError.value = "会话恢复未完成，原数据已保留；请重启应用后重试" }
         }
     }
+    override suspend fun setSkill(id: ConversationId, ref: String, enabled: Boolean) = mutate(id) { c ->
+        require(!enabled || ref.startsWith("skill:${c.config.agent.name}:"))
+        val refs = if (enabled) c.draft.capabilities + ref else c.draft.capabilities - ref
+        require(refs.size <= 8)
+        c.copy(draft = c.draft.copy(revision = c.draft.revision + 1, capabilities = refs))
+    }
+    override suspend fun createSkillConversation(id: ConversationId, creator: String): ConversationId = db.withTransaction {
+        val old = requireNotNull(dao.conversation(id.value)).domain()
+        require(creator.startsWith("skill:${old.config.agent.name}:"))
+        val created = requireNotNull(ConversationRules.createSkillConversation(old, ConversationId(this.id()), creator)).copy(title = "创建技能", updatedAt = now())
+        dao.save(created.row()); dao.select(SelectionRow(conversationId = created.id.value)); created.id
+    }
     override suspend fun select(id: ConversationId) {
         val c = dao.conversation(id.value)?.domain() ?: return
         if (!c.deleted) dao.select(SelectionRow(conversationId = id.value))

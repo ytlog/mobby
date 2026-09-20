@@ -57,7 +57,49 @@ internal class RuntimeExecutionAdapter(private val client: RuntimeClient) : Exec
         snapshot?.let { ExecutionFact(executionId, RunProjection.verifiedPhase(it).domain()) }
     }
 }
-internal class RuntimeSystemAdapter(private val client: RuntimeClient, private val admin: RuntimeAdminClient, private val diagnostics: RuntimeDiagnosticsClient) : SystemPort {
+internal class RuntimeSystemAdapter(private val context: android.content.Context, private val client: RuntimeClient, private val admin: RuntimeAdminClient, private val diagnostics: RuntimeDiagnosticsClient) : SystemPort {
+    private fun SkillSummary.domain() = Skill(ref.value, DomainAgent.valueOf(agent.name), name, description, if (source == SkillSource.USER) "用户技能" else "CLI 内置", available, error?.let { "技能元信息、目录名称或文件路径无效" })
+    private fun SkillPreview.domain() = SkillContent(name, description, body, markdown, issues.map { when (it) {
+        SkillIssue.INVALID_FRONTMATTER -> "YAML 元信息无效，请修正后再导入"
+        SkillIssue.UNCLOSED_FRONTMATTER -> "元信息缺少结束分隔符 ---"
+        SkillIssue.INVALID_NAME -> "名称须为 1–64 位小写字母、数字或连字符，不能使用 synced"
+        SkillIssue.INVALID_DESCRIPTION -> "请填写不超过 1024 字的用途和触发场景"
+        SkillIssue.EMPTY_BODY -> "技能正文不能为空"
+    } })
+    private fun <T, R> AdminResult<T>.result(map: (T) -> R): DataResult<R> = when (this) {
+        is AdminResult.Success -> DataResult.Loaded(map(value))
+        is AdminResult.Failed -> DataResult.Failed(when (error.code) {
+            ErrorCode.REQUEST_CONFLICT -> "同名技能已存在，请修改名称；原技能未被覆盖"
+            ErrorCode.INVALID_CONFIG -> "技能内容或元信息无效，请检查名称、用途、正文和文件大小"
+            ErrorCode.RESOURCE_MISSING -> "技能文件已改变或不可读取，请刷新列表"
+            else -> error.message()
+        })
+    }
+    override suspend fun skills(agent: DomainAgent) = admin.listSkills(RuntimeAgent.valueOf(agent.name)).result { list -> list.map { it.domain() } }
+    override suspend fun readSkill(ref: String) = admin.readSkill(CapabilityRef(ref)).result { it.domain() }
+    override suspend fun previewSkill(markdown: String) = admin.previewSkill(markdown).result { it.domain() }
+    override suspend fun previewManualSkill(agent: DomainAgent, name: String, description: String, body: String) = admin.previewManualSkill(ManualSkillRequest(RuntimeAgent.valueOf(agent.name), name, description, body)).result { it.domain() }
+    override suspend fun importSkill(agent: DomainAgent, markdown: String) = admin.importSkill(RuntimeAgent.valueOf(agent.name), markdown).result { it.domain() }
+    override suspend fun saveManualSkill(agent: DomainAgent, name: String, description: String, body: String) = admin.saveManualSkill(ManualSkillRequest(RuntimeAgent.valueOf(agent.name), name, description, body)).result { it.domain() }
+    override suspend fun readSkillImport(location: String): DataResult<SkillContent> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        try {
+            val uri = android.net.Uri.parse(location)
+            require(uri.scheme == "content")
+            val resolver = context.contentResolver
+            val name = resolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
+                if (it.moveToFirst()) it.getString(0) else null
+            }
+            if (name?.endsWith(".md", true) != true) return@withContext DataResult.Failed("请选择 .md 技能文件")
+            val bytes = java.io.ByteArrayOutputStream()
+            resolver.openInputStream(uri)?.use { input ->
+                val buffer = ByteArray(8192)
+                while (true) { val n = input.read(buffer); if (n < 0) break; bytes.write(buffer, 0, n); require(bytes.size() <= 128 * 1024) }
+            } ?: return@withContext DataResult.Failed("无法读取所选文件")
+            previewSkill(Charsets.UTF_8.newDecoder().decode(java.nio.ByteBuffer.wrap(bytes.toByteArray())).toString())
+        } catch (e: CancellationException) { throw e }
+        catch (_: SecurityException) { DataResult.Failed("文件读取权限已失效，请重新选择") }
+        catch (_: Exception) { DataResult.Failed("无法导入：请选择不超过 128 KiB 的 UTF-8 Markdown 文件") }
+    }
     override val status = combine(client.connection, admin.environment, diagnostics.state) { connection, environment, diagnostic ->
         SystemStatus(environment.phase == EnvironmentPhase.READY, connection == ConnectionState.CONNECTED,
             if (connection == ConnectionState.DISCONNECTED) "连接中断，结果待确认" else environment.summary,

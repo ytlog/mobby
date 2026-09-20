@@ -112,3 +112,18 @@ Room 的真实 SQLite/Robolectric 测试覆盖接纳与拒绝、切换草稿、�
 尚未完成：技能真实目录/导入/创建、受控附件导入、完整 Markdown、查找结果跳转、主题跨进程持久化、长历史分页、预测返回与焦点恢复的完整验收。技能与插件页当前明确显示不可用或空目录，附件入口禁用，不记为已交付功能。手机锁屏及辅助测试安装限制尚未解除，不能把主机测试或 APK 构建当作新界面的设备验收。整体目标继续进行。
 
 本检查点验证：83 项 Kotlin/Android library 单测（API 8、engine 18、runtime-android 3、Domain 10、Data 8、UI 4、SDK 32）、Node.js 17、Python 8，共 108 项通过；JDK 17 下 Debug APK 与 lint 通过（仍有依赖版本和 ARM64 限定等既有警告）。主 APK 已覆盖安装并启动，设备建立 `interaction.db`，安装前后加密网关配置摘要一致。设备仍锁屏；未执行新 UI 的点击/键盘/语音验收，也未重复声称真网关通过。本轮未修改桥接或 CLI 执行协议，未重跑六种真 CLI 模拟网关联调。
+
+## 技能管理与原生调用（2026-09-21）
+
+技能页已接入真实管理端口：按当前 Agent 列出用户技能和 CLI 内置技能，可搜索、筛选、查看内容并加入本轮草稿。返回目录保留筛选与滚动位置。选择与移除增加草稿版本；已提交轮次保留冻结的技能引用，不受下一轮编辑影响。
+
+- 手动创建填写名称、用途/场景、正文，校验预览后明确保存。文件导入使用系统文档选择器，Data 层读取有界 UTF-8 `.md` 内容；普通 Markdown 可补全元信息，带 YAML 的文件保留原文供修正。取消选择或返回不写入技能目录。
+- Runtime 使用安全 YAML 数据解析，不构造任意对象；拒绝重复键、非法名称、空描述/正文、超限内容、越界与符号链接路径。同名技能拒绝覆盖；写入临时目录并同步文件后才移动到正式目录。运行期间拒绝修改技能目录，保留待保存表单。
+- Codex 用户技能保存在 HOME 的 `.agents/skills`，Claude Code 保存在 `.claude/skills`；不改变已有 HOME 与工作区。引用包含 Agent、来源、名称及内容摘要，文件发生变化后旧引用不可继续提交。选择技能后使用对应 CLI 原生调用语法；Claude 明确使用 Skill 工具，保留原有权限检查。
+- “与 mobby 对话创建”仅在实际发现可用 skill-creator 时开放。新会话预填需求、绑定 Creator，保留原会话草稿、选区和任务；Creator 不可用时不转成手动创建。生成产物的受控发现、预览及确认保存闭环仍待实现，不能将此入口等同于完整的对话创建验收。
+
+真实 CLI 联调先发现 Claude 普通 Read 工具读取 HOME 下技能被权限限制；新增失败回归后改为原生 Skill 工具，未添加绕过权限参数。新增 `runtime/gateway-tests/skills-smoke.cjs`，在隔离 HOME 和虚假密钥下检查两个 CLI 的实际技能发现，以及真实工具返回技能正文。主机 Codex 为 0.155.0-alpha.9.2，Claude Code 为 2.1.112；不能替代 Android 固定版本与真网关验收。原三种网关协议的六种 CLI 工具回传组合也重新通过。
+
+依据：[Codex 技能发现与调用](https://learn.chatgpt.com/docs/build-skills)、[Claude Code 技能](https://code.claude.com/docs/en/skills)。验证结果与设备状态在本节后补充；附件导入、创建技能产物保存、完整 Markdown、主题持久化、查找跳转、预测返回及设备交互验收仍未完成。
+
+验证：94 项 Kotlin/Android library 单测（API 8、engine 22、runtime-android 9、Domain 10、Data 9、UI 4、SDK 32）、Node.js 17、Python 8，共 119 项通过；主 APK、辅助测试 APK 与 lint 构建通过。技能专项真实 CLI 两项及网关六种组合通过。主 APK 已覆盖安装并启动，原加密网关配置摘要一致；设备仍锁屏，未重试被系统拒绝的辅助测试安装，未把主机结果计入手机交互验收。

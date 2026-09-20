@@ -32,7 +32,20 @@ sealed interface OperationResult {
     data object Done : OperationResult
     data class Failed(val message: String) : OperationResult
 }
+data class Skill(val ref: String, val agent: AgentId, val name: String, val description: String, val source: String, val available: Boolean, val unavailableReason: String?)
+data class SkillContent(val name: String, val description: String, val body: String, val markdown: String, val issues: List<String>)
+sealed interface DataResult<out T> {
+    data class Loaded<T>(val value: T) : DataResult<T>
+    data class Failed(val message: String) : DataResult<Nothing>
+}
 interface SystemPort {
+    suspend fun skills(agent: AgentId): DataResult<List<Skill>>
+    suspend fun readSkill(ref: String): DataResult<SkillContent>
+    suspend fun previewSkill(markdown: String): DataResult<SkillContent>
+    suspend fun previewManualSkill(agent: AgentId, name: String, description: String, body: String): DataResult<SkillContent>
+    suspend fun readSkillImport(location: String): DataResult<SkillContent>
+    suspend fun importSkill(agent: AgentId, markdown: String): DataResult<Skill>
+    suspend fun saveManualSkill(agent: AgentId, name: String, description: String, body: String): DataResult<Skill>
     val status: Flow<SystemStatus>
     val diagnostic: Flow<DiagnosticOutput>
     suspend fun agents(): List<AgentOption>
@@ -44,6 +57,8 @@ interface SystemPort {
 }
 interface InteractionRepository : ConversationRepository {
     val state: Flow<InteractionState>
+    suspend fun setSkill(id: ConversationId, ref: String, enabled: Boolean)
+    suspend fun createSkillConversation(id: ConversationId, creator: String): ConversationId
     suspend fun select(id: ConversationId)
     suspend fun create(config: NextTurnConfig): ConversationId
     suspend fun editDraft(id: ConversationId, text: String, selectionStart: Int, selectionEnd: Int): Draft
@@ -80,6 +95,28 @@ class InteractionUseCases(
     }.await()
     suspend fun reconcile(id: ConversationId) = SubmitTurnUseCase(repository, execution).reconcile(id)
     suspend fun stop(id: ExecutionId) = StopRunUseCase(execution)(id)
+    suspend fun skills(agent: AgentId) = system.skills(agent)
+    suspend fun readSkill(ref: String) = system.readSkill(ref)
+    suspend fun previewSkill(markdown: String) = system.previewSkill(markdown)
+    suspend fun previewManualSkill(agent: AgentId, name: String, description: String, body: String) = system.previewManualSkill(agent, name, description, body)
+    suspend fun readSkillImport(location: String) = system.readSkillImport(location)
+    suspend fun importSkill(agent: AgentId, markdown: String) = system.importSkill(agent, markdown)
+    suspend fun saveManualSkill(agent: AgentId, name: String, description: String, body: String) = system.saveManualSkill(agent, name, description, body)
+    suspend fun setSkill(id: ConversationId, skill: Skill, enabled: Boolean): OperationResult {
+        if (enabled) {
+            val current = (system.skills(skill.agent) as? DataResult.Loaded)?.value
+                ?: return OperationResult.Failed("技能目录不可用，请重试")
+            if (current.none { it.ref == skill.ref && it.available }) return OperationResult.Failed("技能已改变或不可用，请重新选择")
+        }
+        repository.setSkill(id, skill.ref, enabled)
+        return OperationResult.Done
+    }
+    suspend fun removeSkill(id: ConversationId, ref: String) = repository.setSkill(id, ref, false)
+    suspend fun createSkillConversation(id: ConversationId, agent: AgentId): DataResult<ConversationId> {
+        val creator = (system.skills(agent) as? DataResult.Loaded)?.value?.firstOrNull { it.name == "skill-creator" && it.available }
+            ?: return DataResult.Failed("当前 Agent 没有可用的 Skill Creator；请返回技能页选择其他创建方式")
+        return DataResult.Loaded(repository.createSkillConversation(id, creator.ref))
+    }
     suspend fun agents() = system.agents()
     suspend fun gateways() = system.gateways()
     suspend fun saveGateway(edit: GatewayEdit): OperationResult {

@@ -12,6 +12,7 @@ internal class AndroidRuntimePorts(
     private val context: Context, private val runtime: RuntimeEnvironment,
     private val state: StateFlow<EnvironmentSnapshot>, private val registry: ProcessRegistry
 ) : EnvironmentPort, ProcessPort {
+    private val skills get() = SkillStore(runtime.sdk.vfs.homeDir)
     private val gateways = GatewayStore(context)
     private fun mode(agent: AgentId) = if (agent == AgentId.CODEX) AgentMode.CODEX else AgentMode.CLAUDE
     override suspend fun capabilities(): CapabilityResult = withContext(Dispatchers.IO) {
@@ -20,13 +21,15 @@ internal class AndroidRuntimePorts(
             AgentCapability(agent, if (config == null) emptyList() else listOf(ModelCapability(config.model, emptySet())),
                 unavailableReason = if (state.value.phase != EnvironmentPhase.READY) RuntimeError(ErrorCode.NOT_READY, true)
                     else if (config == null) RuntimeError(ErrorCode.INVALID_CONFIG) else null,
-                supportsResume = true, supportsApproval = false)
+                supportsResume = true, supportsApproval = false, skillCapabilities = skills.list(agent).filter { it.available }.map { it.ref }.toSet())
         }))
     }
     override suspend fun validate(request: RunRequest): RuntimeError? = withContext(Dispatchers.IO) {
         if (state.value.phase != EnvironmentPhase.READY) return@withContext RuntimeError(ErrorCode.NOT_READY, true)
         if (request.workspaceRef.value != "default") return@withContext RuntimeError(ErrorCode.PERMISSION_DENIED)
-        if (request.capabilityRefs.isNotEmpty() || request.inputParts.any { it !is InputPart.Text } || request.reasoningLevel != null)
+        if (request.inputParts.any { it !is InputPart.Text } || request.reasoningLevel != null)
+            return@withContext RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY)
+        if (request.capabilityRefs.size > 8 || request.capabilityRefs.any { skills.resolve(it, request.agentId) == null })
             return@withContext RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY)
         val text = request.inputParts.filterIsInstance<InputPart.Text>().joinToString("\n") { it.text }
         if (text.isBlank() || text.toByteArray().size > 65536 || '\u0000' in text) return@withContext RuntimeError(ErrorCode.INVALID_CONFIG)
@@ -44,7 +47,7 @@ internal class AndroidRuntimePorts(
         var started = false
         var exit: Int? = null
         val worker = async(Dispatchers.IO) {
-            val args = AgentCommand.arguments(request, runtime.executable(mode(request.agentId)), request.inputParts.filterIsInstance<InputPart.Text>().joinToString("\n") { it.text })
+            val args = AgentCommand.arguments(request, runtime.executable(mode(request.agentId)), skills.prompt(request.agentId, request.capabilityRefs, request.inputParts.filterIsInstance<InputPart.Text>().joinToString("\n") { it.text }))
             runtime.sdk.executor.executeArgsStreaming(listOf(File(runtime.sdk.vfs.binDir, "node").absolutePath,
                 File(context.filesDir, "gateway.cjs").absolutePath, mode(request.agentId).name) + args,
                 runtime.workspace, mapOf("MOBBY_GATEWAY_CONFIG" to config.json()),

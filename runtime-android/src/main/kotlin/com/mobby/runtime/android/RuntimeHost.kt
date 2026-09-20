@@ -62,6 +62,12 @@ class RuntimeHost(context: Context, notification: () -> PendingIntent) {
     }
     val admin: RuntimeAdminClient = object : RuntimeAdminClient {
         override val environment = environmentState.asStateFlow()
+        override suspend fun listSkills(agent: AgentId) = connected()?.listSkills(agent) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
+        override suspend fun readSkill(ref: CapabilityRef) = connected()?.readSkill(ref) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
+        override suspend fun previewManualSkill(request: ManualSkillRequest) = connected()?.previewManualSkill(request) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
+        override suspend fun previewSkill(markdown: String) = connected()?.previewSkill(markdown) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
+        override suspend fun importSkill(agent: AgentId, markdown: String) = connected()?.importSkill(agent, markdown) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
+        override suspend fun saveManualSkill(request: ManualSkillRequest) = connected()?.saveManualSkill(request) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
         override suspend fun initialize() = connected()?.initialize() ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
         override suspend fun listGatewayProfiles() = connected()?.listGatewayProfiles() ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
         override suspend fun saveGatewayProfile(request: SaveGatewayRequest) = connected()?.saveGatewayProfile(request) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))

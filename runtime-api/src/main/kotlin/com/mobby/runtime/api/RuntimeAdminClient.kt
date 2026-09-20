@@ -25,6 +25,12 @@ sealed interface AdminResult<out T> {
 }
 interface RuntimeAdminClient {
     val environment: StateFlow<EnvironmentSnapshot>
+    suspend fun listSkills(agent: AgentId): AdminResult<List<SkillSummary>>
+    suspend fun readSkill(ref: CapabilityRef): AdminResult<SkillPreview>
+    suspend fun previewManualSkill(request: ManualSkillRequest): AdminResult<SkillPreview>
+    suspend fun previewSkill(markdown: String): AdminResult<SkillPreview>
+    suspend fun importSkill(agent: AgentId, markdown: String): AdminResult<SkillSummary>
+    suspend fun saveManualSkill(request: ManualSkillRequest): AdminResult<SkillSummary>
     suspend fun initialize(): AdminResult<Unit>
     suspend fun listGatewayProfiles(): AdminResult<List<GatewayProfileSummary>>
     suspend fun saveGatewayProfile(request: SaveGatewayRequest): AdminResult<GatewayProfileSummary>
@@ -37,3 +43,12 @@ interface RuntimeDiagnosticsClient {
     suspend fun executeShell(command: String): CommandResult
     suspend fun stopShell(): CommandResult
 }
+
+/** Import and preview never execute skills. Saved files participate in native CLI discovery. */
+enum class SkillSource { USER, BUILTIN }
+enum class SkillIssue { INVALID_FRONTMATTER, UNCLOSED_FRONTMATTER, INVALID_NAME, INVALID_DESCRIPTION, EMPTY_BODY }
+data class SkillSummary(val ref: CapabilityRef, val agent: AgentId, val name: String, val description: String,
+    val source: SkillSource, val available: Boolean, val error: RuntimeError? = null)
+data class SkillPreview(val name: String, val description: String, val body: String, val markdown: String,
+    val issues: List<SkillIssue>)
+data class ManualSkillRequest(val agent: AgentId, val name: String, val description: String, val body: String)

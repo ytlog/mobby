@@ -75,7 +75,8 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                         "gateway" -> GatewayPage(vm) { route = "settings" }
                         "diagnostic" -> DiagnosticPage(vm) { route = "settings" }
                         "archived" -> ArchivedPage(state, vm) { route = "settings" }
-                        "skills", "plugins" -> CapabilityPage(route, onBack = { route = "add" })
+                        "skills" -> SkillsPage(vm, onBack = { route = "add" }, onConversation = { route = "conversation" })
+                        "plugins" -> PluginPage(onBack = { route = "add" })
                         else -> Column(Modifier.fillMaxSize()) {
                             ConversationToolbar(state.selected?.conversation, vm, onMenu = { keyboard?.hide(); focus.clearFocus(); drawer = true },
                                 onNew = { dialog = "new" }, onMore = { dialog = it })
@@ -214,6 +215,10 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
         if (unavailable) Text("此对话已归档或删除，请先在设置中恢复", style = MaterialTheme.typography.bodySmall)
         if (state.occupied != null && active == null) Text("${state.occupied!!.conversation.title} 正在执行，本轮草稿可继续编辑", style = MaterialTheme.typography.bodySmall)
         if (system.diagnosticBusy) Text("Shell 诊断正在占用运行环境", style = MaterialTheme.typography.bodySmall)
+        if (detail.conversation.draft.capabilities.isNotEmpty()) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            detail.conversation.draft.capabilities.forEach { ref -> InputChip(selected = true,
+                onClick = { vm.enqueue { vm.actions.removeSkill(detail.conversation.id, ref) } }, label = { Text("${ref.split(':').getOrNull(3) ?: "技能"} ×") }) }
+        }
         Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
             Row(Modifier.fillMaxWidth().padding(4.dp), verticalAlignment = Alignment.Bottom) {
                 ActionIcon("添加内容与能力", onAdd, Icons.Outlined.Add)

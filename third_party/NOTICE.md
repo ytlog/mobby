@@ -31,3 +31,7 @@
 - Codex：官方 npm `@openai/codex` 0.155.1-linux-arm64 的静态 musl CLI。源码与许可证：https://github.com/openai/codex/tree/rust-v0.155.1
 - 两个 npm 包均按锁文件中的 npm SHA-512 integrity 校验。当前仅集成命令行任务所需文件，不包含 Codex 语音组件。
 - `runtime/agent_launcher.c` 为 npm / npx / Claude Code 提供 Android 原生入口，参数直接传入 Node.js。
+
+## 技能元信息解析
+
+技能导入使用 Maven 依赖 `org.yaml:snakeyaml:2.3`（Apache-2.0），通过 SafeConstructor 读取数据，禁止重复键、集合别名和任意对象构造；不执行导入文件。上游：https://bitbucket.org/snakeyaml/snakeyaml 。依赖由 Gradle 获取，不把构建缓存纳入仓库。

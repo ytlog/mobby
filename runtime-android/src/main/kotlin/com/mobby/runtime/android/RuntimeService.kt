@@ -75,6 +75,36 @@ internal class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagnostic
         if (coordinator.active.value != null) AdminResult.Failed(RuntimeError(ErrorCode.BUSY, true))
         else { startInitialization(); AdminResult.Success(Unit) }
     }
+    private fun skills() = SkillStore(runtime.sdk.vfs.homeDir)
+    override suspend fun listSkills(agent: AgentId): AdminResult<List<SkillSummary>> = withContext(Dispatchers.IO) {
+        try { AdminResult.Success(skills().list(agent)) } catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.RESOURCE_MISSING)) }
+    }
+    override suspend fun readSkill(ref: CapabilityRef): AdminResult<SkillPreview> = withContext(Dispatchers.IO) {
+        try { skills().preview(ref)?.let { AdminResult.Success(it) } ?: AdminResult.Failed(RuntimeError(ErrorCode.RESOURCE_MISSING)) }
+        catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.INVALID_CONFIG)) }
+    }
+    override suspend fun previewManualSkill(request: ManualSkillRequest): AdminResult<SkillPreview> = withContext(Dispatchers.IO) {
+        try { AdminResult.Success(com.mobby.runtime.engine.SkillDocument.manual(request.name, request.description, request.body)) }
+        catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.INVALID_CONFIG)) }
+    }
+    override suspend fun previewSkill(markdown: String): AdminResult<SkillPreview> = withContext(Dispatchers.IO) {
+        try { AdminResult.Success(com.mobby.runtime.engine.SkillDocument.preview(markdown)) }
+        catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.INVALID_CONFIG)) }
+    }
+    override suspend fun importSkill(agent: AgentId, markdown: String): AdminResult<SkillSummary> = submission.withLock {
+        if (coordinator.active.value != null) return@withLock AdminResult.Failed(RuntimeError(ErrorCode.BUSY, true))
+        withContext(Dispatchers.IO) {
+            try { AdminResult.Success(skills().save(agent, markdown)) }
+            catch (_: java.nio.file.FileAlreadyExistsException) { AdminResult.Failed(RuntimeError(ErrorCode.REQUEST_CONFLICT)) }
+            catch (_: IllegalArgumentException) { AdminResult.Failed(RuntimeError(ErrorCode.INVALID_CONFIG)) }
+            catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.STORAGE_FULL, true)) }
+        }
+    }
+    override suspend fun saveManualSkill(request: ManualSkillRequest): AdminResult<SkillSummary> {
+        val preview = try { com.mobby.runtime.engine.SkillDocument.manual(request.name, request.description, request.body) }
+            catch (_: Exception) { return AdminResult.Failed(RuntimeError(ErrorCode.INVALID_CONFIG)) }
+        return importSkill(request.agent, preview.markdown)
+    }
     override suspend fun listGatewayProfiles(): AdminResult<List<GatewayProfileSummary>> = withContext(Dispatchers.IO) {
         try { AdminResult.Success(listOf(AgentMode.CODEX, AgentMode.CLAUDE).map { summary(it) }) }
         catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.INVALID_CONFIG)) }

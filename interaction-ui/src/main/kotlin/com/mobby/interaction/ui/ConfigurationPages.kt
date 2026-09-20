@@ -166,10 +166,10 @@ import com.mobby.interaction.domain.*
         }
     }
 }
-@Composable internal fun CapabilityPage(kind: String, onBack: () -> Unit) {
+@Composable internal fun PluginPage(onBack: () -> Unit) {
     Column {
-        PageHeader(if (kind == "skills") "技能" else "插件", onBack)
-        Text(if (kind == "skills") "技能目录与导入保存尚未接通，当前不能将技能加入任务。" else "当前没有应用提供且可调用的插件。", Modifier.padding(24.dp))
+        PageHeader("插件", onBack)
+        Text("当前没有应用提供且可调用的插件。", Modifier.padding(24.dp))
     }
 }
 @Composable internal fun FindDialog(detail: ConversationDetail, onDismiss: () -> Unit) {

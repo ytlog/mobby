@@ -22,6 +22,13 @@ class RoomInteractionRepositoryTest {
     private lateinit var repository: RoomInteractionRepository
     private val runtime = TestRuntime()
     private val system = object : SystemPort {
+        override suspend fun skills(agent: DomainAgent) = DataResult.Loaded(emptyList<Skill>())
+        override suspend fun readSkill(ref: String) = DataResult.Failed("unavailable")
+        override suspend fun previewSkill(markdown: String) = DataResult.Failed("unavailable")
+        override suspend fun previewManualSkill(agent: DomainAgent, name: String, description: String, body: String) = DataResult.Failed("unavailable")
+        override suspend fun readSkillImport(location: String) = DataResult.Failed("unavailable")
+        override suspend fun importSkill(agent: DomainAgent, markdown: String) = DataResult.Failed("unavailable")
+        override suspend fun saveManualSkill(agent: DomainAgent, name: String, description: String, body: String) = DataResult.Failed("unavailable")
         override val status = flowOf(SystemStatus(true, true, "ready"))
         override val diagnostic = flowOf(DiagnosticOutput(null, emptyList()))
         override suspend fun agents() = emptyList<AgentOption>()
@@ -110,6 +117,26 @@ class RoomInteractionRepositoryTest {
         assertEquals("test-model", db.dao().turn("turn")!!.execution().config.model)
         assertEquals("new-model", db.dao().conversation(c.id.value)!!.domain().config.model)
         assertEquals(0L, prepared.config.gatewayVersion)
+    }
+    @Test fun `skill choice is draft scoped and creator conversation preserves original draft`() = runBlocking {
+        val c = state().selected!!.conversation
+        val skill = "skill:CODEX:USER:review:hash"
+        repository.editDraft(c.id, "original", 4, 6)
+        repository.setSkill(c.id, skill, true)
+        val prepared = (repository.prepareTurn(c.id, TurnId("skill-run")) as PrepareTurnResult.Prepared).turn
+        repository.setSkill(c.id, skill, false)
+        assertEquals(setOf(skill), prepared.draft.capabilities)
+        assertTrue(db.dao().conversation(c.id.value)!!.domain().draft.capabilities.isEmpty())
+        val created = repository.createSkillConversation(c.id, "skill:CODEX:BUILTIN:skill-creator:hash")
+        val original = db.dao().conversation(c.id.value)!!.domain()
+        val creator = db.dao().conversation(created.value)!!.domain()
+        assertEquals("original", original.draft.text)
+        assertEquals(4, original.draft.selectionStart)
+        assertNull(creator.session)
+        assertEquals("创建技能", creator.title)
+        assertEquals("请用 /skill-creator 帮我创建技能，要求是：", creator.draft.text)
+        assertEquals(creator.draft.text.length, creator.draft.selectionStart)
+        assertEquals(setOf("skill:CODEX:BUILTIN:skill-creator:hash"), creator.draft.capabilities)
     }
     private class TestRuntime : RuntimeClient {
         override val connection = MutableStateFlow(ConnectionState.CONNECTED)
