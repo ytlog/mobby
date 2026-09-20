@@ -23,7 +23,7 @@ data class InteractionState(
 ) {
     val occupied: ConversationSummary? get() = conversations.firstOrNull { it.occupied }
 }
-data class AgentOption(val agent: AgentId, val models: Map<String, Set<String>>, val unavailable: String?, val resume: Boolean, val skills: Set<String>, val resources: Boolean = false)
+data class AgentOption(val agent: AgentId, val models: Map<String, Set<String>>, val unavailable: String?, val resume: Boolean, val skills: Set<String>, val resources: Boolean = false, val images: Boolean = false)
 data class GatewayProfile(val agent: AgentId, val id: String, val version: Long, val endpoint: String, val model: String, val protocol: String, val hasCredential: Boolean)
 class GatewayEdit(val agent: AgentId, val endpoint: String, val model: String, val protocol: String, val credential: CharArray?) {
     override fun toString() = "GatewayEdit(agent=$agent)"

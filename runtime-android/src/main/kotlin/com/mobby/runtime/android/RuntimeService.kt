@@ -60,6 +60,7 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
                     registry.recover()
                     if (!recovered) { coordinator.recover(); recovered = coordinator.connection.value == ConnectionState.CONNECTED }
                     check(recovered)
+                    withContext(Dispatchers.IO) { AgentInputFiles.cleanup(java.io.File(filesDir, "agent-inputs")) }
                     runtime.initialize { message -> mutableEnvironment.value = EnvironmentSnapshot(EnvironmentPhase.INITIALIZING, message) }
                     check(runtime.dependenciesReady)
                 }
@@ -84,7 +85,7 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
         catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.STORAGE_FULL, true)) }
     }
     override suspend fun resource(ref: ResourceRef, workspace: WorkspaceRef): AdminResult<ResourceSummary> = withContext(Dispatchers.IO) {
-        try { AdminResult.Success(resources().read(ref, workspace).first) }
+        try { AdminResult.Success(resources().summary(ref, workspace)) }
         catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.RESOURCE_MISSING)) }
     }
     private fun skills() = SkillStore(runtime.sdk.vfs.homeDir)

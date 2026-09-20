@@ -51,6 +51,11 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
         fileTarget = null; fileWorkspace = null
         if (uri != null && id != null && workspace != null) vm.importAttachment(ConversationId(id), workspace, uri.toString())
     }
+    val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        val id = fileTarget; val workspace = fileWorkspace
+        fileTarget = null; fileWorkspace = null
+        if (uri != null && id != null && workspace != null) vm.importAttachment(ConversationId(id), workspace, uri.toString())
+    }
     var route by rememberSaveable { mutableStateOf("conversation") }
     var drawer by rememberSaveable { mutableStateOf(false) }
     val appearance by actions.appearance.collectAsStateWithLifecycle()
@@ -112,13 +117,20 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                     Column(Modifier.heightIn(max = (availableHeight - 48.dp).coerceAtLeast(120.dp)).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("添加内容与能力", style = MaterialTheme.typography.titleLarge)
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                            listOf("拍照", "照片").forEach { label -> TextButton(onClick = {}, enabled = false) { Text(label) } }
+                            TextButton(onClick = {}, enabled = false) { Text("拍照") }
                             val target = state.selected?.conversation
+                            val canImport = target != null && !target.archived && !target.deleted && target.draft.pendingAttachment == null && target.draft.attachments.size < 4
+                            TextButton(onClick = {
+                                if (target != null) {
+                                    fileTarget = target.id.value; fileWorkspace = target.config.workspace; route = "conversation"
+                                    photoPicker.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                                }
+                            }, enabled = canImport && agentOptions.any { it.agent == target?.config?.agent && it.images && it.unavailable == null }) { Text("照片") }
                             TextButton(onClick = {
                                 if (target != null) { fileTarget = target.id.value; fileWorkspace = target.config.workspace; route = "conversation"; filePicker.launch(arrayOf("*/*")) }
                             }, enabled = target != null && !target.archived && !target.deleted && target.draft.pendingAttachment == null && target.draft.attachments.size < 4 && agentOptions.any { it.agent == target.config.agent && it.resources && it.unavailable == null }) { Text("本地文件") }
                         }
-                        Text("支持 UTF-8 文本文件，每个最多 32 KiB、每轮最多 4 个，文字与附件编码后合计最多 64 KiB。图片、拍照和 PDF 尚不可用；运行环境与网关就绪后可选择文件。", style = MaterialTheme.typography.bodySmall)
+                        Text("支持 UTF-8 文本（32 KiB）与 PNG/JPEG（2 MiB，最长边 4096、最多 800 万像素），每轮最多 4 个附件；文字编码后合计最多 64 KiB。模型须支持图片，Codex 的 Messages 网关不支持图片。拍照与 PDF 尚不可用。", style = MaterialTheme.typography.bodySmall)
                         TextButton(onClick = { route = "conversation"; voice = vm.composer.value }) { Text("语音输入") }
                         TextButton(onClick = { route = "plugins" }) { Text("插件") }
                         TextButton(onClick = { route = "skills" }) { Text("技能") }

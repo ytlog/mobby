@@ -22,7 +22,7 @@ API Key 和配置使用 Android Keystore AES-GCM 加密存储；启动器通过�
 
 ## 范围和限制
 
-- 跨协议支持文本与用户图片块（PNG/JPEG/WebP/GIF 的 base64 或 HTTP(S) URL），保持图文顺序与图片字节。桥接不主动下载 URL。提供商 file_id、图片 transformations、音频和远端托管工具等未适配输入明确失败。App 的图片导入与拍照入口仍未接通。
+- 跨协议支持文本与用户图片块（PNG/JPEG/WebP/GIF 的 base64 或 HTTP(S) URL），保持图文顺序与图片字节。桥接不主动下载 URL。提供商 file_id、图片 transformations、音频和远端托管工具等未适配输入明确失败。App 已接入照片选择与 PNG/JPEG 导入，拍照仍未接通。
 - Responses 的图片 detail 转到 Chat/Responses 时保留；Messages 没有等价字段，显式 low/high/original 均拒绝，auto 使用目标默认行为。当前 Codex 图片请求带 high，因此 Codex → Messages 图片路径不支持，不能视为六组合图片兼容。图片工具结果可转到 Messages/Responses，转到 Chat 明确拒绝。
 - 本地转换失败返回 HTTP 400，避免无意义重试；网络与上游响应解析失败仍返回 502。原生同协议请求不受跨协议字段限制。
 - 原生协议私有推理内容不能跨供应商转换；跨协议不转发 hidden reasoning / encrypted reasoning。同协议保留。
@@ -33,7 +33,7 @@ API Key 和配置使用 Android Keystore AES-GCM 加密存储；启动器通过�
 
 ## 验证
 
-运行 `node --test runtime/gateway-tests/bridge.test.cjs`。21 项测试覆盖 6 个 Agent 原生协议/上游协议组合、工具 ID 与结果、命名空间名称还原、取消请求、Codex 自定义工具、URL 规范化、SSE 透传、拒绝不支持的输入、鉴权错误脱敏、输出截断状态、并行工具调用分组、断流错误和原生直连配置，并覆盖图文顺序、图片字节、无法表示字段与工具图片结果的拒绝、转换错误不请求上游。
+运行 `node --test runtime/gateway-tests/bridge.test.cjs`。22 项测试覆盖 6 个 Agent 原生协议/上游协议组合、工具 ID 与结果、命名空间名称还原、取消请求、Codex 自定义工具、URL 规范化、SSE 透传、拒绝不支持的输入、鉴权错误脱敏、输出截断状态、并行工具调用分组、断流错误和原生直连配置，并覆盖图文顺序、图片字节、无法表示字段与工具图片结果的拒绝、转换错误不请求上游、受控标准输入文件与符号链接拒绝。
 
 参考：[Codex provider 配置](https://learn.chatgpt.com/docs/config-file/config-reference)、[Responses 事件](https://developers.openai.com/api/reference/resources/responses/streaming-events)、[Claude Code 网关配置](https://code.claude.com/docs/en/llm-gateway-connect)。
 
@@ -44,3 +44,5 @@ API Key 和配置使用 Android Keystore AES-GCM 加密存储；启动器通过�
 图片联调脚本：`runtime/gateway-tests/images-smoke.cjs`，使用同样的 CLI 环境变量，生成临时测试图片、隔离 HOME 与虚假密钥。2026-09-21 主机 Codex 0.155.0-alpha.9.2 / Claude Code 2.1.112 实测：五个组合完整传递图片字节；Codex → Messages 确认在上游调用前明确失败。该结果不等于 Android 图片入口、真实模型视觉能力或真实网关验收。
 
 图片格式依据：[OpenAI 图像输入](https://developers.openai.com/api/docs/guides/images-vision)、[Claude 图像输入](https://platform.claude.com/docs/en/build-with-claude/vision)。两个提供商的分辨率与 token 规则不同，不能把 Messages 默认处理推定为 OpenAI 显式 detail 的等价实现。
+
+2026-09-21 Android 图片输入路径：受控图片引用在执行前校验摘要；Codex 使用临时图片文件与 `--image`，Claude 使用临时 JSONL 文件作为标准输入（`--input-format stream-json`）。路径只在本地进程环境短暂传递并从 CLI 环境移除，图片不放入命令行参数或密钥配置。临时输入在结束/取消后删除，启动恢复确认旧进程已处理后清理残留。主机图片脚本已改用同样的标准输入方式，五个支持组合的新建与 resume 均通过；Codex → Messages 仍明确拒绝。

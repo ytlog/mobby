@@ -22,7 +22,7 @@ internal class AndroidRuntimePorts(
             AgentCapability(agent, if (config == null) emptyList() else listOf(ModelCapability(config.model, emptySet())),
                 unavailableReason = if (state.value.phase != EnvironmentPhase.READY) RuntimeError(ErrorCode.NOT_READY, true)
                     else if (config == null) RuntimeError(ErrorCode.INVALID_CONFIG) else null,
-                supportsResume = true, supportsApproval = false, supportsResources = true, skillCapabilities = skills.list(agent).filter { it.available }.map { it.ref }.toSet())
+                supportsResume = true, supportsApproval = false, supportsResources = true, supportsImages = config != null && !(agent == AgentId.CODEX && config.protocol == GatewayProtocol.MESSAGES), skillCapabilities = skills.list(agent).filter { it.available }.map { it.ref }.toSet())
         }))
     }
     override suspend fun validate(request: RunRequest): RuntimeError? = withContext(Dispatchers.IO) {
@@ -34,9 +34,9 @@ internal class AndroidRuntimePorts(
             return@withContext RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY)
         if (request.requestedOutput == RequestedOutput.SKILL_PROPOSAL && !skills.hasCreator(request.agentId, request.capabilityRefs))
             return@withContext RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY)
-        if (request.inputParts.filterIsInstance<InputPart.Resource>().any { runCatching { resources.read(it.ref, request.workspaceRef) }.isFailure })
+        if (request.inputParts.filterIsInstance<InputPart.Resource>().any { runCatching { resources.summary(it.ref, request.workspaceRef) }.isFailure })
             return@withContext RuntimeError(ErrorCode.RESOURCE_MISSING)
-        try { resources.prompt(request.inputParts, request.workspaceRef) }
+        try { resources.prepare(request.inputParts, request.workspaceRef) }
         catch (_: ResourceStore.InputTooLarge) { return@withContext RuntimeError(ErrorCode.INPUT_TOO_LARGE) }
         catch (_: Exception) { return@withContext RuntimeError(ErrorCode.INVALID_CONFIG) }
         val mode = mode(request.agentId)
@@ -44,7 +44,12 @@ internal class AndroidRuntimePorts(
         if (request.sessionRef?.value?.matches(Regex("[A-Za-z0-9-]{1,100}")) == false) return@withContext RuntimeError(ErrorCode.INVALID_CONFIG)
         val valid = runCatching {
             runtime.executable(mode)
-            gateways.load(mode, request.gatewayProfileRef.version).also { it.validate(); require(it.model == request.modelId) }
+            gateways.load(mode, request.gatewayProfileRef.version).also {
+                it.validate(); require(it.model == request.modelId)
+                if (request.agentId == AgentId.CODEX && it.protocol == GatewayProtocol.MESSAGES &&
+                    request.inputParts.filterIsInstance<InputPart.Resource>().any { part -> part.ref.value.startsWith("image:") })
+                    return@withContext RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY)
+            }
         }.isSuccess
         if (valid) null else RuntimeError(ErrorCode.INVALID_CONFIG)
     }
@@ -53,23 +58,27 @@ internal class AndroidRuntimePorts(
         var started = false
         var exit: Int? = null
         val worker = async(Dispatchers.IO) {
-            var prompt = skills.prompt(request.agentId, request.capabilityRefs, resources.prompt(request.inputParts, request.workspaceRef))
+            val prepared = resources.prepare(request.inputParts, request.workspaceRef)
+            var prompt = skills.prompt(request.agentId, request.capabilityRefs, prepared.prompt)
             if (request.requestedOutput == RequestedOutput.SKILL_PROPOSAL) {
                 prompt += "\n\n本轮创建技能只生成待确认草稿：如已完成澄清，请在最终回复中用四个反引号加 SKILL.md 开始、四个反引号结束的代码块给出完整文件（含 name、description 元信息和正文）。不要写入或安装技能文件；由用户在应用中预览校验并明确保存。需要进一步澄清时先提问。遵守现有权限与沙箱。"
             }
-            val args = AgentCommand.arguments(request, runtime.executable(mode(request.agentId)), prompt)
-            runtime.sdk.executor.executeArgsStreaming(listOf(File(runtime.sdk.vfs.binDir, "node").absolutePath,
-                File(context.filesDir, "gateway.cjs").absolutePath, mode(request.agentId).name) + args,
-                runtime.workspace, mapOf("MOBBY_GATEWAY_CONFIG" to config.json()),
-                onStarted = { pid -> started = true; registry.started(pid) },
-                onTerminated = { code -> exit = code; registry.terminated(code) }
-            ).collect { line ->
-                when (line) {
-                    is OutputLine.Stdout -> output(sanitize(line.text, config), false)
-                    is OutputLine.Stderr -> output(sanitize(line.text, config), true)
-                    is OutputLine.Exit -> exit = line.code
+            val input = if (prepared.images.isEmpty()) null else AgentInputFiles.create(File(context.filesDir, "agent-inputs"), request.agentId, prompt, prepared.images)
+            try {
+                val args = AgentCommand.arguments(request, runtime.executable(mode(request.agentId)), prompt, input?.imagePaths.orEmpty(), input?.stdin != null)
+                runtime.sdk.executor.executeArgsStreaming(listOf(File(runtime.sdk.vfs.binDir, "node").absolutePath,
+                    File(context.filesDir, "gateway.cjs").absolutePath, mode(request.agentId).name) + args,
+                    runtime.workspace, mapOf("MOBBY_GATEWAY_CONFIG" to config.json()) + (input?.stdin?.let { mapOf("MOBBY_AGENT_INPUT_FILE" to it.absolutePath) } ?: emptyMap()),
+                    onStarted = { pid -> started = true; registry.started(pid) },
+                    onTerminated = { code -> exit = code; registry.terminated(code) }
+                ).collect { line ->
+                    when (line) {
+                        is OutputLine.Stdout -> output(sanitize(line.text, config), false)
+                        is OutputLine.Stderr -> output(sanitize(line.text, config), true)
+                        is OutputLine.Exit -> exit = line.code
+                    }
                 }
-            }
+            } finally { input?.close() }
         }
         val watcher = launch { stop.filterNotNull().first(); worker.cancel() }
         try {

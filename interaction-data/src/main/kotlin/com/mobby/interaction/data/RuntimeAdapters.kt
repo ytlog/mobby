@@ -90,19 +90,19 @@ internal class RuntimeSystemAdapter(private val context: android.content.Context
             catch (_: SecurityException) { /* transient grant remains valid for this import */ }
             val name = resolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
                 if (it.moveToFirst()) it.getString(0) else null
-            } ?: "文本附件"
+            } ?: "附件"
             val bytes = java.io.ByteArrayOutputStream()
             resolver.openInputStream(uri)?.use { input ->
                 val buffer = ByteArray(8192)
-                while (true) { val n = input.read(buffer); if (n < 0) break; bytes.write(buffer, 0, n); require(bytes.size() <= 32 * 1024) }
+                while (true) { val n = input.read(buffer); if (n < 0) break; bytes.write(buffer, 0, n); require(bytes.size() <= 2 * 1024 * 1024) }
             } ?: return@withContext DataResult.Failed("无法读取所选文件")
             when (val result = admin.importResource(ImportResourceRequest(WorkspaceRef(workspace), name, bytes.toByteArray()))) {
                 is AdminResult.Success -> DataResult.Loaded(Attachment(result.value.ref.value, result.value.name, result.value.sizeBytes))
-                is AdminResult.Failed -> DataResult.Failed(if (result.error.code in setOf(ErrorCode.INVALID_CONFIG, ErrorCode.UNSUPPORTED_CAPABILITY)) "请选择不超过 32 KiB 的 UTF-8 文本文件，不支持图片、PDF 或二进制文件" else result.error.message())
+                is AdminResult.Failed -> DataResult.Failed(if (result.error.code in setOf(ErrorCode.INVALID_CONFIG, ErrorCode.UNSUPPORTED_CAPABILITY)) "支持 32 KiB 内 UTF-8 文本或 2 MiB 内 PNG/JPEG（最长边 4096、最多 800 万像素），不支持 PDF 与其他格式" else result.error.message())
             }
         } catch (e: CancellationException) { throw e }
         catch (_: SecurityException) { DataResult.Failed("文件授权失效，请重新选择") }
-        catch (_: Exception) { DataResult.Failed("文件读取失败或超过 32 KiB，请重试或移除") }
+        catch (_: Exception) { DataResult.Failed("文件读取失败或超过 2 MiB，请重试或移除") }
     }
     private fun SkillSummary.domain() = Skill(ref.value, DomainAgent.valueOf(agent.name), name, description, if (source == SkillSource.USER) "用户技能" else "CLI 内置", available, error?.let { "技能元信息、目录名称或文件路径无效" })
     private fun SkillPreview.domain() = SkillContent(name, description, body, markdown, issues.map { when (it) {
@@ -154,7 +154,7 @@ internal class RuntimeSystemAdapter(private val context: android.content.Context
     override val diagnostic = diagnostics.state.map { DiagnosticOutput(it.phase?.domain(), it.output) }
     override suspend fun agents(): List<AgentOption> = when (val result = client.capabilities()) {
         is CapabilityResult.Unavailable -> DomainAgent.values().map { AgentOption(it, emptyMap(), result.error.message(), false, emptySet()) }
-        is CapabilityResult.Available -> result.capabilities.agents.map { AgentOption(DomainAgent.valueOf(it.agentId.name), it.models.associate { m -> m.id to m.reasoningLevels }, it.unavailableReason?.message(), it.supportsResume, it.skillCapabilities.map { ref -> ref.value }.toSet(), it.supportsResources) }
+        is CapabilityResult.Available -> result.capabilities.agents.map { AgentOption(DomainAgent.valueOf(it.agentId.name), it.models.associate { m -> m.id to m.reasoningLevels }, it.unavailableReason?.message(), it.supportsResume, it.skillCapabilities.map { ref -> ref.value }.toSet(), it.supportsResources, it.supportsImages) }
     }
     override suspend fun gateways(): List<GatewayProfile> = when (val result = admin.listGatewayProfiles()) {
         is AdminResult.Success -> result.value.map { GatewayProfile(DomainAgent.valueOf(it.agent.name), it.ref.id, it.ref.version, it.endpoint, it.model, it.protocol.name, it.hasCredential) }

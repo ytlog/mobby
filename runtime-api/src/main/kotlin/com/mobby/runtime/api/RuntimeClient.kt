@@ -131,7 +131,7 @@ data class AgentCapability(
     val agentId: AgentId, val models: List<ModelCapability>, val unavailableReason: RuntimeError? = null,
     val supportsResume: Boolean = false, val supportsApproval: Boolean = false,
     val skillCapabilities: Set<CapabilityRef> = emptySet(),
-    val maxInputBytes: Int = 65536, val supportsResources: Boolean = false
+    val maxInputBytes: Int = 65536, val supportsResources: Boolean = false, val supportsImages: Boolean = false
 )
 @Serializable
 data class RuntimeCapabilities(val engineVersion: String, val agents: List<AgentCapability>, val apiMajor: Int = 1, val apiMinor: Int = 0)

@@ -16,6 +16,9 @@ class ProtocolDecoder(private val agent: AgentId) {
     private var lastAssistant = ""
     private var fallbackId = 0
     fun decode(line: String): List<AgentFact> {
+        if (agent == AgentId.CLAUDE_CODE && line.endsWith(" [line truncated]") &&
+            Regex("""^\s*\{\s*"type"\s*:\s*"user"""").containsMatchIn(line))
+            return listOf(AgentFact.Diagnostic("truncated-user-event", "CLI 用户事件超过输出行上限，无法完整解析"))
         val value = runCatching { Json.parseToJsonElement(line) as? JsonObject }.getOrNull()
             ?: return listOf(AgentFact.Diagnostic("invalid-json", line))
         return if (agent == AgentId.CODEX) codex(value, line) else claude(value, line)
@@ -63,6 +66,7 @@ class ProtocolDecoder(private val agent: AgentId) {
                     "tool_result" -> add(AgentFact.Tool(block.text("tool_use_id") ?: "tool-${fallbackId++}", "tool", "",
                         block["content"]?.let { content -> if (content is JsonPrimitive) content.content else content.toString() },
                         if ((block["is_error"] as? JsonPrimitive)?.booleanOrNull == true) ToolOutcome.FAILED else ToolOutcome.SUCCEEDED))
+                    "image" -> add(AgentFact.Diagnostic("image", "图片输入（内容不写入诊断日志）"))
                     "thinking", "redacted_thinking", "text" -> Unit
                     else -> add(AgentFact.Diagnostic(block.text("type") ?: "unknown-content", block.toString()))
                 }
@@ -83,7 +87,10 @@ class ProtocolDecoder(private val agent: AgentId) {
 }
 
 object AgentCommand {
-    fun arguments(request: RunRequest, executable: String, prompt: String): List<String> {
+    fun arguments(request: RunRequest, executable: String, prompt: String, imagePaths: List<String> = emptyList(), streamInput: Boolean = false): List<String> {
+        require(imagePaths.all { it.startsWith("/") && '\u0000' !in it })
+        require(request.agentId == AgentId.CODEX || imagePaths.isEmpty())
+        require(request.agentId == AgentId.CLAUDE_CODE || !streamInput)
         val session = request.sessionRef?.value
         require(session == null || session.matches(Regex("[A-Za-z0-9-]{1,100}")))
         return when (request.agentId) {
@@ -91,13 +98,15 @@ object AgentCommand {
                 add(executable); add("exec"); add("--json")
                 request.reasoningLevel?.let { addAll(listOf("-c", "model_reasoning_effort=${JsonPrimitive(it)}")) }
                 if (session != null) addAll(listOf("resume", session))
+                imagePaths.forEach { addAll(listOf("--image", it)) }
                 add("--"); add(prompt)
             }
             AgentId.CLAUDE_CODE -> buildList {
                 addAll(listOf(executable, "-p", "--output-format", "stream-json", "--verbose"))
                 request.reasoningLevel?.let { addAll(listOf("--effort", it)) }
                 if (session != null) addAll(listOf("--resume", session))
-                add("--"); add(prompt)
+                if (streamInput) addAll(listOf("--input-format", "stream-json"))
+                else { add("--"); add(prompt) }
             }
         }
     }

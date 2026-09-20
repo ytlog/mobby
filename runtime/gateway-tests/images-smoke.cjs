@@ -47,20 +47,25 @@ async function main() {
         else {res.setHeader('content-type','application/json');res.end(JSON.stringify(result));}
       });
       server.listen(0,'127.0.0.1');await once(server,'listening');
+      try {
       const home=mkdtempSync(join(root,'home-'));mkdirSync(join(home,'.codex'));
       // Fresh HOME and explicit minimal env: never load or forward the user's credentials.
       const env={PATH:process.env.PATH,HOME:home,CODEX_HOME:join(home,'.codex'),TMPDIR:tmpdir(),NO_COLOR:'1',TERM:'dumb',CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC:'1',DISABLE_AUTOUPDATER:'1',
         MOBBY_GATEWAY_CONFIG:JSON.stringify({endpoint:`http://127.0.0.1:${server.address().port}/v1`,protocol,model:'test-model',key:'fake-test-key'})};
       const exe=mode==='CODEX'?codex:process.execPath;
       const args=mode==='CODEX'?['exec','--skip-git-repo-check','--json','--image',fixture,'--',prompt]: [claude,'-p','--input-format','stream-json','--output-format','stream-json','--verbose'];
+      if(mode==='CLAUDE') {
+        const inputFile=join(home,'input.jsonl');
+        writeFileSync(inputFile,JSON.stringify({type:'user',message:{role:'user',content:[{type:'text',text:prompt},{type:'image',source:{type:'base64',media_type:'image/png',data:imageData}}]}})+'\n');
+        env.MOBBY_AGENT_INPUT_FILE=inputFile;
+      }
       const child=spawn(process.execPath,[bridge,mode,exe,...args],{cwd:work,env,stdio:['pipe','pipe','pipe']});
-      if(mode==='CLAUDE') child.stdin.end(JSON.stringify({type:'user',message:{role:'user',content:[{type:'text',text:prompt},{type:'image',source:{type:'base64',media_type:'image/png',data:imageData}}]}})+'\n');
-      else child.stdin.end();
+      child.stdin.end();
       let output='';child.stdout.on('data',c=>output+=c);child.stderr.on('data',c=>output+=c);
       const timer=setTimeout(()=>child.kill('SIGTERM'),60000);
       let code;
       try { [code]=await once(child,'exit'); }
-      finally {clearTimeout(timer);server.closeAllConnections();server.close();}
+      finally {clearTimeout(timer);}
       if (mode==='CODEX' && protocol==='messages') {
         assert.notEqual(code,0,output);
         assert.match(output,/detail/);
@@ -73,6 +78,23 @@ async function main() {
       assert.ok(imageSeen,`${mode}/${protocol}: image bytes missing or changed`);
       assert.equal(count,1);
       console.log(`PASS ${mode} -> ${protocol}: native CLI image bytes reached gateway`);
+      const events=output.split('\n').flatMap(line=>{try{return [JSON.parse(line)];}catch{return [];}});
+      const session=mode==='CODEX'?events.find(e=>e.type==='thread.started')?.thread_id:events.find(e=>e.type==='result')?.session_id;
+      assert.ok(session,'CLI must return the session identifier used by the next turn');
+      const resumeArgs=mode==='CODEX'?['exec','--skip-git-repo-check','--json','resume',session,'--image',fixture,'--',prompt]:[...args,'--resume',session];
+      imageSeen=false;
+      const resumed=spawn(process.execPath,[bridge,mode,exe,...resumeArgs],{cwd:work,env,stdio:['ignore','pipe','pipe']});
+      let resumedOutput='';resumed.stdout.on('data',c=>resumedOutput+=c);resumed.stderr.on('data',c=>resumedOutput+=c);
+      const resumedTimer=setTimeout(()=>resumed.kill('SIGTERM'),60000);
+      let resumedCode;
+      try { [resumedCode]=await once(resumed,'exit'); }
+      finally { clearTimeout(resumedTimer); }
+      assert.equal(resumedCode,0,resumedOutput);
+      assert.ok(resumedOutput.includes('IMAGE_INPUT_OK'),resumedOutput);
+      assert.ok(imageSeen,`${mode}/${protocol}: resumed image bytes missing`);
+      assert.equal(count,2);
+      console.log(`PASS ${mode} -> ${protocol}: resumed CLI accepted image input`);
+      } finally { server.closeAllConnections();server.close(); }
     }
   } finally {rmSync(root,{recursive:true,force:true});}
 }

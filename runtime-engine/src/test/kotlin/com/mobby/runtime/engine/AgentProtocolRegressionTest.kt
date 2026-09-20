@@ -32,4 +32,27 @@ class AgentProtocolRegressionTest {
         assertEquals("one\ntwo", ProtocolDecoder(AgentId.CLAUDE_CODE).decode(
             """{"type":"assistant","message":{"content":[{"type":"text","text":"one"},{"type":"tool_use"},{"type":"text","text":"two"}]}}""").filterIsInstance<AgentFact.Text>().single().text)
     }
+    @Test fun imageArgumentsUseNativeProtocolAndKeepResumeWithoutShellParsing() {
+        for (session in listOf(null, SessionRef("session-1"))) {
+            val request = RunRequest(RequestId("r"), AgentId.CODEX, WorkspaceRef("default"), emptyList(), "model", GatewayProfileRef("g", 0), sessionRef = session)
+            val image = "/private/image with 'quotes'.png"
+            val args = AgentCommand.arguments(request, "/agent", "look", listOf(image))
+            assertEquals(image, args[args.indexOf("--image") + 1])
+            assertEquals(listOf("--", "look"), args.takeLast(2))
+            assertEquals(session != null, "resume" in args)
+            val claude = AgentCommand.arguments(request.copy(agentId = AgentId.CLAUDE_CODE), "/agent", "private prompt", streamInput = true)
+            assertFalse(claude.contains("private prompt"))
+            assertEquals("stream-json", claude[claude.indexOf("--input-format") + 1])
+            assertEquals(session != null, "--resume" in claude)
+        }
+    }
+
+    @Test fun replayedUserImageDoesNotBecomeAnOversizedBase64Diagnostic() {
+        val facts = ProtocolDecoder(AgentId.CLAUDE_CODE).decode("""{"type":"user","message":{"content":[{"type":"image","source":{"type":"base64","media_type":"image/png","data":"private-image-bytes"}}]}}""")
+        assertFalse(facts.toString().contains("private-image-bytes"))
+        assertTrue(facts.filterIsInstance<AgentFact.Diagnostic>().any { it.kind == "image" })
+        val truncated = ProtocolDecoder(AgentId.CLAUDE_CODE).decode("""{"type":"user","message":{"content":[{"type":"image","source":{"data":"private-image-bytes [line truncated]""")
+        assertFalse(truncated.toString().contains("private-image-bytes"))
+    }
+
 }

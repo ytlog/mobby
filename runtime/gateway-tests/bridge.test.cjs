@@ -183,3 +183,18 @@ test('unrepresentable image detail is a non-retryable request error without an u
     assert.equal(requests,0);
   } finally {bridge.close();upstream.close();}
 });
+
+test('controlled stdin file is opened without following symlinks and input path is not forwarded',()=>{
+  const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
+  const {openAgentInput}=require('../../runtime-android/src/main/assets/gateway/bridge.cjs');
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'mobby-input-'));
+  try {
+    const file=path.join(root,'input.jsonl'); fs.writeFileSync(file,'{"message":"图像"}\n');
+    const descriptor=openAgentInput(file);
+    try {assert.equal(fs.readFileSync(descriptor,'utf8'),'{"message":"图像"}\n');} finally {fs.closeSync(descriptor);}
+    const symlink=path.join(root,'link');fs.symlinkSync(file,symlink);
+    assert.throws(()=>openAgentInput(symlink));assert.throws(()=>openAgentInput(root));
+    const launch=require('../../runtime-android/src/main/assets/gateway/bridge.cjs').agentLaunch('CLAUDE',[],{endpoint:'https://example.com/v1',protocol:'messages',model:'m',key:'fake'},{MOBBY_AGENT_INPUT_FILE:file});
+    assert.equal(launch.env.MOBBY_AGENT_INPUT_FILE,undefined);
+  } finally {fs.rmSync(root,{recursive:true,force:true});}
+});

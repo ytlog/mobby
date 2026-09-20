@@ -1,6 +1,7 @@
 'use strict';
 // CLI-native Messages/Responses -> selected gateway. No external npm dependencies.
 const http = require('node:http');
+const fs = require('node:fs');
 const {randomUUID, randomBytes, createHash} = require('node:crypto');
 const {spawn} = require('node:child_process');
 const {Readable} = require('node:stream');
@@ -358,6 +359,7 @@ function agentLaunch(mode, args, config, environment, bridge = null) {
   const token = bridge?.token || config.key;
   const env = {...environment};
   delete env.MOBBY_GATEWAY_CONFIG;
+  delete env.MOBBY_AGENT_INPUT_FILE;
   const agentArgs = [...args];
   if (mode === 'CLAUDE') {
     Object.assign(env, {ANTHROPIC_BASE_URL:base, ANTHROPIC_AUTH_TOKEN:token, ANTHROPIC_API_KEY:'', ANTHROPIC_MODEL:config.model,
@@ -378,16 +380,30 @@ function agentLaunch(mode, args, config, environment, bridge = null) {
   } else throw Error('不支持的 Agent');
   return {args:agentArgs, env};
 }
+function openAgentInput(path) {
+  const fd = fs.openSync(path, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
+  try {
+    const stat = fs.fstatSync(fd);
+    if (!stat.isFile() || stat.size > MAX_BODY) throw Error('不支持的 Agent 输入文件');
+    return fd;
+  } catch (error) { fs.closeSync(fd); throw error; }
+}
 async function main() {
   const config = JSON.parse(process.env.MOBBY_GATEWAY_CONFIG);
   delete process.env.MOBBY_GATEWAY_CONFIG;
   const [mode, executable, ...args] = process.argv.slice(2);
   const bridge = nativeBase(mode, config) === null ? await createBridge(config) : null;
   const launch = agentLaunch(mode, args, config, process.env, bridge);
-  const child = spawn(executable, launch.args, {env:launch.env, stdio:'inherit'});
+  let input;
+  let child;
+  try {
+    if (process.env.MOBBY_AGENT_INPUT_FILE) input = openAgentInput(process.env.MOBBY_AGENT_INPUT_FILE);
+    child = spawn(executable, launch.args, {env:launch.env, stdio:input === undefined ? 'inherit' : [input, 1, 2]});
+  } catch (error) { bridge?.close(); throw error; }
+  finally { if (input !== undefined) fs.closeSync(input); }
   child.on('error', () => { console.error('无法启动 Agent'); bridge?.close(); process.exitCode=1; });
   child.on('exit', code => { bridge?.close(); process.exitCode=code ?? 1; });
   for (const signal of ['SIGTERM','SIGINT']) process.on(signal, () => { child.kill(signal); bridge?.close(); });
 }
-module.exports = {endpoint, canonical, encode, decode, nativeResponse, sendNative, createBridge, nativeBase, agentLaunch};
+module.exports = {openAgentInput, endpoint, canonical, encode, decode, nativeResponse, sendNative, createBridge, nativeBase, agentLaunch};
 if (require.main === module) main().catch(() => { console.error('无法启动网关，请检查配置'); process.exitCode=1; });
