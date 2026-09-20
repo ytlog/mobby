@@ -6,12 +6,14 @@ import kotlinx.coroutines.async
 
 data class Message(val id: String, val text: String)
 data class Step(val id: String, val kind: String, val summary: String, val output: String, val outcome: String?)
+data class SkillProposal(val ref: String, val markdown: String, val agent: AgentId)
 data class Turn(
     val id: TurnId, val userText: String, val execution: ExecutionId?, val phase: ExecutionPhase?,
     val messages: List<Message> = emptyList(), val steps: List<Step> = emptyList(),
     val diagnostics: List<Message> = emptyList(), val failure: String? = null,
     val progress: String? = null, val pending: Boolean = false, val occupied: Boolean = false,
-    val expanded: Boolean? = null, val expandedSteps: Set<String> = emptySet()
+    val expanded: Boolean? = null, val expandedSteps: Set<String> = emptySet(),
+    val skillProposals: List<SkillProposal> = emptyList(), val creatingSkill: Boolean = false, val proposalsLoading: Boolean = false
 )
 data class ConversationSummary(val conversation: Conversation, val phase: ExecutionPhase? = null, val occupied: Boolean = false)
 data class ConversationDetail(val conversation: Conversation, val turns: List<Turn>)

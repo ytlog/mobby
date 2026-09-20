@@ -66,6 +66,8 @@ sealed interface InputPart {
     data class Resource(val ref: ResourceRef) : InputPart
 }
 @Serializable
+enum class RequestedOutput { TEXT, SKILL_PROPOSAL }
+@Serializable
 data class RunRequest(
     val requestId: RequestId,
     val agentId: AgentId,
@@ -76,13 +78,14 @@ data class RunRequest(
     val reasoningLevel: String? = null,
     val sessionRef: SessionRef? = null,
     val capabilityRefs: Set<CapabilityRef> = emptySet(),
-    val apiMajor: Int = 1
+    val apiMajor: Int = 1,
+    val requestedOutput: RequestedOutput = RequestedOutput.TEXT
 )
 @Serializable
 data class RunConfigSnapshot(
     val agentId: AgentId, val workspaceRef: WorkspaceRef, val modelId: String,
     val reasoningLevel: String?, val gatewayProfileRef: GatewayProfileRef,
-    val capabilityRefs: Set<CapabilityRef>
+    val capabilityRefs: Set<CapabilityRef>, val requestedOutput: RequestedOutput = RequestedOutput.TEXT
 )
 @Serializable
 sealed interface SubmitResult {

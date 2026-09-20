@@ -45,6 +45,7 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
     var drawer by rememberSaveable { mutableStateOf(false) }
     val appearance by actions.appearance.collectAsStateWithLifecycle()
     var dialog by rememberSaveable { mutableStateOf<String?>(null) }
+    var skillProposal by remember { mutableStateOf<SkillProposal?>(null) }
     var voice by remember { mutableStateOf<ComposerState?>(null) }
     var reading by remember { mutableStateOf<Pair<String, String>?>(null) }
     val snackbar = remember { SnackbarHostState() }
@@ -88,7 +89,7 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                                 state.selected == null -> Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { Button(onClick = { dialog = "new" }) { Text("新建对话") } }
                                 else -> {
                                     val detail = state.selected!!
-                                    key(detail.conversation.id) { Timeline(detail, vm, Modifier.weight(1f), read = { title, text -> reading = title to text }, hostActions = hostActions) }
+                                    key(detail.conversation.id) { Timeline(detail, vm, Modifier.weight(1f), read = { title, text -> reading = title to text }, hostActions = hostActions, proposal = { skillProposal = it }) }
                                     Composer(detail, state, system, vm, onAdd = { navigate("add") }, onVoice = { keyboard?.hide(); voice = vm.composer.value })
                                 }
                             }
@@ -111,6 +112,7 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                         Spacer(Modifier.height(16.dp))
                     }
                 }
+                skillProposal?.let { proposal -> SkillProposalDialog(proposal, vm, onDismiss = { skillProposal = null }, onSaved = { skillProposal = null; route = "skills" }) }
                 voice?.let { original -> VoiceInputSheet(onDismiss = { voice = null }, insert = { text -> vm.insertVoice(original, text) }) }
                 reading?.let { (title, text) ->
                     ModalBottomSheet(onDismissRequest = { reading = null }) {
@@ -216,8 +218,9 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
         if (unavailable) Text("此对话已归档或删除，请先在设置中恢复", style = MaterialTheme.typography.bodySmall)
         if (state.occupied != null && active == null) Text("${state.occupied!!.conversation.title} 正在执行，本轮草稿可继续编辑", style = MaterialTheme.typography.bodySmall)
         if (system.diagnosticBusy) Text("Shell 诊断正在占用运行环境", style = MaterialTheme.typography.bodySmall)
-        if (detail.conversation.draft.capabilities.isNotEmpty()) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            detail.conversation.draft.capabilities.forEach { ref -> InputChip(selected = true,
+        if (detail.conversation.creator != null) Text("Skill Creator 已绑定此创建会话", style = MaterialTheme.typography.labelSmall)
+        if (detail.conversation.draft.capabilities.any { it != detail.conversation.creator }) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            detail.conversation.draft.capabilities.filter { it != detail.conversation.creator }.forEach { ref -> InputChip(selected = true,
                 onClick = { vm.enqueue { vm.actions.removeSkill(detail.conversation.id, ref) } }, label = { Text("${ref.split(':').getOrNull(3) ?: "技能"} ×") }) }
         }
         Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
@@ -238,8 +241,8 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
 }
 
 @OptIn(FlowPreview::class)
-@Composable private fun Timeline(detail: ConversationDetail, vm: ConversationViewModel, modifier: Modifier, read: (String, String) -> Unit, hostActions: InteractionHostActions) {
-    val keys = buildList { detail.turns.forEach { t -> add("user:${t.id.value}"); add("run:${t.id.value}"); t.messages.forEach { add("message:${t.id.value}:${it.id}") }; if (t.failure != null || t.phase in listOf(ExecutionPhase.CANCELLED, ExecutionPhase.TIMED_OUT, ExecutionPhase.INTERRUPTED, ExecutionPhase.OUTCOME_UNKNOWN, ExecutionPhase.AWAITING_APPROVAL)) add("status:${t.id.value}") } }
+@Composable private fun Timeline(detail: ConversationDetail, vm: ConversationViewModel, modifier: Modifier, read: (String, String) -> Unit, hostActions: InteractionHostActions, proposal: (SkillProposal) -> Unit) {
+    val keys = buildList { detail.turns.forEach { t -> add("user:${t.id.value}"); add("run:${t.id.value}"); t.messages.forEach { add("message:${t.id.value}:${it.id}") }; t.skillProposals.forEach { add("artifact:${t.id.value}:${it.ref}") }; if (t.creatingSkill && !t.occupied && t.skillProposals.isEmpty() && !t.proposalsLoading) add("creator:${t.id.value}"); if (t.failure != null || t.phase in listOf(ExecutionPhase.CANCELLED, ExecutionPhase.TIMED_OUT, ExecutionPhase.INTERRUPTED, ExecutionPhase.OUTCOME_UNKNOWN, ExecutionPhase.AWAITING_APPROVAL)) add("status:${t.id.value}") } }
     val initial = keys.indexOf(detail.conversation.anchor).coerceAtLeast(0)
     val list = rememberLazyListState(initial, detail.conversation.anchorOffset.coerceAtLeast(0))
     var follow by remember { mutableStateOf(detail.conversation.anchor == null) }
@@ -291,6 +294,15 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                         }
                     }
                 } }
+                turn.skillProposals.forEach { candidate -> item(key = "artifact:${turn.id.value}:${candidate.ref}") {
+                    OutlinedCard(onClick = { proposal(candidate) }) { Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                        Text("生成的技能草稿", style = MaterialTheme.typography.titleMedium)
+                        Text("预览、校验并保存到 ${candidate.agent.label()}")
+                    } }
+                } }
+                if (turn.creatingSkill && !turn.occupied && turn.skillProposals.isEmpty() && !turn.proposalsLoading) item(key = "creator:${turn.id.value}") {
+                    Text("本轮没有可保存的技能草稿。请根据回复继续补充需求；执行完成不表示技能已添加。", style = MaterialTheme.typography.bodySmall)
+                }
                 if ("status:${turn.id.value}" in keys) item(key = "status:${turn.id.value}") {
                     Surface(color = MaterialTheme.colorScheme.errorContainer, shape = RoundedCornerShape(12.dp)) {
                         Column(Modifier.fillMaxWidth().padding(12.dp)) {

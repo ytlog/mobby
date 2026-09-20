@@ -19,9 +19,9 @@ data class Conversation(
     val hasTurns: Boolean = false, val session: String? = null,
     val title: String = "新对话", val pinned: Boolean = false, val project: String? = null,
     val archived: Boolean = false, val deleted: Boolean = false,
-    val anchor: String? = null, val anchorOffset: Int = 0, val updatedAt: Long = 0
+    val anchor: String? = null, val anchorOffset: Int = 0, val updatedAt: Long = 0, val creator: String? = null
 )
-data class TurnExecution(val turnId: TurnId, val conversationId: ConversationId, val draft: Draft, val config: NextTurnConfig, val session: String?)
+data class TurnExecution(val turnId: TurnId, val conversationId: ConversationId, val draft: Draft, val config: NextTurnConfig, val session: String?, val creatingSkill: Boolean = false)
 enum class Failure { BUSY, INVALID_CONFIG, UNSUPPORTED_CAPABILITY, UNAVAILABLE, EMPTY_DRAFT, PENDING_SUBMISSION }
 sealed interface Submission {
     data class Accepted(val executionId: ExecutionId) : Submission
@@ -79,7 +79,7 @@ object ConversationRules {
         return if (current.hasTurns && config.agent != current.config.agent) {
             require(newId != current.id)
             Conversation(newId, config, Draft(text = current.draft.text))
-        } else current.copy(config = config, session = if (current.config.agent == config.agent) current.session else null)
+        } else current.copy(config = config, session = if (current.config.agent == config.agent) current.session else null, creator = if (current.config.agent == config.agent) current.creator else null)
     }
 
     fun createSkillConversation(current: Conversation, newId: ConversationId, creator: String?): Conversation? {
@@ -87,7 +87,7 @@ object ConversationRules {
         require(newId != current.id)
         return Conversation(newId, current.config, Draft(
             text = "请用 /skill-creator 帮我创建技能，要求是：", capabilities = setOf(creator)
-        ))
+        ), creator = creator)
     }
 }
 

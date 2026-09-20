@@ -65,7 +65,7 @@ class RunCoordinator(
                 active.value?.let { return@withLock SubmitResult.Rejected(RuntimeError(ErrorCode.BUSY, true), it) }
                 environment.validate(frozen)?.let { return@withLock SubmitResult.Rejected(it) }
                 val id = RunId(newId())
-                val config = RunConfigSnapshot(frozen.agentId, frozen.workspaceRef, frozen.modelId, frozen.reasoningLevel, frozen.gatewayProfileRef, frozen.capabilityRefs)
+                val config = RunConfigSnapshot(frozen.agentId, frozen.workspaceRef, frozen.modelId, frozen.reasoningLevel, frozen.gatewayProfileRef, frozen.capabilityRefs, frozen.requestedOutput)
                 val snapshot = RunSnapshot(id, RunPhase.ACCEPTED, 1, 1, config, sessionRef = frozen.sessionRef)
                 journal.accept(frozen.requestId, digest, snapshot, envelope(id, 1, RuntimeEvent.RunAccepted(config)))
                 val signal = MutableStateFlow<StopCause?>(null)
@@ -145,6 +145,7 @@ class RunCoordinator(
         var chunk = 0L
         var truncated = false
         val decoder = ProtocolDecoder(request.agentId)
+        val proposals = SkillProposalCollector()
         var eligible = true
         suspend fun emitFact(fact: AgentFact) = mutex.withLock {
             if (!healthy) return@withLock
@@ -166,8 +167,11 @@ class RunCoordinator(
             }
             when (fact) {
                 is AgentFact.Session -> if (old.sessionRef?.value != fact.id) append(old, RuntimeEvent.RunStarted(SessionRef(fact.id)), old.copy(sessionRef = SessionRef(fact.id)))
-                is AgentFact.Text -> segment(fact.messageId, fact.text)?.let { part ->
-                    append(old, RuntimeEvent.AssistantDelta(part), old.copy(outputSegments = old.outputSegments + part))
+                is AgentFact.Text -> {
+                    if (request.requestedOutput == RequestedOutput.SKILL_PROPOSAL) proposals.append(fact.messageId, fact.text)
+                    segment(fact.messageId, fact.text)?.let { part ->
+                        append(old, RuntimeEvent.AssistantDelta(part), old.copy(outputSegments = old.outputSegments + part))
+                    }
                 }
                 is AgentFact.Tool -> {
                     val existing = old.steps.firstOrNull { it.stepId == fact.id }
@@ -239,8 +243,16 @@ class RunCoordinator(
                         RunPhase.INTERRUPTED, RunPhase.OUTCOME_UNKNOWN -> RuntimeError(ErrorCode.INTERRUPTED)
                         else -> RuntimeError(if (cause == StopCause.STORAGE_FAILURE) ErrorCode.STORAGE_FULL else result.error ?: protocolError ?: ErrorCode.PROTOCOL_ERROR)
                     }
+                    var terminalBase = old
+                    if (phase == RunPhase.SUCCEEDED && request.requestedOutput == RequestedOutput.SKILL_PROPOSAL) {
+                        for (content in proposals.complete()) {
+                            val ref = outputStore.write(id, (chunk++).toString(), content)
+                            append(terminalBase, RuntimeEvent.ArtifactAvailable(ref), terminalBase.copy(artifacts = terminalBase.artifacts + ref))
+                            terminalBase = journal.snapshot(id)!!
+                        }
+                    }
                     val evidence = TerminalEvidence(protocolSuccess, result.exitCode, error, result.terminationConfirmed)
-                    append(old, RuntimeEvent.RunFinished(phase, evidence), old.copy(phase = phase, terminalEvidence = evidence, pendingApprovals = emptyList()))
+                    append(terminalBase, RuntimeEvent.RunFinished(phase, evidence), terminalBase.copy(phase = phase, terminalEvidence = evidence, pendingApprovals = emptyList()))
                     if (result.terminationConfirmed) { activeState.value = null; stop = null }
                 } catch (_: Exception) { failStorage() }
             }

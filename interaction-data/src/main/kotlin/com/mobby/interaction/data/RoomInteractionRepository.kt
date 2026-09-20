@@ -56,7 +56,7 @@ internal class RoomInteractionRepository(
     override suspend fun setSkill(id: ConversationId, ref: String, enabled: Boolean) = mutate(id) { c ->
         require(!enabled || ref.startsWith("skill:${c.config.agent.name}:"))
         val refs = if (enabled) c.draft.capabilities + ref else c.draft.capabilities - ref
-        require(refs.size <= 8)
+        require((refs + listOfNotNull(c.creator)).size <= 8)
         c.copy(draft = c.draft.copy(revision = c.draft.revision + 1, capabilities = refs))
     }
     override suspend fun createSkillConversation(id: ConversationId, creator: String): ConversationId = db.withTransaction {
@@ -91,10 +91,11 @@ internal class RoomInteractionRepository(
         if (dao.conversationTurns(c.id.value).any { it.pending }) return@withTransaction PrepareTurnResult.Rejected(Failure.PENDING_SUBMISSION)
         if (c.draft.text.isBlank() && c.draft.attachments.isEmpty()) return@withTransaction PrepareTurnResult.Rejected(Failure.EMPTY_DRAFT)
         if (dao.turn(turnId.value) != null) return@withTransaction PrepareTurnResult.Rejected(Failure.PENDING_SUBMISSION)
-        dao.save(TurnRow(turnId.value, c.id.value, c.draft.text, storageJson.encodeToString(StoredConversation.from(c)), now()))
+        val frozen = c.copy(draft = c.draft.copy(capabilities = c.draft.capabilities + listOfNotNull(c.creator)))
+        dao.save(TurnRow(turnId.value, c.id.value, c.draft.text, storageJson.encodeToString(StoredConversation.from(frozen)), now()))
         dao.save(c.copy(hasTurns = true, updatedAt = now(), title = if (!c.hasTurns && c.title == "新对话") c.draft.text.lineSequence().first().take(40).ifBlank { "新对话" } else c.title).row())
         inFlight.add(turnId.value)
-        PrepareTurnResult.Prepared(TurnExecution(turnId, c.id, c.draft, c.config, c.session))
+        PrepareTurnResult.Prepared(TurnExecution(turnId, c.id, frozen.draft, c.config, c.session, c.creator != null))
     }
     override suspend fun recordSubmission(turn: TurnExecution, result: Submission) {
         db.withTransaction {
@@ -178,18 +179,18 @@ internal class RoomInteractionRepository(
     private suspend fun saveProjection(turnId: String, snapshot: RunSnapshot) {
         val parts = snapshot.outputSegments + snapshot.steps.flatMap { it.output }
         val chunks = mutableListOf<ChunkRow>()
-        for (part in parts) if (dao.chunk(part.ref.value) == null) {
+        for (ref in (parts.map { it.ref } + snapshot.artifacts).distinct()) if (dao.chunk(ref.value) == null) {
             val bytes = ByteArrayOutputStream()
             var offset: Long? = 0
             do {
-                val read = client.readArtifact(ArtifactReadRequest(part.ref, offset!!, 65536))
+                val read = client.readArtifact(ArtifactReadRequest(ref, offset!!, 65536))
                 check(read is ArtifactReadResult.Chunk) { "Output segment unavailable" }
                 bytes.write(read.bytes.toByteArray())
                 check(bytes.size() <= 512 * 1024) { "Output segment too large" }
                 check((read.nextOffset?.let { it > offset!! } ?: true)) { "Non advancing output cursor" }
                 offset = read.nextOffset
             } while (offset != null)
-            chunks += ChunkRow(part.ref.value, snapshot.runId.value, bytes.toString("UTF-8"))
+            chunks += ChunkRow(ref.value, snapshot.runId.value, bytes.toString("UTF-8"))
         }
         db.withTransaction {
             val row = dao.turn(turnId) ?: return@withTransaction
@@ -211,6 +212,8 @@ internal class RoomInteractionRepository(
             snapshot?.outputSegments?.filterNot { it.messageId.startsWith("diagnostic:") }?.messages().orEmpty(),
             snapshot?.steps?.map { Step(it.stepId, it.toolKind, it.summary, it.output.joinToString("\n") { p -> content[p.ref.value].orEmpty() }, it.outcome?.name) }.orEmpty(),
             snapshot?.outputSegments?.filter { it.messageId.startsWith("diagnostic:") }?.messages().orEmpty(),
-            error ?: snapshot?.terminalEvidence?.error?.message(), snapshot?.progressSummary, pending, occupied, expanded, storageJson.decodeFromString(expandedSteps))
+            error ?: snapshot?.terminalEvidence?.error?.message(), snapshot?.progressSummary, pending, occupied, expanded, storageJson.decodeFromString(expandedSteps),
+            snapshot?.artifacts?.mapNotNull { ref -> content[ref.value]?.let { SkillProposal(ref.value, it, DomainAgent.valueOf(snapshot.acceptedConfig.agentId.name)) } }.orEmpty(),
+            storageJson.decodeFromString<StoredConversation>(frozen).creator != null, snapshot?.artifacts?.any { it.value !in content } == true)
     }
 }

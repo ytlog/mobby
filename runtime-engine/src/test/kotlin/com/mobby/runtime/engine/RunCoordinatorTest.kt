@@ -143,6 +143,35 @@ class RunCoordinatorTest {
         assertEquals(RunPhase.CANCELLED, restored.snapshot.phase)
         assertEquals(1, restored.snapshot.outputSegments.size)
     }
+    @Test fun `generated artifacts are durable events before terminal and replay in baseline`() = runTest {
+        val journal = MemoryJournal(); val output = MemoryOutput()
+        val runtime = RunCoordinator(backgroundScope, environment, process { _, _, emit ->
+            emit("""{"type":"item.completed","item":{"id":"proposal","type":"agent_message","text":"````SKILL.md\n---\nname: draft\ndescription: test\n---\nInstructions\n````"}}""", false)
+            emit("""{"type":"turn.completed"}""", false)
+            ProcessResult(0, true)
+        }, journal, output)
+        runtime.recover(); val id = (runtime.submit(request().copy(requestedOutput = RequestedOutput.SKILL_PROPOSAL)) as SubmitResult.Accepted).runId
+        runCurrent()
+        val snapshot = (runtime.observe(id).first() as RuntimeUpdate.Baseline).snapshot
+        assertEquals(RunPhase.SUCCEEDED, snapshot.phase)
+        assertEquals("---\nname: draft\ndescription: test\n---\nInstructions\n", output.content[snapshot.artifacts.single()])
+        val artifactIndex = journal.events.indexOfFirst { it.payload is RuntimeEvent.ArtifactAvailable }
+        assertTrue(artifactIndex >= 0)
+        assertTrue(artifactIndex < journal.events.indexOfFirst { it.payload is RuntimeEvent.RunFinished })
+    }
+    @Test fun `ordinary or failed turns never claim a saved skill proposal`() = runTest {
+        for ((purpose, exit) in listOf(RequestedOutput.TEXT to 0, RequestedOutput.SKILL_PROPOSAL to 1)) {
+            val journal = MemoryJournal()
+            val runtime = RunCoordinator(backgroundScope, environment, process { _, _, emit ->
+                emit("""{"type":"item.completed","item":{"id":"proposal","type":"agent_message","text":"````SKILL.md\nbody\n````"}}""", false)
+                emit("""{"type":"turn.completed"}""", false)
+                ProcessResult(exit, true)
+            }, journal, MemoryOutput())
+            runtime.recover(); val id = (runtime.submit(request().copy(requestedOutput = purpose)) as SubmitResult.Accepted).runId
+            runCurrent()
+            assertTrue(journal.states.getValue(id).artifacts.isEmpty())
+        }
+    }
     @Test fun `disk admission failure never starts process`() = runTest {
         val journal = MemoryJournal(); var started = false
         val runtime = RunCoordinator(backgroundScope, environment, process { _, _, _ -> started = true; ProcessResult(0, true) }, journal, MemoryOutput())

@@ -137,6 +137,30 @@ class RoomInteractionRepositoryTest {
         assertEquals("请用 /skill-creator 帮我创建技能，要求是：", creator.draft.text)
         assertEquals(creator.draft.text.length, creator.draft.selectionStart)
         assertEquals(setOf("skill:CODEX:BUILTIN:skill-creator:hash"), creator.draft.capabilities)
+        val firstCreator = (repository.prepareTurn(created, TurnId("creator-first")) as PrepareTurnResult.Prepared).turn
+        repository.recordSubmission(firstCreator, Submission.Rejected(Failure.BUSY))
+        repository.setSkill(created, "skill:CODEX:BUILTIN:skill-creator:hash", false)
+        repository.editDraft(created, "补充需求", 4, 4)
+        val followUp = (repository.prepareTurn(created, TurnId("creator-followup")) as PrepareTurnResult.Prepared).turn
+        assertEquals(setOf("skill:CODEX:BUILTIN:skill-creator:hash"), followUp.draft.capabilities)
+    }
+    @Test fun `proposal text and artifact reference survive projection and database reopen`() = runBlocking {
+        val c = state().selected!!.conversation
+        repository.editDraft(c.id, "create", 6, 6)
+        val turn = (repository.prepareTurn(c.id, TurnId("proposal")) as PrepareTurnResult.Prepared).turn
+        runtime.admit(turn)
+        val ref = ResourceRef("proposal/1")
+        val body = "---\nname: test\ndescription: 中文说明\n---\n正文步骤\n"
+        runtime.artifactBodies[ref] = body.toByteArray()
+        runtime.snapshots["proposal"] = runtime.snapshots.getValue("proposal").copy(phase = RunPhase.SUCCEEDED,
+            artifacts = listOf(ref), terminalEvidence = TerminalEvidence(true, 0, terminationConfirmed = true))
+        repository.recordSubmission(turn, Submission.Accepted(ExecutionId("proposal")))
+        val projected = state { it.selected?.turns?.singleOrNull()?.skillProposals?.isNotEmpty() == true }
+        assertEquals(body, projected.selected!!.turns.single().skillProposals.single().markdown)
+        scope.coroutineContext[Job]!!.cancelAndJoin(); db.close(); start()
+        val restored = state { it.selected?.turns?.singleOrNull()?.skillProposals?.isNotEmpty() == true }
+        assertEquals(ref.value, restored.selected!!.turns.single().skillProposals.single().ref)
+        assertEquals(body, restored.selected!!.turns.single().skillProposals.single().markdown)
     }
     private class TestRuntime : RuntimeClient {
         override val connection = MutableStateFlow(ConnectionState.CONNECTED)
@@ -157,6 +181,11 @@ class RoomInteractionRepositoryTest {
             snapshots[runId.value]?.let { emit(RuntimeUpdate.Baseline(it, EventCursor(runId, it.lastSequence))) }
             awaitCancellation()
         }
-        override suspend fun readArtifact(request: ArtifactReadRequest) = ArtifactReadResult.Unavailable(RuntimeError(ErrorCode.RESOURCE_MISSING))
+        val artifactBodies = mutableMapOf<ResourceRef, ByteArray>()
+        override suspend fun readArtifact(request: ArtifactReadRequest): ArtifactReadResult {
+            val bytes = artifactBodies[request.artifactRef] ?: return ArtifactReadResult.Unavailable(RuntimeError(ErrorCode.RESOURCE_MISSING))
+            val end = minOf(bytes.size, request.offset.toInt() + 17)
+            return ArtifactReadResult.Chunk(bytes.copyOfRange(request.offset.toInt(), end).toList(), end.toLong().takeIf { end < bytes.size }, false)
+        }
     }
 }

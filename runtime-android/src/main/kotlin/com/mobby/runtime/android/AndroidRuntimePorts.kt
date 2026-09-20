@@ -31,6 +31,8 @@ internal class AndroidRuntimePorts(
             return@withContext RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY)
         if (request.capabilityRefs.size > 8 || request.capabilityRefs.any { skills.resolve(it, request.agentId) == null })
             return@withContext RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY)
+        if (request.requestedOutput == RequestedOutput.SKILL_PROPOSAL && !skills.hasCreator(request.agentId, request.capabilityRefs))
+            return@withContext RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY)
         val text = request.inputParts.filterIsInstance<InputPart.Text>().joinToString("\n") { it.text }
         if (text.isBlank() || text.toByteArray().size > 65536 || '\u0000' in text) return@withContext RuntimeError(ErrorCode.INVALID_CONFIG)
         val mode = mode(request.agentId)
@@ -47,7 +49,11 @@ internal class AndroidRuntimePorts(
         var started = false
         var exit: Int? = null
         val worker = async(Dispatchers.IO) {
-            val args = AgentCommand.arguments(request, runtime.executable(mode(request.agentId)), skills.prompt(request.agentId, request.capabilityRefs, request.inputParts.filterIsInstance<InputPart.Text>().joinToString("\n") { it.text }))
+            var prompt = skills.prompt(request.agentId, request.capabilityRefs, request.inputParts.filterIsInstance<InputPart.Text>().joinToString("\n") { it.text })
+            if (request.requestedOutput == RequestedOutput.SKILL_PROPOSAL) {
+                prompt += "\n\n本轮创建技能只生成待确认草稿：如已完成澄清，请在最终回复中用四个反引号加 SKILL.md 开始、四个反引号结束的代码块给出完整文件（含 name、description 元信息和正文）。不要写入或安装技能文件；由用户在应用中预览校验并明确保存。需要进一步澄清时先提问。遵守现有权限与沙箱。"
+            }
+            val args = AgentCommand.arguments(request, runtime.executable(mode(request.agentId)), prompt)
             runtime.sdk.executor.executeArgsStreaming(listOf(File(runtime.sdk.vfs.binDir, "node").absolutePath,
                 File(context.filesDir, "gateway.cjs").absolutePath, mode(request.agentId).name) + args,
                 runtime.workspace, mapOf("MOBBY_GATEWAY_CONFIG" to config.json()),

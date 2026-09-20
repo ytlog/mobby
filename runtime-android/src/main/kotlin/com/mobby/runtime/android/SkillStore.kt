@@ -76,6 +76,7 @@ internal class SkillStore(private val home: File) {
         } finally { File(temporary, "SKILL.md").delete(); temporary.delete() }
         return list(agent).single { it.name == preview.name && it.source == root.source }
     }
+    fun hasCreator(agent: AgentId, refs: Set<CapabilityRef>): Boolean = list(agent).any { it.available && it.name == "skill-creator" && it.ref in refs }
     fun prompt(agent: AgentId, refs: Set<CapabilityRef>, text: String): String {
         if (refs.isEmpty()) return text
         val selectedNames = mutableSetOf<String>()

@@ -28,7 +28,7 @@ async function main() {
         if (count===1) discovered=serialized.includes('SKILL_DISCOVERY_SENTINEL');
         if (count>1) read=serialized.includes('SKILL_BODY_SENTINEL');
         const args=mode==='CODEX'?{cmd:`cat '${file.replaceAll("'","'\\''")}'`,max_output_tokens:300}:{skill:'skill-test'};
-        const canonical={content:count===1?'':'SKILL_TEST_OK',calls:count===1?[{id:'call_skill',type:'function',function:{name:mode==='CODEX'?'exec_command':'Skill',arguments:JSON.stringify(args)}}]:[],input:10,output:4};
+        const canonical={content:count===1?'':'SKILL_TEST_OK\n\n````SKILL.md\n---\nname: proposed-skill\ndescription: Generated proposal fixture\n---\nReview the requested files.\n````',calls:count===1?[{id:'call_skill',type:'function',function:{name:mode==='CODEX'?'exec_command':'Skill',arguments:JSON.stringify(args)}}]:[],input:10,output:4};
         const result=nativeResponse(canonical,protocol,'test-model');
         if(body.stream)sendNative(res,result,protocol,true);else {res.setHeader('content-type','application/json');res.end(JSON.stringify(result));}
       });
@@ -42,7 +42,7 @@ async function main() {
       let output='';child.stdout.on('data',c=>output+=c);child.stderr.on('data',c=>output+=c);
       const timeout=setTimeout(()=>child.kill('SIGTERM'),60000);
       let code;try { [code]=await once(child,'exit'); } finally {clearTimeout(timeout);server.closeAllConnections();server.close();}
-      assert.equal(code,0,output);assert.ok(output.includes('SKILL_TEST_OK'),output);
+      assert.equal(code,0,output);assert.ok(output.includes('SKILL_TEST_OK'),output);assert.ok(output.includes('proposed-skill'),output);
       assert.ok(discovered,`${mode}: skill missing from actual CLI discovery`);
       assert.ok(read,`${mode}: skill file was not returned by actual tool\n${output}`);
       console.log(`PASS ${mode}: skill discovered and read through actual CLI tool`);

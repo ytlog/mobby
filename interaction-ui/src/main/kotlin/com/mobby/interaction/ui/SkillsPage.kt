@@ -78,8 +78,9 @@ internal data class SkillEditor(val agent: AgentId, val manual: Boolean, val nam
                 detailError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 detail?.let { content ->
                     Text(content.description)
+                    val bound = conversation?.creator != null && conversation.creator == skill?.ref
                     val chosen = conversation?.draft?.capabilities?.contains(skill?.ref) == true
-                    Button(onClick = { if (conversation != null && skill != null) vm.enqueue { vm.report(vm.actions.setSkill(conversation.id, skill, !chosen)) } }, enabled = conversation != null && skill?.available == true) { Text(if (chosen) "从本轮移除" else "加入本轮草稿") }
+                    Button(onClick = { if (conversation != null && skill != null) vm.enqueue { vm.report(vm.actions.setSkill(conversation.id, skill, !chosen)) } }, enabled = conversation != null && skill?.available == true && !bound) { Text(if (bound) "已绑定此创建会话" else if (chosen) "从本轮移除" else "加入本轮草稿") }
                     androidx.compose.foundation.text.selection.SelectionContainer { Text(content.body, style = MaterialTheme.typography.bodyLarge) }
                 }
                 if (detail == null && detailError == null) CircularProgressIndicator()
@@ -177,4 +178,43 @@ internal data class SkillEditor(val agent: AgentId, val manual: Boolean, val nam
         }
         Text("同名技能不会覆盖。保存不会启动任务；技能会进入 Agent 的本机技能目录。", style = MaterialTheme.typography.bodySmall)
     }
+}
+
+@Composable internal fun SkillProposalDialog(proposal: SkillProposal, vm: ConversationViewModel, onDismiss: () -> Unit, onSaved: () -> Unit) {
+    var markdown by remember(proposal.ref) { mutableStateOf(proposal.markdown) }
+    var preview by remember(proposal.ref) { mutableStateOf<SkillContent?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    fun validate() {
+        busy = true; error = null
+        val content = markdown
+        vm.enqueue {
+            try { when (val result = vm.actions.previewSkill(content)) {
+                is DataResult.Loaded -> preview = result.value
+                is DataResult.Failed -> error = result.message
+            } } finally { busy = false }
+        }
+    }
+    LaunchedEffect(proposal.ref) { validate() }
+    AlertDialog(onDismissRequest = { if (!busy) onDismiss() }, title = { Text("技能草稿 · ${proposal.agent.label()}") }, text = {
+        Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("确认保存后才会加入技能目录。可在这里修改生成内容。", style = MaterialTheme.typography.bodySmall)
+            OutlinedTextField(markdown, { markdown = it; preview = null; error = null }, Modifier.fillMaxWidth(), minLines = 5, maxLines = 10, enabled = !busy)
+            preview?.issues?.forEach { Text(it, color = MaterialTheme.colorScheme.error) }
+            error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+        }
+    }, confirmButton = {
+        if (preview == null || preview?.issues?.isNotEmpty() == true) TextButton(onClick = ::validate, enabled = !busy) { Text("校验") }
+        else TextButton(onClick = {
+            busy = true; error = null
+            val content = markdown
+            vm.enqueue {
+                try { when (val saved = vm.actions.importSkill(proposal.agent, content)) {
+                    is DataResult.Loaded -> { vm.feedback.send("技能已保存"); onSaved() }
+                    is DataResult.Failed -> error = saved.message
+                } } finally { busy = false }
+            }
+        }, enabled = !busy) { Text("保存技能") }
+    }, dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("返回，稍后处理") } })
 }
