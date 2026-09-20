@@ -34,3 +34,9 @@
 - `python3 -m unittest discover -s runtime -p 'test_*.py'`
 - 使用 JDK 17 执行 `./gradlew :app:assembleDebug :app:testDebugUnitTest :termux-core:testDebugUnitTest :app:lintDebug`
 - 真 CLI 的模拟网关联调使用 `runtime/gateway-tests/cli-smoke.cjs`；使用隔离的 HOME 和虚假测试密钥。
+
+## 文档管理
+
+- 项目自有需求、方案、使用说明和实施记录统一放在 `Docker/`，设计文档放在 `Docker/design/`；根目录仅保留精简的 `README.md` 与本文件。
+- `Docker/README.md` 维护文档索引。文档迁移或重命名时同步修复项目内引用，不保留失效链接或重复设计副本。
+- 第三方源码自带文档、许可证及配套资源保留原位；构建产物、缓存、本地配置和真实网关配置不得混入文档。

@@ -12,7 +12,7 @@
 <section class="phone-view" id="view-detail" hidden><div class="phone-scroll"><p><strong>回归测试</strong><br><small>以下是演示日志，不代表项目实际结果。</small></p><pre id="output-text">2 passed · 1 running</pre></div></section>
 <section class="phone-view" id="view-new" hidden><div class="phone-scroll"><h3>在本机开始一个任务</h3><p id="new-summary">Codex · 当前工作区</p><p class="caption">新建仅演示页面流转。真实版本将检查依赖、网关与会话配置。</p></div><div class="composer"><textarea aria-label="新任务内容" id="new-draft" placeholder="描述你想完成的任务…" rows="3"></textarea><button id="demo-send" class="primary">演示发送</button></div></section>
 <div class="gesture" aria-hidden="true"></div></div><p class="notice" id="demo-notice" role="status">示例数据，不执行命令。手机系统行为须在原生版本验收。</p></section>
-<p>版本：v2 · Android 手机优先 · 待 Review。日期：2026-09-20。HTML 为当前唯一完整设计稿；原 Markdown 仅保留入口。</p>
+<p>版本：v2 · Android 手机优先 · 待 Review。日期：2026-09-20。HTML 为当前唯一完整设计稿；统一入口见 Docker/README.md。</p>
 <h2 id="section-1">1. 建议结论</h2>
 <p>采用「对话列表首页 → 全屏对话 → 全屏详情」的 Android 页面导航。首版围绕 360–430dp 手机竖屏设计，兼顾 320dp 小屏、横屏、分屏和大字体。对话列表不再以桌面常驻侧栏或侧滑抽屉作为主入口，详情不再挤在右侧。</p>
 <p>保留 Codex 的内容组织方式：用户消息、执行过程、最终答复分层；视觉使用中性色与轻量分隔。控件、返回、输入法、权限和后台生命周期按 Android 习惯实现。首版只有“对话”一个主要目的地，不为了模仿客户端增加底部多 Tab；设置从列表工具栏进入。</p>
