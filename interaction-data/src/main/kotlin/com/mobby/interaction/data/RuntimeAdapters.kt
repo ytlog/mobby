@@ -62,7 +62,7 @@ internal class RuntimeSystemAdapter(private val context: android.content.Context
     private fun SkillPreview.domain() = SkillContent(name, description, body, markdown, issues.map { when (it) {
         SkillIssue.INVALID_FRONTMATTER -> "YAML 元信息无效，请修正后再导入"
         SkillIssue.UNCLOSED_FRONTMATTER -> "元信息缺少结束分隔符 ---"
-        SkillIssue.INVALID_NAME -> "名称须为 1–64 位小写字母、数字或连字符，不能使用 synced"
+        SkillIssue.INVALID_NAME -> "名称须为 1–63 位小写字母、数字或连字符，不能使用 synced"
         SkillIssue.INVALID_DESCRIPTION -> "请填写不超过 1024 字的用途和触发场景"
         SkillIssue.EMPTY_BODY -> "技能正文不能为空"
     } })

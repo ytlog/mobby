@@ -34,7 +34,7 @@ object SkillDocument {
                 } catch (_: Exception) { issues += SkillIssue.INVALID_FRONTMATTER }
             }
         }
-        if (!name.matches(Regex("[a-z0-9]+(?:-[a-z0-9]+)*")) || name.length > 64 || name == "synced") issues += SkillIssue.INVALID_NAME
+        if (!name.matches(Regex("[a-z0-9]+(?:-[a-z0-9]+)*")) || name.length >= 64 || name == "synced") issues += SkillIssue.INVALID_NAME
         if (description.isBlank() || description.length > 1024) issues += SkillIssue.INVALID_DESCRIPTION
         if (body.isBlank()) issues += SkillIssue.EMPTY_BODY
         return SkillPreview(name, description, body, text, issues)

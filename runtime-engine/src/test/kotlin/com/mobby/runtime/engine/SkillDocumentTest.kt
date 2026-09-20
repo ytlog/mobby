@@ -20,6 +20,10 @@ class SkillDocumentTest {
             assertTrue(SkillDocument.preview(text).issues.isNotEmpty())
         }
     }
+    @Test fun `design requires skill names shorter than 64 characters`() {
+        assertTrue(SkillDocument.manual("a".repeat(63), "description", "body").issues.isEmpty())
+        assertTrue(SkillDocument.manual("a".repeat(64), "description", "body").issues.isNotEmpty())
+    }
     @Test fun `oversize and null bytes are rejected before parsing`() {
         for (text in listOf("a".repeat(SkillDocument.MAX_BYTES + 1), "a\u0000b")) assertThrows(IllegalArgumentException::class.java) { SkillDocument.preview(text) }
     }
