@@ -79,7 +79,7 @@ import com.mobby.interaction.domain.*
         ActionIcon("返回", back, Icons.Outlined.ArrowBack); Text(title, style = MaterialTheme.typography.titleLarge)
     }
 }
-@Composable internal fun SettingsPage(system: SystemStatus, appearance: String, setAppearance: (String) -> Unit, navigate: (String) -> Unit, back: () -> Unit, vm: ConversationViewModel) {
+@Composable internal fun SettingsPage(system: SystemStatus, appearance: Appearance, setAppearance: (Appearance) -> Unit, navigate: (String) -> Unit, back: () -> Unit, vm: ConversationViewModel) {
     Column(Modifier.fillMaxSize()) {
         PageHeader("设置", back)
         Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -88,7 +88,7 @@ import com.mobby.interaction.domain.*
             OutlinedButton(onClick = { vm.enqueue { vm.report(vm.actions.initialize()) } }) { Text("重新检查运行环境") }
             TextButton(onClick = { navigate("diagnostic") }) { Text("Shell 诊断") }
             Text("外观", style = MaterialTheme.typography.titleMedium)
-            listOf("system" to "跟随系统", "dark" to "深色", "light" to "浅色").forEach { (key, label) ->
+            listOf(Appearance.SYSTEM to "跟随系统", Appearance.DARK to "深色", Appearance.LIGHT to "浅色").forEach { (key, label) ->
                 Row { RadioButton(appearance == key, { setAppearance(key) }); TextButton(onClick = { setAppearance(key) }) { Text(label) } }
             }
             TextButton(onClick = { navigate("archived") }) { Text("已归档与最近删除") }
@@ -172,14 +172,23 @@ import com.mobby.interaction.domain.*
         Text("当前没有应用提供且可调用的插件。", Modifier.padding(24.dp))
     }
 }
-@Composable internal fun FindDialog(detail: ConversationDetail, onDismiss: () -> Unit) {
+@Composable internal fun FindDialog(detail: ConversationDetail, onDismiss: () -> Unit, onSelect: (SearchHit) -> Unit) {
     var query by rememberSaveable { mutableStateOf("") }
-    val results = detail.turns.flatMap { listOf(it.userText) + it.messages.map { m -> m.text } }.filter { query.isNotBlank() && it.contains(query, true) }
+    val results = remember(detail, query) { ConversationSearch.find(detail, query) }
     AlertDialog(onDismissRequest = onDismiss, title = { Text("在聊天中查找") }, text = {
-        Column(Modifier.verticalScroll(rememberScrollState())) {
-            OutlinedTextField(query, { query = it }, label = { Text("查找消息") })
-            Text("${results.size} 条匹配消息")
-            results.forEach { Text(it, Modifier.padding(vertical = 12.dp)) }
+        Column {
+            OutlinedTextField(query, { query = it }, label = { Text("查找消息") }, singleLine = true)
+            Text("${results.size} 条匹配消息，点击可定位")
+            LazyColumn(Modifier.heightIn(max = 360.dp)) {
+                items(results, key = { it.targetKey }) { hit ->
+                    TextButton(onClick = { onSelect(hit) }) {
+                        Column(Modifier.fillMaxWidth()) {
+                            Text(if (hit.messageId == null) "你" else detail.conversation.config.agent.label(), style = MaterialTheme.typography.labelSmall)
+                            Text(hit.text, maxLines = 4, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                        }
+                    }
+                }
+            }
         }
     }, confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } })
 }

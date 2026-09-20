@@ -127,3 +127,15 @@ Room 的真实 SQLite/Robolectric 测试覆盖接纳与拒绝、切换草稿、�
 依据：[Codex 技能发现与调用](https://learn.chatgpt.com/docs/build-skills)、[Claude Code 技能](https://code.claude.com/docs/en/skills)。验证结果与设备状态在本节后补充；附件导入、创建技能产物保存、完整 Markdown、主题持久化、查找跳转、预测返回及设备交互验收仍未完成。
 
 验证：94 项 Kotlin/Android library 单测（API 8、engine 22、runtime-android 9、Domain 10、Data 9、UI 4、SDK 32）、Node.js 17、Python 8，共 119 项通过；主 APK、辅助测试 APK 与 lint 构建通过。技能专项真实 CLI 两项及网关六种组合通过。主 APK 已覆盖安装并启动，原加密网关配置摘要一致；设备仍锁屏，未重试被系统拒绝的辅助测试安装，未把主机结果计入手机交互验收。
+
+## 外观、查找与阅读位置（2026-09-21）
+
+- 外观设置通过 Domain 偏好端口写入独立的非敏感 SharedPreferences，跟随系统/深色/浅色跨适配器重建保留；未知值回退到跟随系统，不清理其他数据。网关加密存储不受影响。Activity 开启 edge-to-edge，根 Compose 统一处理系统栏 inset，系统栏明暗与应用选择同步。
+- 聊天查找只搜索用户消息与助手正文，排除工具日志、诊断和配置。结果保留原轮次/消息 ID，点击请求定位到原消息，关闭查找面板并停止跟随最新输出；角色不同的消息不会共用定位键。
+- 离开会话时立即把最后可见消息和偏移交给 ViewModel 写入，补足原先 250ms 防抖尚未触发就切页的情况。
+
+验证：Domain 12、Data 11、UI 5 项相关测试通过，其中新增两项主题持久化/异常值测试、两项搜索目标测试，以及一项 Robolectric Compose 点击测试；Compose 测试实际输入查询并点击回复，验证返回原消息目标且不展示诊断内容。主 APK、辅助测试 APK、lint 和 Python 8 项通过。这些测试不等同于实机滚动与系统栏验收；手机仍锁屏，实机键盘、字体缩放、预测返回及阅读恢复仍待验证。
+
+系统栏实现参考 [Android edge-to-edge 指南](https://developer.android.com/develop/ui/views/layout/edge-to-edge-manually)。技能生成产物的确认保存、附件接入、完整 Markdown、长历史分页与其余运行恢复/设备验收仍需继续。
+
+本检查点主 APK 已覆盖安装并启动，安装前后原加密网关配置摘要一致；未清空 HOME、工作区或会话数据库。

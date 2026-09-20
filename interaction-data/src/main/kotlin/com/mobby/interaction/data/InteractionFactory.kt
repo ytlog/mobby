@@ -11,6 +11,6 @@ object InteractionFactory {
         val execution = RuntimeExecutionAdapter(client)
         val system = RuntimeSystemAdapter(context.applicationContext, client, admin, diagnostics)
         val repository = RoomInteractionRepository(InteractionDatabase.open(context), client, system, scope, execution)
-        return InteractionUseCases(repository, execution, system, { UUID.randomUUID().toString() }, scope)
+        return InteractionUseCases(repository, execution, system, { UUID.randomUUID().toString() }, scope, InteractionPreferences(context))
     }
 }

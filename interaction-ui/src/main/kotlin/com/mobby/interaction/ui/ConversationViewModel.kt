@@ -9,7 +9,14 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
 
+internal data class ReadingTarget(val conversation: ConversationId, val key: String, val sequence: Long)
 internal class ConversationViewModel(val actions: InteractionUseCases) : ViewModel() {
+    val readingTarget = MutableStateFlow<ReadingTarget?>(null)
+    private var readingSequence = 0L
+    fun jumpTo(id: ConversationId, hit: SearchHit) {
+        readingTarget.value = ReadingTarget(id, hit.targetKey, ++readingSequence)
+    }
+    fun consumed(target: ReadingTarget) { readingTarget.compareAndSet(target, null) }
     val state = actions.state.stateIn(viewModelScope, SharingStarted.Eagerly, InteractionState())
     val status = actions.status.stateIn(viewModelScope, SharingStarted.Eagerly, SystemStatus())
     val diagnostic = actions.diagnostic.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DiagnosticOutput(null, emptyList()))

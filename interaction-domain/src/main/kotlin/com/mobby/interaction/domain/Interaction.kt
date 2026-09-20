@@ -80,8 +80,11 @@ class InteractionUseCases(
     private val execution: ExecutionPort,
     private val system: SystemPort,
     private val nextId: () -> String,
-    private val submissionScope: CoroutineScope
+    private val submissionScope: CoroutineScope,
+    private val preferences: PreferencePort
 ) {
+    val appearance get() = preferences.appearance
+    suspend fun setAppearance(value: Appearance) = preferences.setAppearance(value)
     val state get() = repository.state
     val status get() = system.status
     val diagnostic get() = system.diagnostic

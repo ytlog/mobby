@@ -31,7 +31,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlin.math.roundToInt
 
-class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String, String) -> Unit)
+class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String, String) -> Unit, val appearance: (Boolean) -> Unit)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable fun InteractionEntry(actions: InteractionUseCases, hostActions: InteractionHostActions) {
@@ -43,14 +43,15 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
     val system by vm.status.collectAsStateWithLifecycle()
     var route by rememberSaveable { mutableStateOf("conversation") }
     var drawer by rememberSaveable { mutableStateOf(false) }
-    var appearance by rememberSaveable { mutableStateOf("system") }
+    val appearance by actions.appearance.collectAsStateWithLifecycle()
     var dialog by rememberSaveable { mutableStateOf<String?>(null) }
     var voice by remember { mutableStateOf<ComposerState?>(null) }
     var reading by remember { mutableStateOf<Pair<String, String>?>(null) }
     val snackbar = remember { SnackbarHostState() }
     val keyboard = LocalSoftwareKeyboardController.current
     val focus = LocalFocusManager.current
-    val dark = appearance == "dark" || appearance == "system" && isSystemInDarkTheme()
+    val dark = appearance == Appearance.DARK || appearance == Appearance.SYSTEM && isSystemInDarkTheme()
+    LaunchedEffect(dark) { hostActions.appearance(dark) }
     val colors = if (dark) darkColorScheme(background = Color(0xFF111213), surface = Color(0xFF111213), surfaceVariant = Color(0xFF2C2E30), primary = Color(0xFF80BAFF))
         else lightColorScheme(background = Color(0xFFFAFAFA), surface = Color(0xFFFAFAFA), surfaceVariant = Color(0xFFE5E7E9), primary = Color(0xFF145BB0))
     LaunchedEffect(vm) { for (message in vm.feedback) snackbar.showSnackbar(message) }
@@ -71,7 +72,7 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                 Surface(Modifier.requiredWidth(fullWidth).fillMaxHeight().offset { IntOffset((pixels * progress).roundToInt(), 0) }
                     .then(if (drawer) Modifier.clearAndSetSemantics {} else Modifier)) {
                     when (route) {
-                        "settings" -> SettingsPage(system, appearance, { appearance = it }, { navigate(it) }, { route = "conversation" }, vm)
+                        "settings" -> SettingsPage(system, appearance, { value -> vm.enqueue { vm.report(actions.setAppearance(value)) } }, { navigate(it) }, { route = "conversation" }, vm)
                         "gateway" -> GatewayPage(vm) { route = "settings" }
                         "diagnostic" -> DiagnosticPage(vm) { route = "settings" }
                         "archived" -> ArchivedPage(state, vm) { route = "settings" }
@@ -134,7 +135,7 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                     "delete" -> AlertDialog(onDismissRequest = { dialog = null }, title = { Text("删除对话？") }, text = { Text("对话将移入最近删除，可在设置中恢复；工作区文件不会删除。") },
                         confirmButton = { TextButton(onClick = { vm.enqueue { vm.report(actions.delete(c.id, true)) }; dialog = null }) { Text("删除") } }, dismissButton = { TextButton(onClick = { dialog = null }) { Text("取消") } })
                     "attachments" -> AlertDialog(onDismissRequest = { dialog = null }, title = { Text("对话附件") }, text = { Text("已发送附件：无\n本轮草稿附件：${c.draft.attachments.size} 个") }, confirmButton = { TextButton(onClick = { dialog = null }) { Text("关闭") } })
-                    "find" -> FindDialog(state.selected!!, onDismiss = { dialog = null })
+                    "find" -> FindDialog(state.selected!!, onDismiss = { dialog = null }, onSelect = { hit -> vm.jumpTo(c.id, hit); dialog = null })
                     "share" -> ShareDialog(state.selected!!, hostActions.share, onDismiss = { dialog = null })
                     "shortcut" -> { LaunchedEffect(c.id) { hostActions.shortcut(c.id.value, c.title); dialog = null } }
                 }
@@ -243,6 +244,25 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
     val list = rememberLazyListState(initial, detail.conversation.anchorOffset.coerceAtLeast(0))
     var follow by remember { mutableStateOf(detail.conversation.anchor == null) }
     val scope = rememberCoroutineScope()
+    val target by vm.readingTarget.collectAsStateWithLifecycle()
+    LaunchedEffect(target, keys) {
+        val jump = target?.takeIf { it.conversation == detail.conversation.id } ?: return@LaunchedEffect
+        val index = keys.indexOf(jump.key)
+        if (index >= 0) {
+            follow = false
+            list.scrollToItem(index)
+            vm.enqueue { vm.actions.anchor(jump.conversation, jump.key, 0) }
+            vm.consumed(jump)
+        }
+    }
+    DisposableEffect(list, detail.conversation.id) {
+        val id = detail.conversation.id
+        onDispose {
+            val key = list.layoutInfo.visibleItemsInfo.firstOrNull()?.key?.toString()
+            val offset = list.firstVisibleItemScrollOffset
+            if (key != null) vm.enqueue { vm.actions.anchor(id, key, offset) }
+        }
+    }
     val dragging by list.interactionSource.collectIsDraggedAsState()
     LaunchedEffect(dragging) { if (dragging) follow = false }
     LaunchedEffect(list) {
@@ -252,7 +272,7 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
     LaunchedEffect(outputVersion) { if (follow && !list.isScrollInProgress && keys.isNotEmpty()) list.scrollToItem(keys.lastIndex) }
     LaunchedEffect(list) {
         snapshotFlow { list.layoutInfo.visibleItemsInfo.firstOrNull()?.key?.toString() to list.firstVisibleItemScrollOffset }.debounce(250).collect { (key, offset) ->
-            if (key != null) vm.actions.anchor(detail.conversation.id, key, offset)
+            if (key != null) vm.enqueue { vm.actions.anchor(detail.conversation.id, key, offset) }
         }
     }
     Box(modifier.fillMaxWidth()) {

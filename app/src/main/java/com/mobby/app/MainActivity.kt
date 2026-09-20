@@ -6,6 +6,8 @@ import android.content.pm.ShortcutManager
 import android.graphics.drawable.Icon
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.enableEdgeToEdge
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.lifecycle.lifecycleScope
 import com.mobby.interaction.domain.ConversationId
@@ -17,6 +19,7 @@ class MainActivity : ComponentActivity() {
     private val actions get() = (application as MobbyApplication).interaction
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         openConversation(intent)
         val host = InteractionHostActions(share = { text ->
             startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text), "分享消息"))
@@ -27,6 +30,10 @@ class MainActivity : ComponentActivity() {
                 manager.requestPinShortcut(ShortcutInfo.Builder(this, "conversation-$id").setShortLabel(title.take(40))
                     .setIcon(Icon.createWithResource(this, R.drawable.ic_launcher)).setIntent(target).build(), null)
             } else android.widget.Toast.makeText(this, "当前桌面不支持添加快捷方式", android.widget.Toast.LENGTH_SHORT).show()
+        }, appearance = { dark ->
+            val background = if (dark) android.graphics.Color.rgb(17, 18, 19) else android.graphics.Color.rgb(250, 250, 250)
+            val style = if (dark) SystemBarStyle.dark(background) else SystemBarStyle.light(background, background)
+            enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
         })
         setContent { InteractionEntry(actions, host) }
     }
