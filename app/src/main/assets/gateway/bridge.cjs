@@ -3,6 +3,8 @@
 const http = require('node:http');
 const {randomUUID, randomBytes, createHash} = require('node:crypto');
 const {spawn} = require('node:child_process');
+const {Readable} = require('node:stream');
+const {pipeline} = require('node:stream/promises');
 const MAX_BODY = 16 * 1024 * 1024;
 const id = prefix => prefix + randomUUID().replaceAll('-', '');
 const toolAlias = (namespace, name) => namespace ? 'ns_' + createHash('sha256').update(namespace + '\0' + name).digest('hex').slice(0, 24) : name;
@@ -16,6 +18,7 @@ const text = value => {
   }).join('\n');
 };
 function endpoint(config) {
+  if (!['chat', 'responses', 'messages'].includes(config.protocol)) throw Error('网关协议无效');
   const url = new URL(config.endpoint);
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw Error('网关 URL 无效');
   let path = url.pathname.replace(/\/+$/, '');
@@ -66,8 +69,12 @@ function canonical(body, source) {
     const input = typeof body.input === 'string' ? [{role:'user', content:body.input}] : body.input || [];
     for (const item of input) {
       if (item.type === 'function_call' || item.type === 'custom_tool_call') {
-        messages.push({role:'assistant', content:null, tool_calls:[{id:item.call_id, type:'function', function:{name:toolAlias(item.namespace, item.name),
-          arguments:item.type === 'custom_tool_call' ? JSON.stringify({input:item.input}) : item.arguments}}]});
+        const call = {id:item.call_id, type:'function', function:{name:toolAlias(item.namespace, item.name),
+          arguments:item.type === 'custom_tool_call' ? JSON.stringify({input:item.input}) : item.arguments}};
+        const previous = messages.at(-1);
+        // Chat requires all parallel calls in the assistant turn before their results.
+        if (previous?.role === 'assistant') (previous.tool_calls ||= []).push(call);
+        else messages.push({role:'assistant', content:null, tool_calls:[call]});
       } else if (item.type === 'function_call_output' || item.type === 'custom_tool_call_output') {
         messages.push({role:'tool', tool_call_id:item.call_id, content:text(item.output)});
       } else if (item.type === 'reasoning') { /* Provider-specific hidden reasoning cannot be transferred. */ }
@@ -241,16 +248,14 @@ async function createBridge(config) {
         res.end(JSON.stringify({type:'error', error:{type:'api_error', message:`网关 HTTP ${response.status}，请检查地址、协议、模型和密钥`}}));
       } else if (same) {
         res.writeHead(200, {'content-type':response.headers.get('content-type') || 'application/json'});
-        for await (const chunk of response.body) {
-          if (!res.write(chunk)) await new Promise(resolve => { res.once('drain', resolve); res.once('close', resolve); });
-          if (res.destroyed) break;
-        }
-        res.end();
+        await pipeline(Readable.fromWeb(response.body), res, {signal:controller.signal});
       } else {
         const decoded = decode(JSON.parse(await readBounded(response.body)), config.protocol);
         sendNative(res, nativeResponse(decoded, source, config.model, c.custom, c.aliases), source, body.stream);
       }
     } catch (error) {
+      // Once SSE headers/data are sent, an HTTP/JSON error would corrupt the stream.
+      if (res.headersSent || res.destroyed) { res.destroy(); return; }
       if (!res.headersSent) res.writeHead(502, {'content-type':'application/json'});
       // Only local validation errors are useful; network errors may contain URLs or credentials.
       const message = /^(跨协议|不支持|网关|请输入)/.test(error.message) ? error.message : '网关请求失败，请检查网络与协议配置';
@@ -261,33 +266,51 @@ async function createBridge(config) {
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
   return {url:`http://127.0.0.1:${server.address().port}`, token, close:() => { for (const c of controllers) c.abort(); server.closeAllConnections(); server.close(); }};
 }
+// The CLI speaks its native protocol directly whenever URL/auth allow it.
+function nativeBase(mode, config) {
+  const protocol = mode === 'CLAUDE' ? 'messages' : mode === 'CODEX' ? 'responses' : null;
+  if (!protocol) throw Error('不支持的 Agent');
+  if (config.protocol !== protocol || !config.key) return null;
+  const url = endpoint(config);
+  if (mode === 'CLAUDE') return url.endsWith('/v1/messages') ? url.slice(0, -'/v1/messages'.length) : null;
+  return url.slice(0, -'/responses'.length);
+}
+function agentLaunch(mode, args, config, environment, bridge = null) {
+  const base = bridge?.url || nativeBase(mode, config);
+  if (!base) throw Error('网关需要协议或路径适配');
+  const token = bridge?.token || config.key;
+  const env = {...environment};
+  delete env.MDOER_GATEWAY_CONFIG;
+  const agentArgs = [...args];
+  if (mode === 'CLAUDE') {
+    Object.assign(env, {ANTHROPIC_BASE_URL:base, ANTHROPIC_AUTH_TOKEN:token, ANTHROPIC_API_KEY:'', ANTHROPIC_MODEL:config.model,
+      ANTHROPIC_DEFAULT_OPUS_MODEL:config.model, ANTHROPIC_DEFAULT_SONNET_MODEL:config.model, ANTHROPIC_DEFAULT_HAIKU_MODEL:config.model,
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC:'1'});
+  } else if (mode === 'CODEX') {
+    env.MDOER_GATEWAY_TOKEN = token;
+    const options = [
+      'model_provider="mdoer"', `model=${JSON.stringify(config.model)}`,
+      'model_providers.mdoer.name="Mdoer Gateway"', `model_providers.mdoer.base_url=${JSON.stringify(bridge ? base + '/v1' : base)}`,
+      'model_providers.mdoer.env_key="MDOER_GATEWAY_TOKEN"', 'model_providers.mdoer.wire_api="responses"',
+      'model_providers.mdoer.requires_openai_auth=false', 'model_providers.mdoer.supports_websockets=false'
+    ];
+    if (config.protocol !== 'responses') options.push(
+      'model_auto_compact_token_limit=100000000', 'model_supports_reasoning_summaries=false', 'web_search="disabled"'
+    );
+    agentArgs.unshift(...options.flatMap(value => ['-c', value]));
+  } else throw Error('不支持的 Agent');
+  return {args:agentArgs, env};
+}
 async function main() {
   const config = JSON.parse(process.env.MDOER_GATEWAY_CONFIG);
   delete process.env.MDOER_GATEWAY_CONFIG;
   const [mode, executable, ...args] = process.argv.slice(2);
-  const bridge = await createBridge(config);
-  const env = {...process.env};
-  const agentArgs = [...args];
-  if (mode === 'CLAUDE') {
-    Object.assign(env, {ANTHROPIC_BASE_URL:bridge.url, ANTHROPIC_AUTH_TOKEN:bridge.token, ANTHROPIC_API_KEY:'', ANTHROPIC_MODEL:config.model,
-      ANTHROPIC_DEFAULT_OPUS_MODEL:config.model, ANTHROPIC_DEFAULT_SONNET_MODEL:config.model, ANTHROPIC_DEFAULT_HAIKU_MODEL:config.model,
-      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC:'1'});
-  } else {
-    env.MDOER_LOCAL_TOKEN = bridge.token;
-    const options = [
-      'model_provider="mdoer"', `model=${JSON.stringify(config.model)}`,
-      'model_providers.mdoer.name="Mdoer Gateway"', `model_providers.mdoer.base_url=${JSON.stringify(bridge.url + '/v1')}`,
-      'model_providers.mdoer.env_key="MDOER_LOCAL_TOKEN"', 'model_providers.mdoer.wire_api="responses"',
-      'model_providers.mdoer.requires_openai_auth=false', 'model_providers.mdoer.supports_websockets=false',
-      'model_providers.mdoer.request_max_retries=0', 'model_providers.mdoer.stream_max_retries=0',
-      'model_auto_compact_token_limit=100000000', 'model_supports_reasoning_summaries=false', 'web_search="disabled"'
-    ];
-    agentArgs.unshift(...options.flatMap(value => ['-c', value]));
-  }
-  const child = spawn(executable, agentArgs, {env, stdio:'inherit'});
-  child.on('error', () => { console.error('无法启动 Agent'); bridge.close(); process.exitCode=1; });
-  child.on('exit', code => { bridge.close(); process.exitCode=code ?? 1; });
-  for (const signal of ['SIGTERM','SIGINT']) process.on(signal, () => { child.kill(signal); bridge.close(); });
+  const bridge = nativeBase(mode, config) === null ? await createBridge(config) : null;
+  const launch = agentLaunch(mode, args, config, process.env, bridge);
+  const child = spawn(executable, launch.args, {env:launch.env, stdio:'inherit'});
+  child.on('error', () => { console.error('无法启动 Agent'); bridge?.close(); process.exitCode=1; });
+  child.on('exit', code => { bridge?.close(); process.exitCode=code ?? 1; });
+  for (const signal of ['SIGTERM','SIGINT']) process.on(signal, () => { child.kill(signal); bridge?.close(); });
 }
-module.exports = {endpoint, canonical, encode, decode, nativeResponse, sendNative, createBridge};
+module.exports = {endpoint, canonical, encode, decode, nativeResponse, sendNative, createBridge, nativeBase, agentLaunch};
 if (require.main === module) main().catch(() => { console.error('无法启动网关，请检查配置'); process.exitCode=1; });

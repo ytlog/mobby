@@ -105,3 +105,35 @@ test('namespace tools retain names and namespace across call/result turns',()=>{
   assert.equal(next.messages[0].tool_calls[0].function.name,alias);
   assert.equal(next.messages[1].tool_call_id,'call_1');
 });
+test('parallel Responses calls become one assistant turn followed by all tool results',()=>{
+  const body={input:[{role:'user',content:'Read two files'},
+    {type:'function_call',call_id:'a',name:'read_file',arguments:'{"path":"a"}'},
+    {type:'function_call',call_id:'b',name:'read_file',arguments:'{"path":"b"}'},
+    {type:'function_call_output',call_id:'a',output:'A'},
+    {type:'function_call_output',call_id:'b',output:'B'}]};
+  const chat=encode(canonical(body,'responses'),'chat','m');
+  assert.deepEqual(chat.messages.map(m=>m.role),['user','assistant','tool','tool']);
+  assert.deepEqual(chat.messages[1].tool_calls.map(c=>c.id),['a','b']);
+});
+test('broken upstream SSE terminates the connection, never appends JSON to an SSE body',async()=>{
+  const upstream=await mock((req,res)=>{
+    res.writeHead(200,{'content-type':'text/event-stream'});
+    res.write('event: response.created\ndata: {}\n\n');
+    setTimeout(()=>res.destroy(),30);
+  });
+  const bridge=await createBridge({endpoint:upstream.url,protocol:'responses',model:'m',key:''});
+  try {
+    const response=await fetch(bridge.url+'/v1/responses',{method:'POST',headers:{authorization:'Bearer '+bridge.token},body:JSON.stringify(input('responses'))});
+    await assert.rejects(response.text());
+  } finally {bridge.close();upstream.close();}
+});
+test('native protocols configure direct CLI connections without conversion-only restrictions',()=>{
+  const {agentLaunch}=require('../../app/src/main/assets/gateway/bridge.cjs');
+  for(const mode of ['CLAUDE','CODEX']) {
+    const config={endpoint:'https://gateway.example/v1',protocol:mode==='CLAUDE'?'messages':'responses',model:'m',key:'test-secret'};
+    const launch=agentLaunch(mode,['exec'],config,{},null);
+    assert.ok(!launch.args.join(' ').includes('test-secret'));
+    if(mode==='CLAUDE') {assert.equal(launch.env.ANTHROPIC_BASE_URL,'https://gateway.example');assert.equal(launch.env.ANTHROPIC_AUTH_TOKEN,'test-secret');}
+    else {assert.ok(launch.args.includes('model_providers.mdoer.base_url="https://gateway.example/v1"'));assert.ok(!launch.args.some(a=>a.includes('model_auto_compact_token_limit')));}
+  }
+});

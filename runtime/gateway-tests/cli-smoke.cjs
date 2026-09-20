@@ -20,6 +20,13 @@ async function main() {
     for (const mode of ['CODEX','CLAUDE']) for (const protocol of ['chat','messages','responses']) {
       let count=0, resultSeen=false;
       const server=createServer(async(req,res)=>{
+        const expected = protocol === 'chat' ? '/v1/chat/completions' : '/v1/' + protocol;
+        // Native CLIs may probe models/capabilities: do not treat those as inference requests.
+        if (req.method !== 'POST' || req.url.split('?')[0] !== expected) {
+          res.writeHead(404, {'content-type':'application/json'});
+          res.end(JSON.stringify({error:{message:'Mock capability endpoint unavailable'}}));
+          return;
+        }
         const chunks=[];for await(const c of req)chunks.push(c);
         const body=JSON.parse(Buffer.concat(chunks));count++;
         if(count>1) resultSeen=JSON.stringify(body).includes('TOOL_ROUNDTRIP_OK');

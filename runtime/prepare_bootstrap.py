@@ -49,6 +49,11 @@ def prepare(output, ndk=None):
                 mapping[path] = name
             else:
                 data_zip.writestr(path, data)
+    # Gradle reuses this output directory; removed dependencies must not remain in the APK.
+    expected = set(mapping.values())
+    for previous in native.glob('*.so'):
+        if previous.name not in expected:
+            previous.unlink()
     (assets / 'binaries.json').write_text(json.dumps(mapping, sort_keys=True))
     (assets / 'version.txt').write_text(lock['sha256'] + agents_version)
     print(f'Prepared {len(mapping)} executable/library files; bootstrap {lock["sha256"]}')

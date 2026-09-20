@@ -12,26 +12,26 @@
 
 ## 运行方式
 
-Claude Code 本身使用 Messages，Codex 使用 Responses。每次任务由内置 Node.js 启动临时本地网关，再以参数数组启动原来的 CLI；上游可选三种协议。服务仅监听 `127.0.0.1` 随机端口并要求随机令牌，任务结束关闭服务。Shell 不接收网关凭据。没有添加跳过 CLI 沙箱和权限检查参数。
+Claude Code 本身使用 Messages，Codex 使用 Responses。内置 Node.js 以参数数组启动原来的 CLI。协议匹配且带密钥时优先使用 CLI 官方环境变量/provider 配置直连网关；Claude 的直连地址须采用 `/v1/messages` 后缀。跨协议、Claude 特殊路径或无鉴权配置才启动本地桥接。桥接服务仅监听 `127.0.0.1` 随机端口并要求随机令牌，任务结束关闭服务。Shell 不接收网关凭据。没有添加跳过 CLI 沙箱和权限检查参数。
 
-相同协议转发原始请求与流式响应，覆盖模型为用户设置的名称。跨协议转换文本、system 指令、函数工具定义、工具调用及结果，并支持 Codex 自定义文本工具（如 apply_patch）的函数封装、命名空间工具的名称映射和还原。跨协议调用上游 `stream:false`，收到完整响应后构造原生 SSE 事件，因此第一条回复需要等待上游生成完成。
+原生直连由 CLI 处理请求与流式响应，使用配置中的模型。需要同协议路径适配时，桥接透传流式响应。跨协议转换文本、system 指令、函数工具定义、工具调用及结果，并支持 Codex 自定义文本工具（如 apply_patch）的函数封装、命名空间工具的名称映射和还原。跨协议调用上游 `stream:false`，收到完整响应后构造原生 SSE 事件，因此第一条回复需要等待上游生成完成。
 
-上游统一发送 Bearer 认证；Messages 同时发送 `x-api-key` 与 `anthropic-version`。没有配置真实地址前不会执行远端模型调用。HTTP 地址可用于局域网，但界面会提示密钥及内容明文传输；HTTPS 保持正常证书校验，不跟随重定向携带密钥。
+原生直连使用 CLI 的 Bearer 认证配置；桥接模式发送 Bearer，Messages 桥接额外发送 `x-api-key` 与 `anthropic-version`。没有配置真实地址前不会执行远端模型调用。HTTP 地址可用于局域网，但界面会提示密钥及内容明文传输；HTTPS 保持正常证书校验；本地桥接不跟随重定向，原生直连的 HTTP 行为由 CLI SDK 管理。
 
-API Key 和配置使用 Android Keystore AES-GCM 加密存储，明文仅在任务环境/内存中传递，不写入 CLI 配置文件、项目或日志。Agent 仅收到临时本地令牌。上游错误响应仅保留 HTTP 状态和诊断提示，不回显可能含密钥的响应正文。
+API Key 和配置使用 Android Keystore AES-GCM 加密存储；启动器通过环境变量传递凭据，不主动写入 CLI 配置文件、项目或日志。原生直连时 CLI 使用网关密钥；桥接模式下 CLI 只收到临时本地令牌。桥接的上游错误响应仅保留 HTTP 状态和诊断提示；流式中断会断开连接，交给 CLI 正常报错/重试，不向 SSE 混入普通 JSON。
 
 ## 范围和限制
 
 - 跨协议当前面向文本编码任务；图片、音频、远端托管工具等未适配时明确报错，不静默丢弃。
 - 原生协议私有推理内容不能跨供应商转换；跨协议不转发 hidden reasoning / encrypted reasoning。同协议保留。
 - 不支持跨协议 `previous_response_id`，需要 CLI 携带完整会话；Responses 原生请求可以透传。
-- 禁用 Codex 自动远端压缩与默认 web_search，跨协议桥接没有伪造压缩响应。长任务可能达到模型上下文上限。
+- 仅跨协议时禁用 Codex 自动远端压缩与默认 web_search，跨协议桥接没有伪造压缩响应。长任务可能达到模型上下文上限。
 - 桥接请求/转换响应限制 16 MiB，每次远端请求超时 5 分钟；整个任务沿用 10 分钟限制。
 - CLI 的更新、插件等其他网络能力不属于模型协议桥接；真实网关的模型能力、工具支持与鉴权需要实际联调。
 
 ## 验证
 
-运行 `node --test runtime/gateway-tests/bridge.test.cjs`。14 项测试覆盖 6 个 Agent 原生协议/上游协议组合、工具 ID 与结果、命名空间名称还原、取消请求、Codex 自定义工具、URL 规范化、SSE 透传、拒绝不支持的输入、鉴权错误脱敏和输出截断状态。
+运行 `node --test runtime/gateway-tests/bridge.test.cjs`。17 项测试覆盖 6 个 Agent 原生协议/上游协议组合、工具 ID 与结果、命名空间名称还原、取消请求、Codex 自定义工具、URL 规范化、SSE 透传、拒绝不支持的输入、鉴权错误脱敏、输出截断状态、并行工具调用分组、断流错误和原生直连配置。
 
 参考：[Codex provider 配置](https://learn.chatgpt.com/docs/config-file/config-reference)、[Responses 事件](https://developers.openai.com/api/reference/resources/responses/streaming-events)、[Claude Code 网关配置](https://code.claude.com/docs/en/llm-gateway-connect)。
 

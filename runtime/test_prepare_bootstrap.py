@@ -33,6 +33,16 @@ class BootstrapTest(unittest.TestCase):
                 self.assertEqual(stream.read('etc/config'), b'data')
                 self.assertNotIn('bin/bash', stream.namelist())
 
+    def test_rebuild_removes_obsolete_native_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.fixture(root, {'bin/bash': b'\x7fELFbash'})
+            native = root / 'out/jniLibs/arm64-v8a'
+            native.mkdir(parents=True)
+            (native / 'libobsolete.so').write_bytes(b'old')
+            prepare.prepare(root / 'out')
+            self.assertEqual({p.name for p in native.iterdir()}, {'libbash.so'})
+
     def test_rejects_modified_archive(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

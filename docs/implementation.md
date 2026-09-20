@@ -52,3 +52,13 @@ CLI 协议参考：[Claude Code](https://code.claude.com/docs/en/headless)、[Co
 新增独立 Agent 网关配置、Android Keystore 加密保存，以及 Messages / Responses 到三种网关协议的本地桥接。细节与限制见 [网关说明](gateway.md)。网关版本构建、App 8 项单元测试和 lint 通过；协议桥接 14 项 Node.js 测试通过。网关版本已覆盖安装到手机。两个 Agent 的配置通过界面加密保存到 SharedPreferences，重启 App 后可正常读取；域名及密钥未写入源码。
 
 主机真实 CLI 与本地模拟网关的六种组合均完成文本回复和工具读取/结果回传，详细测试版本及范围见网关说明。真实网关的 Messages / Responses 小请求均返回 HTTP 200；手机端完整 Agent 任务仍待验收。
+
+## 代码复查与重构
+
+- 原生协议匹配时改用 CLI 官方配置直连；保留必要的跨协议/路径/无鉴权桥接。原生 Codex 不再被跨协议限制关闭自动压缩、推理摘要和默认重试。
+- 修复 Responses 多个工具调用转 Chat 时拆散 assistant 轮次的问题，保证一组调用之后再回传对应结果。
+- SSE 转发改用 Node.js pipeline 管理背压与连接清理；断流不再追加普通 JSON，避免掩盖失败。
+- bootstrap 打包清除不在当前映射中的旧 native 文件，避免依赖调整后旧文件继续混入 APK。
+- 修复真 CLI 模拟网关测试把模型探测 GET 当推理 JSON 解析的缺陷。
+- 上述运行缺陷先由新增回归测试复现，再完成修复。Node.js 17 项、Python 6 项、App/SDK 单元测试、构建和 lint 通过；六种组合的真 CLI 工具回传联调通过。该轮重构尚未在手机运行完整 Agent 任务。
+- 根目录 AGENTS.md 固化“先纠正基础、必要时替换错误实现，再继续迭代”的开发要求。
