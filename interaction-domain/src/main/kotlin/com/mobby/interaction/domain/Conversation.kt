@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.Flow
 @JvmInline value class TurnId(val value: String)
 @JvmInline value class ExecutionId(val value: String)
 enum class AgentId { CODEX, CLAUDE_CODE }
-data class NextTurnConfig(val agent: AgentId, val model: String, val reasoning: String?, val workspace: String, val gatewayProfile: String)
+data class NextTurnConfig(val agent: AgentId, val model: String, val reasoning: String?, val workspace: String, val gatewayProfile: String, val gatewayVersion: Long = 0)
 data class Draft(
     val revision: Long = 0, val text: String = "", val selectionStart: Int = text.length,
     val selectionEnd: Int = selectionStart, val attachments: List<String> = emptyList(),
@@ -16,7 +16,10 @@ data class Draft(
 }
 data class Conversation(
     val id: ConversationId, val config: NextTurnConfig, val draft: Draft = Draft(),
-    val hasTurns: Boolean = false, val session: String? = null
+    val hasTurns: Boolean = false, val session: String? = null,
+    val title: String = "新对话", val pinned: Boolean = false, val project: String? = null,
+    val archived: Boolean = false, val deleted: Boolean = false,
+    val anchor: String? = null, val anchorOffset: Int = 0, val updatedAt: Long = 0
 )
 data class TurnExecution(val turnId: TurnId, val conversationId: ConversationId, val draft: Draft, val config: NextTurnConfig, val session: String?)
 enum class Failure { BUSY, INVALID_CONFIG, UNSUPPORTED_CAPABILITY, UNAVAILABLE, EMPTY_DRAFT, PENDING_SUBMISSION }
