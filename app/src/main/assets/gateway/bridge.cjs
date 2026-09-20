@@ -280,19 +280,19 @@ function agentLaunch(mode, args, config, environment, bridge = null) {
   if (!base) throw Error('网关需要协议或路径适配');
   const token = bridge?.token || config.key;
   const env = {...environment};
-  delete env.MDOER_GATEWAY_CONFIG;
+  delete env.MOBBY_GATEWAY_CONFIG;
   const agentArgs = [...args];
   if (mode === 'CLAUDE') {
     Object.assign(env, {ANTHROPIC_BASE_URL:base, ANTHROPIC_AUTH_TOKEN:token, ANTHROPIC_API_KEY:'', ANTHROPIC_MODEL:config.model,
       ANTHROPIC_DEFAULT_OPUS_MODEL:config.model, ANTHROPIC_DEFAULT_SONNET_MODEL:config.model, ANTHROPIC_DEFAULT_HAIKU_MODEL:config.model,
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC:'1'});
   } else if (mode === 'CODEX') {
-    env.MDOER_GATEWAY_TOKEN = token;
+    env.MOBBY_GATEWAY_TOKEN = token;
     const options = [
-      'model_provider="mdoer"', `model=${JSON.stringify(config.model)}`,
-      'model_providers.mdoer.name="Mdoer Gateway"', `model_providers.mdoer.base_url=${JSON.stringify(bridge ? base + '/v1' : base)}`,
-      'model_providers.mdoer.env_key="MDOER_GATEWAY_TOKEN"', 'model_providers.mdoer.wire_api="responses"',
-      'model_providers.mdoer.requires_openai_auth=false', 'model_providers.mdoer.supports_websockets=false'
+      'model_provider="mobby"', `model=${JSON.stringify(config.model)}`,
+      'model_providers.mobby.name="mobby Gateway"', `model_providers.mobby.base_url=${JSON.stringify(bridge ? base + '/v1' : base)}`,
+      'model_providers.mobby.env_key="MOBBY_GATEWAY_TOKEN"', 'model_providers.mobby.wire_api="responses"',
+      'model_providers.mobby.requires_openai_auth=false', 'model_providers.mobby.supports_websockets=false'
     ];
     if (config.protocol !== 'responses') options.push(
       'model_auto_compact_token_limit=100000000', 'model_supports_reasoning_summaries=false', 'web_search="disabled"'
@@ -302,8 +302,8 @@ function agentLaunch(mode, args, config, environment, bridge = null) {
   return {args:agentArgs, env};
 }
 async function main() {
-  const config = JSON.parse(process.env.MDOER_GATEWAY_CONFIG);
-  delete process.env.MDOER_GATEWAY_CONFIG;
+  const config = JSON.parse(process.env.MOBBY_GATEWAY_CONFIG);
+  delete process.env.MOBBY_GATEWAY_CONFIG;
   const [mode, executable, ...args] = process.argv.slice(2);
   const bridge = nativeBase(mode, config) === null ? await createBridge(config) : null;
   const launch = agentLaunch(mode, args, config, process.env, bridge);

@@ -1,4 +1,4 @@
-package com.mdoer.app
+package com.mobby.app
 
 import android.app.*
 import android.content.Intent
@@ -75,7 +75,7 @@ class RuntimeService : Service() {
             val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
             startForeground(1, Notification.Builder(this, "runtime")
                 .setSmallIcon(android.R.drawable.stat_notify_sync)
-                .setContentTitle("Mdoer 正在执行任务").setContentText(mode.label)
+                .setContentTitle("mobby 正在执行任务").setContentText(mode.label)
                 .setContentIntent(open).setOngoing(true).build())
         } catch (e: Exception) { append(e.message ?: "启动任务失败", true); stopSelf(); return false }
         mutableState.update { it.copy(busy = true, status = "执行中") }

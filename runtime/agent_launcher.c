@@ -7,7 +7,7 @@
 
 int main(int argc, char **argv) {
     const char *prefix = getenv("PREFIX");
-    if (!prefix || !*prefix) { fputs("Mdoer PREFIX is missing\n", stderr); return 126; }
+    if (!prefix || !*prefix) { fputs("mobby PREFIX is missing\n", stderr); return 126; }
     const char *name = strrchr(argv[0], '/'); name = name ? name + 1 : argv[0];
     const char *script;
     if (strstr(name, "claude")) script = "/lib/node_modules/@anthropic-ai/claude-code/cli.js";

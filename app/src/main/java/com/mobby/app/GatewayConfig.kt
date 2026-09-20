@@ -1,4 +1,4 @@
-package com.mdoer.app
+package com.mobby.app
 
 import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
@@ -41,12 +41,16 @@ data class GatewayConfig(
 
 /** No plaintext configuration or API key is written to the CLI home or workspace. */
 class GatewayStore(context: Context) {
+    private companion object {
+        // Existing ciphertext is tied to this Android Keystore alias; branding must not rotate it.
+        const val KEY_ALIAS = "mdoer.gateway"
+    }
     private val prefs = context.getSharedPreferences("gateway", Context.MODE_PRIVATE)
     private fun encryptionKey(): SecretKey {
         val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-        (store.getKey("mdoer.gateway", null) as? SecretKey)?.let { return it }
+        (store.getKey(KEY_ALIAS, null) as? SecretKey)?.let { return it }
         return KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore").apply {
-            init(KeyGenParameterSpec.Builder("mdoer.gateway", KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
+            init(KeyGenParameterSpec.Builder(KEY_ALIAS, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
                 .setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE).build())
         }.generateKey()
     }

@@ -1,9 +1,10 @@
 plugins { id("com.android.application"); kotlin("android") }
 android {
-    namespace = "com.mdoer.app"
+    namespace = "com.mobby.app"
     compileSdk = 35
     ndkVersion = "27.2.12479018"
     defaultConfig {
+        // Stable install identity: changing it would create a separate app and lose access to existing data.
         applicationId = "com.mdoer.app"
         minSdk = 26
         targetSdk = 35

@@ -98,5 +98,5 @@ def add_agents(root, files, links, ndk):
     for name in ('npm', 'npx', 'claude'):
         files['bin/' + name] = launcher.read_bytes()
         links.pop('bin/' + name, None)
-    files['share/mdoer/agents.lock.json'] = lock_path.read_bytes()
+    files['share/mobby/agents.lock.json'] = lock_path.read_bytes()
     return hashlib.sha256(lock_path.read_bytes() + (root / 'agent_launcher.c').read_bytes()).hexdigest()

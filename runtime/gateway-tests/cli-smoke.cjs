@@ -1,6 +1,6 @@
 'use strict';
 // Optional integration test against real CLIs, using only a local mock model.
-// MDOER_TEST_CODEX=/path/to/codex MDOER_TEST_CLAUDE_JS=/path/to/cli.js node runtime/gateway-tests/cli-smoke.cjs
+// MOBBY_TEST_CODEX=/path/to/codex MOBBY_TEST_CLAUDE_JS=/path/to/cli.js node runtime/gateway-tests/cli-smoke.cjs
 const {createServer}=require('node:http');
 const {spawn}=require('node:child_process');
 const {mkdtempSync,mkdirSync,writeFileSync,rmSync}=require('node:fs');
@@ -11,9 +11,9 @@ const assert=require('node:assert/strict');
 const bridge=resolve(__dirname,'../../app/src/main/assets/gateway/bridge.cjs');
 const {nativeResponse,sendNative}=require(bridge);
 async function main() {
-  const codex=process.env.MDOER_TEST_CODEX, claude=process.env.MDOER_TEST_CLAUDE_JS;
-  assert.ok(codex && claude,'Set MDOER_TEST_CODEX and MDOER_TEST_CLAUDE_JS to the test CLI paths');
-  const root=mkdtempSync(join(tmpdir(),'mdoer-gateway-smoke-'));
+  const codex=process.env.MOBBY_TEST_CODEX, claude=process.env.MOBBY_TEST_CLAUDE_JS;
+  assert.ok(codex && claude,'Set MOBBY_TEST_CODEX and MOBBY_TEST_CLAUDE_JS to the test CLI paths');
+  const root=mkdtempSync(join(tmpdir(),'mobby-gateway-smoke-'));
   const work=join(root,'work');mkdirSync(work);
   const fixture=join(work,'fixture.txt');writeFileSync(fixture,'TOOL_ROUNDTRIP_OK\n');
   try {
@@ -40,7 +40,7 @@ async function main() {
       const home=mkdtempSync(join(root,'home-'));mkdirSync(join(home,'.codex'));
       // Fresh HOME and explicit minimal env: never load or forward the user's credentials.
       const env={PATH:process.env.PATH,HOME:home,CODEX_HOME:join(home,'.codex'),TMPDIR:tmpdir(),NO_COLOR:'1',TERM:'dumb',CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC:'1',DISABLE_AUTOUPDATER:'1',
-        MDOER_GATEWAY_CONFIG:JSON.stringify({endpoint:`http://127.0.0.1:${server.address().port}/v1`,protocol,model:'test-model',key:'fake-test-key'})};
+        MOBBY_GATEWAY_CONFIG:JSON.stringify({endpoint:`http://127.0.0.1:${server.address().port}/v1`,protocol,model:'test-model',key:'fake-test-key'})};
       const exe=mode==='CODEX'?codex:process.execPath;
       const args=mode==='CODEX'?['exec','--skip-git-repo-check','--json','--','Read the test fixture.']: [claude,'-p','--output-format','stream-json','--verbose','--','Read the test fixture.'];
       const child=spawn(process.execPath,[bridge,mode,exe,...args],{cwd:work,env,stdio:['ignore','pipe','pipe']});

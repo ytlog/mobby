@@ -134,6 +134,6 @@ test('native protocols configure direct CLI connections without conversion-only 
     const launch=agentLaunch(mode,['exec'],config,{},null);
     assert.ok(!launch.args.join(' ').includes('test-secret'));
     if(mode==='CLAUDE') {assert.equal(launch.env.ANTHROPIC_BASE_URL,'https://gateway.example');assert.equal(launch.env.ANTHROPIC_AUTH_TOKEN,'test-secret');}
-    else {assert.ok(launch.args.includes('model_providers.mdoer.base_url="https://gateway.example/v1"'));assert.ok(!launch.args.some(a=>a.includes('model_auto_compact_token_limit')));}
+    else {assert.ok(launch.args.includes('model_providers.mobby.base_url="https://gateway.example/v1"'));assert.ok(!launch.args.some(a=>a.includes('model_auto_compact_token_limit')));}
   }
 });

@@ -6,7 +6,7 @@
 - 固定提交：3a7e2ae63c4824fac384769c9afb8bc579458da9
 - 原始许可证：libtermux-android/LICENSE（Apache-2.0）
 - 以源码快照纳入仓库；只构建 core、bootstrap-arm64。
-- 本地 mdoer.gradle.kts 使用 AGP 8.6 / Kotlin 1.9，独立于上游发布构建。
+- 本地 mobby.gradle.kts 使用 AGP 8.6 / Kotlin 1.9，独立于上游发布构建。
 - CommandExecutor：增加 argv 接口，用进程组管道执行替代批量伪流式和顺序阻塞读取。
 - PipeProcess.kt、pipe_process.cpp：新增 JNI 进程组执行、取消、超时和输出限制。
 - TermuxBridge.bash：移除硬编码 com.termux shebang，直接交给配置的 Bash。

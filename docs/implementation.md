@@ -62,3 +62,7 @@ CLI 协议参考：[Claude Code](https://code.claude.com/docs/en/headless)、[Co
 - 修复真 CLI 模拟网关测试把模型探测 GET 当推理 JSON 解析的缺陷。
 - 上述运行缺陷先由新增回归测试复现，再完成修复。Node.js 17 项、Python 6 项、App/SDK 单元测试、构建和 lint 通过；六种组合的真 CLI 工具回传联调通过。该轮重构尚未在手机运行完整 Agent 任务。
 - 根目录 AGENTS.md 固化“先纠正基础、必要时替换错误实现，再继续迭代”的开发要求。
+
+## mobby 改名
+
+项目与目录名、源码包名、界面品牌、脚本环境变量和 SDK 适配构建文件统一改为 mobby。Android 安装标识及 Keystore 别名保留兼容值，覆盖升级前后设备网关加密配置摘要一致。改名后构建、lint、63 项测试和六种 CLI 联调通过，已覆盖安装到原手机并成功启动新入口。

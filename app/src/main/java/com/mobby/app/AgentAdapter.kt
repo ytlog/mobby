@@ -1,4 +1,4 @@
-package com.mdoer.app
+package com.mobby.app
 
 import kotlinx.serialization.json.*
 

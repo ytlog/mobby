@@ -37,4 +37,4 @@ API Key 和配置使用 Android Keystore AES-GCM 加密存储；启动器通过�
 
 2026-09-20 主机联调：Claude Code 2.1.112 与主机现有 Codex 0.154.0-alpha.6.2，各自通过三个本地模拟上游，六种组合的文本回复全部通过；再进行实际工具读取临时文件并回传，六种组合全部通过。使用独立临时 HOME 和虚假测试密钥，未访问真实模型网关。手机内置 Codex 为 0.155.1，手机已更新安装并持久化网关配置，重启后读取正常。真实网关 Messages 和 Responses 小请求均返回 HTTP 200（Responses 的 64 token 探测达到输出上限）；手机端完整 Agent 任务仍待验收。
 
-可复用的 CLI 工具回传验收脚本：`runtime/gateway-tests/cli-smoke.cjs`，通过 `MDOER_TEST_CODEX` 与 `MDOER_TEST_CLAUDE_JS` 指定本机测试程序路径。
+可复用的 CLI 工具回传验收脚本：`runtime/gateway-tests/cli-smoke.cjs`，通过 `MOBBY_TEST_CODEX` 与 `MOBBY_TEST_CLAUDE_JS` 指定本机测试程序路径。

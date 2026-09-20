@@ -1,4 +1,4 @@
-package com.mdoer.app
+package com.mobby.app
 
 import android.content.Context
 import android.os.Build
@@ -51,8 +51,8 @@ class RuntimeEnvironment(private val context: Context) {
         File(sdk.vfs.prefixDir, "etc/tls/certs").mkdirs()
         val shell = sdk.executor.resolveBinary("bash").absolutePath
         val extra = mapOf("SHELL" to shell)
-        val probe = sdk.executor.execute("printf 'MDOER_RUNTIME_OK\\n'; printf '%s\\n' \"\$BASH_VERSION\"", workspace, extra)
-        check(probe.isSuccess && probe.stdout.startsWith("MDOER_RUNTIME_OK")) { "Bash 启动失败 (${probe.exitCode}): ${probe.stderr}" }
+        val probe = sdk.executor.execute("printf 'MOBBY_RUNTIME_OK\\n'; printf '%s\\n' \"\$BASH_VERSION\"", workspace, extra)
+        check(probe.isSuccess && probe.stdout.startsWith("MOBBY_RUNTIME_OK")) { "Bash 启动失败 (${probe.exitCode}): ${probe.stderr}" }
         output("Bash ${probe.stdout.lineSequence().drop(1).firstOrNull().orEmpty()}")
         dependenciesReady = true
         for (name in listOf("git", "node", "npm", "claude", "codex")) {
@@ -85,7 +85,7 @@ class RuntimeEnvironment(private val context: Context) {
             return file
         }
         val version = context.assets.open("bootstrap/version.txt").bufferedReader().use { it.readText() }
-        val marker = File(sdk.vfs.root, ".mdoer-bootstrap")
+        val marker = File(sdk.vfs.root, ".mobby-bootstrap")
         // Data files remain writable and are not replaced on every launch.
         val required = listOf("lib/node_modules/npm/bin/npm-cli.js", "lib/node_modules/@anthropic-ai/claude-code/cli.js")
         if (!marker.exists() || marker.readText() != version || required.any { !File(prefix, it).isFile }) {
@@ -97,7 +97,7 @@ class RuntimeEnvironment(private val context: Context) {
                         val target = safe(entry.name)
                         target.parentFile?.mkdirs()
                         check(target.parentFile!!.canonicalPath.startsWith(prefix.canonicalPath + File.separator) || target.parentFile!!.canonicalFile == prefix.canonicalFile) { "安装目录链接越界" }
-                        val temporary = File(target.parentFile, target.name + ".mdoer-tmp")
+                        val temporary = File(target.parentFile, target.name + ".mobby-tmp")
                         temporary.delete()
                         temporary.outputStream().use { zip.copyTo(it) }
                         check(temporary.renameTo(target)) { "无法安装 ${entry.name}" }
@@ -149,6 +149,6 @@ class RuntimeEnvironment(private val context: Context) {
         val config = GatewayStore(context).load(mode).also { it.validate() }
         return sdk.executor.executeArgsStreaming(listOf(File(sdk.vfs.binDir, "node").absolutePath,
             File(context.filesDir, "gateway.cjs").absolutePath, mode.name) + args,
-            workspace, mapOf("MDOER_GATEWAY_CONFIG" to config.json()))
+            workspace, mapOf("MOBBY_GATEWAY_CONFIG" to config.json()))
     }
 }

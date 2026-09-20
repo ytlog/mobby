@@ -1,4 +1,4 @@
-// Mdoer process-group pipe adapter. Child after fork uses only async-signal-safe calls.
+// mobby process-group pipe adapter. Child after fork uses only async-signal-safe calls.
 #include <jni.h>
 #include <unistd.h>
 #include <sys/wait.h>

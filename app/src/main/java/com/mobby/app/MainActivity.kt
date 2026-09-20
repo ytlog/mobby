@@ -1,4 +1,4 @@
-package com.mdoer.app
+package com.mobby.app
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -48,7 +48,7 @@ fun TestConsoleScreen(vm: TestConsoleViewModel = viewModel()) {
     }
     Column(Modifier.fillMaxSize().systemBarsPadding().imePadding().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("Mdoer · 运行测试", style = MaterialTheme.typography.titleLarge)
+            Text("mobby · 运行测试", style = MaterialTheme.typography.titleLarge)
             TextButton(onClick = { gatewaySettings = true }, enabled = !runtime.busy) { Text("网关设置") }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
