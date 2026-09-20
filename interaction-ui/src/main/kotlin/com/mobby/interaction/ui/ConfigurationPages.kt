@@ -196,9 +196,24 @@ import com.mobby.interaction.domain.*
     val messages = detail.turns.flatMap { turn -> listOf("user:${turn.id.value}" to turn.userText) + turn.messages.map { "${turn.id.value}:${it.id}" to it.text } }
     var selected by remember { mutableStateOf(emptySet<String>()) }
     AlertDialog(onDismissRequest = onDismiss, title = { Text("选择分享消息") }, text = {
-        Column(Modifier.verticalScroll(rememberScrollState())) {
-            Text("默认不包含运行日志和配置", style = MaterialTheme.typography.bodySmall)
-            messages.forEach { (id, text) -> Row { Checkbox(id in selected, { selected = if (it) selected + id else selected - id }); Text(text.take(200), Modifier.weight(1f)) } }
+        LazyColumn(Modifier.heightIn(max = 420.dp)) {
+            item { Text("默认不包含运行日志和配置", style = MaterialTheme.typography.bodySmall) }
+            items(messages, key = { it.first }) { (id, text) -> Row { Checkbox(id in selected, { selected = if (it) selected + id else selected - id }); Text(text.take(200), Modifier.weight(1f)) } }
         }
     }, confirmButton = { TextButton(enabled = selected.isNotEmpty(), onClick = { share(messages.filter { it.first in selected }.joinToString("\n\n") { it.second }); onDismiss() }) { Text("系统分享") } }, dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } })
+}
+
+@Composable internal fun HistoryDialog(id: ConversationId, vm: ConversationViewModel, dismiss: () -> Unit, content: @Composable (ConversationDetail) -> Unit) {
+    var result by remember(id) { mutableStateOf<DataResult<ConversationDetail>?>(null) }
+    LaunchedEffect(id) {
+        result = try { DataResult.Loaded(vm.actions.history(id)) }
+            catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (_: Exception) { DataResult.Failed("读取完整会话失败，请关闭后重试；已有记录保留") }
+    }
+    when (val value = result) {
+        is DataResult.Loaded -> content(value.value)
+        else -> AlertDialog(onDismissRequest = dismiss, title = { Text("读取会话记录") }, text = {
+            if (value is DataResult.Failed) Text(value.message) else CircularProgressIndicator()
+        }, confirmButton = { TextButton(onClick = dismiss) { Text("关闭") } })
+    }
 }

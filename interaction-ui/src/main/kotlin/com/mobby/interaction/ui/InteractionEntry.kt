@@ -150,15 +150,15 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                     "project" -> TextEditDialog("添加到项目（留空移出分组）", c.project.orEmpty(), { dialog = null }) { value -> vm.enqueue { actions.project(c.id, value) }; dialog = null }
                     "delete" -> AlertDialog(onDismissRequest = { dialog = null }, title = { Text("删除对话？") }, text = { Text("对话将移入最近删除，可在设置中恢复；工作区文件不会删除。") },
                         confirmButton = { TextButton(onClick = { vm.enqueue { vm.report(actions.delete(c.id, true)) }; dialog = null }) { Text("删除") } }, dismissButton = { TextButton(onClick = { dialog = null }) { Text("取消") } })
-                    "attachments" -> AlertDialog(onDismissRequest = { dialog = null }, title = { Text("对话附件") }, text = { Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                    "attachments" -> HistoryDialog(c.id, vm, { dialog = null }) { full -> AlertDialog(onDismissRequest = { dialog = null }, title = { Text("对话附件") }, text = { Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
                         Text("已发送附件")
-                        val sent = state.selected!!.turns.filter { it.execution != null }.flatMap { it.attachments }
+                        val sent = full.turns.filter { it.execution != null }.flatMap { it.attachments }
                         if (sent.isEmpty()) Text("无") else AttachmentList(sent.distinct(), c.config.workspace, vm)
                         Text("本轮草稿附件")
                         if (c.draft.attachments.isEmpty()) Text("无") else AttachmentList(c.draft.attachments, c.config.workspace, vm)
-                    } }, confirmButton = { TextButton(onClick = { dialog = null }) { Text("关闭") } })
-                    "find" -> FindDialog(state.selected!!, onDismiss = { dialog = null }, onSelect = { hit -> vm.jumpTo(c.id, hit); dialog = null })
-                    "share" -> ShareDialog(state.selected!!, hostActions.share, onDismiss = { dialog = null })
+                    } }, confirmButton = { TextButton(onClick = { dialog = null }) { Text("关闭") } }) }
+                    "find" -> HistoryDialog(c.id, vm, { dialog = null }) { full -> FindDialog(full, onDismiss = { dialog = null }, onSelect = { hit -> vm.jumpTo(c.id, hit); dialog = null }) }
+                    "share" -> HistoryDialog(c.id, vm, { dialog = null }) { full -> ShareDialog(full, hostActions.share, onDismiss = { dialog = null }) }
                     "shortcut" -> { LaunchedEffect(c.id) { hostActions.shortcut(c.id.value, c.title); dialog = null } }
                 }
             }
@@ -272,7 +272,7 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
 
 @OptIn(FlowPreview::class)
 @Composable private fun Timeline(detail: ConversationDetail, vm: ConversationViewModel, modifier: Modifier, read: (String, String) -> Unit, hostActions: InteractionHostActions, proposal: (SkillProposal) -> Unit) {
-    val keys = buildList { detail.turns.forEach { t -> add("user:${t.id.value}"); add("run:${t.id.value}"); t.messages.forEach { add("message:${t.id.value}:${it.id}") }; t.skillProposals.forEach { add("artifact:${t.id.value}:${it.ref}") }; if (t.creatingSkill && !t.occupied && t.skillProposals.isEmpty() && !t.proposalsLoading) add("creator:${t.id.value}"); if (t.failure != null || t.phase in listOf(ExecutionPhase.CANCELLED, ExecutionPhase.TIMED_OUT, ExecutionPhase.INTERRUPTED, ExecutionPhase.OUTCOME_UNKNOWN, ExecutionPhase.AWAITING_APPROVAL)) add("status:${t.id.value}") } }
+    val keys = buildList { if (detail.hasEarlier) add("earlier"); detail.turns.forEach { t -> add("user:${t.id.value}"); add("run:${t.id.value}"); t.messages.forEach { add("message:${t.id.value}:${it.id}") }; t.skillProposals.forEach { add("artifact:${t.id.value}:${it.ref}") }; if (t.creatingSkill && !t.occupied && t.skillProposals.isEmpty() && !t.proposalsLoading) add("creator:${t.id.value}"); if (t.failure != null || t.phase in listOf(ExecutionPhase.CANCELLED, ExecutionPhase.TIMED_OUT, ExecutionPhase.INTERRUPTED, ExecutionPhase.OUTCOME_UNKNOWN, ExecutionPhase.AWAITING_APPROVAL)) add("status:${t.id.value}") } }
     val initial = keys.indexOf(detail.conversation.anchor).coerceAtLeast(0)
     val list = rememberLazyListState(initial, detail.conversation.anchorOffset.coerceAtLeast(0))
     var follow by remember { mutableStateOf(detail.conversation.anchor == null) }
@@ -293,7 +293,7 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
         onDispose {
             val key = list.layoutInfo.visibleItemsInfo.firstOrNull()?.key?.toString()
             val offset = list.firstVisibleItemScrollOffset
-            if (key != null) vm.enqueue { vm.actions.anchor(id, key, offset) }
+            if (key != null && key != "earlier") vm.enqueue { vm.actions.anchor(id, key, offset) }
         }
     }
     val dragging by list.interactionSource.collectIsDraggedAsState()
@@ -305,11 +305,14 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
     LaunchedEffect(outputVersion) { if (follow && !list.isScrollInProgress && keys.isNotEmpty()) list.scrollToItem(keys.lastIndex) }
     LaunchedEffect(list) {
         snapshotFlow { list.layoutInfo.visibleItemsInfo.firstOrNull()?.key?.toString() to list.firstVisibleItemScrollOffset }.debounce(250).collect { (key, offset) ->
-            if (key != null) vm.enqueue { vm.actions.anchor(detail.conversation.id, key, offset) }
+            if (key != null && key != "earlier") vm.enqueue { vm.actions.anchor(detail.conversation.id, key, offset) }
         }
     }
     Box(modifier.fillMaxWidth()) {
         LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            if (detail.hasEarlier) item(key = "earlier") {
+                TextButton(onClick = { follow = false; vm.enqueue { vm.actions.loadEarlier(detail.conversation.id) } }, modifier = Modifier.fillMaxWidth()) { Text("加载更早的消息") }
+            }
             if (detail.turns.isEmpty()) item(key = "empty") { Column(Modifier.fillParentMaxHeight().padding(top = 80.dp)) { Text("从一个任务开始", style = MaterialTheme.typography.headlineMedium); Text("${detail.conversation.config.agent.label()} 将在本机工作区执行。", Modifier.padding(top = 12.dp)) } }
             detail.turns.forEach { turn ->
                 item(key = "user:${turn.id.value}") { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { Surface(shape = RoundedCornerShape(21.dp, 21.dp, 6.dp, 21.dp), color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.widthIn(max = 360.dp)) { Column(Modifier.padding(16.dp)) { androidx.compose.foundation.text.selection.SelectionContainer { Text(turn.userText) }; AttachmentList(turn.attachments, detail.conversation.config.workspace, vm) } } } }

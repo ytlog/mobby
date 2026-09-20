@@ -16,7 +16,7 @@ data class Turn(
     val skillProposals: List<SkillProposal> = emptyList(), val creatingSkill: Boolean = false, val proposalsLoading: Boolean = false, val attachments: List<String> = emptyList()
 )
 data class ConversationSummary(val conversation: Conversation, val phase: ExecutionPhase? = null, val occupied: Boolean = false)
-data class ConversationDetail(val conversation: Conversation, val turns: List<Turn>)
+data class ConversationDetail(val conversation: Conversation, val turns: List<Turn>, val hasEarlier: Boolean = false)
 data class InteractionState(
     val conversations: List<ConversationSummary> = emptyList(), val selected: ConversationDetail? = null,
     val loading: Boolean = true, val error: String? = null
@@ -62,6 +62,9 @@ interface SystemPort {
     suspend fun stopShell(): OperationResult
 }
 interface InteractionRepository : ConversationRepository {
+    suspend fun loadEarlier(id: ConversationId)
+    suspend fun revealTurn(id: ConversationId, turn: TurnId)
+    suspend fun history(id: ConversationId): ConversationDetail
     suspend fun beginAttachment(id: ConversationId, pending: PendingAttachment)
     suspend fun finishAttachment(id: ConversationId, pendingId: String, result: DataResult<Attachment>)
     suspend fun discardAttachment(id: ConversationId, pendingId: String)
@@ -99,6 +102,9 @@ class InteractionUseCases(
     val state get() = repository.state
     val status get() = system.status
     val diagnostic get() = system.diagnostic
+    suspend fun loadEarlier(id: ConversationId) = repository.loadEarlier(id)
+    suspend fun revealTurn(id: ConversationId, turn: TurnId) = repository.revealTurn(id, turn)
+    suspend fun history(id: ConversationId) = repository.history(id)
     suspend fun select(id: ConversationId) = repository.select(id)
     suspend fun create(config: NextTurnConfig) = repository.create(config)
     suspend fun draft(id: ConversationId, text: String, start: Int, end: Int) = repository.editDraft(id, text, start, end)

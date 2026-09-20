@@ -29,15 +29,49 @@ internal class RoomInteractionRepository(
             ConversationSummary(row.domain(), snapshot?.let { RunProjection.verifiedPhase(it).domain() }, activity?.occupied == true)
         }
     }.distinctUntilChanged().flowOn(Dispatchers.Default)
+    private data class Window(val id: String, val count: Int, val baseline: Int)
+    private val window = MutableStateFlow<Window?>(null)
     override val state: StateFlow<InteractionState> = dao.selection().distinctUntilChanged().flatMapLatest { selected ->
-        combine(summaries, if (selected == null) flowOf(emptyList()) else dao.turns(selected).distinctUntilChanged(),
-            if (selected == null) flowOf(emptyList()) else dao.chunks(selected).distinctUntilChanged()) { conversations, turns, chunks ->
-            val conversation = conversations.firstOrNull { it.conversation.id.value == selected }?.conversation
-            val content = chunks.associate { it.ref to it.text }
-            InteractionState(conversations, conversation?.let { c -> ConversationDetail(c, turns.map { it.domain(content) }) }, loading = false)
+        if (selected == null) summaries.map { InteractionState(it, loading = false) }
+        else flow {
+            val total = dao.turnCount(selected).first()
+            val anchor = dao.conversation(selected)?.domain()?.anchor
+            val anchorTurn = anchor?.substringAfter(':', "")?.substringBefore(':')?.let { dao.turn(it) }?.takeIf { it.conversationId == selected }
+            val needed = listOfNotNull(anchorTurn, dao.earliestOccupied(selected)).map { dao.countThrough(selected, it.createdAt, it.id) }.maxOrNull() ?: 0
+            window.value = Window(selected, maxOf(PAGE_SIZE, needed), total)
+            emitAll(combine(window.filterNotNull().filter { it.id == selected }, dao.turnCount(selected).distinctUntilChanged()) { page, count ->
+                page.count + (count - page.baseline).coerceAtLeast(0) to count
+            }.distinctUntilChanged().flatMapLatest { (limit, count) ->
+                combine(summaries, dao.timeline(selected, limit).distinctUntilChanged()) { conversations, entries ->
+                    val c = conversations.firstOrNull { it.conversation.id.value == selected }?.conversation
+                    val turns = entries.map { entry -> entry.turn.domain(entry.chunks.associate { it.ref to it.text }) }
+                    InteractionState(conversations, c?.let { ConversationDetail(it, turns, count > turns.size) }, loading = false)
+                }
+            })
         }.flowOn(Dispatchers.Default)
     }.combine(startupError) { state, error -> state.copy(error = error ?: state.error) }.catch { emit(InteractionState(loading = false, error = "无法读取会话数据库；原数据已保留，请重启应用后重试")) }
         .stateIn(scope, SharingStarted.Eagerly, InteractionState())
+
+    override suspend fun loadEarlier(id: ConversationId) {
+        val current = state.value.selected?.takeIf { it.conversation.id == id } ?: return
+        val total = dao.turnCount(id.value).first()
+        window.update { page -> if (page?.id == id.value) Window(id.value, current.turns.size + PAGE_SIZE, total) else page }
+    }
+    override suspend fun revealTurn(id: ConversationId, turn: TurnId) {
+        val row = dao.turn(turn.value)?.takeIf { it.conversationId == id.value } ?: return
+        val total = dao.turnCount(id.value).first()
+        val needed = dao.countThrough(id.value, row.createdAt, row.id)
+        val loaded = state.value.selected?.takeIf { it.conversation.id == id }?.turns?.size ?: PAGE_SIZE
+        window.update { page -> if (page?.id == id.value) Window(id.value, maxOf(loaded, needed), total) else page }
+    }
+    override suspend fun history(id: ConversationId): ConversationDetail = withContext(Dispatchers.Default) {
+        db.withTransaction {
+            val c = requireNotNull(dao.conversation(id.value)).domain()
+            val content = dao.historyChunks(id.value).associate { it.ref to it.text }
+            ConversationDetail(c, dao.conversationTurns(id.value).map { it.domain(content) })
+        }
+    }
+    companion object { const val PAGE_SIZE = 40 }
 
     init {
         scope.launch {

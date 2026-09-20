@@ -1,6 +1,7 @@
 package com.mobby.interaction.data
 
 import androidx.test.core.app.ApplicationProvider
+import androidx.room.withTransaction
 import com.mobby.interaction.domain.*
 import com.mobby.interaction.domain.AgentId as DomainAgent
 import com.mobby.runtime.api.*
@@ -53,6 +54,87 @@ class RoomInteractionRepositoryTest {
     }
     @After fun close() = runBlocking { scope.coroutineContext[Job]!!.cancelAndJoin(); db.close() }
     private suspend fun state(predicate: (InteractionState) -> Boolean = { it.selected != null }) = withTimeout(10_000) { repository.state.first(predicate) }
+    @Test fun `initial page loads forty turns and older pages preserve range when a new reply arrives`() = runBlocking {
+        val c = seedHistory(110)
+        scope.coroutineContext[Job]!!.cancelAndJoin(); db.close(); start()
+        val initial = state { it.selected?.turns?.size == 40 }.selected!!
+        assertEquals("turn-070", initial.turns.first().id.value); assertTrue(initial.hasEarlier)
+        repository.loadEarlier(c.id)
+        val expanded = state { it.selected?.turns?.size == 80 }.selected!!
+        assertEquals("turn-030", expanded.turns.first().id.value)
+        val frozen = db.dao().conversation(c.id.value)!!.body
+        db.dao().save(TurnRow("turn-110", c.id.value, "new", frozen, 110, pending = false, occupied = false))
+        val appended = state { it.selected?.turns?.size == 81 }.selected!!
+        assertEquals("turn-030", appended.turns.first().id.value)
+        assertEquals("turn-110", appended.turns.last().id.value)
+        repository.loadEarlier(c.id)
+        assertFalse(state { it.selected?.turns?.size == 111 }.selected!!.hasEarlier)
+    }
+    @Test fun `full history includes unloaded messages and reveal and saved anchor restore their range`() = runBlocking {
+        val c = seedHistory(90)
+        scope.coroutineContext[Job]!!.cancelAndJoin(); db.close(); start()
+        state { it.selected?.turns?.size == 40 }
+        val full = repository.history(c.id)
+        assertEquals(90, full.turns.size)
+        assertEquals("turn-005", ConversationSearch.find(full, "old assistant body").single().turnId.value)
+        val hit = ConversationSearch.find(full, "message-005").single()
+        repository.revealTurn(c.id, hit.turnId)
+        state { it.selected?.turns?.firstOrNull()?.id == hit.turnId }
+        repository.anchor(c.id, hit.targetKey, 17)
+        scope.coroutineContext[Job]!!.cancelAndJoin(); db.close(); start()
+        val restored = state { it.selected?.turns?.firstOrNull()?.id == hit.turnId }.selected!!
+        assertEquals(hit.targetKey, restored.conversation.anchor)
+        assertEquals(17, restored.conversation.anchorOffset)
+    }
+    private suspend fun seedHistory(count: Int): Conversation {
+        val c = state().selected!!.conversation
+        val frozen = db.dao().conversation(c.id.value)!!.body
+        db.withTransaction {
+            repeat(count) { n ->
+                val number = n.toString().padStart(3, '0')
+                val row = TurnRow("turn-$number", c.id.value, "message-$number", frozen, n.toLong(), pending = false, occupied = false)
+                if (n == 5) {
+                    val config = RunConfigSnapshot(RuntimeAgent.CODEX, WorkspaceRef("default"), "test-model", null, GatewayProfileRef("CODEX", 0), emptySet())
+                    val snapshot = RunSnapshot(RunId("history-run"), RunPhase.FAILED, 1, 1, config,
+                        outputSegments = listOf(OutputSegment("assistant", 0, ResourceRef("history-body"))))
+                    db.dao().save(row.copy(runId = "history-run", snapshot = storageJson.encodeToString(snapshot)))
+                    db.dao().chunks(listOf(ChunkRow("history-body", "history-run", "old assistant body")))
+                } else db.dao().save(row)
+            }
+        }
+        return c
+    }
+    @Test fun `older occupied run remains visible after paginated conversation reopens`() = runBlocking {
+        val c = seedHistory(90)
+        val row = db.dao().turn("turn-003")!!
+        runtime.admit(row.execution())
+        db.dao().save(row.copy(runId = row.id, snapshot = storageJson.encodeToString(runtime.snapshots.getValue(row.id)), occupied = true))
+        scope.coroutineContext[Job]!!.cancelAndJoin(); db.close(); start()
+        val restored = state { it.selected?.turns?.any { t -> t.id.value == row.id && t.occupied } == true }.selected!!
+        assertEquals(c.id, restored.conversation.id)
+        assertEquals("turn-003", restored.turns.first().id.value)
+    }
+    @Test fun `version one database migrates with conversation messages and output intact`() = runBlocking {
+        val c = seedHistory(7)
+        val original = db.dao().conversation(c.id.value)!!.body
+        scope.coroutineContext[Job]!!.cancelAndJoin()
+        val sql = db.openHelper.writableDatabase
+        sql.execSQL("DROP INDEX index_turns_conversationId_createdAt_id")
+        sql.execSQL("DROP INDEX index_turns_conversationId_occupied")
+        sql.execSQL("UPDATE room_master_table SET identity_hash='323a224c2892d320614221fcfb9d928c' WHERE id=42")
+        sql.execSQL("PRAGMA user_version=1")
+        db.close(); start()
+        val restored = state { it.selected?.turns?.size == 7 }.selected!!
+        assertEquals(original, db.dao().conversation(c.id.value)!!.body)
+        assertEquals("old assistant body", restored.turns.single { it.id.value == "turn-005" }.messages.single().text)
+        assertEquals(2, db.openHelper.readableDatabase.version)
+        val indexes = mutableSetOf<String>()
+        db.openHelper.readableDatabase.query("PRAGMA index_list(turns)").use { cursor ->
+            while (cursor.moveToNext()) indexes += cursor.getString(cursor.getColumnIndexOrThrow("name"))
+        }
+        assertTrue("index_turns_conversationId_createdAt_id" in indexes)
+        assertTrue("index_turns_conversationId_occupied" in indexes)
+    }
     @Test fun `sidebar selects latest tied turn but keeps earlier occupied state without loading another timeline`() = runBlocking {
         val c = state().selected!!.conversation
         val other = repository.create(c.config)
@@ -68,7 +150,7 @@ class RoomInteractionRepositoryTest {
         assertEquals(latest, activities.single { it.conversationId == c.id.value }.snapshot)
         assertTrue(activities.single { it.conversationId == c.id.value }.occupied)
         assertFalse(activities.single { it.conversationId == other.value }.occupied)
-        assertEquals(listOf("a", "z"), db.dao().turns(c.id.value).first().map { it.id })
+        assertEquals(listOf("a", "z"), db.dao().timeline(c.id.value, 40).first().map { it.turn.id })
         repository.select(other)
         val selected = state { it.selected?.conversation?.id == other && it.selected!!.turns.size == 1 }
         assertEquals("separate", selected.selected!!.turns.single().userText)

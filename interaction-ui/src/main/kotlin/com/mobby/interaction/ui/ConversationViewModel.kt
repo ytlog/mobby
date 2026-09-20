@@ -17,7 +17,10 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
     val readingTarget = MutableStateFlow<ReadingTarget?>(null)
     private var readingSequence = 0L
     fun jumpTo(id: ConversationId, hit: SearchHit) {
-        readingTarget.value = ReadingTarget(id, hit.targetKey, ++readingSequence)
+        enqueue {
+            actions.revealTurn(id, hit.turnId)
+            readingTarget.value = ReadingTarget(id, hit.targetKey, ++readingSequence)
+        }
     }
     fun consumed(target: ReadingTarget) { readingTarget.compareAndSet(target, null) }
     val state = actions.state.stateIn(viewModelScope, SharingStarted.Eagerly, InteractionState())
