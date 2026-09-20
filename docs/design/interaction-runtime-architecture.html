@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>mobby · 交互三层架构与 Runtime 模块设计</title>
+<style>
+:root{color-scheme:light dark;--bg:#f3f5f7;--paper:#fff;--text:#202b35;--muted:#52616e;--line:#dce3e8;--soft:#edf3f5;--accent:#175f62}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:16px/1.85 system-ui,sans-serif}header,main{max-width:1100px;margin:auto;padding:36px 28px}header{padding-bottom:10px}h1{font-size:clamp(28px,4vw,42px);line-height:1.3}h2{font-size:24px;scroll-margin-top:24px}h3{font-size:18px}a{color:var(--accent);text-underline-offset:4px}nav{display:flex;flex-wrap:wrap;gap:8px 20px}section{background:var(--paper);border:1px solid var(--line);border-radius:20px;padding:28px;margin-bottom:22px;min-width:0}.tag{color:var(--accent);font-size:13px;letter-spacing:.06em}.muted{color:var(--muted)}.callout{background:var(--soft);border-left:4px solid var(--accent);padding:16px 20px;border-radius:8px}.table{overflow:auto}table{border-collapse:collapse;width:100%;font-size:14px}td,th{text-align:left;vertical-align:top;padding:12px;border-bottom:1px solid var(--line);min-width:120px}th{background:var(--soft)}pre{overflow:auto;background:var(--soft);padding:20px;border-radius:12px;font:13px/1.8 ui-monospace,monospace}code{font-family:ui-monospace,monospace;overflow-wrap:anywhere}.layers{display:grid;gap:10px}.layer{padding:18px;border:1px solid var(--line);border-radius:12px;background:var(--soft)}.layer strong{display:block}.layer small{color:var(--muted)}button{min-height:48px;padding:10px 20px;background:var(--paper);color:var(--text);border:1px solid var(--line);border-radius:12px;cursor:pointer}li{margin:6px 0}@media(prefers-color-scheme:dark){:root{--bg:#14191e;--paper:#1e262d;--text:#e6eef4;--muted:#b2c1cd;--line:#394956;--soft:#26343e;--accent:#88d2cc}}@media(max-width:600px){header,main{padding:20px 14px}section{padding:20px 16px}pre{padding:12px}h2{font-size:22px}}@media print{body{background:white;color:black}nav,button{display:none}section{break-inside:auto;border-radius:0}pre{white-space:pre-wrap}.table{overflow:visible}header,main{padding:0;max-width:none}a{color:inherit}}
+</style></head><body>
+<header><div class="tag">TECHNICAL DESIGN · REVIEW 01 · 2026-09-21</div><h1>交互三层架构<br>与独立 Runtime</h1><p>Compose 实现全部对话交互；业务规则、数据适配与执行引擎分别隔离。通过固定契约连接执行能力，支持替换实现、独立测试与分阶段迁移。</p><p class="muted">状态：待评审的目标设计。本次仅交付文档与目录整理，尚未建立下述新模块或改造运行代码。</p><p><a href="conversation-ui-review.html">交互规范与可点击原型</a> · <a href="../README.md">文档索引</a></p><button onclick="window.print()">打印 / 保存 PDF</button></header>
+<main><section><h2>阅读导航</h2><nav><a href="#baseline">1. 现状与决策</a><a href="#layers">2. 三层架构</a><a href="#modules">3. Gradle 模块</a><a href="#ui">4. Compose 交互</a><a href="#runtime">5. Runtime 内部</a><a href="#contract">6. 固定接口</a><a href="#events">7. 事件与恢复</a><a href="#flows">8. 关键调用链</a><a href="#storage">9. 数据与安全</a><a href="#migration">10. 迁移计划</a><a href="#tests">11. 验收标准</a><a href="#references">12. 参考依据</a></nav></section>
+<section id="baseline"><h2>1. 现状与决策</h2><p>已检查根 Gradle 配置、应用 Kotlin 源码、Manifest、现有单元测试与 runtime 脚本目录。现有工程只包含 <code>:app</code>、<code>:termux-core</code>、<code>:bootstrap-arm64</code> 三个 Gradle 模块。HTML 中的对话交互尚未落地为 Android 页面。</p><div class="table"><table><thead><tr><th>已验证现状</th><th>目标边界</th></tr></thead><tbody>
+<tr><td>MainActivity.kt 同时容纳控制台 Compose 与网关设置；设置直接创建 GatewayStore</td><td>Activity 只装配入口；展示层通过用例提交设置，不直接读存储</td></tr>
+<tr><td>TestConsoleViewModel 直接 bindService，并持有 RuntimeService 实例</td><td>ViewModel 只依赖交互领域用例；Service 绑定由 Runtime 客户端实现处理</td></tr>
+<tr><td>RuntimeService 同时管理执行、文本输出、通知，并引用 MainActivity</td><td>执行状态机归 engine；通知与 Service 归 Android 宿主；通知目标由 app 注入</td></tr>
+<tr><td>AgentAdapter 将 CLI 输出转为 text/error；RuntimeState 是控制台显示模型</td><td>公开协议提供结构化执行事实；交互层自行生成 UiState 与中文文案</td></tr>
+<tr><td>RuntimeEnvironment 同时安装环境、读取网关、启动 CLI；runtime/ 是脚本目录</td><td>环境、网关、进程适配留在 runtime-android；脚本目录保留，不冒充 Gradle 模块</td></tr>
+</tbody></table></div><div class="callout"><strong>确定采用：</strong>交互三层 + Runtime 独立子系统 + 纯 Kotlin 契约模块。首期仍在同一应用进程中，通过本地客户端访问执行 Service；独立 Gradle 模块不等于独立进程，不引入不必要的 AIDL/Socket。</div><p>模块迁移不同时升级 Compose、Kotlin、AGP。沿用工程现有版本与 JDK 17；新增 Kotlin/JVM 插件与现有 Kotlin 版本对齐。应用安装身份 <code>com.mdoer.app</code>、Keystore 别名及已有数据路径保持不变。</p></section>
+<section id="layers"><h2>2. 交互采用三层架构</h2><div class="layers"><div class="layer"><strong>L1 · 展示层 — :interaction-ui</strong>Compose Screen / Component → ViewModel → UiState / UiAction / UiEffect<br><small>处理页面、抽屉、展开、输入、焦点、滚动与返回，不执行 CLI。</small></div><div class="layer"><strong>L2 · 业务层 — :interaction-domain</strong>UseCase + 领域模型 + Repository / ExecutionPort 接口<br><small>处理发送、切换、配置、Skill 创建等业务规则；纯 Kotlin，可独立测试。</small></div><div class="layer"><strong>L3 · 数据与适配层 — :interaction-data</strong>Repository 实现 + Room + RuntimeExecutionAdapter<br><small>保存会话与草稿，把领域命令转换为 Runtime 请求，把事件投影成会话数据。</small></div></div><p>“三层”指职责，不是把所有代码强行放进三个模块。运行调用从展示经业务到数据；编译依赖采用依赖倒置：<code>UI → Domain ← Data</code>。Domain 声明端口，Data 实现端口；Domain 不依赖 Data、Android、Compose 或 Runtime 实现。</p><pre>调用方向：Compose → ViewModel → UseCase → ExecutionPort
+                                            ↓ 注入的实现
+                                    RuntimeExecutionAdapter
+                                            ↓ RuntimeClient
+编译方向：interaction-ui ──→ interaction-domain ←── interaction-data
+                                                     │
+                                                     ▼
+                                                 runtime-api
+                                                     ▲
+                                       runtime-engine / runtime-android</pre><p>业务层使用自己的 AgentId、ConversationId、TurnId 和错误类型；Runtime DTO 只在数据适配层转换。Runtime 不知道抽屉、会话分组、气泡、折叠、点赞、页面生命周期。</p></section>
+<section id="modules"><h2>3. Gradle 模块与依赖约束</h2><p>整个交互入口对 app 暴露为一个独立 Android Library：<code>:interaction-ui</code>。其业务和数据继续拆为两个模块，形成可编译约束的三层。Runtime 对宿主暴露独立 Android Library：<code>:runtime-android</code>，另拆 API 和 engine，避免接口与 Android 执行细节互相污染。</p><div class="table"><table><thead><tr><th>模块 / 类型</th><th>职责</th><th>允许的项目依赖</th></tr></thead><tbody>
+<tr><td>:app / Android application</td><td>Activity、应用级对象图、权限与通知导航装配、最终打包</td><td>interaction-ui、interaction-domain、interaction-data、runtime-api、runtime-android</td></tr>
+<tr><td>:interaction-ui / Android library + Compose</td><td>全部交互页面、ViewModel、主题与组件</td><td>interaction-domain</td></tr>
+<tr><td>:interaction-domain / Kotlin JVM</td><td>业务用例、领域模型、数据与执行端口</td><td>无项目模块依赖；允许 coroutines</td></tr>
+<tr><td>:interaction-data / Android library</td><td>Room、Repository 实现、Runtime DTO 映射、事件投影</td><td>interaction-domain、runtime-api</td></tr>
+<tr><td>:runtime-api / Kotlin JVM</td><td>版本化接口、命令/事件/能力/快照 DTO、错误码</td><td>无项目模块依赖；允许 coroutines</td></tr>
+<tr><td>:runtime-engine / Kotlin JVM</td><td>执行协调、状态机、协议归一化、调度与取消规则</td><td>runtime-api</td></tr>
+<tr><td>:runtime-android / Android library</td><td>RuntimeClient 实现、Service、进程/环境/网关、事件日志、Android 存储</td><td>runtime-api、runtime-engine、termux-core、bootstrap-arm64</td></tr>
+<tr><td>:termux-core / :bootstrap-arm64</td><td>现有 libtermux 核心与内置环境</td><td>保留现有第三方内部依赖</td></tr>
+</tbody></table></div><h3>工程布局</h3><pre>app/                       # 薄宿主；保留现有 applicationId
+interaction-ui/            # Android library，Compose
+interaction-domain/        # Kotlin JVM
+interaction-data/          # Android library，Room 与执行适配
+runtime-api/               # Kotlin JVM，稳定契约
+runtime-engine/            # Kotlin JVM，纯执行核心
+runtime-android/           # Android library，执行宿主
+runtime/                   # 保留已有打包脚本、锁文件和网关联调工具
+third_party/libtermux-android/
+docs/design/               # 交互与技术文档</pre><h3>Gradle 依赖声明示意</h3><pre><code>// interaction-ui/build.gradle.kts
+plugins { id("com.android.library"); kotlin("android") }
+android { buildFeatures { compose = true } } // SDK、编译器版本沿用根约定
+dependencies { implementation(project(":interaction-domain")) }
+
+// interaction-domain/build.gradle.kts
+plugins { kotlin("jvm") } // 根插件声明补齐，版本与现有 Kotlin 一致
+
+// interaction-data/build.gradle.kts
+dependencies {
+    implementation(project(":interaction-domain"))
+    implementation(project(":runtime-api"))
+}
+
+// runtime-engine/build.gradle.kts
+dependencies { implementation(project(":runtime-api")) }
+
+// runtime-android/build.gradle.kts
+dependencies {
+    implementation(project(":runtime-api"))
+    implementation(project(":runtime-engine"))
+    implementation(project(":termux-core"))
+    implementation(project(":bootstrap-arm64"))
+}</code></pre><p>以上是依赖示意，省略版本、namespace 与外部库；不是可直接替换现有构建文件的完整配置。默认使用 implementation，宿主显式声明所消费的契约。禁止 UI → Data / Runtime、Domain → Android、Runtime → 任何 interaction 模块、库模块 → app。CI 检查 Gradle 依赖图和跨模块 import；仅靠包名约定不算隔离。</p><p>app 的 AppGraph 创建 RuntimeHost、RuntimeClient、Repository 和 UseCase，再注入 InteractionEntry 的 ViewModel factory。先采用构造函数注入；当前规模不强制引入 DI 框架。runtime-android 接收宿主提供的通知 PendingIntent 工厂，不能反向 import MainActivity。</p></section>
+<section id="ui"><h2>4. Compose 交互实现</h2><p>采用单向数据流：<code>UiAction → ViewModel → UseCase → Repository Flow → UiState → Compose</code>。页面使用生命周期感知订阅；离开页面只取消 UI 观察，不取消执行。公开入口 <code>InteractionEntry(dependencies, hostActions)</code> 隐藏内部导航与组件。</p><div class="table"><table><thead><tr><th>组件 / 状态所有者</th><th>实现边界</th></tr></thead><tbody>
+<tr><td>ConversationRoute / ConversationViewModel</td><td>组合消息、草稿、执行状态和下一轮配置；按会话恢复，不直接 bindService</td></tr>
+<tr><td>PushNavigationDrawer / DrawerState</td><td>菜单与主内容共用位移进度；内容保持宽度，状态栏与系统导航 inset 独立；背景锁定，返回恢复焦点</td></tr>
+<tr><td>MessageTimeline / LazyColumn</td><td>按 messageId、stepId 使用稳定 key；用户阅读历史时停止自动跟随；按锚点恢复滚动</td></tr>
+<tr><td>ExecutionCard / StepContent</td><td>开始自动展开，完成后按用户手动覆盖状态折叠；普通步骤原地展开，正文高度上限 240dp，短内容自然高度</td></tr>
+<tr><td>ReadingSheet / ModalBottomSheet</td><td>来源、网页、长代码近满屏；最大高度为可用高度减 48dp，短内容自然高度；内部滚动与下拉关闭协调</td></tr>
+<tr><td>AgentConfigPopup / MoreMenu</td><td>顶部锚定弹窗；只列 Codex、Claude Code，模型与等级来自能力接口；变更应用于下一轮</td></tr>
+<tr><td>Composer / AddContentSheet</td><td>IME inset、附件草稿、语音转文字；加号底部面板；发送提交成功后才清除对应版本草稿</td></tr>
+<tr><td>SkillCatalog / PluginCatalog</td><td>插件无添加入口；技能添加：与moddy对话创建、导入技能文件、手动创建</td></tr>
+</tbody></table></div><p>会话、草稿、手动展开选择与阅读锚点可持久化；当前弹窗、抽屉进度与焦点由 UI/SavedStateHandle 管理；进程句柄、CLI session 与运行真相不进入 ViewModel。UiEffect 只用于焦点、系统分享、文件选择等一次性操作，执行完成与审批必须是可重放状态，不能只用一次性 Channel。</p><p>系统选择文件、相机、录音授权由 UI 发起，URI 交给数据层导入为受控资源引用。Runtime 不接收 Compose、Activity、NavController、Uri 或显示文案。Runtime 无法支持的语音、能力、审批操作在 UI 标注不可用，不能用成功提示代替执行。</p></section>
+<section id="runtime"><h2>5. Runtime 是独立执行子系统</h2><div class="layers"><div class="layer"><strong>边界层 · runtime-api</strong>RuntimeClient / RuntimeCapabilities / CommandResult / RunSnapshot / EventEnvelope</div><div class="layer"><strong>执行核心 · runtime-engine</strong>RunCoordinator → RunStateMachine → AgentProtocolAdapter；依赖 ProcessPort、EnvironmentPort、JournalPort、CredentialPort</div><div class="layer"><strong>平台层 · runtime-android</strong>RuntimeService + LocalRuntimeClient + libtermux 进程执行 + 环境安装 + 网关 + 加密配置 + 日志持久化</div></div><p>engine 声明平台端口，runtime-android 注入实现。CLI 协议解析可在 JVM 测试；Android Binder、通知、权限、Keystore、文件路径只留在平台层。对外不暴露 Service、Binder、Process、File、libtermux 类型；外部只拿 RuntimeClient。</p><p>首期一个 RuntimeHost、一个 Service 作用域、一个全局执行槽；多个会话可以观察，只有一个任务可被接纳，其他提交返回 Busy(activeRunId)，不隐式排队。锁的权威在 Runtime，不在按钮 enabled 状态。读取状态与查询能力不占执行槽。</p><p>Shell 执行保留在 ProcessPort 与内部诊断适配器；产品 AgentId 只含 CODEX / CLAUDE_CODE，诊断能力不通过正常对话的 Agent 列表暴露。网关仍覆盖既有三种协议路径，优先 CLI 原生配置直连，确需适配才启用桥接。</p><p>Runtime Service 是运行宿主而非永久保活承诺。用户从可见页面启动任务，平台层处理前台服务启动失败、通知和系统超时。现有 Manifest 使用 dataSync；正式发布前需核对执行用途与服务类型是否匹配，不能仅为长时间执行随意选择类型。Android 15 的相关后台时限见 <a href="https://developer.android.com/develop/background-work/services/fgs/timeout">官方超时说明</a>。系统要求停止时，持久化终止原因并清理进程；不能仅停止通知后让进程继续运行。</p></section>
+<section id="contract"><h2>6. 固定接口契约 · Runtime API v1</h2><p>以下为接口评审草案；DTO 均位于 runtime-api，具体字段以本节表格为准，代码省略其构造定义。协程接口是进程内调用约定，未来跨进程需要另外实现传输适配器，不能直接把 Flow 当成 IPC。</p><pre><code>interface RuntimeClient {
+    val connection: StateFlow&lt;ConnectionState&gt;
+    suspend fun capabilities(): CapabilityResult
+    suspend fun submit(request: RunRequest): SubmitResult
+    suspend fun findByRequest(requestId: RequestId): RequestLookup
+    suspend fun cancel(request: CancelRequest): CommandResult
+    suspend fun resolveApproval(request: ApprovalDecision): CommandResult
+    suspend fun snapshot(runId: RunId): SnapshotResult
+    fun observe(runId: RunId, after: EventCursor?): Flow&lt;RuntimeUpdate&gt;
+    suspend fun readArtifact(request: ArtifactReadRequest): ArtifactReadResult
+}
+
+// observe 的首条消息由 Runtime 原子读取快照与序号，随后重放 / 追踪事件。
+sealed interface RuntimeUpdate {
+    data class Baseline(val snapshot: RunSnapshot,
+                        val cursor: EventCursor) : RuntimeUpdate
+    data class Event(val envelope: EventEnvelope) : RuntimeUpdate
+    data class ResyncRequired(val reason: ResyncReason) : RuntimeUpdate
+}
+
+// 领域层端口不暴露上述 Runtime DTO。
+interface ExecutionPort {
+    suspend fun submit(turn: TurnExecution): Submission
+    suspend fun cancel(executionId: ExecutionId): StopResult
+    fun observe(executionId: ExecutionId): Flow&lt;ExecutionFact&gt;
+}</code></pre><div class="table"><table><thead><tr><th>对象</th><th>必要字段与语义</th></tr></thead><tbody>
+<tr><td>RunRequest</td><td>apiMajor、requestId、agentId、workspaceRef、inputParts、sessionRef?、modelId、reasoningLevel?、gatewayProfileRef、capabilityRefs。输入仅含文本与受控资源引用；不传 UI 状态、原始命令行、密钥或用户可任意拼接的启动参数</td></tr>
+<tr><td>SubmitResult</td><td>Accepted(runId, acceptedConfig) / Rejected(code, retryable, activeRunId?)。Accepted 表示请求已持久接纳，不表示 CLI 已启动或任务已成功</td></tr>
+<tr><td>RequestLookup</td><td>Found(runId) / NotFound / Unavailable。请求应答丢失时先查询原 requestId，不能创建新 ID 自动重发</td></tr>
+<tr><td>CancelRequest</td><td>commandId、runId、原因 USER_REQUEST。返回 Accepted、AlreadyTerminal、Rejected；Accepted 只表示开始取消</td></tr>
+<tr><td>ApprovalDecision</td><td>commandId、runId、approvalId、ALLOW_ONCE / DENY、expectedRevision；过期或不匹配返回 StaleApproval，不能作用到新的审批</td></tr>
+<tr><td>RuntimeCapabilities</td><td>apiMajor/minor、engineVersion、availableAgents、每个 Agent 的模型与思考等级、resume/approval/skill 支持、输入限制。不可用含原因；能力不是安装即等于可运行</td></tr>
+<tr><td>RunSnapshot</td><td>runId、phase、revision、lastSequence、acceptedConfig、sessionRef、pendingApprovals、terminalEvidence?、产物引用、恢复所需输出分段索引</td></tr>
+<tr><td>EventEnvelope</td><td>apiMajor/minor、eventId、runId、sequence、occurredAt、kind、payload。sequence 在同一 run 中单调递增；排序不使用时间戳</td></tr>
+<tr><td>ArtifactReadRequest</td><td>artifactRef、offset、limit；返回有界内容块及 nextOffset / truncated。只读当前授权工作区的产物，不允许绕过路径校验</td></tr>
+</tbody></table></div><h3>补充管理接口</h3><p><code>RuntimeAdminClient</code> 同属 runtime-api，提供 initialize、observeEnvironment、listGatewayProfiles、saveGatewayProfile、validateGateway、importResource、listCapabilities、importSkill、saveManualSkill。交互仍经 Domain 管理端口和 Data 适配调用。配置保存与连通性测试返回不同结果；插件只列出与选择，不提供安装接口。</p><p>凭据写入是单独的短生命周期请求：可携带仅内存存在的 SecretInput，由 runtime-android 立即加密保存；常规读取只返回脱敏摘要与 profileRef，RunRequest、事件、日志及 Room 均不携带密钥。取消导入、无权限、格式错误等返回结构化失败，不产生“已添加”记录。</p><h3>兼容与失败</h3><p>主版本不兼容则拒绝执行并提示升级；次版本允许新增可选字段，未知普通事件保留脱敏诊断，未知终态不能推断成功。集中错误码包括 NotReady、Busy、UnsupportedCapability、InvalidConfig、PermissionDenied、ProtocolError、Disconnected、ResourceMissing、StorageFull、Timeout、Interrupted。UI 负责中文映射；接口同时携带 retryable 与 diagnosticRef，不透传未经脱敏的异常堆栈。</p><p>命令结果用显式类型表达业务失败；调用方协程取消只取消等待或订阅，不隐式取消已接纳任务。取消执行必须调用 cancel。Runtime 在 Service 作用域接管任务，因此 ViewModel 清理或 Flow 停止订阅不会结束执行。</p></section>
+<section id="events"><h2>7. 执行状态、事件与断线恢复</h2><pre>Accepted → Starting → Running ↔ AwaitingApproval
+                       │
+                       ├─ 成功证据完整 → Succeeded
+                       ├─ 执行错误 → Failed
+                       └─ 取消 / 超时 → Cancelling → Cancelled / TimedOut
+
+进程或宿主失联 → 重新核实 → 恢复观察 / Interrupted / OutcomeUnknown
+ConnectionState 只表达连接情况，不覆盖 RunPhase。</pre><p>所有非终态均可因启动失败、系统中断或协议错误结束。一个 run 只写入一次终态，由串行状态机决定竞态：若完成已落盘，后续取消返回 AlreadyTerminal；若取消请求先被接纳，则不能再因一个迟到的成功片段宣布成功。成功要求 Agent 协议成功终态及进程退出证据一致；普通 stderr 不直接等于失败。未获得进程退出证据时显示停止中或 OutcomeUnknown，不显示已停止。</p><div class="table"><table><thead><tr><th>事件</th><th>负载与展示投影</th></tr></thead><tbody>
+<tr><td>RunAccepted / RunStarted</td><td>冻结配置、时间和 sessionRef；展示开始状态</td></tr>
+<tr><td>ProgressSummary</td><td>Agent 提供的公开进度摘要，不暴露私有推理内容</td></tr>
+<tr><td>ToolStarted / ToolOutput / ToolFinished</td><td>stepId、toolKind、脱敏摘要、输出 chunkIndex 或 artifactRef、明确工具终态；生成可折叠步骤</td></tr>
+<tr><td>AssistantDelta / AssistantCompleted</td><td>messageId、chunkIndex、文本增量 / 完成标记；消息完成不是 run 成功的替代信号</td></tr>
+<tr><td>ApprovalRequired / ApprovalResolved</td><td>approvalId、动作摘要、范围、版本；待审批进入快照，重连后仍可见</td></tr>
+<tr><td>ArtifactAvailable / RunFinished</td><td>受控产物引用 / 终态、退出码、错误码、证据摘要；UI 自行决定折叠和操作</td></tr>
+</tbody></table></div><h3>避免漏事件与重复执行</h3><ol><li>Domain 生成 requestId，Data 在交互数据库先保存待提交轮次与请求记录，再调用 Runtime。Runtime 对 requestId 与请求摘要做幂等检查；相同 ID 相同参数返回同一 run，不同参数返回冲突。</li><li>Runtime 持久接纳记录后才回复 Accepted；日志和执行槽接纳必须原子化。数据层应答丢失时查询同一 requestId。进程在接纳后启动前崩溃，恢复时标为中断待用户决定，不自动重新执行有副作用的命令。</li><li>首次订阅获得 Baseline(snapshot, cursor)，再连续读 cursor 之后的日志。持久日志为权威，实时通知仅作唤醒信号。恢复订阅在 after 游标有效时重放后续事件，不重新应用基线内的文本。</li><li>Data 在同一数据库事务中应用事件并推进游标；按 (runId, sequence) 去重，缺口先补齐。日志已压缩时返回 ResyncRequired，再从一致快照与输出分段索引重建投影，不把增量再追加到已有全文。</li><li>UI 退后台可暂停绘制；事件接收与投影由应用/Service 生命周期的同步器处理，或稍后可靠重放。慢消费者不阻塞进程 stdout 读取：输出写有界分段文件，事件引用分段；容量到达上限明确标记截断，状态与审批事件不能静默丢弃。</li></ol><p>日志清理仅针对终态 run，保留期与大小预算可配置；清理后保留幂等请求摘要和终态索引。活跃任务的终态、审批与最新一致快照不随普通输出裁剪。写盘失败时拒绝新任务；执行中则请求安全停止并报告 StorageFull，不能把未持久化接纳当作可靠成功。</p></section>
+<section id="flows"><h2>8. 关键交互调用链</h2><h3>发送与停止</h3><pre>点击发送 → SubmitTurnUseCase → 保存待提交轮次 + draftRevision
+        → RuntimeExecutionAdapter → RuntimeClient.submit
+        → Runtime 接纳 / Busy / 配置错误
+        → Accepted 后只清除原 draftRevision（期间新输入保留）
+        → Runtime 事件 → 数据投影 → Flow → Compose
+
+点击停止 → StopRunUseCase → cancel(runId)
+        → Cancelling → 终止进程组 / 等待退出证据
+        → Cancelled / TimedOut / OutcomeUnknown → UI 更新</pre><h3>与moddy对话创建技能</h3><p>CreateSkillConversationUseCase 创建新的普通会话，保留原会话草稿与运行；绑定 Skill Creator 能力引用，预填“请用 /skill-creator 帮我创建技能，要求是：”，光标置末。用户补充并发送后，适配器按真实 CLI 支持方式调用 Creator，不能假设两个 CLI 都直接识别同一斜杠命令。生成结果通过 ArtifactAvailable 在会话展示；预览、校验和明确保存后写入受控技能目录。若 Creator 不可用，返回 UnsupportedCapability，不悄悄转成手动表单。</p><p>“手动创建”走独立表单与 saveManualSkill；“导入技能文件”走系统文件选择、Markdown 校验和同名处理。这三个入口共享技能存储与校验，只有对话创建需要新的 Agent 运行。</p><h3>模型选择、切换会话与抽屉</h3><p>模型与思考等级保存为 NextTurnConfig，submit 时冻结为 RunConfigSnapshot。运行中修改不影响当前任务；更换 Agent 导致新的会话，不跨 CLI 复用 session。切换会话仅改变 Repository 的观察目标，不调用 cancel。抽屉、原地展开、近满屏面板均停留在 UI，不向 Runtime 发送“打开/关闭”命令。</p><h3>审批与应用恢复</h3><p>只有 Runtime 报告支持且实际产生审批事件时显示授权操作。用户决定经用例传回 approvalId 与 revision；页面消失不默认批准。应用重新打开，先查询连接与 run 快照，再恢复会话投影；连接断开显示“连接中断，结果待确认”，不得将 busy=false 当作已完成。</p></section>
+<section id="storage"><h2>9. 存储所有权与安全边界</h2><div class="table"><table><thead><tr><th>所有者</th><th>保存的数据</th><th>边界</th></tr></thead><tbody>
+<tr><td>interaction-data / Room</td><td>会话、项目分组、消息投影、轮次请求映射、草稿、附件引用、展开选择、阅读锚点、消费游标</td><td>展示与业务数据；不直接读取 Runtime 数据库</td></tr>
+<tr><td>runtime-android / RuntimeJournal</td><td>requestId 幂等记录、run 状态、sessionRef、冻结配置引用、事件序号、审批、输出分段与产物索引</td><td>执行权威；不保存对话标题和抽屉选择；Engine 通过 JournalPort 访问</td></tr>
+<tr><td>runtime-android / GatewayStore</td><td>网关配置、凭据加密值</td><td>保留原 SharedPreferences 名称与 Keystore 别名；仅管理接口接收临时明文</td></tr>
+<tr><td>runtime-android / ResourceStore</td><td>导入附件、技能文件、工作区引用和 CLI HOME</td><td>验证路径与授权；归档或移除项目分组不删除工作区</td></tr>
+<tr><td>interaction-ui / SavedStateHandle</td><td>当前页面、选中会话、临时面板状态</td><td>不包含密钥、运行句柄或大段日志；抽屉动画进度无需长期持久化</td></tr>
+</tbody></table></div><p>两个数据库各有单一写入所有者，跨库通过幂等请求和可重放事件实现最终一致，不声称有跨库原子事务。运行配置只保存 profileRef 与配置版本引用，密钥轮换不把明文复制进 RunSnapshot。附件传入前由 Android 适配处理 URI 授权和导入；Runtime 再验证 workspaceRef 与 artifactRef 范围，拒绝路径穿越和任意文件读取。</p><p>Room 的采用是本方案新增设计，当前工程尚未接入。数据库升级提供显式迁移，不使用破坏性重建；安装升级保留 SharedPreferences、HOME、workspace 和已有 CLI 配置。真实配置、输出中的凭据及本地路径敏感信息不得放进源码、测试夹具或文档。</p></section>
+<section id="migration"><h2>10. 从当前工程迁移</h2><div class="table"><table><thead><tr><th>阶段</th><th>改造内容</th><th>进入下一阶段的条件</th></tr></thead><tbody>
+<tr><td>1 · 定义契约</td><td>新增 runtime-api、interaction-domain；定义命令、事件、幂等/游标语义和假实现；保留现有 app 可构建</td><td>接口协议测试覆盖接纳、取消、应答丢失、重复事件；确定不支持能力的真实表现</td></tr>
+<tr><td>2 · 提取 Runtime</td><td>新增 engine 与 runtime-android；迁移 Service、Environment、GatewayStore；拆 AgentAdapter 的参数构建和解析；注入通知目标</td><td>运行层不引用 app/UI；旧控制台通过 RuntimeClient 使用同一实现；保留原错误/取消证据测试，不长期并存两套引擎</td></tr>
+<tr><td>3 · 三层交互</td><td>新增 interaction-data 与 interaction-ui；Room 和用例；Compose 先接假 Runtime，逐条落地现有 HTML 交互</td><td>UI 不直接引用 RuntimeClient 或存储；抽屉、菜单、Skill 三入口、状态展开行为通过测试</td></tr>
+<tr><td>4 · 接通与替换</td><td>app 装配真实 Runtime；交互数据投影接事件；替换默认 TestConsoleScreen；Shell 诊断放调试入口，不出现在产品 Agent 中</td><td>真实 CLI/网关、前后台恢复、审批、停止、升级数据保留均验收；删除生产链路上的旧直接绑定</td></tr>
+</tbody></table></div><p>运行打包脚本继续放在 runtime/。bootstrap、CLI 资产的生成任务归 runtime-android 或其明确依赖的构建任务，最终 assets/JNI 由 app 打包验证；迁移不能只改 Kotlin 包名而遗漏 native 库、Manifest 合并和资产路径。Service 使用完整类名注册，exported=false；应用通知点击目标仍由宿主提供。</p><p>当前测试移动到对应模块：AgentAdapterTest → engine，GatewayConfigTest → runtime-android，RuntimeSmokeTest → app 集成验收；现有 Node/Python 网关与打包检查保持执行。每阶段形成可构建检查点，数据迁移和协议重构分别验证。</p></section>
+<section id="tests"><h2>11. 验收与测试矩阵</h2><div class="table"><table><thead><tr><th>范围</th><th>可观察验收</th></tr></thead><tbody>
+<tr><td>模块边界</td><td>UI 仅依赖 Domain；Runtime 不依赖交互模块；替换 FakeRuntimeClient 无需改 Compose；engine JVM 测试无需 Android 设备</td></tr>
+<tr><td>命令契约</td><td>同 requestId 不重复启动；应答丢失可查回 run；Busy 保留草稿；旧审批不能批准新请求；取消订阅不取消执行</td></tr>
+<tr><td>事件一致性</td><td>重放无重复文本；乱序先补齐；快照切换无缺口；终态只一次；超时、中断、错误不会显示成功；恢复不自动重发</td></tr>
+<tr><td>Compose</td><td>320/360/412dp、字体放大、深浅色、IME、TalkBack、旋转；推开抽屉内容同宽；面板短内容自然高度/长内容滚动；关闭恢复焦点与锚点</td></tr>
+<tr><td>技能 / 插件</td><td>插件无添加；对话创建新会话并绑定 Creator；手动表单独立；导入取消或格式错误不产生成功记录</td></tr>
+<tr><td>真实运行</td><td>Shell 诊断、Codex、Claude Code 实际执行；三种网关协议的真实路径、工具内容不丢失；进程组停止与前台服务超时行为</td></tr>
+<tr><td>升级与安全</td><td>覆盖安装后原 HOME、工作区、凭据可用；日志脱敏；导入路径校验；磁盘不足、损坏日志和进程死亡有明确状态</td></tr>
+</tbody></table></div><p>新模块落地后运行各 JVM 单测、Android Library 单测/Compose 仪器测试及 <code>:app:assembleDebug</code>、<code>:app:lintDebug</code>；保留 <code>node --test runtime/gateway-tests/bridge.test.cjs</code> 和 <code>python3 -m unittest discover -s runtime -p 'test_*.py'</code>。模拟 Runtime 和模拟网关只证明对应边界，不能替代手机与真实 CLI 验收。</p><div class="callout">本次交付为技术设计与文档目录修正；不会把建议模块、示例接口或目标恢复机制描述成已实现功能。实现评审的重点是：依赖图、API v1 的幂等/事件语义、存储所有权、同进程 Service 生命周期。</div></section>
+<section id="references"><h2>12. 参考依据与文档分工</h2><p>本方案的模块划分、幂等协议与 Runtime 边界是针对当前工程的设计决策。Android 官方提供架构与平台机制依据：</p><ul><li><a href="https://developer.android.com/topic/architecture/recommendations">Android 架构建议</a>：采用单向数据流与用例封装业务逻辑。</li><li><a href="https://developer.android.com/topic/modularization">Android 模块化指南</a>：通过模块边界管理职责与依赖。</li><li><a href="https://developer.android.com/develop/background-work/services/fgs/service-types">前台服务类型</a>与<a href="https://developer.android.com/develop/background-work/services/fgs/timeout">超时规则</a>：服务类型和运行时限必须按目标系统核验。</li></ul><p><a href="conversation-ui-review.html">交互评审稿</a>是页面与交互规则来源；本文是分层、模块和执行协议来源；<a href="../implementation.md">实施记录</a>描述已实现事实；<a href="runtime-test-plan.md">初始测试控制台方案</a>保留历史验证背景，不作为新交互的实现规范。</p></section>
+</main></body></html>

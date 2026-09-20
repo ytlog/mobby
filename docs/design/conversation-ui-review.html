@@ -169,35 +169,33 @@
 <p>独立页面使用导航栈；同级弹窗互相替换。技能添加是目录页上的单个覆盖层。正文滚动、步骤内部滚动与面板滚动分别记录，关闭阅读面板后恢复触发消息位置。大字体、横屏和分屏下重新计算高度上限，保留可访问的关闭与返回入口。</p>
 </section>
 <section class="design-section" aria-labelledby="section-7">
-<h2 id="section-7">7. 实现架构与交付顺序</h2>
-<pre><code>Compose 页面与组件
-会话 / 抽屉 / 执行卡 / 下拉菜单 / 底部面板 / 插件与技能目录
-            ↓ 用户操作               ↑ UiState
-       ViewModel：页面状态、草稿与配置暂选
-            ↓                        ↑
-Repository：会话、消息、步骤、技能、附件与配置引用
-            ↑                        ↓
-       EventReducer ← ExecutionCoordinator
-                             ↓
-       RuntimeService → Claude / Codex / Shell Adapter
-                             ↓
-              RuntimeEnvironment / libtermux</code></pre>
-<p>导航抽屉采用 Material 导航语义与抽屉状态，在 Compose 自定义布局中让菜单从 −drawerWidth 移至 0，同时对话从 0 移至 drawerWidth；两个区域共享同一动画进度，内容不缩窄。ModalNavigationDrawer 默认覆盖内容，不能直接当作推开效果交付。抽屉开启时锁定背景交互并管理焦点；滑动关闭与预测返回共用进度，避免拦截系统边缘返回手势。HTML 演示点击开合、遮罩关闭和 Escape 返回，原生拖动与预测返回需设备验收。参考 <a href="https://developer.android.com/develop/ui/compose/components/drawer?hl=zh-CN" target="_blank" rel="noopener">Android 导航抽屉文档</a>。</p>
-<p>保留 Compose、内置 libtermux 和三种执行能力。ViewModel 不持有子进程；运行归属 RuntimeService，界面恢复后按 runId 订阅既有执行。导航目的地与覆盖面板分开管理，关闭页面不取消任务。</p>
-<div class="table-wrap"><table><thead><tr><th>模块</th><th>职责</th></tr></thead><tbody>
-<tr><td>ConversationRepository / Room</td><td>保存会话、轮次、消息、CLI session、草稿、展开选择及滚动锚点；工作区引用与项目分组分离</td></tr>
-<tr><td>AgentAdapter / EventReducer</td><td>归一化公开进度、工具开始/输出/结束、最终回复与终态；按 runId 和工具 ID 路由，去重并处理迟到事件</td></tr>
-<tr><td>ExecutionCoordinator</td><td>全局运行锁、配置快照、停止与审批回传；中断恢复不自动重放命令</td></tr>
-<tr><td>ModelCapabilityProvider / NextTurnConfig</td><td>提供真实模型与等级依赖，保存下一轮选择；与当前 RunConfigSnapshot 分离</td></tr>
-<tr><td>CapabilityCatalogRepository</td><td>只读插件目录、技能记录、兼容性和可用状态；草稿中的能力引用按会话隔离</td></tr>
-<tr><td>SkillImportService / SkillCreatorCoordinator</td><td>Markdown 解析校验、同名处理；调用 Creator、预览、验证、写入及重新发现</td></tr>
-<tr><td>AttachmentRepository / SpeechInputController</td><td>URI 授权、导入与容量校验；录音、转写、后台停止与草稿插入</td></tr>
-<tr><td>GatewayStore</td><td>设备加密配置；数据库与 UI 只持有非敏感引用</td></tr>
+<h2 id="section-7">7. 三层交互与独立 Runtime</h2>
+<p>全部交互采用 Compose，实现为独立 Gradle 模块 <code>:interaction-ui</code>。交互内部划分展示、业务、数据三层；Runtime 独立成子系统，通过固定接口通信。完整技术定义见 <a href="interaction-runtime-architecture.html">交互三层架构与 Runtime 技术设计</a>，本节仅说明交互落地边界。</p>
+<pre><code>展示层 :interaction-ui（Compose / ViewModel）
+               ↓ 依赖
+业务层 :interaction-domain（UseCase / 领域模型 / 端口）
+               ↑ 实现端口
+数据层 :interaction-data（Room / Repository / 执行适配）
+               ↓ 固定契约
+          :runtime-api（命令 / 快照 / 事件）
+               ↑ 实现
+:runtime-android（Service / 客户端 / 网关 / 环境）
+               ↓
+:runtime-engine（状态机 / 协议 / 调度） → :runtime-api
+
+:app 只负责宿主、对象装配与打包。
+Runtime 不依赖任何 interaction 模块。</code></pre>
+<p>UI 只向用例提交操作，通过 UiState 更新页面；不能直接绑定 Service、创建网关存储或访问子进程。Data 将领域请求转换为 Runtime DTO，再把结构化事件投影为消息与步骤。运行生命周期由 Runtime Service 管理，关闭页面、收起面板和停止订阅都不等于取消任务。</p>
+<div class="table-wrap"><table><thead><tr><th>交互职责</th><th>技术边界</th></tr></thead><tbody>
+<tr><td>抽屉、展开、滚动与返回</td><td>Compose 管理；推开式抽屉菜单与内容共享动画进度，内容不缩窄；不调用 Runtime</td></tr>
+<tr><td>发送、停止、配置与技能创建</td><td>Domain 用例管理业务规则；Data 实现端口；命令通过 runtime-api 传递，审批与取消必须有明确回执</td></tr>
+<tr><td>会话与运行恢复</td><td>交互数据保存草稿和消息投影；Runtime 保存执行事实，依靠 requestId 幂等和事件游标恢复；中断不自动重发</td></tr>
+<tr><td>真实能力</td><td>模型、思考等级与 Skill Creator 支持由 Runtime 能力接口提供；Shell 保留为内部执行与诊断能力，不进入产品 Agent 列表</td></tr>
 </tbody></table></div>
-<p>运行状态与 UI 展开状态独立。完成由协议结束事件与退出证据确定，不匹配输出中的“完成”文字。未知事件保留为可诊断状态，缺少终态显示结果未确认。网关支持 CLI 原生协议时优先直连，确需适配时才使用桥接。</p>
-<p>消息按轮次持久化，流式增量合并刷新；长输出按需分页，超过预算明确标记截断。持久化和导出前脱敏，设备配置不进入日志。升级保持 applicationId、Keystore、HOME、工作区和用户数据。</p>
+<p>执行状态与 UI 展开状态独立。完成必须有协议和进程证据；接口断开不表示完成，取消接纳不表示已停止。正文长输出按有界分段读取，进度只展示公开摘要。凭据留在设备加密存储，常规执行请求只使用配置引用。</p>
 <h3>交付顺序</h3>
-<ol><li><strong>数据与执行：</strong>结构化事件、会话存储、CLI 恢复、配置快照与真实停止，先确保状态可信。</li><li><strong>对话主路径：</strong>侧栏、时间线、原地展开、阅读面板、输入与两个顶部下拉，完成会话隔离和返回恢复。</li><li><strong>能力接入：</strong>只读插件目录、技能导入与 Creator、附件、语音和系统分享；按真实能力开放入口。</li><li><strong>设备验收：</strong>小屏、大字体、IME、TalkBack、后台恢复与真实 CLI/网关执行，覆盖安装保留数据。</li></ol>
+<ol><li>定义纯 Kotlin 领域端口与 Runtime API，完成契约测试。</li><li>提取 Runtime 引擎与 Android 宿主，消除对 app/UI 的反向依赖。</li><li>落地交互三层和 Compose 页面，先接假 Runtime 验证交互，再由 app 装配真实实现。</li><li>完成真实 CLI/网关、手机交互、前后台恢复与覆盖安装数据保留验收。</li></ol>
+<p>上述模块是待实施的目标架构；当前工程仍为测试控制台。版本、Gradle 依赖图、事件语义、数据所有权及迁移验收统一维护在技术文档，不在本页重复定义。</p>
 </section>
 <section class="design-section" aria-labelledby="section-8">
 <h2 id="section-8">8. 原型范围与验收</h2>
