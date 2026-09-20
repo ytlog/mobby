@@ -17,6 +17,58 @@ const text = value => {
     throw Error(`跨协议暂不支持内容类型：${b.type}`);
   }).join('\n');
 };
+// The canonical image block uses Chat's shape. Only public HTTP(S) references or
+// inline image bytes are translated; provider-owned file IDs cannot cross gateways.
+function imageBlock(block, source) {
+  let url, detail;
+  if (block.transformations) throw Error('跨协议不支持图片 transformations');
+  if (source === 'messages') {
+    const image = block.source;
+    if (image?.type === 'base64') {
+      if (!['image/png','image/jpeg','image/webp','image/gif'].includes(image.media_type) ||
+          typeof image.data !== 'string' || !image.data || !/^[A-Za-z0-9+/]+={0,2}$/.test(image.data) ||
+          Buffer.from(image.data,'base64').toString('base64') !== image.data) throw Error('跨协议图片编码无效');
+      url = `data:${image.media_type};base64,${image.data}`;
+    } else if (image?.type === 'url') url = image.url;
+    else throw Error('跨协议不支持此图片来源');
+  } else {
+    if (block.file_id) throw Error('跨协议不能引用提供商的图片 file_id');
+    url = block.image_url; detail = block.detail;
+    if (detail != null && !['auto','low','high','original'].includes(detail)) throw Error('跨协议图片 detail 无效');
+  }
+  if (typeof url !== 'string') throw Error('跨协议图片缺少 URL');
+  const data = /^data:(image\/(?:png|jpeg|webp|gif));base64,([A-Za-z0-9+/]+={0,2})$/.exec(url);
+  if (data) {
+    if (Buffer.from(data[2],'base64').toString('base64') !== data[2]) throw Error('跨协议图片编码无效');
+  } else {
+    let parsed; try { parsed = new URL(url); } catch { throw Error('跨协议图片 URL 无效'); }
+    if (!['http:','https:'].includes(parsed.protocol) || parsed.username || parsed.password) throw Error('跨协议图片 URL 不受支持');
+  }
+  return {type:'image_url',image_url:{url,...(detail ? {detail} : {})}};
+}
+function inputContent(value, source) {
+  if (typeof value === 'string' || value == null) return value || '';
+  if (!Array.isArray(value)) throw Error('跨协议内容格式无效');
+  const parts = value.map(block => {
+    if (['text','input_text','output_text'].includes(block.type)) return {type:'text',text:block.text || ''};
+    if (block.type === (source === 'messages' ? 'image' : 'input_image')) return imageBlock(block, source);
+    throw Error(`跨协议暂不支持内容类型：${block.type}`);
+  });
+  return parts.some(block => block.type === 'image_url') ? parts : parts.map(block => block.text).join('\n');
+}
+function contentFor(value, target) {
+  if (!Array.isArray(value)) return value;
+  return value.map(block => {
+    if (block.type === 'text') return target === 'responses' ? {type:'input_text',text:block.text} : block;
+    if (block.type !== 'image_url') throw Error('跨协议内容类型无效');
+    const {url,detail} = block.image_url;
+    if (target === 'responses') return {type:'input_image',image_url:url,...(detail ? {detail} : {})};
+    if (target === 'chat') return block;
+    if (detail && detail !== 'auto') throw Error('跨协议 Messages 无法表示显式图片 detail，请使用原生协议');
+    const data = /^data:(image\/[^;]+);base64,(.+)$/.exec(url);
+    return {type:'image',source:data ? {type:'base64',media_type:data[1],data:data[2]} : {type:'url',url}};
+  });
+}
 function endpoint(config) {
   if (!['chat', 'responses', 'messages'].includes(config.protocol)) throw Error('网关协议无效');
   const url = new URL(config.endpoint);
@@ -33,12 +85,24 @@ function canonical(body, source) {
     if (body.system) messages.push({role:'system', content:text(body.system)});
     for (const m of body.messages || []) {
       if (typeof m.content === 'string') { messages.push({...m}); continue; }
-      let content = '', calls = [];
-      const flush = () => { if (content || calls.length) messages.push({role:m.role, content:content || null, ...(calls.length ? {tool_calls:calls} : {})}); content=''; calls=[]; };
+      let content = [], calls = [];
+      const flush = () => {
+        if (content.length || calls.length) {
+          if (content.some(b=>b.type==='image_url') && m.role !== 'user') throw Error('跨协议图片只支持用户消息或工具结果');
+          const packed = content.some(b=>b.type==='image_url') ? content : content.map(b=>b.text).join('');
+          messages.push({role:m.role, content:packed || null, ...(calls.length ? {tool_calls:calls} : {})});
+        }
+        content=[]; calls=[];
+      };
       for (const b of m.content || []) {
-        if (b.type === 'text') content += b.text;
+        if (b.type === 'text') content.push({type:'text',text:b.text});
+        else if (b.type === 'image') content.push(imageBlock(b,'messages'));
         else if (b.type === 'tool_use') calls.push({id:b.id, type:'function', function:{name:b.name, arguments:JSON.stringify(b.input)}});
-        else if (b.type === 'tool_result') { flush(); messages.push({role:'tool', tool_call_id:b.tool_use_id, content:(b.is_error ? 'Tool error: ' : '') + text(b.content)}); }
+        else if (b.type === 'tool_result') {
+          flush(); let result = inputContent(b.content,'messages');
+          if (b.is_error) result = Array.isArray(result) ? [{type:'text',text:'Tool error: '},...result] : 'Tool error: ' + result;
+          messages.push({role:'tool', tool_call_id:b.tool_use_id, content:result});
+        }
         else if (b.type !== 'thinking' && b.type !== 'redacted_thinking') throw Error(`跨协议暂不支持内容类型：${b.type}`);
       }
       flush();
@@ -76,9 +140,13 @@ function canonical(body, source) {
         if (previous?.role === 'assistant') (previous.tool_calls ||= []).push(call);
         else messages.push({role:'assistant', content:null, tool_calls:[call]});
       } else if (item.type === 'function_call_output' || item.type === 'custom_tool_call_output') {
-        messages.push({role:'tool', tool_call_id:item.call_id, content:text(item.output)});
+        messages.push({role:'tool', tool_call_id:item.call_id, content:inputContent(item.output,'responses')});
       } else if (item.type === 'reasoning') { /* Provider-specific hidden reasoning cannot be transferred. */ }
-      else if (!item.type || item.type === 'message') messages.push({role:item.role === 'developer' ? 'system' : item.role, content:text(item.content)});
+      else if (!item.type || item.type === 'message') {
+        const content = inputContent(item.content,'responses');
+        if (Array.isArray(content) && item.role !== 'user') throw Error('跨协议图片只支持用户消息或工具结果');
+        messages.push({role:item.role === 'developer' ? 'system' : item.role, content});
+      }
       else throw Error(`跨协议暂不支持输入类型：${item.type}`);
     }
   }
@@ -93,13 +161,14 @@ function canonical(body, source) {
 function encode(c, target, model) {
   const base = {model, stream:false};
   if (c.temperature != null) base.temperature = c.temperature;
+  if (target === 'chat' && c.messages.some(m=>m.role==='tool' && Array.isArray(m.content))) throw Error('跨协议 Chat 无法表示工具结果中的图片，请使用原生协议');
   if (target === 'chat') return {...base, messages:c.messages, ...(c.tools.length ? {tools:c.tools} : {}), ...(c.choice ? {tool_choice:c.choice} : {}), ...(c.max ? {max_tokens:c.max} : {})};
   if (target === 'responses') {
     const input = [];
     for (const m of c.messages) {
-      if (m.role === 'tool') input.push({type:'function_call_output', call_id:m.tool_call_id, output:m.content});
+      if (m.role === 'tool') input.push({type:'function_call_output', call_id:m.tool_call_id, output:contentFor(m.content,'responses')});
       else {
-        if (m.content) input.push({role:m.role, content:m.content});
+        if (m.content) input.push({role:m.role, content:contentFor(m.content,'responses')});
         for (const t of m.tool_calls || []) input.push({type:'function_call', call_id:t.id, name:t.function.name, arguments:t.function.arguments});
       }
     }
@@ -112,9 +181,10 @@ function encode(c, target, model) {
     if (m.role === 'system') { system.push(m.content); continue; }
     const role = m.role === 'tool' ? 'user' : m.role;
     const content = [];
-    if (m.role === 'tool') content.push({type:'tool_result', tool_use_id:m.tool_call_id, content:m.content});
+    if (m.role === 'tool') content.push({type:'tool_result', tool_use_id:m.tool_call_id, content:contentFor(m.content,'messages')});
     else {
-      if (m.content) content.push({type:'text', text:m.content});
+      if (Array.isArray(m.content)) content.push(...contentFor(m.content,'messages'));
+      else if (m.content) content.push({type:'text', text:m.content});
       for (const t of m.tool_calls || []) content.push({type:'tool_use', id:t.id, name:t.function.name, input:JSON.parse(t.function.arguments)});
     }
     if (!content.length) continue;
@@ -230,8 +300,15 @@ async function createBridge(config) {
       if (req.method !== 'POST' || !source) { res.writeHead(404); res.end(JSON.stringify({error:{message:'不支持的本地网关路径'}})); return; }
       const body = JSON.parse(await readBounded(req));
       const same = source === config.protocol;
-      const c = same ? null : canonical(body, source);
-      const payload = same ? {...body, model:config.model} : encode(c, config.protocol, config.model);
+      let c, payload;
+      try {
+        c = same ? null : canonical(body, source);
+        payload = same ? {...body, model:config.model} : encode(c, config.protocol, config.model);
+      } catch (error) {
+        // Unsupported input is deterministic: retries cannot make it representable.
+        error.invalidInput = true;
+        throw error;
+      }
       const headers = {'content-type':'application/json'};
       if (config.key) {
         headers.authorization = `Bearer ${config.key}`;
@@ -256,10 +333,10 @@ async function createBridge(config) {
     } catch (error) {
       // Once SSE headers/data are sent, an HTTP/JSON error would corrupt the stream.
       if (res.headersSent || res.destroyed) { res.destroy(); return; }
-      if (!res.headersSent) res.writeHead(502, {'content-type':'application/json'});
+      if (!res.headersSent) res.writeHead(error.invalidInput ? 400 : 502, {'content-type':'application/json'});
       // Only local validation errors are useful; network errors may contain URLs or credentials.
       const message = /^(跨协议|不支持|网关|请输入)/.test(error.message) ? error.message : '网关请求失败，请检查网络与协议配置';
-      res.end(JSON.stringify({type:'error', error:{type:'api_error', message}}));
+      res.end(JSON.stringify({type:'error', error:{type:error.invalidInput ? 'invalid_request_error' : 'api_error', message}}));
     } finally { clearTimeout(timer); controllers.delete(controller); }
   });
   server.requestTimeout = 300000;

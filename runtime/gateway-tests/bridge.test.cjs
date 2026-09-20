@@ -137,3 +137,49 @@ test('native protocols configure direct CLI connections without conversion-only 
     else {assert.ok(launch.args.includes('model_providers.mobby.base_url="https://gateway.example/v1"'));assert.ok(!launch.args.some(a=>a.includes('model_auto_compact_token_limit')));}
   }
 });
+
+test('user image bytes and interleaved text survive each cross-protocol conversion', () => {
+  const url='data:image/png;base64,iVBORw0KGgo=';
+  for (const source of ['messages','responses']) for (const target of ['chat','messages','responses']) {
+    const parts=source==='messages' ? [{type:'text',text:'before'},{type:'image',source:{type:'base64',media_type:'image/png',data:'iVBORw0KGgo='}},{type:'text',text:'after'}] :
+      [{type:'input_text',text:'before'},{type:'input_image',image_url:url},{type:'input_text',text:'after'}];
+    const request=source==='messages'?{messages:[{role:'user',content:parts}]}:{input:[{role:'user',content:parts}]};
+    const result=encode(canonical(request,source),target,'model');
+    const content=target==='responses'?result.input[0].content:result.messages[0].content;
+    assert.equal(content[0].text,'before'); assert.equal(content[2].text,'after');
+    if(target==='messages') assert.deepEqual(content[1],{type:'image',source:{type:'base64',media_type:'image/png',data:'iVBORw0KGgo='}});
+    else assert.equal(target==='chat'?content[1].image_url.url:content[1].image_url,url);
+  }
+});
+
+test('image URLs and explicit detail survive where representable and fail rather than disappear elsewhere',()=>{
+  const content=[{type:'input_image',image_url:'https://example.com/image.png',detail:'high'}];
+  const c=canonical({input:[{role:'user',content}]},'responses');
+  assert.equal(encode(c,'chat','m').messages[0].content[0].image_url.detail,'high');
+  assert.deepEqual(encode(c,'responses','m').input[0].content,content);
+  assert.throws(()=>encode(c,'messages','m'),/detail/);
+  for(const block of [{type:'input_image',file_id:'file_1'},{type:'input_image',image_url:'file:///private/image.png'},
+    {type:'input_image',image_url:'data:image/png;base64,bad=='},{type:'input_audio',data:'abc'},
+    {type:'input_image',image_url:'https://example.com/image.png',transformations:{oversized_image:'error'}}]) {
+    assert.throws(()=>canonical({input:[{role:'user',content:[block]}]},'responses'),/跨协议/);
+  }
+});
+test('tool image output survives Messages and Responses but is explicitly rejected for Chat',()=>{
+  const image={type:'image',source:{type:'base64',media_type:'image/png',data:'iVBORw0KGgo='}};
+  const c=canonical({messages:[{role:'user',content:[{type:'tool_result',tool_use_id:'call_1',content:[{type:'text',text:'result'},image]}]}]},'messages');
+  assert.deepEqual(encode(c,'messages','m').messages[0].content[0].content,[{type:'text',text:'result'},image]);
+  assert.equal(encode(c,'responses','m').input[0].output[1].image_url,'data:image/png;base64,iVBORw0KGgo=');
+  assert.throws(()=>encode(c,'chat','m'),/工具结果中的图片/);
+});
+
+test('unrepresentable image detail is a non-retryable request error without an upstream call',async()=>{
+  let requests=0;
+  const upstream=await mock((req,res)=>{requests++;res.end('{}');});
+  const bridge=await createBridge({endpoint:upstream.url,protocol:'messages',model:'m',key:''});
+  try {
+    const response=await fetch(bridge.url+'/v1/responses',{method:'POST',headers:{authorization:'Bearer '+bridge.token},body:JSON.stringify({input:[{role:'user',content:[{type:'input_image',image_url:'https://example.com/image.png',detail:'high'}]}]})});
+    assert.equal(response.status,400);
+    assert.match((await response.json()).error.message,/detail/);
+    assert.equal(requests,0);
+  } finally {bridge.close();upstream.close();}
+});
