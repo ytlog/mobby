@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.LibTermux" parent="Theme.MaterialComponents.DayNight.DarkActionBar">
+        <item name="colorPrimary">@color/catppuccin_mauve</item>
+        <item name="colorPrimaryVariant">@color/catppuccin_lavender</item>
+        <item name="colorOnPrimary">@color/catppuccin_base</item>
+        <item name="colorSurface">@color/catppuccin_surface0</item>
+        <item name="android:statusBarColor">@color/catppuccin_crust</item>
+        <item name="android:navigationBarColor">@color/catppuccin_crust</item>
+    </style>
+</resources>

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Catppuccin Mocha palette -->
+    <color name="catppuccin_base">#1E1E2E</color>
+    <color name="catppuccin_crust">#11111B</color>
+    <color name="catppuccin_surface0">#313244</color>
+    <color name="catppuccin_surface1">#45475A</color>
+    <color name="catppuccin_overlay0">#6C7086</color>
+    <color name="catppuccin_text">#CDD6F4</color>
+    <color name="catppuccin_subtext">#BAC2DE</color>
+    <color name="catppuccin_mauve">#CBA6F7</color>
+    <color name="catppuccin_lavender">#B4BEFE</color>
+    <color name="catppuccin_green">#A6E3A1</color>
+    <color name="catppuccin_red">#F38BA8</color>
+    <color name="catppuccin_yellow">#F9E2AF</color>
+    <color name="catppuccin_teal">#94E2D5</color>
+
+    <!-- Adaptive icon background -->
+    <color name="ic_launcher_background">#1E1E2E</color>
+</resources>

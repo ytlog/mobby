@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="480" viewBox="0 0 1200 480">
+  <defs>
+    <linearGradient id="scan" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#39D97A" stop-opacity="0.05"/>
+      <stop offset="100%" stop-color="#39D97A" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <g font-family="ui-monospace, 'JetBrains Mono', 'SF Mono', Consolas, monospace">
+
+    <!-- card -->
+    <rect x="1" y="1" width="1198" height="478" rx="14" ry="14" fill="#0A0E12" stroke="#1F2833"/>
+    <rect x="1" y="1" width="1198" height="478" rx="14" ry="14" fill="url(#scan)"/>
+
+    <!-- header bar -->
+    <rect x="1" y="1" width="1198" height="88" rx="14" ry="14" fill="#12181F"/>
+    <rect x="1" y="60" width="1198" height="29" fill="#12181F"/>
+    <line x1="1" y1="89" x2="1199" y2="89" stroke="#1F2833" stroke-width="1"/>
+
+    <circle cx="32" cy="32" r="5" fill="#39D97A"/>
+    <text x="50" y="38" font-size="21" font-weight="700" fill="#E6EDF3">libtermux-android</text>
+
+    <text x="1168" y="34" font-size="15" fill="#8B96A3" text-anchor="end">World's first Android SDK for</text>
+    <text x="1168" y="56" font-size="15" fill="#E6EDF3" text-anchor="end">embedding a full Linux environment — root &amp; non-root</text>
+
+    <!-- three columns -->
+    <!-- verticals -->
+    <line x1="400" y1="89" x2="400" y2="358" stroke="#1F2833" stroke-width="1"/>
+    <line x1="800" y1="89" x2="800" y2="358" stroke="#1F2833" stroke-width="1"/>
+    <line x1="1"   y1="358" x2="1199" y2="358" stroke="#1F2833" stroke-width="1"/>
+
+    <!-- col 1: core -->
+    <g>
+      <rect x="32" y="118" width="10" height="10" fill="#39D97A"/>
+      <text x="52" y="128" font-size="19" font-weight="700" fill="#39D97A">core</text>
+      <text x="32" y="166" font-size="13" fill="#6E7B8B">shell runtime</text>
+      <text x="32" y="200" font-size="14" fill="#C7D0DA">bash · python3 · node</text>
+      <text x="32" y="226" font-size="14" fill="#C7D0DA">pkg install · apt · dpkg</text>
+      <text x="32" y="252" font-size="14" fill="#C7D0DA">native PTY via JNI</text>
+      <text x="32" y="278" font-size="14" fill="#C7D0DA">streaming Flow&lt;Output&gt;</text>
+      <text x="32" y="322" font-size="13" fill="#3A4552">no Termux app required</text>
+    </g>
+
+    <!-- col 2: os -->
+    <g>
+      <rect x="432" y="118" width="10" height="10" fill="#5B8DEF"/>
+      <text x="452" y="128" font-size="19" font-weight="700" fill="#5B8DEF">os</text>
+      <text x="432" y="166" font-size="13" fill="#6E7B8B">distro layer</text>
+      <text x="432" y="200" font-size="14" fill="#C7D0DA">proot / real chroot</text>
+      <text x="432" y="226" font-size="14" fill="#C7D0DA">Kali · Ubuntu · Debian · Alpine</text>
+      <text x="432" y="252" font-size="14" fill="#C7D0DA">VNC desktop · XFCE / GNOME</text>
+      <text x="432" y="278" font-size="14" fill="#C7D0DA">per-distro package registry</text>
+      <text x="432" y="322" font-size="13" fill="#3A4552">full GUI Linux desktop, on-device</text>
+    </g>
+
+    <!-- col 3: shizuku -->
+    <g>
+      <rect x="832" y="118" width="10" height="10" fill="#E8A33D"/>
+      <text x="852" y="128" font-size="19" font-weight="700" fill="#E8A33D">shizuku</text>
+      <text x="832" y="166" font-size="13" fill="#6E7B8B">elevated exec</text>
+      <text x="832" y="200" font-size="14" fill="#C7D0DA">system-level privileges</text>
+      <text x="832" y="226" font-size="14" fill="#C7D0DA">no full root required</text>
+      <text x="832" y="252" font-size="14" fill="#C7D0DA">Shizuku-backed, sandboxed</text>
+      <text x="832" y="278" font-size="14" fill="#C7D0DA">automatic safe fallback</text>
+      <text x="832" y="322" font-size="13" fill="#3A4552">elevated when available, safe when not</text>
+    </g>
+
+    <!-- bottom: real execution-mode branch, pulled from OsEnvironment.AUTO -->
+    <text x="32" y="392" font-size="13" fill="#6E7B8B">OsEnvironment.executionMode = AUTO</text>
+
+    <text x="32" y="428" font-size="16" fill="#E6EDF3">rooted?</text>
+    <path d="M 108 423 L 132 423 L 132 411 L 156 411" fill="none" stroke="#3A4552" stroke-width="1.5"/>
+    <path d="M 108 423 L 132 423 L 132 435 L 156 435" fill="none" stroke="#3A4552" stroke-width="1.5"/>
+
+    <text x="164" y="416" font-size="14" fill="#39D97A">yes →</text>
+    <text x="220" y="416" font-size="14" font-weight="700" fill="#E6EDF3">REAL_CHROOT</text>
+    <text x="360" y="416" font-size="13" fill="#6E7B8B">native kernel speed</text>
+
+    <text x="164" y="440" font-size="14" fill="#5B8DEF">no  →</text>
+    <text x="220" y="440" font-size="14" font-weight="700" fill="#E6EDF3">PROOT</text>
+    <text x="300" y="440" font-size="13" fill="#6E7B8B">userspace, zero root needed</text>
+
+    <text x="1168" y="428" font-size="13" fill="#3A4552" text-anchor="end">arm64-v8a · x86_64 · armeabi-v7a · x86</text>
+  </g>
+</svg>

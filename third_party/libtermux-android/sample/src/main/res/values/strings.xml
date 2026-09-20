@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">LibTermux Sample</string>
+    <string name="btn_install">Install Bootstrap</string>
+    <string name="btn_run">Run Command</string>
+    <string name="btn_python">Run Python</string>
+    <string name="btn_clear">Clear</string>
+    <string name="hint_command">Enter command…</string>
+    <string name="status_idle">Idle</string>
+    <string name="status_installing">Installing bootstrap…</string>
+    <string name="status_ready">Ready ✓</string>
+    <string name="status_error">Error ✗</string>
+</resources>

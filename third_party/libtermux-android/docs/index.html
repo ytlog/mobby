@@ -1,0 +1,1597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>LibTermux — Android Linux Runtime SDK</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet"/>
+<style>
+/* ── Variables ─────────────────────────────────────────────────────── */
+:root {
+  --bg:       #050812;
+  --bg2:      #0a0f1e;
+  --bg3:      #0f1629;
+  --surface:  #111827;
+  --surface2: #1a2235;
+  --border:   #1e2d45;
+  --cyan:     #00e5ff;
+  --cyan-dim: #0097a7;
+  --violet:   #7c3aed;
+  --green:    #10b981;
+  --amber:    #f59e0b;
+  --red:      #ef4444;
+  --text:     #e2e8f0;
+  --text-dim: #94a3b8;
+  --text-sub: #475569;
+  --mono:     'JetBrains Mono', monospace;
+  --sans:     'Inter', sans-serif;
+  --sidebar:  260px;
+  --header:   56px;
+}
+
+/* ── Reset ─────────────────────────────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth;font-size:15px}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);line-height:1.7;overflow-x:hidden}
+a{color:var(--cyan);text-decoration:none}
+a:hover{text-decoration:underline}
+img{max-width:100%}
+
+/* ── Scrollbar ─────────────────────────────────────────────────────── */
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--cyan-dim)}
+
+/* ── Header ────────────────────────────────────────────────────────── */
+.header{
+  position:fixed;top:0;left:0;right:0;height:var(--header);z-index:100;
+  background:rgba(5,8,18,.92);backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:center;padding:0 20px;gap:16px;
+}
+.header-logo{
+  display:flex;align-items:center;gap:10px;
+  font-family:var(--mono);font-weight:700;font-size:1rem;color:var(--text);
+  white-space:nowrap;
+}
+.header-logo .bracket{color:var(--cyan)}
+.header-logo .name{color:var(--text)}
+.header-logo .ver{
+  font-size:.65rem;color:var(--bg);background:var(--cyan);
+  padding:2px 7px;border-radius:3px;font-weight:700;
+}
+.header-links{
+  margin-left:auto;display:flex;align-items:center;gap:6px;
+}
+.header-links a{
+  font-size:.78rem;color:var(--text-dim);padding:5px 10px;border-radius:5px;
+  border:1px solid var(--border);transition:all .15s;font-family:var(--mono);
+}
+.header-links a:hover{color:var(--cyan);border-color:var(--cyan);text-decoration:none}
+.menu-btn{
+  display:none;background:none;border:1px solid var(--border);
+  color:var(--text-dim);cursor:pointer;padding:7px 10px;border-radius:5px;
+  font-size:1rem;
+}
+
+/* ── Layout ────────────────────────────────────────────────────────── */
+.layout{
+  display:flex;
+  padding-top:var(--header);
+  min-height:100vh;
+}
+
+/* ── Sidebar ───────────────────────────────────────────────────────── */
+.sidebar{
+  width:var(--sidebar);min-width:var(--sidebar);
+  position:fixed;top:var(--header);bottom:0;left:0;
+  overflow-y:auto;overflow-x:hidden;
+  background:var(--bg2);border-right:1px solid var(--border);
+  padding:20px 0 40px;
+  transition:transform .25s ease;
+}
+.sidebar-section{
+  padding:8px 16px 4px;
+  font-size:.62rem;font-family:var(--mono);font-weight:700;
+  color:var(--text-sub);text-transform:uppercase;letter-spacing:.1em;
+  margin-top:12px;
+}
+.sidebar a{
+  display:flex;align-items:center;gap:8px;
+  padding:6px 16px;
+  font-size:.8rem;font-family:var(--mono);color:var(--text-dim);
+  border-left:2px solid transparent;
+  transition:all .12s;
+}
+.sidebar a:hover{color:var(--text);background:var(--surface);text-decoration:none}
+.sidebar a.active{
+  color:var(--cyan);border-left-color:var(--cyan);
+  background:rgba(0,229,255,.05);
+}
+.sidebar a .dot{
+  width:5px;height:5px;border-radius:50%;background:var(--text-sub);
+  flex-shrink:0;transition:background .12s;
+}
+.sidebar a.active .dot,.sidebar a:hover .dot{background:var(--cyan)}
+.sidebar a.sub{padding-left:28px;font-size:.75rem}
+
+/* ── Main Content ──────────────────────────────────────────────────── */
+.main{
+  margin-left:var(--sidebar);
+  flex:1;min-width:0;
+  padding:0;
+}
+.content{
+  max-width:860px;
+  margin:0 auto;
+  padding:48px 40px 120px;
+}
+
+/* ── Hero ──────────────────────────────────────────────────────────── */
+.hero{
+  background:linear-gradient(135deg,var(--bg) 0%,#0d1430 50%,var(--bg) 100%);
+  border-bottom:1px solid var(--border);
+  padding:72px 40px 64px;
+  position:relative;overflow:hidden;
+}
+.hero::before{
+  content:'';position:absolute;inset:0;
+  background:radial-gradient(ellipse 800px 400px at 50% 0%,rgba(0,229,255,.06),transparent);
+  pointer-events:none;
+}
+.hero-inner{max-width:860px;margin:0 auto}
+.hero-eyebrow{
+  font-family:var(--mono);font-size:.72rem;font-weight:600;
+  color:var(--cyan);letter-spacing:.15em;text-transform:uppercase;
+  margin-bottom:20px;
+  display:flex;align-items:center;gap:8px;
+}
+.hero-eyebrow::before{content:'//';opacity:.5}
+.hero-title{
+  font-family:var(--mono);font-size:2.8rem;font-weight:700;
+  line-height:1.1;color:var(--text);margin-bottom:16px;
+}
+.hero-title .accent{color:var(--cyan)}
+.hero-subtitle{
+  font-size:1.05rem;color:var(--text-dim);max-width:580px;
+  margin-bottom:36px;line-height:1.7;
+}
+.hero-badges{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:40px}
+.badge{
+  font-family:var(--mono);font-size:.72rem;font-weight:500;
+  padding:5px 12px;border-radius:4px;
+  border:1px solid;
+}
+.badge-cyan{color:var(--cyan);border-color:rgba(0,229,255,.3);background:rgba(0,229,255,.05)}
+.badge-green{color:var(--green);border-color:rgba(16,185,129,.3);background:rgba(16,185,129,.05)}
+.badge-violet{color:#a78bfa;border-color:rgba(124,58,237,.3);background:rgba(124,58,237,.05)}
+.badge-amber{color:var(--amber);border-color:rgba(245,158,11,.3);background:rgba(245,158,11,.05)}
+
+/* ── Terminal Hero ─────────────────────────────────────────────────── */
+.terminal-hero{
+  background:var(--bg3);border:1px solid var(--border);
+  border-radius:10px;overflow:hidden;max-width:680px;
+  box-shadow:0 20px 60px rgba(0,0,0,.6),0 0 40px rgba(0,229,255,.04);
+}
+.terminal-titlebar{
+  display:flex;align-items:center;gap:8px;
+  padding:10px 14px;background:var(--surface);
+  border-bottom:1px solid var(--border);
+}
+.t-dot{width:10px;height:10px;border-radius:50%}
+.t-dot.red{background:#ef4444}
+.t-dot.yellow{background:#f59e0b}
+.t-dot.green{background:#10b981}
+.terminal-title{
+  font-family:var(--mono);font-size:.72rem;color:var(--text-sub);
+  margin:0 auto;
+}
+.terminal-body{padding:16px 20px;font-family:var(--mono);font-size:.78rem;line-height:1.9;min-height:200px}
+.t-line{display:block;white-space:pre}
+.t-prompt{color:var(--green)}
+.t-keyword{color:var(--violet);font-weight:600}
+.t-string{color:var(--amber)}
+.t-comment{color:var(--text-sub)}
+.t-fn{color:var(--cyan)}
+.t-param{color:#f472b6}
+.t-cursor{
+  display:inline-block;width:8px;height:14px;
+  background:var(--cyan);animation:blink 1s step-end infinite;
+  vertical-align:middle;
+}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+
+/* ── Sections ──────────────────────────────────────────────────────── */
+.section{margin-bottom:72px}
+.section:first-child{margin-top:0}
+.section-anchor{display:block;height:80px;margin-top:-80px;visibility:hidden}
+
+h1.page-title{
+  font-family:var(--mono);font-size:2rem;font-weight:700;
+  color:var(--text);margin-bottom:8px;
+}
+h1.page-title .accent{color:var(--cyan)}
+.page-desc{font-size:1rem;color:var(--text-dim);margin-bottom:40px;max-width:640px}
+
+h2.section-title{
+  font-family:var(--mono);font-size:1.3rem;font-weight:700;
+  color:var(--text);margin-bottom:20px;padding-bottom:12px;
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:10px;
+}
+h2.section-title .tag{
+  font-size:.65rem;color:var(--bg);background:var(--cyan);
+  padding:2px 7px;border-radius:3px;font-weight:700;letter-spacing:.05em;
+}
+h2.section-title .tag-green{background:var(--green)}
+h2.section-title .tag-violet{background:var(--violet)}
+
+h3.sub-title{
+  font-family:var(--mono);font-size:1rem;font-weight:600;
+  color:var(--cyan);margin:28px 0 12px;
+}
+h3.sub-title::before{content:'// ';color:var(--text-sub)}
+
+p{margin-bottom:14px;color:var(--text-dim);line-height:1.8}
+p strong{color:var(--text);font-weight:600}
+p code,li code{
+  font-family:var(--mono);font-size:.82em;
+  color:var(--cyan);background:rgba(0,229,255,.08);
+  padding:1px 6px;border-radius:3px;
+}
+ul,ol{padding-left:20px;margin-bottom:16px}
+li{color:var(--text-dim);margin-bottom:6px;line-height:1.7}
+li strong{color:var(--text)}
+
+/* ── Code blocks ───────────────────────────────────────────────────── */
+.code-block{position:relative;margin:20px 0}
+.code-block .lang-label{
+  position:absolute;top:0;right:0;
+  font-family:var(--mono);font-size:.65rem;font-weight:700;
+  color:var(--text-sub);background:var(--surface);
+  padding:3px 10px;border-bottom-left-radius:5px;border-top-right-radius:7px;
+  text-transform:uppercase;letter-spacing:.08em;
+  border-left:1px solid var(--border);border-bottom:1px solid var(--border);
+}
+.code-block pre[class*="language-"]{
+  background:var(--bg3) !important;
+  border:1px solid var(--border) !important;
+  border-radius:8px !important;
+  margin:0 !important;
+  padding:20px !important;
+  font-size:.8rem !important;
+  font-family:var(--mono) !important;
+  line-height:1.7 !important;
+  overflow-x:auto;
+}
+.copy-btn{
+  position:absolute;top:10px;right:80px;
+  background:var(--surface2);border:1px solid var(--border);
+  color:var(--text-sub);cursor:pointer;padding:3px 10px;
+  border-radius:4px;font-size:.68rem;font-family:var(--mono);
+  transition:all .12s;
+}
+.copy-btn:hover{color:var(--cyan);border-color:var(--cyan)}
+.copy-btn.copied{color:var(--green);border-color:var(--green)}
+
+/* ── Tables ────────────────────────────────────────────────────────── */
+.table-wrap{overflow-x:auto;margin:20px 0}
+table{width:100%;border-collapse:collapse;font-size:.83rem}
+thead tr{background:var(--surface);border-bottom:1px solid var(--cyan-dim)}
+th{
+  font-family:var(--mono);font-weight:700;font-size:.72rem;
+  color:var(--cyan);text-align:left;padding:10px 14px;
+  text-transform:uppercase;letter-spacing:.06em;
+}
+td{padding:10px 14px;color:var(--text-dim);border-bottom:1px solid var(--border)}
+td code{font-family:var(--mono);font-size:.78em;color:var(--amber)}
+tr:hover td{background:var(--surface);color:var(--text)}
+.status-ok{color:var(--green);font-weight:700}
+.status-warn{color:var(--amber);font-weight:700}
+.status-no{color:var(--red)}
+
+/* ── Cards ─────────────────────────────────────────────────────────── */
+.card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin:20px 0}
+.card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:8px;padding:18px;transition:border-color .15s;
+}
+.card:hover{border-color:var(--cyan)}
+.card-icon{font-size:1.4rem;margin-bottom:10px}
+.card-title{font-family:var(--mono);font-size:.85rem;font-weight:700;color:var(--text);margin-bottom:6px}
+.card-desc{font-size:.78rem;color:var(--text-dim);line-height:1.5}
+
+/* ── Callout ───────────────────────────────────────────────────────── */
+.callout{
+  border-left:3px solid;border-radius:0 6px 6px 0;
+  padding:14px 18px;margin:20px 0;
+}
+.callout-info{border-color:var(--cyan);background:rgba(0,229,255,.05)}
+.callout-warn{border-color:var(--amber);background:rgba(245,158,11,.05)}
+.callout-danger{border-color:var(--red);background:rgba(239,68,68,.05)}
+.callout-green{border-color:var(--green);background:rgba(16,185,129,.05)}
+.callout .callout-title{
+  font-family:var(--mono);font-size:.75rem;font-weight:700;
+  text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;
+}
+.callout-info .callout-title{color:var(--cyan)}
+.callout-warn .callout-title{color:var(--amber)}
+.callout-danger .callout-title{color:var(--red)}
+.callout-green .callout-title{color:var(--green)}
+.callout p{margin:0;font-size:.85rem}
+
+/* ── Architecture diagram ──────────────────────────────────────────── */
+.arch-diagram{
+  font-family:var(--mono);font-size:.75rem;line-height:1.9;
+  background:var(--bg3);border:1px solid var(--border);
+  border-radius:8px;padding:24px 28px;overflow-x:auto;
+  color:var(--text-dim);
+}
+.arch-diagram .hl{color:var(--cyan)}
+.arch-diagram .hl2{color:var(--green)}
+.arch-diagram .hl3{color:var(--amber)}
+.arch-diagram .hl4{color:#a78bfa}
+.arch-diagram .dim{color:var(--text-sub)}
+
+/* ── DE table ──────────────────────────────────────────────────────── */
+.de-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:20px 0}
+.de-card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:8px;padding:14px;
+}
+.de-card.gnome{border-color:rgba(124,58,237,.4);background:rgba(124,58,237,.04)}
+.de-name{font-family:var(--mono);font-size:.85rem;font-weight:700;color:var(--text);margin-bottom:4px}
+.de-size{font-size:.72rem;color:var(--text-sub);font-family:var(--mono);margin-bottom:8px}
+.de-tags{display:flex;flex-wrap:wrap;gap:5px}
+.de-tag{font-size:.65rem;padding:2px 7px;border-radius:3px;font-family:var(--mono);font-weight:600}
+.tag-rec{color:var(--green);background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.3)}
+.tag-heavy{color:var(--amber);background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3)}
+.tag-gnome{color:#a78bfa;background:rgba(167,139,250,.1);border:1px solid rgba(167,139,250,.3)}
+.tag-light{color:var(--cyan);background:rgba(0,229,255,.08);border:1px solid rgba(0,229,255,.25)}
+
+/* ── API ref ───────────────────────────────────────────────────────── */
+.api-method{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:8px;margin:16px 0;overflow:hidden;
+}
+.api-method-header{
+  display:flex;align-items:flex-start;gap:12px;
+  padding:14px 18px;border-bottom:1px solid var(--border);
+  background:var(--bg3);
+}
+.api-verb{
+  font-family:var(--mono);font-size:.68rem;font-weight:700;
+  padding:3px 8px;border-radius:3px;flex-shrink:0;margin-top:2px;
+}
+.api-verb.fun{color:var(--bg);background:var(--cyan)}
+.api-verb.val{color:var(--bg);background:var(--green)}
+.api-verb.class{color:var(--bg);background:var(--violet)}
+.api-verb.obj{color:var(--bg);background:var(--amber)}
+.api-signature{
+  font-family:var(--mono);font-size:.82rem;color:var(--text);line-height:1.5;flex:1;
+}
+.api-signature .ret{color:var(--text-sub)}
+.api-body{padding:14px 18px}
+.api-body p{font-size:.83rem;margin-bottom:10px}
+.api-params{width:100%;border-collapse:collapse;font-size:.78rem;margin-top:10px}
+.api-params th{
+  color:var(--text-sub);font-family:var(--mono);font-weight:600;
+  text-align:left;padding:6px 10px;font-size:.68rem;
+  text-transform:uppercase;letter-spacing:.06em;
+}
+.api-params td{padding:6px 10px;border-top:1px solid var(--border)}
+.api-params td:first-child{color:var(--amber);font-family:var(--mono);font-weight:600}
+.api-params td:nth-child(2){color:var(--cyan);font-family:var(--mono)}
+.api-params td:nth-child(3){color:var(--text-dim)}
+
+/* ── Step list ─────────────────────────────────────────────────────── */
+.steps{counter-reset:step;list-style:none;padding:0;margin:20px 0}
+.steps li{
+  counter-increment:step;
+  display:flex;gap:16px;margin-bottom:24px;
+  padding-bottom:24px;border-bottom:1px solid var(--border);
+}
+.steps li:last-child{border-bottom:none}
+.step-num{
+  flex-shrink:0;width:28px;height:28px;
+  display:flex;align-items:center;justify-content:center;
+  border-radius:50%;background:rgba(0,229,255,.1);
+  border:1px solid rgba(0,229,255,.3);
+  font-family:var(--mono);font-size:.75rem;font-weight:700;color:var(--cyan);
+  margin-top:2px;
+}
+.step-content h4{font-family:var(--mono);font-size:.9rem;font-weight:700;color:var(--text);margin-bottom:6px}
+.step-content p{font-size:.85rem;margin:0}
+
+/* ── Distro table ──────────────────────────────────────────────────── */
+.distro-logo{
+  display:inline-flex;align-items:center;gap:8px;
+  font-family:var(--mono);font-weight:700;
+}
+
+/* ── Module compare ────────────────────────────────────────────────── */
+.compare-grid{
+  display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:20px 0;
+}
+.compare-card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:8px;padding:18px;
+}
+.compare-card h4{
+  font-family:var(--mono);font-size:.85rem;font-weight:700;
+  margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--border);
+}
+.compare-card.proot h4{color:var(--cyan)}
+.compare-card.chroot h4{color:var(--green)}
+.compare-list{list-style:none;padding:0;font-size:.8rem}
+.compare-list li{
+  display:flex;gap:8px;align-items:flex-start;
+  padding:4px 0;color:var(--text-dim);border:none;margin:0;
+}
+.compare-list li::before{flex-shrink:0;margin-top:2px}
+.compare-list li.yes::before{content:'✓';color:var(--green)}
+.compare-list li.no::before{content:'✗';color:var(--red)}
+.compare-list li.partial::before{content:'~';color:var(--amber)}
+
+/* ── Footer ────────────────────────────────────────────────────────── */
+.footer{
+  border-top:1px solid var(--border);
+  padding:32px 40px;
+  display:flex;align-items:center;justify-content:space-between;flex-wrap:gap;
+  font-family:var(--mono);font-size:.72rem;color:var(--text-sub);
+  max-width:860px;margin:0 auto;
+}
+.footer a{color:var(--text-sub)}
+.footer a:hover{color:var(--cyan)}
+
+/* ── Mobile ────────────────────────────────────────────────────────── */
+@media(max-width:900px){
+  .sidebar{transform:translateX(-100%)}
+  .sidebar.open{transform:none;z-index:90}
+  .main{margin-left:0}
+  .menu-btn{display:block}
+  .hero{padding:48px 24px 40px}
+  .hero-title{font-size:1.9rem}
+  .content{padding:32px 20px 80px}
+  .compare-grid{grid-template-columns:1fr}
+  .card-grid{grid-template-columns:1fr 1fr}
+}
+@media(max-width:480px){
+  .card-grid{grid-template-columns:1fr}
+  .de-grid{grid-template-columns:1fr 1fr}
+  .hero-title{font-size:1.5rem}
+}
+</style>
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────────────── -->
+<header class="header">
+  <button class="menu-btn" onclick="toggleSidebar()">☰</button>
+  <div class="header-logo">
+    <span class="bracket">[</span>
+    <span class="name">LibTermux</span>
+    <span class="bracket">]</span>
+    <span class="ver">v1.0.0</span>
+  </div>
+  <nav class="header-links">
+    <a href="#getting-started">Getting Started</a>
+    <a href="#core-module">Core</a>
+    <a href="#os-module">OS Module</a>
+    <a href="#api">API Ref</a>
+    <a href="https://github.com/AeonCoreX-Lab/libtermux-android" target="_blank">GitHub ↗</a>
+  </nav>
+</header>
+
+<!-- ── Sidebar ────────────────────────────────────────────────────── -->
+<nav class="sidebar" id="sidebar">
+  <div class="sidebar-section">Overview</div>
+  <a href="#home" onclick="setActive(this)"><span class="dot"></span>Introduction</a>
+  <a href="#architecture" onclick="setActive(this)"><span class="dot"></span>Architecture</a>
+  <a href="#capabilities" onclick="setActive(this)"><span class="dot"></span>Capabilities</a>
+
+  <div class="sidebar-section">Getting Started</div>
+  <a href="#installation" onclick="setActive(this)"><span class="dot"></span>Installation</a>
+  <a href="#first-app" onclick="setActive(this)"><span class="dot"></span>First App</a>
+  <a href="#bootstrap" onclick="setActive(this)"><span class="dot"></span>Bootstrap Setup</a>
+  <a href="#config" onclick="setActive(this)"><span class="dot"></span>Configuration DSL</a>
+
+  <div class="sidebar-section">Core Module</div>
+  <a href="#libtermux-class" onclick="setActive(this)"><span class="dot"></span>LibTermux</a>
+  <a href="#termuxbridge" onclick="setActive(this)"><span class="dot"></span>TermuxBridge</a>
+  <a href="#command-executor" onclick="setActive(this)"><span class="dot"></span>CommandExecutor</a>
+  <a href="#package-manager" onclick="setActive(this)"><span class="dot"></span>PackageManager</a>
+  <a href="#filesystem" onclick="setActive(this)"><span class="dot"></span>VirtualFileSystem</a>
+
+  <div class="sidebar-section">OS Module (:os)</div>
+  <a href="#os-overview" onclick="setActive(this)"><span class="dot"></span>Overview</a>
+  <a href="#distro-registry" onclick="setActive(this)"><span class="dot"></span>Distro Registry</a>
+  <a href="#supported-distros" onclick="setActive(this)"><span class="dot"></span>Supported Distros</a>
+  <a href="#proot-chroot" onclick="setActive(this)"><span class="dot"></span>proot vs chroot</a>
+  <a href="#gui-desktop" onclick="setActive(this)"><span class="dot"></span>GUI Desktop</a>
+  <a href="#desktop-environments" onclick="setActive(this)"><span class="dot"></span>Desktop Environments</a>
+  <a href="#vnc-client" onclick="setActive(this)"><span class="dot"></span>VNC Client (RFB)</a>
+  <a href="#distro-display" onclick="setActive(this)"><span class="dot"></span>DistroDisplay</a>
+  <a href="#distro-settings" onclick="setActive(this)"><span class="dot"></span>Settings</a>
+
+  <div class="sidebar-section">Reference</div>
+  <a href="#api" onclick="setActive(this)"><span class="dot"></span>API Reference</a>
+  <a href="#permissions" onclick="setActive(this)"><span class="dot"></span>Permissions</a>
+  <a href="#limitations" onclick="setActive(this)"><span class="dot"></span>Known Limitations</a>
+  <a href="#faq" onclick="setActive(this)"><span class="dot"></span>FAQ</a>
+  <a href="#changelog" onclick="setActive(this)"><span class="dot"></span>Changelog</a>
+</nav>
+
+<!-- ── Main ───────────────────────────────────────────────────────── -->
+<div class="layout">
+<main class="main">
+
+<!-- HERO -->
+<section class="hero" id="home">
+  <div class="hero-inner">
+    <p class="hero-eyebrow">AeonCoreX-Lab / libtermux-android</p>
+    <h1 class="hero-title">The <span class="accent">Linux Runtime</span><br/>SDK for Android</h1>
+    <p class="hero-subtitle">Embed a full Linux environment — including real distros, graphical desktops, and 50,000+ packages — directly inside any Android app. No root required.</p>
+    <div class="hero-badges">
+      <span class="badge badge-cyan">Android 8.0+ (API 26+)</span>
+      <span class="badge badge-green">No Root Required</span>
+      <span class="badge badge-violet">Jetpack Compose</span>
+      <span class="badge badge-amber">Kotlin First</span>
+      <span class="badge badge-cyan">Apache 2.0</span>
+    </div>
+    <div class="terminal-hero">
+      <div class="terminal-titlebar">
+        <div class="t-dot red"></div><div class="t-dot yellow"></div><div class="t-dot green"></div>
+        <span class="terminal-title">MainActivity.kt</span>
+      </div>
+      <div class="terminal-body" id="terminal-output"></div>
+    </div>
+  </div>
+</section>
+
+<div class="content">
+
+<!-- ARCHITECTURE -->
+<span class="section-anchor" id="architecture"></span>
+<section class="section">
+  <h2 class="section-title">Architecture <span class="tag">OVERVIEW</span></h2>
+  <p>LibTermux is split into independent Gradle modules. Apps only include what they need, keeping APK size minimal.</p>
+
+  <div class="arch-diagram">
+<span class="hl">┌─────────────────────────────────────────────────────────────────────┐</span>
+<span class="hl">│                        Your Android App                              │</span>
+<span class="hl">└───────────────────┬─────────────────────────────┬───────────────────┘</span>
+                    │                             │
+        <span class="hl2">┌───────────▼────────────┐</span>    <span class="hl4">┌───────────▼──────────────────┐</span>
+        <span class="hl2">│       :core            │</span>    <span class="hl4">│          :os                 │</span>
+        <span class="hl2">│  (always required)     │</span>    <span class="hl4">│   (add for distro support)   │</span>
+        <span class="hl2">│                        │</span>    <span class="hl4">│                              │</span>
+        <span class="hl2">│  LibTermux             │</span>    <span class="hl4">│  OsEnvironment               │</span>
+        <span class="hl2">│  TermuxBridge          │◄───┤  ProotRunner (no-root)       │</span>
+        <span class="hl2">│  CommandExecutor       │</span>    <span class="hl4">│  ChrootRunner (root)         │</span>
+        <span class="hl2">│  PackageManager        │</span>    <span class="hl4">│  VncClient (RFB 3.8)         │</span>
+        <span class="hl2">│  VirtualFileSystem     │</span>    <span class="hl4">│  DistroDisplay (Compose)     │</span>
+        <span class="hl2">│  BootstrapInstaller    │</span>    <span class="hl4">│  DistroLauncher (Compose)    │</span>
+        <span class="hl2">│  RootUtils             │</span>    <span class="hl4">│  GNOME / XFCE4 / LXDE ...    │</span>
+        <span class="hl2">└───────────┬────────────┘</span>    <span class="hl4">└──────────────────────────────┘</span>
+                    │
+        <span class="hl3">┌───────────▼────────────┐     ┌────────────────────────────┐</span>
+        <span class="hl3">│    :terminal-view      │     │        :shizuku            │</span>
+        <span class="hl3">│  (terminal UI widget)  │     │  (elevated execution)      │</span>
+        <span class="hl3">└────────────────────────┘     └────────────────────────────┘</span>
+                    │
+        <span class="dim">┌───────────▼────────────────────────────────────┐</span>
+        <span class="dim">│    Termux Bootstrap (ARM64/x86_64 binaries)    │</span>
+        <span class="dim">│    proot / Linux distro rootfs (via :os)       │</span>
+        <span class="dim">└────────────────────────────────────────────────┘</span>
+  </div>
+</section>
+
+<!-- CAPABILITIES -->
+<span class="section-anchor" id="capabilities"></span>
+<section class="section">
+  <h2 class="section-title">What You Can Build <span class="tag tag-green">CAPABILITIES</span></h2>
+
+  <div class="card-grid">
+    <div class="card">
+      <div class="card-icon">🛡️</div>
+      <div class="card-title">Security Tools</div>
+      <div class="card-desc">Metasploit GUI, nmap scanner, Burp proxy, SQLmap, Hydra — full Kali Linux inside your app</div>
+    </div>
+    <div class="card">
+      <div class="card-icon">🧠</div>
+      <div class="card-title">On-Device AI</div>
+      <div class="card-desc">Run LLMs with llama.cpp, Jupyter notebooks, PyTorch & TensorFlow CPU inference</div>
+    </div>
+    <div class="card">
+      <div class="card-icon">💻</div>
+      <div class="card-title">Developer IDE</div>
+      <div class="card-desc">Real compilers (gcc, clang, rustc), git, LSP servers, debuggers on Android</div>
+    </div>
+    <div class="card">
+      <div class="card-icon">🐧</div>
+      <div class="card-title">Linux Desktop</div>
+      <div class="card-desc">Full GNOME / XFCE4 desktop rendered in Compose via VNC — mouse & keyboard support</div>
+    </div>
+    <div class="card">
+      <div class="card-icon">🖥️</div>
+      <div class="card-title">Pocket Server</div>
+      <div class="card-desc">nginx + PHP + MySQL, self-hosted Gitea, CI/CD runner — your phone as a dev server</div>
+    </div>
+    <div class="card">
+      <div class="card-icon">📊</div>
+      <div class="card-title">Data Science</div>
+      <div class="card-desc">Real Python environment with pandas, numpy, scipy, R, Julia — not just a REPL</div>
+    </div>
+  </div>
+</section>
+
+<!-- ── GETTING STARTED ──────────────────────────────────────────────── -->
+<span class="section-anchor" id="getting-started"></span>
+<span class="section-anchor" id="installation"></span>
+<section class="section">
+  <h2 class="section-title">Installation <span class="tag">GETTING STARTED</span></h2>
+
+  <h3 class="sub-title">Add to your project</h3>
+  <p>Add JitPack to your root <code>settings.gradle.kts</code>:</p>
+  <div class="code-block">
+    <span class="lang-label">Kotlin DSL</span>
+    <button class="copy-btn" onclick="copyCode(this)">copy</button>
+    <pre class="language-kotlin"><code>dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+        maven { url = uri("https://jitpack.io") }
+    }
+}</code></pre>
+  </div>
+
+  <h3 class="sub-title">Module dependencies</h3>
+  <p>Add only what your app needs:</p>
+  <div class="code-block">
+    <span class="lang-label">build.gradle.kts</span>
+    <button class="copy-btn" onclick="copyCode(this)">copy</button>
+    <pre class="language-kotlin"><code>dependencies {
+    // Core — always required (bootstrap, CLI, bridge)
+    implementation("com.github.AeonCoreX-Lab:libtermux-android:1.0.0")
+
+    // OS Module — add only if you need Linux distro support
+    implementation("com.github.AeonCoreX-Lab:libtermux-os:1.0.0")
+
+    // Terminal UI widget — optional
+    implementation("com.github.AeonCoreX-Lab:libtermux-terminal-view:1.0.0")
+}</code></pre>
+  </div>
+
+  <h3 class="sub-title">Required permissions</h3>
+  <div class="code-block">
+    <span class="lang-label">AndroidManifest.xml</span>
+    <button class="copy-btn" onclick="copyCode(this)">copy</button>
+    <pre class="language-xml"><code>&lt;!-- Core module --&gt;
+&lt;uses-permission android:name="android.permission.INTERNET" /&gt;
+&lt;uses-permission android:name="android.permission.FOREGROUND_SERVICE" /&gt;
+
+&lt;!-- OS module (distro download + background VNC) --&gt;
+&lt;uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" /&gt;
+&lt;uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" /&gt;
+&lt;uses-permission android:name="android.permission.POST_NOTIFICATIONS" /&gt;</code></pre>
+  </div>
+</section>
+
+<!-- FIRST APP -->
+<span class="section-anchor" id="first-app"></span>
+<section class="section">
+  <h2 class="section-title">First App</h2>
+
+  <ol class="steps">
+    <li>
+      <div class="step-num">1</div>
+      <div class="step-content">
+        <h4>Initialize LibTermux in Application.onCreate()</h4>
+        <p>Create a single global instance using the DSL.</p>
+        <div class="code-block">
+          <span class="lang-label">Kotlin</span>
+          <button class="copy-btn" onclick="copyCode(this)">copy</button>
+          <pre class="language-kotlin"><code>class MyApp : Application() {
+    val libtermux by lazy {
+        LibTermux.init(this, termuxConfig {
+            autoInstall        = true
+            logLevel           = LogLevel.DEBUG
+            maxCommandTimeoutMs = 60_000L
+            env("MY_VAR", "hello")
+        })
+    }
+}</code></pre>
+        </div>
+      </div>
+    </li>
+    <li>
+      <div class="step-num">2</div>
+      <div class="step-content">
+        <h4>Install the bootstrap (once)</h4>
+        <p>Downloads and extracts Termux binaries on first run (~40 MB).</p>
+        <div class="code-block">
+          <span class="lang-label">Kotlin (ViewModel)</span>
+          <button class="copy-btn" onclick="copyCode(this)">copy</button>
+          <pre class="language-kotlin"><code>viewModelScope.launch {
+    app.libtermux.install().collect { state ->
+        when (state) {
+            is InstallState.Downloading  -> updateProgress(state.progress)
+            is InstallState.Extracting   -> showExtracting()
+            is InstallState.Completed    -> onReady()
+            is InstallState.Failed       -> showError(state.reason)
+            is InstallState.AlreadyInstalled -> onReady()
+            else -> {}
+        }
+    }
+}</code></pre>
+        </div>
+      </div>
+    </li>
+    <li>
+      <div class="step-num">3</div>
+      <div class="step-content">
+        <h4>Run your first command</h4>
+        <div class="code-block">
+          <button class="copy-btn" onclick="copyCode(this)">copy</button>
+          <pre class="language-kotlin"><code>val result = libtermux.bridge.run("python3 --version")
+println(result.stdout)   // Python 3.11.x
+println(result.exitCode) // 0</code></pre>
+        </div>
+      </div>
+    </li>
+  </ol>
+</section>
+
+<!-- CONFIG DSL -->
+<span class="section-anchor" id="config"></span>
+<section class="section">
+  <h2 class="section-title">Configuration DSL</h2>
+
+  <div class="code-block">
+    <span class="lang-label">Kotlin</span>
+    <button class="copy-btn" onclick="copyCode(this)">copy</button>
+    <pre class="language-kotlin"><code>val config = termuxConfig {
+    // Target CPU architecture (AUTO detects at runtime)
+    architecture = Architecture.AUTO  // ARM64 | X86_64 | ARM | X86
+
+    // Auto-install bootstrap on first launch
+    autoInstall = true
+
+    // Pin a specific bootstrap version (default: latest)
+    bootstrapVersion = TermuxConfig.LATEST_BOOTSTRAP
+
+    // Logging level
+    logLevel = LogLevel.INFO  // VERBOSE | DEBUG | INFO | WARN | ERROR | NONE
+
+    // Max execution time per command
+    maxCommandTimeoutMs = 30_000L
+
+    // Inject extra environment variables
+    env("CUSTOM_PATH", "/data/data/com.example/files/bin")
+    env("API_KEY", BuildConfig.TERMUX_KEY)
+
+    // Custom bootstrap download URL (optional)
+    customBootstrapUrl = "https://your-cdn.com/bootstrap-arm64.zip"
+}</code></pre>
+  </div>
+
+  <div class="callout callout-info">
+    <div class="callout-title">Java Builder API</div>
+    <p>Java users can use <code>TermuxConfig.builder().architecture(Architecture.ARM64).build()</code> instead of the Kotlin DSL.</p>
+  </div>
+</section>
+
+<!-- ── CORE MODULE ──────────────────────────────────────────────────── -->
+<span class="section-anchor" id="core-module"></span>
+<span class="section-anchor" id="libtermux-class"></span>
+<section class="section">
+  <h2 class="section-title">LibTermux <span class="tag">CORE MODULE</span></h2>
+  <p>The main entry point. Thread-safe singleton initialized once in your <code>Application</code>.</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Property / Method</th><th>Type</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>bridge</code></td><td><code>TermuxBridge</code></td><td>High-level command API (bash, python, node…)</td></tr>
+        <tr><td><code>executor</code></td><td><code>CommandExecutor</code></td><td>Low-level process executor</td></tr>
+        <tr><td><code>packageManager</code></td><td><code>PackageManager</code></td><td>apt/pip/npm wrapper</td></tr>
+        <tr><td><code>installer</code></td><td><code>BootstrapInstaller</code></td><td>Bootstrap lifecycle management</td></tr>
+        <tr><td><code>vfs</code></td><td><code>VirtualFileSystem</code></td><td>File paths + environment builder</td></tr>
+        <tr><td><code>isInstalled</code></td><td><code>Boolean</code></td><td>Whether bootstrap is ready</td></tr>
+        <tr><td><code>isRooted</code></td><td><code>Boolean</code></td><td>Whether su is functional</td></tr>
+        <tr><td><code>install()</code></td><td><code>Flow&lt;InstallState&gt;</code></td><td>Install / verify bootstrap</td></tr>
+        <tr><td><code>createOs()</code></td><td><code>OsEnvironment</code></td><td>Create OS module instance (requires :os)</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- TERMUX BRIDGE -->
+<span class="section-anchor" id="termuxbridge"></span>
+<section class="section">
+  <h2 class="section-title">TermuxBridge</h2>
+  <p>The primary interface for running code in the Termux environment. All methods are <code>suspend</code>.</p>
+
+  <div class="code-block">
+    <span class="lang-label">Kotlin</span>
+    <button class="copy-btn" onclick="copyCode(this)">copy</button>
+    <pre class="language-kotlin"><code>val bridge = libtermux.bridge
+
+// Shell commands
+bridge.run("ls -la /etc")
+bridge.runOrThrow("git status")  // throws on non-zero exit
+bridge.runStreaming("tail -f /var/log/syslog").collect { line -> log(line) }
+
+// Language runners
+bridge.bash("for i in 1 2 3; do echo \$i; done")
+bridge.python("import sys; print(sys.version)", args = listOf("--verbose"))
+bridge.node("console.log(process.version)")
+bridge.ruby("puts RUBY_VERSION")
+bridge.perl("print \$^V")
+bridge.php("echo PHP_VERSION;")
+
+// File operations
+bridge.writeFile("hello.py", "print('hello world')")
+bridge.readFile("hello.py")
+bridge.fileExists("hello.py")
+
+// Package management
+bridge.install("nmap", "curl", "git")
+bridge.uninstall("nano")
+bridge.upgradeAll()
+bridge.pipInstall("requests", "numpy")
+bridge.npmInstall("express")
+
+// System info
+bridge.hasCommand("python3")
+bridge.getKernelInfo()
+bridge.getEnvironment()</code></pre>
+  </div>
+</section>
+
+<!-- COMMAND EXECUTOR -->
+<span class="section-anchor" id="command-executor"></span>
+<section class="section">
+  <h2 class="section-title">CommandExecutor</h2>
+  <p>Low-level executor used by <code>TermuxBridge</code> internally. Use directly when you need full control over process execution.</p>
+
+  <div class="callout callout-green">
+    <div class="callout-title">EACCES Auto-Recovery</div>
+    <p>If <code>ProcessBuilder</code> throws <strong>Permission denied (error=13)</strong>, the executor automatically calls <code>Os.chmod()</code> on the shell binary and retries once — self-healing without requiring reinstall.</p>
+  </div>
+
+  <div class="code-block">
+    <button class="copy-btn" onclick="copyCode(this)">copy</button>
+    <pre class="language-kotlin"><code>val result: ExecutionResult = executor.execute(
+    command  = "nmap -sV 192.168.1.1",
+    workDir  = File(vfs.homeDir, "scans"),
+    extraEnv = mapOf("TERM" to "xterm-256color"),
+    shell    = "bash",         // which shell binary to use
+)
+
+println(result.stdout)         // command output
+println(result.stderr)         // error output
+println(result.exitCode)       // 0 = success
+println(result.executionTimeMs)
+println(result.isSuccess)      // exitCode == 0</code></pre>
+  </div>
+</section>
+
+<!-- PACKAGE MANAGER -->
+<span class="section-anchor" id="package-manager"></span>
+<section class="section">
+  <h2 class="section-title">PackageManager</h2>
+
+  <div class="code-block">
+    <button class="copy-btn" onclick="copyCode(this)">copy</button>
+    <pre class="language-kotlin"><code>val pkg = libtermux.packageManager
+
+// Termux (apt)
+pkg.install("python", "git", "curl", "nmap")
+pkg.uninstall("nano")
+pkg.updateRepo()
+pkg.upgradeAll()
+
+// Python packages
+pkg.pipInstall("flask", "sqlalchemy", "pandas")
+
+// Node.js packages
+pkg.npmInstall("express", "axios")
+
+// Ruby gems (via bridge)
+libtermux.bridge.gemInstall("bundler", "rails")</code></pre>
+  </div>
+</section>
+
+<!-- VIRTUAL FS -->
+<span class="section-anchor" id="filesystem"></span>
+<section class="section">
+  <h2 class="section-title">VirtualFileSystem</h2>
+  <p>Manages all path resolution and environment variables for the Termux runtime. All paths point inside the app's private storage.</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Property</th><th>Example Path</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td><code>prefixDir</code></td><td><code>.../files/libtermux/usr</code></td><td>Termux usr/ prefix</td></tr>
+        <tr><td><code>binDir</code></td><td><code>.../usr/bin</code></td><td>All binaries</td></tr>
+        <tr><td><code>homeDir</code></td><td><code>.../files/libtermux/home</code></td><td>User home directory</td></tr>
+        <tr><td><code>tmpDir</code></td><td><code>.../files/libtermux/tmp</code></td><td>Temporary files</td></tr>
+        <tr><td><code>filesDir</code></td><td><code>.../files</code></td><td>App files root</td></tr>
+        <tr><td><code>isBootstrapInstalled</code></td><td>Boolean</td><td>Install marker check</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ── OS MODULE ───────────────────────────────────────────────────── -->
+<span class="section-anchor" id="os-module"></span>
+<span class="section-anchor" id="os-overview"></span>
+<section class="section">
+  <h2 class="section-title">OS Module Overview <span class="tag tag-violet">:OS MODULE</span></h2>
+  <p>The <code>:os</code> module adds full Linux distro support — download, extract, and run Kali, Ubuntu, Debian, Alpine, or Fedora rootfs environments with a full graphical desktop inside Jetpack Compose.</p>
+
+  <div class="callout callout-info">
+    <div class="callout-title">No Circular Dependency</div>
+    <p><code>:core</code> has zero knowledge of <code>:os</code>. The bridge is the <code>LibTermux.createOs()</code> extension function defined in <code>:os</code>.</p>
+  </div>
+
+  <div class="code-block">
+    <span class="lang-label">Kotlin</span>
+    <button class="copy-btn" onclick="copyCode(this)">copy</button>
+    <pre class="language-kotlin"><code>// Create OS environment (extension from :os module)
+val os = libtermux.createOs {
+    executionMode = ExecutionMode.AUTO  // auto-detect root
+
+    registry {
+        distro(Distro.Kali) {
+            guiEnabled         = true
+            desktopEnvironment = DesktopEnvironment.GNOME_FLASHBACK
+            defaultResolution  = DisplayResolution.FHD_1080P
+            description        = "Penetration testing suite"
+            extraPackages      = listOf("nmap", "metasploit-framework")
+            startupCommands    = listOf("service postgresql start")
+        }
+        distro(Distro.Ubuntu2404) {
+            guiEnabled    = false
+            extraPackages = listOf("python3-pip", "nodejs", "git")
+        }
+    }
+}
+
+// Install a distro
+os.setupDistro(Distro.Kali).collect { state ->
+    when (state) {
+        is DistroSetupState.Downloading -> updateBar(state.progress)
+        is DistroSetupState.Completed   -> onReady()
+        is DistroSetupState.Failed      -> showError(state.reason)
+        else -> {}
+    }
+}
+
+// Run CLI commands
+val result = os.execute(Distro.Kali, "nmap -sV 192.168.1.1")
+
+// Install packages
+os.install(Distro.Ubuntu2404, "htop", "tree", "ripgrep")</code></pre>
+  </div>
+</section>
+
+<!-- DISTRO REGISTRY -->
+<span class="section-anchor" id="distro-registry"></span>
+<section class="section">
+  <h2 class="section-title">Distro Registry</h2>
+  <p>Declare exactly which distros your app supports. Only registered distros appear in <code>DistroLauncher</code> — preventing accidental 2 GB rootfs downloads.</p>
+
+  <div class="code-block">
+    <button class="copy-btn" onclick="copyCode(this)">copy</button>
+    <pre class="language-kotlin"><code>registry {
+    distro(Distro.Kali) {
+        guiEnabled         = true
+        desktopEnvironment = DesktopEnvironment.XFCE4  // or GNOME_FLASHBACK
+        defaultResolution  = DisplayResolution.HD_720P
+        colorDepth         = 24
+        vncDisplay         = 1           // port = 5900 + display = 5901
+        vncPassword        = null        // null = no auth (localhost only)
+        startupCommands    = listOf(     // run each session start
+            "service postgresql start",
+            "service ssh start",
+        )
+        extraPackages      = listOf("nmap", "wireshark-common")
+        extraBindMounts    = listOf("/sdcard/hacking:/hacking")
+        showInLauncher     = true
+        description        = "Kali Linux penetration testing"
+    }
+}</code></pre>
+  </div>
+
+  <h3 class="sub-title">Custom Distro</h3>
+  <div class="code-block">
+    <button class="copy-btn" onclick="copyCode(this)">copy</button>
+    <pre class="language-kotlin"><code>distro(Distro.Custom(
+    customId        = "arch-linux",
+    customName      = "Arch Linux",
+    url             = "https://example.com/arch-arm64.tar.gz",
+    compressionType = CompressionType.GZ,
+    shell           = "/bin/bash",
+)) {
+    guiEnabled         = true
+    desktopEnvironment = DesktopEnvironment.OPENBOX
+}</code></pre>
+  </div>
+</section>
+
+<!-- SUPPORTED DISTROS -->
+<span class="section-anchor" id="supported-distros"></span>
+<section class="section">
+  <h2 class="section-title">Supported Distros</h2>
+  <p>All distros use <strong>official ARM64 images</strong> — no third-party mirrors. Checksums are verified via SHA-256 before extraction.</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Distro</th><th>ID</th><th>Compressed</th><th>Pkg Manager</th><th>GUI</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><span class="distro-logo">🐉 Kali Linux</span></td>
+          <td><code>kali</code></td><td>~400 MB</td><td><code>apt</code></td>
+          <td class="status-ok">✓ XFCE4 / GNOME</td>
+        </tr>
+        <tr>
+          <td><span class="distro-logo">🟠 Ubuntu 24.04 LTS</span></td>
+          <td><code>ubuntu-24.04</code></td><td>~80 MB</td><td><code>apt</code></td>
+          <td class="status-ok">✓ XFCE4 / GNOME</td>
+        </tr>
+        <tr>
+          <td><span class="distro-logo">🟠 Ubuntu 22.04 LTS</span></td>
+          <td><code>ubuntu-22.04</code></td><td>~75 MB</td><td><code>apt</code></td>
+          <td class="status-ok">✓ XFCE4 / GNOME</td>
+        </tr>
+        <tr>
+          <td><span class="distro-logo">🌀 Debian 12 Bookworm</span></td>
+          <td><code>debian-12</code></td><td>~120 MB</td><td><code>apt</code></td>
+          <td class="status-ok">✓ XFCE4 / GNOME</td>
+        </tr>
+        <tr>
+          <td><span class="distro-logo">🏔️ Alpine 3.19</span></td>
+          <td><code>alpine</code></td><td>~5 MB</td><td><code>apk</code></td>
+          <td class="status-ok">✓ XFCE4</td>
+        </tr>
+        <tr>
+          <td><span class="distro-logo">🎩 Fedora 40</span></td>
+          <td><code>fedora-40</code></td><td>~200 MB</td><td><code>dnf</code></td>
+          <td class="status-ok">✓ XFCE4 / GNOME</td>
+        </tr>
+        <tr>
+          <td><span class="distro-logo">📦 Custom</span></td>
+          <td>any</td><td>—</td><td>any</td>
+          <td class="status-ok">✓ configurable</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- PROOT VS CHROOT -->
+<span class="section-anchor" id="proot-chroot"></span>
+<section class="section">
+  <h2 class="section-title">proot vs Real chroot</h2>
+  <p>LibTermux automatically selects the best backend via <code>ExecutionMode.AUTO</code>. Override with <code>ExecutionMode.PROOT</code> or <code>ExecutionMode.REAL_CHROOT</code>.</p>
+
+  <div class="compare-grid">
+    <div class="compare-card proot">
+      <h4>proot (No Root)</h4>
+      <ul class="compare-list">
+        <li class="yes">Any Android device</li>
+        <li class="yes">App Store safe</li>
+        <li class="yes">apt / apk / dnf work</li>
+        <li class="yes">GUI desktop via VNC</li>
+        <li class="yes">~85% native speed</li>
+        <li class="no">Raw sockets</li>
+        <li class="no">iptables / nftables</li>
+        <li class="partial">systemd (not supported)</li>
+        <li class="no">Kernel modules</li>
+      </ul>
+    </div>
+    <div class="compare-card chroot">
+      <h4>Real chroot (Root)</h4>
+      <ul class="compare-list">
+        <li class="yes">100% native speed</li>
+        <li class="yes">Raw sockets</li>
+        <li class="yes">iptables / nftables</li>
+        <li class="yes">Network capture (tcpdump)</li>
+        <li class="yes">Full bind mounts</li>
+        <li class="yes">Preserved setuid bits</li>
+        <li class="partial">systemd (partial)</li>
+        <li class="no">Kernel modules</li>
+        <li class="partial">Play Store (rooted only)</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- DESKTOP ENVIRONMENTS -->
+<span class="section-anchor" id="desktop-environments"></span>
+<section class="section">
+  <h2 class="section-title">Desktop Environments</h2>
+  <p>All DEs run via TigerVNC on display <code>:1</code> (port 5901). Rendered inside <code>DistroDisplay</code> via a pure-Kotlin RFB 3.8 client.</p>
+
+  <div class="de-grid">
+    <div class="de-card">
+      <div class="de-name">XFCE4</div>
+      <div class="de-size">~400 MB</div>
+      <div class="de-tags">
+        <span class="de-tag tag-rec">Recommended</span>
+        <span class="de-tag tag-light">Lightweight</span>
+      </div>
+    </div>
+    <div class="de-card gnome">
+      <div class="de-name">GNOME Flashback</div>
+      <div class="de-size">~450 MB</div>
+      <div class="de-tags">
+        <span class="de-tag tag-rec">Best GNOME</span>
+        <span class="de-tag tag-gnome">GNOME</span>
+      </div>
+    </div>
+    <div class="de-card gnome">
+      <div class="de-name">GNOME Full</div>
+      <div class="de-size">~1.5 GB</div>
+      <div class="de-tags">
+        <span class="de-tag tag-gnome">GNOME</span>
+        <span class="de-tag tag-heavy">≥4 GB RAM</span>
+      </div>
+    </div>
+    <div class="de-card gnome">
+      <div class="de-name">GNOME Classic</div>
+      <div class="de-size">~1 GB</div>
+      <div class="de-tags">
+        <span class="de-tag tag-gnome">GNOME</span>
+      </div>
+    </div>
+    <div class="de-card">
+      <div class="de-name">LXDE</div>
+      <div class="de-size">~250 MB</div>
+      <div class="de-tags">
+        <span class="de-tag tag-light">Lightweight</span>
+      </div>
+    </div>
+    <div class="de-card">
+      <div class="de-name">LXQt</div>
+      <div class="de-size">~350 MB</div>
+      <div class="de-tags">
+        <span class="de-tag tag-light">Lightweight</span>
+      </div>
+    </div>
+    <div class="de-card">
+      <div class="de-name">MATE</div>
+      <div class="de-size">~600 MB</div>
+      <div class="de-tags"></div>
+    </div>
+    <div class="de-card">
+      <div class="de-name">Openbox</div>
+      <div class="de-size">~80 MB</div>
+      <div class="de-tags">
+        <span class="de-tag tag-light">Minimal</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout callout-warn">
+    <div class="callout-title">GNOME on Android</div>
+    <p>Full GNOME Shell requires Mesa LLVMpipe software rendering (<code>LIBGL_ALWAYS_SOFTWARE=1</code>) since proot has no GPU passthrough. This is handled automatically. Use <strong>GNOME Flashback</strong> for best performance — it uses Metacity WM instead of gnome-shell, reducing RAM usage by ~600 MB.</p>
+  </div>
+</section>
+
+<!-- GUI DESKTOP -->
+<span class="section-anchor" id="gui-desktop"></span>
+<section class="section">
+  <h2 class="section-title">GUI Desktop Session</h2>
+
+  <div class="code-block">
+    <span class="lang-label">Kotlin</span>
+    <button class="copy-btn" onclick="copyCode(this)">copy</button>
+    <pre class="language-kotlin"><code>// 1. Create session
+val session = os.createDesktopSession(Distro.Kali)
+
+// 2. Start with settings
+session.start(DistroRuntimeSettings(
+    distroId      = Distro.Kali.id,
+    displayWidth  = 1920,
+    displayHeight = 1080,
+    colorDepth    = 24,
+    vncPort       = 5901,
+    scaleToFit    = true,
+    showToolbar   = true,
+))
+
+// 3. Observe state
+session.sessionState.collect { state ->
+    when (state) {
+        is DesktopSessionState.InstallingPackage -> showMsg("Installing: ${state.pkg}")
+        is DesktopSessionState.WaitingForServer  -> showMsg("Waiting ${state.attempt}s...")
+        is DesktopSessionState.Running           -> hideLoading()
+        is DesktopSessionState.Failed            -> showError(state.reason)
+        else -> {}
+    }
+}
+
+// 4. Stop when done
+session.stop()</code></pre>
+  </div>
+</section>
+
+<!-- DISTRO DISPLAY -->
+<span class="section-anchor" id="distro-display"></span>
+<section class="section">
+  <h2 class="section-title">DistroDisplay Composable</h2>
+  <p>Renders the VNC framebuffer in a Jetpack Compose <code>Canvas</code> with full touch and keyboard input.</p>
+
+  <div class="code-block">
+    <span class="lang-label">Kotlin (Compose)</span>
+    <button class="copy-btn" onclick="copyCode(this)">copy</button>
+    <pre class="language-kotlin"><code>@Composable
+fun DesktopScreen(session: DesktopSession) {
+    DistroDisplay(
+        session     = session,
+        modifier    = Modifier.fillMaxSize(),
+        showToolbar = true,           // overlay toolbar with Ctrl+Alt+Del etc.
+        onClose     = { /* navigate back */ },
+    )
+}
+
+// Or use the full launcher UI
+@Composable
+fun DistrosScreen(os: OsEnvironment) {
+    DistroLauncher(
+        os           = os,
+        onLaunch     = { session -> navTo("desktop") },
+        onOpenSettings = { distro -> navTo("settings/${distro.id}") },
+    )
+}</code></pre>
+  </div>
+
+  <h3 class="sub-title">Touch controls</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Gesture</th><th>Mouse action</th></tr></thead>
+      <tbody>
+        <tr><td>Single tap</td><td>Left click</td></tr>
+        <tr><td>Long press</td><td>Right click</td></tr>
+        <tr><td>Drag</td><td>Mouse move + left button held</td></tr>
+        <tr><td>Two-finger drag up/down</td><td>Scroll wheel</td></tr>
+        <tr><td>Pinch in/out</td><td>Zoom display (does not change resolution)</td></tr>
+        <tr><td>Hardware keyboard</td><td>X11 keysyms (full key mapping)</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- VNC CLIENT -->
+<span class="section-anchor" id="vnc-client"></span>
+<section class="section">
+  <h2 class="section-title">VNC Client (RFB 3.8)</h2>
+  <p>Pure Kotlin implementation of the Remote Framebuffer Protocol 3.8. Zero external dependencies.</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Feature</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr><td>RFB 3.8 handshake</td><td class="status-ok">✓ Implemented</td></tr>
+        <tr><td>Security: None (no auth)</td><td class="status-ok">✓ Implemented</td></tr>
+        <tr><td>Security: VNC Auth (DES)</td><td class="status-ok">✓ Implemented</td></tr>
+        <tr><td>Encoding: Raw</td><td class="status-ok">✓ Implemented</td></tr>
+        <tr><td>Encoding: CopyRect</td><td class="status-ok">✓ Implemented</td></tr>
+        <tr><td>Encoding: ZRLE</td><td class="status-warn">⟳ Planned v1.1</td></tr>
+        <tr><td>KeyEvent (X11 keysyms)</td><td class="status-ok">✓ Implemented</td></tr>
+        <tr><td>PointerEvent (mouse)</td><td class="status-ok">✓ Implemented</td></tr>
+        <tr><td>Clipboard sync</td><td class="status-warn">⟳ Planned v1.1</td></tr>
+        <tr><td>32bpp BGRA framebuffer</td><td class="status-ok">✓ Zero-copy to Bitmap</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- SETTINGS -->
+<span class="section-anchor" id="distro-settings"></span>
+<section class="section">
+  <h2 class="section-title">Distro Settings</h2>
+  <p>Per-distro settings are persisted via <strong>DataStore Preferences</strong> and survive app restarts.</p>
+
+  <div class="code-block">
+    <button class="copy-btn" onclick="copyCode(this)">copy</button>
+    <pre class="language-kotlin"><code>val store = DistroSettingsStore(context)
+
+// Observe
+store.getSettings(Distro.Kali).collect { settings ->
+    println("${settings.displayWidth}×${settings.displayHeight}")
+}
+
+// Update
+store.update(Distro.Kali) { it.copy(displayWidth = 1920, displayHeight = 1080) }
+
+// Reset to defaults
+store.reset(Distro.Kali)</code></pre>
+  </div>
+
+  <h3 class="sub-title">Built-in Settings Screen</h3>
+  <div class="code-block">
+    <button class="copy-btn" onclick="copyCode(this)">copy</button>
+    <pre class="language-kotlin"><code>@Composable
+fun SettingsRoute(distroId: String, os: OsEnvironment) {
+    val distro          = Distro.fromId(distroId) ?: return
+    val supportedDistro = os.registry[distro] ?: return
+
+    DistroSettingsScreen(
+        distro          = distro,
+        supportedDistro = supportedDistro,
+        onBack          = { navController.popBackStack() },
+    )
+}</code></pre>
+  </div>
+</section>
+
+<!-- API REFERENCE -->
+<span class="section-anchor" id="api"></span>
+<section class="section">
+  <h2 class="section-title">API Reference <span class="tag">REFERENCE</span></h2>
+
+  <h3 class="sub-title">OsEnvironment</h3>
+
+  <div class="api-method">
+    <div class="api-method-header">
+      <span class="api-verb fun">fun</span>
+      <div class="api-signature">
+        setupDistro(distro: Distro, forceReinstall: Boolean = false)<br/>
+        <span class="ret">: Flow&lt;DistroSetupState&gt;</span>
+      </div>
+    </div>
+    <div class="api-body">
+      <p>Download, extract, and configure a distro. Safe to call multiple times — skips if already installed.</p>
+      <table class="api-params">
+        <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
+        <tr><td>distro</td><td>Distro</td><td>Target distro (must be in registry)</td></tr>
+        <tr><td>forceReinstall</td><td>Boolean</td><td>Wipe and reinstall even if present</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="api-method">
+    <div class="api-method-header">
+      <span class="api-verb fun">suspend fun</span>
+      <div class="api-signature">
+        execute(distro: Distro, command: String, workDir: String = "/root")<br/>
+        <span class="ret">: ExecutionResult</span>
+      </div>
+    </div>
+    <div class="api-body">
+      <p>Execute a shell command inside the distro container via proot or chroot.</p>
+    </div>
+  </div>
+
+  <div class="api-method">
+    <div class="api-method-header">
+      <span class="api-verb fun">fun</span>
+      <div class="api-signature">
+        createDesktopSession(distro: Distro)<br/>
+        <span class="ret">: DesktopSession</span>
+      </div>
+    </div>
+    <div class="api-body">
+      <p>Create a VNC desktop session. Requires <code>guiEnabled = true</code> in registry. Call <code>session.start(settings)</code> to begin.</p>
+    </div>
+  </div>
+
+  <div class="api-method">
+    <div class="api-method-header">
+      <span class="api-verb val">val</span>
+      <div class="api-signature">
+        registry: DistroRegistry
+      </div>
+    </div>
+    <div class="api-body">
+      <p>The distro registry declared via <code>createOs { registry { ... } }</code>. Access installed distros, launcher entries, and GUI distros.</p>
+    </div>
+  </div>
+
+  <div class="api-method">
+    <div class="api-method-header">
+      <span class="api-verb fun">suspend fun</span>
+      <div class="api-signature">
+        install(distro: Distro, vararg packages: String)<br/>
+        <span class="ret">: ExecutionResult</span>
+      </div>
+    </div>
+    <div class="api-body">
+      <p>Install packages via the distro's native package manager (apt / apk / dnf auto-detected).</p>
+    </div>
+  </div>
+</section>
+
+<!-- PERMISSIONS -->
+<span class="section-anchor" id="permissions"></span>
+<section class="section">
+  <h2 class="section-title">Permissions</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Permission</th><th>Module</th><th>Required for</th></tr></thead>
+      <tbody>
+        <tr><td><code>INTERNET</code></td><td>:core</td><td>Bootstrap download</td></tr>
+        <tr><td><code>FOREGROUND_SERVICE</code></td><td>:core</td><td>Background execution</td></tr>
+        <tr><td><code>ACCESS_NETWORK_STATE</code></td><td>:os</td><td>Connectivity check before download</td></tr>
+        <tr><td><code>FOREGROUND_SERVICE_DATA_SYNC</code></td><td>:os</td><td>Background VNC session (Android 14+)</td></tr>
+        <tr><td><code>POST_NOTIFICATIONS</code></td><td>:os</td><td>Download progress notification (Android 13+)</td></tr>
+        <tr><td><code>READ_EXTERNAL_STORAGE</code></td><td>:os optional</td><td>Bind /sdcard into container</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- LIMITATIONS -->
+<span class="section-anchor" id="limitations"></span>
+<section class="section">
+  <h2 class="section-title">Known Limitations</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Feature</th><th>Status</th><th>Workaround</th></tr></thead>
+      <tbody>
+        <tr><td>WiFi injection / monitor mode</td><td class="status-no">✗ Not possible</td><td>Requires NetHunter kernel</td></tr>
+        <tr><td>systemd</td><td class="status-warn">⚠ Partial</td><td>Use <code>service</code> or <code>openrc</code></td></tr>
+        <tr><td>Kernel modules</td><td class="status-no">✗ Not possible</td><td>—</td></tr>
+        <tr><td>GPU acceleration in distro</td><td class="status-no">✗ Software only</td><td>Mesa LLVMpipe (auto-configured)</td></tr>
+        <tr><td>Wayland compositor</td><td class="status-no">✗ Not supported</td><td>X11 forced (handled automatically)</td></tr>
+        <tr><td>ZRLE VNC encoding</td><td class="status-warn">⟳ v1.1</td><td>Raw + CopyRect work fine</td></tr>
+        <tr><td>iOS version</td><td class="status-warn">⟳ Planned</td><td>iSH-style x86 emulation</td></tr>
+        <tr><td>Play Store (general terminal)</td><td class="status-warn">⚠ Risky</td><td>Use F-Droid / GitHub release</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- FAQ -->
+<span class="section-anchor" id="faq"></span>
+<section class="section">
+  <h2 class="section-title">FAQ</h2>
+
+  <h3 class="sub-title">Does this work without root?</h3>
+  <p>Yes. The <code>:core</code> bootstrap and all <code>:os</code> distro environments work without root using proot. Root unlocks native-speed chroot and raw network access.</p>
+
+  <h3 class="sub-title">Can I use this for a Play Store app?</h3>
+  <p>For specific-purpose apps (Python IDE, Git client, SSH tool) — yes. General-purpose terminals and package managers are risky. Penetration testing / Kali tools will be rejected. Use F-Droid / GitHub release for those.</p>
+
+  <h3 class="sub-title">How large is the bootstrap?</h3>
+  <p>The Termux bootstrap (~40 MB compressed, ~120 MB extracted) is downloaded on first run. Distro rootfs sizes range from 5 MB (Alpine) to 400 MB (Kali). All stored in app private storage.</p>
+
+  <h3 class="sub-title">What Android version is required?</h3>
+  <p>Minimum <strong>Android 8.0 (API 26)</strong>. The OS module with Compose requires <strong>Android 8.0+</strong> as well.</p>
+
+  <h3 class="sub-title">Can I run a full GNOME desktop?</h3>
+  <p>Yes. GNOME Shell runs via X11 with Mesa software rendering. Use <code>DesktopEnvironment.GNOME_FLASHBACK</code> for best performance — it uses Metacity WM and runs on ~450 MB instead of ~1.5 GB.</p>
+</section>
+
+<!-- CHANGELOG -->
+<span class="section-anchor" id="changelog"></span>
+<section class="section">
+  <h2 class="section-title">Changelog <span class="tag">v1.0.0</span></h2>
+  <div class="callout callout-green">
+    <div class="callout-title">v1.0.0 — Initial Release</div>
+    <p>Full production release of LibTermux Android SDK.</p>
+  </div>
+  <ul>
+    <li><strong>Core:</strong> Bootstrap install, CLI execution, EACCES auto-recovery, PackageManager</li>
+    <li><strong>Core:</strong> TermuxBridge with bash/python/node/ruby/perl/php runners</li>
+    <li><strong>Core:</strong> 3-layer Os.chmod() permission strategy (no more Permission denied)</li>
+    <li><strong>OS Module:</strong> proot distro support — Kali, Ubuntu, Debian, Alpine, Fedora</li>
+    <li><strong>OS Module:</strong> Real chroot for rooted devices with MountManager</li>
+    <li><strong>OS Module:</strong> Pure-Kotlin RFB 3.8 VNC client (Raw + CopyRect encodings)</li>
+    <li><strong>OS Module:</strong> DistroDisplay Compose composable with touch + keyboard</li>
+    <li><strong>OS Module:</strong> GNOME, GNOME Flashback, GNOME Classic desktop support</li>
+    <li><strong>OS Module:</strong> XFCE4, LXDE, LXQt, MATE, Openbox support</li>
+    <li><strong>OS Module:</strong> DistroRegistry — developer declares supported distros</li>
+    <li><strong>OS Module:</strong> DataStore-backed per-distro settings with DistroSettingsScreen</li>
+    <li><strong>Architecture:</strong> Zero circular dependency — :os extends :core via extension functions</li>
+  </ul>
+</section>
+
+<footer class="footer">
+  <span>LibTermux Android SDK — © 2026 <a href="https://github.com/AeonCoreX-Lab">AeonCoreX-Lab</a> / cybernahid-dev</span>
+  <span>Apache 2.0 License — <a href="https://github.com/AeonCoreX-Lab/libtermux-android">GitHub</a></span>
+</footer>
+
+</div><!-- .content -->
+</main>
+</div><!-- .layout -->
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-kotlin.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-xml-doc.min.js"></script>
+<script>
+/* ── Terminal animation ─────────────────────────────────────────────── */
+const lines = [
+  {t:'comment', v:'// Initialize LibTermux'},
+  {t:'code', v:'val libtermux = LibTermux.<span class="t-fn">init</span>(context, <span class="t-fn">termuxConfig</span> {'},
+  {t:'code', v:'    autoInstall = <span class="t-keyword">true</span>'},
+  {t:'code', v:'    logLevel    = LogLevel.<span class="t-param">DEBUG</span>'},
+  {t:'code', v:'})'},
+  {t:'blank', v:''},
+  {t:'comment', v:'// Add Kali Linux with GNOME desktop'},
+  {t:'code', v:'<span class="t-keyword">val</span> os = libtermux.<span class="t-fn">createOs</span> {'},
+  {t:'code', v:'    registry {'},
+  {t:'code', v:'        <span class="t-fn">distro</span>(Distro.Kali) {'},
+  {t:'code', v:'            guiEnabled = <span class="t-keyword">true</span>'},
+  {t:'code', v:'            desktopEnvironment = DesktopEnvironment.<span class="t-param">GNOME_FLASHBACK</span>'},
+  {t:'code', v:'        }'},
+  {t:'code', v:'    }'},
+  {t:'code', v:'}'},
+  {t:'blank', v:''},
+  {t:'comment', v:'// Run Kali inside your app ✓'},
+  {t:'output', v:'<span class="t-prompt">$</span> os.<span class="t-fn">execute</span>(Distro.Kali, <span class="t-string">"nmap -sV 192.168.1.1"</span>)'},
+];
+
+let lineIndex = 0;
+const out = document.getElementById('terminal-output');
+
+function addLine() {
+  if (lineIndex >= lines.length) {
+    const cursor = document.createElement('span');
+    cursor.className = 't-cursor';
+    out.appendChild(cursor);
+    return;
+  }
+  const l = lines[lineIndex++];
+  const span = document.createElement('span');
+  span.className = 't-line';
+  if (l.t === 'comment') {
+    span.innerHTML = '<span class="t-comment">// ' + l.v.replace('//', '').trim() + '</span>';
+  } else if (l.t === 'blank') {
+    span.innerHTML = ' ';
+  } else {
+    span.innerHTML = l.v;
+  }
+  out.appendChild(span);
+  setTimeout(addLine, l.t === 'blank' ? 80 : 90);
+}
+
+setTimeout(addLine, 600);
+
+/* ── Sidebar active ─────────────────────────────────────────────────── */
+function setActive(el) {
+  document.querySelectorAll('.sidebar a').forEach(a => a.classList.remove('active'));
+  el.classList.add('active');
+  if (window.innerWidth <= 900) toggleSidebar();
+}
+
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+}
+
+// Intersection observer for auto-active
+const observer = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      const id = e.target.id;
+      const link = document.querySelector('.sidebar a[href="#' + id + '"]');
+      if (link) {
+        document.querySelectorAll('.sidebar a').forEach(a => a.classList.remove('active'));
+        link.classList.add('active');
+      }
+    }
+  });
+}, {rootMargin: '-20% 0px -75% 0px'});
+
+document.querySelectorAll('.section-anchor').forEach(el => observer.observe(el));
+
+/* ── Copy code ─────────────────────────────────────────────────────── */
+function copyCode(btn) {
+  const pre = btn.closest('.code-block').querySelector('pre');
+  navigator.clipboard.writeText(pre.textContent).then(() => {
+    btn.textContent = 'copied!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1500);
+  });
+}
+</script>
+</body>
+</html>

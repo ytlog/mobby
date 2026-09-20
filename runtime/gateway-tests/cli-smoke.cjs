@@ -1,0 +1,53 @@
+'use strict';
+// Optional integration test against real CLIs, using only a local mock model.
+// MDOER_TEST_CODEX=/path/to/codex MDOER_TEST_CLAUDE_JS=/path/to/cli.js node runtime/gateway-tests/cli-smoke.cjs
+const {createServer}=require('node:http');
+const {spawn}=require('node:child_process');
+const {mkdtempSync,mkdirSync,writeFileSync,rmSync}=require('node:fs');
+const {tmpdir}=require('node:os');
+const {join,resolve}=require('node:path');
+const {once}=require('node:events');
+const assert=require('node:assert/strict');
+const bridge=resolve(__dirname,'../../app/src/main/assets/gateway/bridge.cjs');
+const {nativeResponse,sendNative}=require(bridge);
+async function main() {
+  const codex=process.env.MDOER_TEST_CODEX, claude=process.env.MDOER_TEST_CLAUDE_JS;
+  assert.ok(codex && claude,'Set MDOER_TEST_CODEX and MDOER_TEST_CLAUDE_JS to the test CLI paths');
+  const root=mkdtempSync(join(tmpdir(),'mdoer-gateway-smoke-'));
+  const work=join(root,'work');mkdirSync(work);
+  const fixture=join(work,'fixture.txt');writeFileSync(fixture,'TOOL_ROUNDTRIP_OK\n');
+  try {
+    for (const mode of ['CODEX','CLAUDE']) for (const protocol of ['chat','messages','responses']) {
+      let count=0, resultSeen=false;
+      const server=createServer(async(req,res)=>{
+        const chunks=[];for await(const c of req)chunks.push(c);
+        const body=JSON.parse(Buffer.concat(chunks));count++;
+        if(count>1) resultSeen=JSON.stringify(body).includes('TOOL_ROUNDTRIP_OK');
+        const argumentsValue=mode==='CLAUDE'?{file_path:fixture}:{cmd:`cat '${fixture.replaceAll("'","'\\''")}'`,max_output_tokens:100};
+        const canonical={content:count===1?'':'GATEWAY_TEST_OK',calls:count===1?[{id:'call_test',type:'function',function:{name:mode==='CLAUDE'?'Read':'exec_command',arguments:JSON.stringify(argumentsValue)}}]:[],input:10,output:4};
+        const result=protocol==='chat'?{choices:[{message:{role:'assistant',content:canonical.content,tool_calls:canonical.calls},finish_reason:canonical.calls.length?'tool_calls':'stop'}],usage:{prompt_tokens:10,completion_tokens:4}}:nativeResponse(canonical,protocol,'test-model');
+        if(body.stream) sendNative(res,result,protocol,true);
+        else {res.setHeader('content-type','application/json');res.end(JSON.stringify(result));}
+      });
+      server.listen(0,'127.0.0.1');await once(server,'listening');
+      const home=mkdtempSync(join(root,'home-'));mkdirSync(join(home,'.codex'));
+      // Fresh HOME and explicit minimal env: never load or forward the user's credentials.
+      const env={PATH:process.env.PATH,HOME:home,CODEX_HOME:join(home,'.codex'),TMPDIR:tmpdir(),NO_COLOR:'1',TERM:'dumb',CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC:'1',DISABLE_AUTOUPDATER:'1',
+        MDOER_GATEWAY_CONFIG:JSON.stringify({endpoint:`http://127.0.0.1:${server.address().port}/v1`,protocol,model:'test-model',key:'fake-test-key'})};
+      const exe=mode==='CODEX'?codex:process.execPath;
+      const args=mode==='CODEX'?['exec','--skip-git-repo-check','--json','--','Read the test fixture.']: [claude,'-p','--output-format','stream-json','--verbose','--','Read the test fixture.'];
+      const child=spawn(process.execPath,[bridge,mode,exe,...args],{cwd:work,env,stdio:['ignore','pipe','pipe']});
+      let output='';child.stdout.on('data',c=>output+=c);child.stderr.on('data',c=>output+=c);
+      const timer=setTimeout(()=>child.kill('SIGTERM'),60000);
+      let code;
+      try { [code]=await once(child,'exit'); }
+      finally {clearTimeout(timer);server.closeAllConnections();server.close();}
+      assert.equal(code,0,output);
+      assert.ok(output.includes('GATEWAY_TEST_OK'),output);
+      assert.ok(resultSeen,`Tool result missing: ${mode}/${protocol}\n${output}`);
+      assert.equal(count,2);
+      console.log(`PASS ${mode} -> ${protocol}: actual tool execution and result roundtrip`);
+    }
+  } finally {rmSync(root,{recursive:true,force:true});}
+}
+main().catch(error=>{console.error(error);process.exitCode=1;});

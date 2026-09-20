@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+        LibTermux OS Module — Required Permissions
+        These are merged into the consuming app's manifest automatically.
+    -->
+
+    <!-- Download Linux distro rootfs archives from the internet -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Check connectivity before starting a download -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!--
+        Foreground service for keeping VNC desktop sessions alive
+        when the app moves to the background.
+        Required on Android 9+ for long-running background operations.
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
+    <!--
+        Bind /sdcard into proot/chroot containers (optional).
+        Only needed if OsConfig.bindSdCard = true (default).
+        READ is sufficient for most use cases.
+    -->
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+
+    <!--
+        POST_NOTIFICATIONS — show download/extraction progress notification.
+        Only required on Android 13+ (API 33). Declared here so the
+        consuming app can selectively request it at runtime.
+    -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application />
+
+</manifest>
