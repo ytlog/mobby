@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.*
 import java.util.UUID
 
 internal fun RuntimeError.message(): String = when (code) {
+    ErrorCode.INPUT_TOO_LARGE -> "文字与附件合计超出输入上限，请缩短文字或移除附件"
     ErrorCode.NOT_READY -> "运行环境尚未就绪"
     ErrorCode.BUSY -> "已有任务正在执行，请等待或前往该会话停止"
     ErrorCode.INVALID_CONFIG -> "网关或模型配置无效，请检查设置"
@@ -27,6 +28,7 @@ internal fun RuntimeError.message(): String = when (code) {
 }
 internal fun RunPhase.domain(): ExecutionPhase = ExecutionPhase.valueOf(if (this == RunPhase.STARTING) "ACCEPTED" else name)
 internal fun RuntimeError.failure() = when (code) {
+    ErrorCode.INPUT_TOO_LARGE -> Failure.INPUT_TOO_LARGE
     ErrorCode.BUSY -> Failure.BUSY
     ErrorCode.UNSUPPORTED_CAPABILITY -> Failure.UNSUPPORTED_CAPABILITY
     ErrorCode.INVALID_CONFIG, ErrorCode.PERMISSION_DENIED -> Failure.INVALID_CONFIG
@@ -58,6 +60,31 @@ internal class RuntimeExecutionAdapter(private val client: RuntimeClient) : Exec
     }
 }
 internal class RuntimeSystemAdapter(private val context: android.content.Context, private val client: RuntimeClient, private val admin: RuntimeAdminClient, private val diagnostics: RuntimeDiagnosticsClient) : SystemPort {
+    override suspend fun attachment(workspace: String, ref: String): DataResult<Attachment> = when (val result = admin.resource(ResourceRef(ref), WorkspaceRef(workspace))) {
+        is AdminResult.Success -> DataResult.Loaded(Attachment(result.value.ref.value, result.value.name, result.value.sizeBytes))
+        is AdminResult.Failed -> DataResult.Failed(result.error.message())
+    }
+    override suspend fun importAttachment(workspace: String, location: String): DataResult<Attachment> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        try {
+            val uri = android.net.Uri.parse(location)
+            require(uri.scheme == "content")
+            val resolver = context.contentResolver
+            val name = resolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
+                if (it.moveToFirst()) it.getString(0) else null
+            } ?: "文本附件"
+            val bytes = java.io.ByteArrayOutputStream()
+            resolver.openInputStream(uri)?.use { input ->
+                val buffer = ByteArray(8192)
+                while (true) { val n = input.read(buffer); if (n < 0) break; bytes.write(buffer, 0, n); require(bytes.size() <= 32 * 1024) }
+            } ?: return@withContext DataResult.Failed("无法读取所选文件")
+            when (val result = admin.importResource(ImportResourceRequest(WorkspaceRef(workspace), name, bytes.toByteArray()))) {
+                is AdminResult.Success -> DataResult.Loaded(Attachment(result.value.ref.value, result.value.name, result.value.sizeBytes))
+                is AdminResult.Failed -> DataResult.Failed(if (result.error.code in setOf(ErrorCode.INVALID_CONFIG, ErrorCode.UNSUPPORTED_CAPABILITY)) "请选择不超过 32 KiB 的 UTF-8 文本文件，不支持图片、PDF 或二进制文件" else result.error.message())
+            }
+        } catch (e: CancellationException) { throw e }
+        catch (_: SecurityException) { DataResult.Failed("文件授权失效，请重新选择") }
+        catch (_: Exception) { DataResult.Failed("文件读取失败或超过 32 KiB，请重试或移除") }
+    }
     private fun SkillSummary.domain() = Skill(ref.value, DomainAgent.valueOf(agent.name), name, description, if (source == SkillSource.USER) "用户技能" else "CLI 内置", available, error?.let { "技能元信息、目录名称或文件路径无效" })
     private fun SkillPreview.domain() = SkillContent(name, description, body, markdown, issues.map { when (it) {
         SkillIssue.INVALID_FRONTMATTER -> "YAML 元信息无效，请修正后再导入"
@@ -108,7 +135,7 @@ internal class RuntimeSystemAdapter(private val context: android.content.Context
     override val diagnostic = diagnostics.state.map { DiagnosticOutput(it.phase?.domain(), it.output) }
     override suspend fun agents(): List<AgentOption> = when (val result = client.capabilities()) {
         is CapabilityResult.Unavailable -> DomainAgent.values().map { AgentOption(it, emptyMap(), result.error.message(), false, emptySet()) }
-        is CapabilityResult.Available -> result.capabilities.agents.map { AgentOption(DomainAgent.valueOf(it.agentId.name), it.models.associate { m -> m.id to m.reasoningLevels }, it.unavailableReason?.message(), it.supportsResume, it.skillCapabilities.map { ref -> ref.value }.toSet()) }
+        is CapabilityResult.Available -> result.capabilities.agents.map { AgentOption(DomainAgent.valueOf(it.agentId.name), it.models.associate { m -> m.id to m.reasoningLevels }, it.unavailableReason?.message(), it.supportsResume, it.skillCapabilities.map { ref -> ref.value }.toSet(), it.supportsResources) }
     }
     override suspend fun gateways(): List<GatewayProfile> = when (val result = admin.listGatewayProfiles()) {
         is AdminResult.Success -> result.value.map { GatewayProfile(DomainAgent.valueOf(it.agent.name), it.ref.id, it.ref.version, it.endpoint, it.model, it.protocol.name, it.hasCredential) }

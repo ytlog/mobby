@@ -1,6 +1,8 @@
 package com.mobby.interaction.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
@@ -41,6 +43,15 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
     val vm: ConversationViewModel = viewModel(factory = factory)
     val state by vm.state.collectAsStateWithLifecycle()
     val system by vm.status.collectAsStateWithLifecycle()
+    val agentOptions by vm.agents.collectAsStateWithLifecycle()
+    val importing by vm.importing.collectAsStateWithLifecycle()
+    var fileTarget by rememberSaveable { mutableStateOf<String?>(null) }
+    var fileWorkspace by rememberSaveable { mutableStateOf<String?>(null) }
+    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        val id = fileTarget; val workspace = fileWorkspace
+        fileTarget = null; fileWorkspace = null
+        if (uri != null && id != null && workspace != null) vm.importAttachment(ConversationId(id), workspace, uri.toString())
+    }
     var route by rememberSaveable { mutableStateOf("conversation") }
     var drawer by rememberSaveable { mutableStateOf(false) }
     val appearance by actions.appearance.collectAsStateWithLifecycle()
@@ -99,12 +110,16 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                 if (drawer) Box(Modifier.offset { IntOffset((pixels * progress).roundToInt(), 0) }.fillMaxSize().clickable { drawer = false })
                 SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
                 if (route == "add") ModalBottomSheet(onDismissRequest = { route = "conversation" }) {
-                    Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(Modifier.heightIn(max = (availableHeight - 48.dp).coerceAtLeast(120.dp)).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("添加内容与能力", style = MaterialTheme.typography.titleLarge)
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                            listOf("拍照", "照片", "本地文件").forEach { label -> TextButton(onClick = {}, enabled = false) { Text(label) } }
+                            listOf("拍照", "照片").forEach { label -> TextButton(onClick = {}, enabled = false) { Text(label) } }
+                            val target = state.selected?.conversation
+                            TextButton(onClick = {
+                                if (target != null) { fileTarget = target.id.value; fileWorkspace = target.config.workspace; route = "conversation"; filePicker.launch(arrayOf("*/*")) }
+                            }, enabled = target != null && !target.archived && !target.deleted && importing == null && target.draft.attachments.size < 4 && agentOptions.any { it.agent == target.config.agent && it.resources && it.unavailable == null }) { Text("本地文件") }
                         }
-                        Text("当前执行接口仅开放文字输入，图片与文件不可用。", style = MaterialTheme.typography.bodySmall)
+                        Text("支持 UTF-8 文本文件，每个最多 32 KiB、每轮最多 4 个，文字与附件编码后合计最多 64 KiB。图片、拍照和 PDF 尚不可用；运行环境与网关就绪后可选择文件。", style = MaterialTheme.typography.bodySmall)
                         TextButton(onClick = { route = "conversation"; voice = vm.composer.value }) { Text("语音输入") }
                         TextButton(onClick = { route = "plugins" }) { Text("插件") }
                         TextButton(onClick = { route = "skills" }) { Text("技能") }
@@ -136,7 +151,13 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                     "project" -> TextEditDialog("添加到项目（留空移出分组）", c.project.orEmpty(), { dialog = null }) { value -> vm.enqueue { actions.project(c.id, value) }; dialog = null }
                     "delete" -> AlertDialog(onDismissRequest = { dialog = null }, title = { Text("删除对话？") }, text = { Text("对话将移入最近删除，可在设置中恢复；工作区文件不会删除。") },
                         confirmButton = { TextButton(onClick = { vm.enqueue { vm.report(actions.delete(c.id, true)) }; dialog = null }) { Text("删除") } }, dismissButton = { TextButton(onClick = { dialog = null }) { Text("取消") } })
-                    "attachments" -> AlertDialog(onDismissRequest = { dialog = null }, title = { Text("对话附件") }, text = { Text("已发送附件：无\n本轮草稿附件：${c.draft.attachments.size} 个") }, confirmButton = { TextButton(onClick = { dialog = null }) { Text("关闭") } })
+                    "attachments" -> AlertDialog(onDismissRequest = { dialog = null }, title = { Text("对话附件") }, text = { Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                        Text("已发送附件")
+                        val sent = state.selected!!.turns.filter { it.execution != null }.flatMap { it.attachments }
+                        if (sent.isEmpty()) Text("无") else AttachmentList(sent.distinct(), c.config.workspace, vm)
+                        Text("本轮草稿附件")
+                        if (c.draft.attachments.isEmpty()) Text("无") else AttachmentList(c.draft.attachments, c.config.workspace, vm)
+                    } }, confirmButton = { TextButton(onClick = { dialog = null }) { Text("关闭") } })
                     "find" -> FindDialog(state.selected!!, onDismiss = { dialog = null }, onSelect = { hit -> vm.jumpTo(c.id, hit); dialog = null })
                     "share" -> ShareDialog(state.selected!!, hostActions.share, onDismiss = { dialog = null })
                     "shortcut" -> { LaunchedEffect(c.id) { hostActions.shortcut(c.id.value, c.title); dialog = null } }
@@ -212,6 +233,7 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
 
 @Composable private fun Composer(detail: ConversationDetail, state: InteractionState, system: SystemStatus, vm: ConversationViewModel, onAdd: () -> Unit, onVoice: () -> Unit) {
     val composer by vm.composer.collectAsStateWithLifecycle()
+    val importing by vm.importing.collectAsStateWithLifecycle()
     val active = detail.turns.lastOrNull { it.occupied }
     val unavailable = detail.conversation.archived || detail.conversation.deleted
     Column(Modifier.fillMaxWidth().padding(12.dp)) {
@@ -223,6 +245,16 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
             detail.conversation.draft.capabilities.filter { it != detail.conversation.creator }.forEach { ref -> InputChip(selected = true,
                 onClick = { vm.enqueue { vm.actions.removeSkill(detail.conversation.id, ref) } }, label = { Text("${ref.split(':').getOrNull(3) ?: "技能"} ×") }) }
         }
+        Column(Modifier.heightIn(max = 160.dp).verticalScroll(rememberScrollState())) {
+            AttachmentList(detail.conversation.draft.attachments, detail.conversation.config.workspace, vm) { ref -> vm.enqueue { vm.actions.removeAttachment(detail.conversation.id, ref) } }
+        }
+        importing?.takeIf { it.id == detail.conversation.id }?.let { pending ->
+            Text(pending.error ?: "正在导入附件，完成后可发送…", style = MaterialTheme.typography.bodySmall)
+            if (pending.error != null) Row {
+                TextButton(onClick = { vm.importAttachment(pending.id, pending.workspace, pending.location) }) { Text("重试") }
+                TextButton(onClick = { vm.importing.value = null }) { Text("移除待处理附件") }
+            }
+        }
         Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
             Row(Modifier.fillMaxWidth().padding(4.dp), verticalAlignment = Alignment.Bottom) {
                 ActionIcon("添加内容与能力", onAdd, Icons.Outlined.Add)
@@ -230,9 +262,9 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                     enabled = !unavailable, maxLines = 5, textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
                     decorationBox = { inner -> Box { if (composer.value.text.isEmpty()) Text("输入任务", color = MaterialTheme.colorScheme.onSurfaceVariant); inner() } })
                 if (active?.execution != null) ActionIcon("停止当前任务", { vm.stop(active.execution!!) }, Icons.Outlined.Stop, active.phase != ExecutionPhase.CANCELLING)
-                else if (composer.value.text.isEmpty()) ActionIcon("语音输入", onVoice, Icons.Outlined.Mic, !unavailable)
+                else if (composer.value.text.isEmpty() && detail.conversation.draft.attachments.isEmpty()) ActionIcon("语音输入", onVoice, Icons.Outlined.Mic, !unavailable)
                 else ActionIcon("发送任务", vm::send, Icons.Outlined.ArrowUpward,
-                    !unavailable && system.ready && system.connected && !system.diagnosticBusy && state.occupied == null && composer.value.text.isNotBlank())
+                    !unavailable && system.ready && system.connected && !system.diagnosticBusy && state.occupied == null && importing?.id != detail.conversation.id && (composer.value.text.isNotBlank() || detail.conversation.draft.attachments.isNotEmpty()))
             }
         }
         if (active?.pending == true) TextButton(onClick = { vm.enqueue { vm.actions.reconcile(detail.conversation.id) } }) { Text("查询待确认请求") }
@@ -282,7 +314,7 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
         LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             if (detail.turns.isEmpty()) item(key = "empty") { Column(Modifier.fillParentMaxHeight().padding(top = 80.dp)) { Text("从一个任务开始", style = MaterialTheme.typography.headlineMedium); Text("${detail.conversation.config.agent.label()} 将在本机工作区执行。", Modifier.padding(top = 12.dp)) } }
             detail.turns.forEach { turn ->
-                item(key = "user:${turn.id.value}") { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { Surface(shape = RoundedCornerShape(21.dp, 21.dp, 6.dp, 21.dp), color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.widthIn(max = 360.dp)) { androidx.compose.foundation.text.selection.SelectionContainer { Text(turn.userText, Modifier.padding(16.dp)) } } } }
+                item(key = "user:${turn.id.value}") { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { Surface(shape = RoundedCornerShape(21.dp, 21.dp, 6.dp, 21.dp), color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.widthIn(max = 360.dp)) { Column(Modifier.padding(16.dp)) { androidx.compose.foundation.text.selection.SelectionContainer { Text(turn.userText) }; AttachmentList(turn.attachments, detail.conversation.config.workspace, vm) } } } }
                 item(key = "run:${turn.id.value}") { ExecutionCard(turn, vm, read) }
                 turn.messages.forEach { message -> item(key = "message:${turn.id.value}:${message.id}") {
                     Column {
@@ -307,7 +339,7 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                     Surface(color = MaterialTheme.colorScheme.errorContainer, shape = RoundedCornerShape(12.dp)) {
                         Column(Modifier.fillMaxWidth().padding(12.dp)) {
                             Text(turn.failure ?: turn.phase.label())
-                            if (!turn.occupied) TextButton(onClick = { vm.edit(androidx.compose.ui.text.input.TextFieldValue(turn.userText)) }) { Text("放入草稿重试") }
+                            if (!turn.occupied) TextButton(onClick = { vm.enqueue { vm.actions.restoreDraft(detail.conversation.id, turn) } }) { Text("放入草稿重试") }
                         }
                     }
                 }

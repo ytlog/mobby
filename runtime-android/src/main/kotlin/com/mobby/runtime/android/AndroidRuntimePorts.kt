@@ -13,6 +13,7 @@ internal class AndroidRuntimePorts(
     private val state: StateFlow<EnvironmentSnapshot>, private val registry: ProcessRegistry
 ) : EnvironmentPort, ProcessPort {
     private val skills get() = SkillStore(runtime.sdk.vfs.homeDir)
+    private val resources get() = ResourceStore(File(context.filesDir, "input-resources"))
     private val gateways = GatewayStore(context)
     private fun mode(agent: AgentId) = if (agent == AgentId.CODEX) AgentMode.CODEX else AgentMode.CLAUDE
     override suspend fun capabilities(): CapabilityResult = withContext(Dispatchers.IO) {
@@ -21,20 +22,23 @@ internal class AndroidRuntimePorts(
             AgentCapability(agent, if (config == null) emptyList() else listOf(ModelCapability(config.model, emptySet())),
                 unavailableReason = if (state.value.phase != EnvironmentPhase.READY) RuntimeError(ErrorCode.NOT_READY, true)
                     else if (config == null) RuntimeError(ErrorCode.INVALID_CONFIG) else null,
-                supportsResume = true, supportsApproval = false, skillCapabilities = skills.list(agent).filter { it.available }.map { it.ref }.toSet())
+                supportsResume = true, supportsApproval = false, supportsResources = true, skillCapabilities = skills.list(agent).filter { it.available }.map { it.ref }.toSet())
         }))
     }
     override suspend fun validate(request: RunRequest): RuntimeError? = withContext(Dispatchers.IO) {
         if (state.value.phase != EnvironmentPhase.READY) return@withContext RuntimeError(ErrorCode.NOT_READY, true)
         if (request.workspaceRef.value != "default") return@withContext RuntimeError(ErrorCode.PERMISSION_DENIED)
-        if (request.inputParts.any { it !is InputPart.Text } || request.reasoningLevel != null)
+        if (request.reasoningLevel != null)
             return@withContext RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY)
         if (request.capabilityRefs.size > 8 || request.capabilityRefs.any { skills.resolve(it, request.agentId) == null })
             return@withContext RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY)
         if (request.requestedOutput == RequestedOutput.SKILL_PROPOSAL && !skills.hasCreator(request.agentId, request.capabilityRefs))
             return@withContext RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY)
-        val text = request.inputParts.filterIsInstance<InputPart.Text>().joinToString("\n") { it.text }
-        if (text.isBlank() || text.toByteArray().size > 65536 || '\u0000' in text) return@withContext RuntimeError(ErrorCode.INVALID_CONFIG)
+        if (request.inputParts.filterIsInstance<InputPart.Resource>().any { runCatching { resources.read(it.ref, request.workspaceRef) }.isFailure })
+            return@withContext RuntimeError(ErrorCode.RESOURCE_MISSING)
+        try { resources.prompt(request.inputParts, request.workspaceRef) }
+        catch (_: ResourceStore.InputTooLarge) { return@withContext RuntimeError(ErrorCode.INPUT_TOO_LARGE) }
+        catch (_: Exception) { return@withContext RuntimeError(ErrorCode.INVALID_CONFIG) }
         val mode = mode(request.agentId)
         if (request.gatewayProfileRef.id != mode.name) return@withContext RuntimeError(ErrorCode.INVALID_CONFIG)
         if (request.sessionRef?.value?.matches(Regex("[A-Za-z0-9-]{1,100}")) == false) return@withContext RuntimeError(ErrorCode.INVALID_CONFIG)
@@ -49,7 +53,7 @@ internal class AndroidRuntimePorts(
         var started = false
         var exit: Int? = null
         val worker = async(Dispatchers.IO) {
-            var prompt = skills.prompt(request.agentId, request.capabilityRefs, request.inputParts.filterIsInstance<InputPart.Text>().joinToString("\n") { it.text })
+            var prompt = skills.prompt(request.agentId, request.capabilityRefs, resources.prompt(request.inputParts, request.workspaceRef))
             if (request.requestedOutput == RequestedOutput.SKILL_PROPOSAL) {
                 prompt += "\n\n本轮创建技能只生成待确认草稿：如已完成澄清，请在最终回复中用四个反引号加 SKILL.md 开始、四个反引号结束的代码块给出完整文件（含 name、description 元信息和正文）。不要写入或安装技能文件；由用户在应用中预览校验并明确保存。需要进一步澄清时先提问。遵守现有权限与沙箱。"
             }

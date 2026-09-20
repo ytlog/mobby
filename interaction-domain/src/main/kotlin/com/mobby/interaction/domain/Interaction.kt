@@ -13,7 +13,7 @@ data class Turn(
     val diagnostics: List<Message> = emptyList(), val failure: String? = null,
     val progress: String? = null, val pending: Boolean = false, val occupied: Boolean = false,
     val expanded: Boolean? = null, val expandedSteps: Set<String> = emptySet(),
-    val skillProposals: List<SkillProposal> = emptyList(), val creatingSkill: Boolean = false, val proposalsLoading: Boolean = false
+    val skillProposals: List<SkillProposal> = emptyList(), val creatingSkill: Boolean = false, val proposalsLoading: Boolean = false, val attachments: List<String> = emptyList()
 )
 data class ConversationSummary(val conversation: Conversation, val phase: ExecutionPhase? = null, val occupied: Boolean = false)
 data class ConversationDetail(val conversation: Conversation, val turns: List<Turn>)
@@ -23,7 +23,7 @@ data class InteractionState(
 ) {
     val occupied: ConversationSummary? get() = conversations.firstOrNull { it.occupied }
 }
-data class AgentOption(val agent: AgentId, val models: Map<String, Set<String>>, val unavailable: String?, val resume: Boolean, val skills: Set<String>)
+data class AgentOption(val agent: AgentId, val models: Map<String, Set<String>>, val unavailable: String?, val resume: Boolean, val skills: Set<String>, val resources: Boolean = false)
 data class GatewayProfile(val agent: AgentId, val id: String, val version: Long, val endpoint: String, val model: String, val protocol: String, val hasCredential: Boolean)
 class GatewayEdit(val agent: AgentId, val endpoint: String, val model: String, val protocol: String, val credential: CharArray?) {
     override fun toString() = "GatewayEdit(agent=$agent)"
@@ -40,7 +40,10 @@ sealed interface DataResult<out T> {
     data class Loaded<T>(val value: T) : DataResult<T>
     data class Failed(val message: String) : DataResult<Nothing>
 }
+data class Attachment(val ref: String, val name: String, val sizeBytes: Int)
 interface SystemPort {
+    suspend fun importAttachment(workspace: String, location: String): DataResult<Attachment>
+    suspend fun attachment(workspace: String, ref: String): DataResult<Attachment>
     suspend fun skills(agent: AgentId): DataResult<List<Skill>>
     suspend fun readSkill(ref: String): DataResult<SkillContent>
     suspend fun previewSkill(markdown: String): DataResult<SkillContent>
@@ -58,6 +61,8 @@ interface SystemPort {
     suspend fun stopShell(): OperationResult
 }
 interface InteractionRepository : ConversationRepository {
+    suspend fun restoreDraft(id: ConversationId, text: String, attachments: List<String>)
+    suspend fun setAttachment(id: ConversationId, ref: String, enabled: Boolean)
     val state: Flow<InteractionState>
     suspend fun setSkill(id: ConversationId, ref: String, enabled: Boolean)
     suspend fun createSkillConversation(id: ConversationId, creator: String): ConversationId
@@ -122,6 +127,14 @@ class InteractionUseCases(
             ?: return DataResult.Failed("当前 Agent 没有可用的 Skill Creator；请返回技能页选择其他创建方式")
         return DataResult.Loaded(repository.createSkillConversation(id, creator.ref))
     }
+    suspend fun importAttachment(id: ConversationId, workspace: String, location: String): DataResult<Attachment> {
+        val result = system.importAttachment(workspace, location)
+        if (result is DataResult.Loaded) repository.setAttachment(id, result.value.ref, true)
+        return result
+    }
+    suspend fun attachment(workspace: String, ref: String) = system.attachment(workspace, ref)
+    suspend fun restoreDraft(id: ConversationId, turn: Turn) = repository.restoreDraft(id, turn.userText, turn.attachments)
+    suspend fun removeAttachment(id: ConversationId, ref: String) = repository.setAttachment(id, ref, false)
     suspend fun agents() = system.agents()
     suspend fun gateways() = system.gateways()
     suspend fun saveGateway(edit: GatewayEdit): OperationResult {

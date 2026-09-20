@@ -75,6 +75,17 @@ internal class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagnostic
         if (coordinator.active.value != null) AdminResult.Failed(RuntimeError(ErrorCode.BUSY, true))
         else { startInitialization(); AdminResult.Success(Unit) }
     }
+    private fun resources() = ResourceStore(java.io.File(filesDir, "input-resources"))
+    override suspend fun importResource(request: ImportResourceRequest): AdminResult<ResourceSummary> = withContext(Dispatchers.IO) {
+        try { AdminResult.Success(resources().save(request)) }
+        catch (_: IllegalArgumentException) { AdminResult.Failed(RuntimeError(ErrorCode.INVALID_CONFIG)) }
+        catch (_: java.nio.charset.CharacterCodingException) { AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY)) }
+        catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.STORAGE_FULL, true)) }
+    }
+    override suspend fun resource(ref: ResourceRef, workspace: WorkspaceRef): AdminResult<ResourceSummary> = withContext(Dispatchers.IO) {
+        try { AdminResult.Success(resources().read(ref, workspace).first) }
+        catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.RESOURCE_MISSING)) }
+    }
     private fun skills() = SkillStore(runtime.sdk.vfs.homeDir)
     override suspend fun listSkills(agent: AgentId): AdminResult<List<SkillSummary>> = withContext(Dispatchers.IO) {
         try { AdminResult.Success(skills().list(agent)) } catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.RESOURCE_MISSING)) }

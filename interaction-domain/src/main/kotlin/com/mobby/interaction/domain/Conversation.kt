@@ -22,7 +22,7 @@ data class Conversation(
     val anchor: String? = null, val anchorOffset: Int = 0, val updatedAt: Long = 0, val creator: String? = null
 )
 data class TurnExecution(val turnId: TurnId, val conversationId: ConversationId, val draft: Draft, val config: NextTurnConfig, val session: String?, val creatingSkill: Boolean = false)
-enum class Failure { BUSY, INVALID_CONFIG, UNSUPPORTED_CAPABILITY, UNAVAILABLE, EMPTY_DRAFT, PENDING_SUBMISSION }
+enum class Failure { INPUT_TOO_LARGE, BUSY, INVALID_CONFIG, UNSUPPORTED_CAPABILITY, UNAVAILABLE, EMPTY_DRAFT, PENDING_SUBMISSION }
 sealed interface Submission {
     data class Accepted(val executionId: ExecutionId) : Submission
     data class Rejected(val reason: Failure, val activeExecution: ExecutionId? = null) : Submission

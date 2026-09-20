@@ -53,6 +53,16 @@ internal class RoomInteractionRepository(
             catch (_: Exception) { startupError.value = "会话恢复未完成，原数据已保留；请重启应用后重试" }
         }
     }
+    override suspend fun restoreDraft(id: ConversationId, text: String, attachments: List<String>) = mutate(id) { c ->
+        require(!c.archived && !c.deleted && attachments.size <= 4)
+        c.copy(draft = c.draft.copy(revision = c.draft.revision + 1, text = text, selectionStart = text.length, selectionEnd = text.length, attachments = attachments))
+    }
+    override suspend fun setAttachment(id: ConversationId, ref: String, enabled: Boolean) = mutate(id) { c ->
+        require(!c.archived && !c.deleted)
+        val refs = if (enabled) (c.draft.attachments + ref).distinct() else c.draft.attachments - ref
+        require(refs.size <= 4)
+        c.copy(draft = c.draft.copy(revision = c.draft.revision + 1, attachments = refs))
+    }
     override suspend fun setSkill(id: ConversationId, ref: String, enabled: Boolean) = mutate(id) { c ->
         require(!enabled || ref.startsWith("skill:${c.config.agent.name}:"))
         val refs = if (enabled) c.draft.capabilities + ref else c.draft.capabilities - ref
@@ -108,6 +118,7 @@ internal class RoomInteractionRepository(
                     dao.save(c.copy(draft = ConversationRules.afterSubmission(c.draft, turn.draft.revision, result)).row())
                 }
                 is Submission.Rejected -> dao.save(row.copy(pending = false, occupied = false, error = when (result.reason) {
+                    Failure.INPUT_TOO_LARGE -> "请求未接纳：文字与附件合计超出输入上限，请缩短文字或移除附件；草稿已保留"
                     Failure.BUSY -> "请求未接纳：已有任务占用运行环境；草稿已保留"
                     Failure.INVALID_CONFIG -> "请求未接纳：请检查网关、模型或权限；草稿已保留"
                     Failure.UNSUPPORTED_CAPABILITY -> "请求未接纳：当前能力不可用；草稿已保留"
@@ -214,6 +225,6 @@ internal class RoomInteractionRepository(
             snapshot?.outputSegments?.filter { it.messageId.startsWith("diagnostic:") }?.messages().orEmpty(),
             error ?: snapshot?.terminalEvidence?.error?.message(), snapshot?.progressSummary, pending, occupied, expanded, storageJson.decodeFromString(expandedSteps),
             snapshot?.artifacts?.mapNotNull { ref -> content[ref.value]?.let { SkillProposal(ref.value, it, DomainAgent.valueOf(snapshot.acceptedConfig.agentId.name)) } }.orEmpty(),
-            storageJson.decodeFromString<StoredConversation>(frozen).creator != null, snapshot?.artifacts?.any { it.value !in content } == true)
+            storageJson.decodeFromString<StoredConversation>(frozen).creator != null, snapshot?.artifacts?.any { it.value !in content } == true, storageJson.decodeFromString<StoredConversation>(frozen).attachments)
     }
 }

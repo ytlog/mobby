@@ -24,6 +24,8 @@ sealed interface AdminResult<out T> {
     data class Failed(val error: RuntimeError) : AdminResult<Nothing>
 }
 interface RuntimeAdminClient {
+    suspend fun importResource(request: ImportResourceRequest): AdminResult<ResourceSummary>
+    suspend fun resource(ref: ResourceRef, workspace: WorkspaceRef): AdminResult<ResourceSummary>
     val environment: StateFlow<EnvironmentSnapshot>
     suspend fun listSkills(agent: AgentId): AdminResult<List<SkillSummary>>
     suspend fun readSkill(ref: CapabilityRef): AdminResult<SkillPreview>
@@ -52,3 +54,9 @@ data class SkillSummary(val ref: CapabilityRef, val agent: AgentId, val name: St
 data class SkillPreview(val name: String, val description: String, val body: String, val markdown: String,
     val issues: List<SkillIssue>)
 data class ManualSkillRequest(val agent: AgentId, val name: String, val description: String, val body: String)
+
+/** Transient bytes only; persisted requests contain the returned controlled reference. */
+class ImportResourceRequest(val workspaceRef: WorkspaceRef, val name: String, val bytes: ByteArray) {
+    override fun toString() = "ImportResourceRequest(bytes=${bytes.size})"
+}
+data class ResourceSummary(val ref: ResourceRef, val name: String, val sizeBytes: Int, val mediaType: String)

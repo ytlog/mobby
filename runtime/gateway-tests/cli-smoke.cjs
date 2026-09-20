@@ -18,7 +18,14 @@ async function main() {
   const fixture=join(work,'fixture.txt');writeFileSync(fixture,'TOOL_ROUNDTRIP_OK\n');
   try {
     for (const mode of ['CODEX','CLAUDE']) for (const protocol of ['chat','messages','responses']) {
-      let count=0, resultSeen=false;
+      let count=0, resultSeen=false, attachmentSeen=false;
+      const attachment = JSON.stringify({name:'review.txt',text:'TEXT_ATTACHMENT_中文\n  `code` $(not-a-command)\n'});
+      const prompt = `Read the test fixture.\n\n用户所选文本附件（JSON 数据，保留原文）：\n${attachment}`;
+      function containsText(value, text) {
+        if (typeof value === 'string') return value.includes(text);
+        if (value && typeof value === 'object') return Object.values(value).some(v=>containsText(v,text));
+        return false;
+      }
       const server=createServer(async(req,res)=>{
         const expected = protocol === 'chat' ? '/v1/chat/completions' : '/v1/' + protocol;
         // Native CLIs may probe models/capabilities: do not treat those as inference requests.
@@ -29,6 +36,7 @@ async function main() {
         }
         const chunks=[];for await(const c of req)chunks.push(c);
         const body=JSON.parse(Buffer.concat(chunks));count++;
+        if (count===1) attachmentSeen=containsText(body,attachment);
         if(count>1) resultSeen=JSON.stringify(body).includes('TOOL_ROUNDTRIP_OK');
         const argumentsValue=mode==='CLAUDE'?{file_path:fixture}:{cmd:`cat '${fixture.replaceAll("'","'\\''")}'`,max_output_tokens:100};
         const canonical={content:count===1?'':'GATEWAY_TEST_OK',calls:count===1?[{id:'call_test',type:'function',function:{name:mode==='CLAUDE'?'Read':'exec_command',arguments:JSON.stringify(argumentsValue)}}]:[],input:10,output:4};
@@ -42,7 +50,7 @@ async function main() {
       const env={PATH:process.env.PATH,HOME:home,CODEX_HOME:join(home,'.codex'),TMPDIR:tmpdir(),NO_COLOR:'1',TERM:'dumb',CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC:'1',DISABLE_AUTOUPDATER:'1',
         MOBBY_GATEWAY_CONFIG:JSON.stringify({endpoint:`http://127.0.0.1:${server.address().port}/v1`,protocol,model:'test-model',key:'fake-test-key'})};
       const exe=mode==='CODEX'?codex:process.execPath;
-      const args=mode==='CODEX'?['exec','--skip-git-repo-check','--json','--','Read the test fixture.']: [claude,'-p','--output-format','stream-json','--verbose','--','Read the test fixture.'];
+      const args=mode==='CODEX'?['exec','--skip-git-repo-check','--json','--',prompt]: [claude,'-p','--output-format','stream-json','--verbose','--',prompt];
       const child=spawn(process.execPath,[bridge,mode,exe,...args],{cwd:work,env,stdio:['ignore','pipe','pipe']});
       let output='';child.stdout.on('data',c=>output+=c);child.stderr.on('data',c=>output+=c);
       const timer=setTimeout(()=>child.kill('SIGTERM'),60000);
@@ -52,6 +60,7 @@ async function main() {
       assert.equal(code,0,output);
       assert.ok(output.includes('GATEWAY_TEST_OK'),output);
       assert.ok(resultSeen,`Tool result missing: ${mode}/${protocol}\n${output}`);
+      assert.ok(attachmentSeen, `${mode}/${protocol}: attached UTF-8 text was altered or lost`);
       assert.equal(count,2);
       console.log(`PASS ${mode} -> ${protocol}: actual tool execution and result roundtrip`);
     }

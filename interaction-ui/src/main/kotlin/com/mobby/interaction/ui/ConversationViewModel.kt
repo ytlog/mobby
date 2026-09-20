@@ -11,6 +11,22 @@ import kotlinx.coroutines.flow.*
 
 internal data class ReadingTarget(val conversation: ConversationId, val key: String, val sequence: Long)
 internal class ConversationViewModel(val actions: InteractionUseCases) : ViewModel() {
+    data class ImportState(val id: ConversationId, val workspace: String, val location: String, val error: String? = null)
+    val importing = MutableStateFlow<ImportState?>(null)
+    fun importAttachment(id: ConversationId, workspace: String, location: String) {
+        if (importing.value?.error == null && importing.value != null) return
+        val pending = ImportState(id, workspace, location)
+        importing.value = pending
+        enqueue {
+            try {
+                when (val result = actions.importAttachment(id, workspace, location)) {
+                    is DataResult.Loaded -> importing.value = null
+                    is DataResult.Failed -> importing.value = pending.copy(error = result.message)
+                }
+            } catch (e: CancellationException) { throw e }
+            catch (_: Exception) { importing.value = pending.copy(error = "导入未完成，请重试或移除；每轮最多 4 个附件") }
+        }
+    }
     val readingTarget = MutableStateFlow<ReadingTarget?>(null)
     private var readingSequence = 0L
     fun jumpTo(id: ConversationId, hit: SearchHit) {
@@ -71,6 +87,7 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
     fun send() {
         val id = composer.value.conversation ?: return
         enqueue {
+            if (importing.value?.id == id) { feedback.send("请先完成或移除待处理附件"); return@enqueue }
             when (val prepared = actions.prepareSend(id)) {
                 is PrepareTurnResult.Rejected -> feedback.send(failure(prepared.reason))
                 is PrepareTurnResult.Prepared -> viewModelScope.launch { safe {
@@ -94,6 +111,7 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
         catch (_: Exception) { feedback.send("操作未完成，请检查连接或存储后重试；已有内容已保留") }
     }
     private fun failure(reason: Failure): String = when (reason) {
+        Failure.INPUT_TOO_LARGE -> "文字与附件合计超出 64 KiB 输入上限（含附件标记），请缩短文字或移除附件；草稿已保留"
         Failure.BUSY -> "已有任务执行中，草稿已保留"
         Failure.INVALID_CONFIG -> "请先检查网关和模型设置"
         Failure.UNSUPPORTED_CAPABILITY -> "当前 Agent 不支持所选能力"

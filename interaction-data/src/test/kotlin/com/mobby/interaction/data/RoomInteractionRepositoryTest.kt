@@ -22,6 +22,8 @@ class RoomInteractionRepositoryTest {
     private lateinit var repository: RoomInteractionRepository
     private val runtime = TestRuntime()
     private val system = object : SystemPort {
+        override suspend fun importAttachment(workspace: String, location: String): DataResult<Attachment> = DataResult.Failed("unused")
+        override suspend fun attachment(workspace: String, ref: String): DataResult<Attachment> = DataResult.Failed("unused")
         override suspend fun skills(agent: DomainAgent) = DataResult.Loaded(emptyList<Skill>())
         override suspend fun readSkill(ref: String) = DataResult.Failed("unavailable")
         override suspend fun previewSkill(markdown: String) = DataResult.Failed("unavailable")
@@ -46,6 +48,24 @@ class RoomInteractionRepositoryTest {
     }
     @After fun close() = runBlocking { scope.coroutineContext[Job]!!.cancelAndJoin(); db.close() }
     private suspend fun state(predicate: (InteractionState) -> Boolean = { it.selected != null }) = withTimeout(10_000) { repository.state.first(predicate) }
+    @Test fun `attachment only turn freezes references and new draft edits survive acceptance and restart`() = runBlocking {
+        val c = state().selected!!.conversation
+        repository.setAttachment(c.id, "text:original", true)
+        val turn = (repository.prepareTurn(c.id, TurnId("attachment")) as PrepareTurnResult.Prepared).turn
+        assertEquals(listOf(InputPart.Text(""), InputPart.Resource(ResourceRef("text:original"))), turn.request().inputParts)
+        repository.setAttachment(c.id, "text:original", false)
+        repository.setAttachment(c.id, "text:next", true)
+        runtime.admit(turn)
+        repository.recordSubmission(turn, Submission.Accepted(ExecutionId("attachment")))
+        scope.coroutineContext[Job]!!.cancelAndJoin(); db.close(); start()
+        val restored = state { it.selected?.turns?.singleOrNull()?.execution != null }.selected!!
+        assertEquals(listOf("text:original"), restored.turns.single().attachments)
+        assertEquals(listOf("text:next"), restored.conversation.draft.attachments)
+        repository.restoreDraft(c.id, "retry", restored.turns.single().attachments)
+        val draft = db.dao().conversation(c.id.value)!!.domain().draft
+        assertEquals("retry", draft.text)
+        assertEquals(listOf("text:original"), draft.attachments)
+    }
     @Test fun `accepted turn preserves newly typed draft and rejected send keeps text`() = runBlocking {
         val c = state().selected!!.conversation
         repository.editDraft(c.id, "first", 5, 5)
