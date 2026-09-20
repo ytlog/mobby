@@ -6,6 +6,7 @@ import com.mobby.interaction.domain.AgentId as DomainAgent
 import com.mobby.runtime.api.*
 import com.mobby.runtime.api.AgentId as RuntimeAgent
 import kotlinx.coroutines.*
+import kotlinx.serialization.encodeToString
 import kotlinx.coroutines.flow.*
 import org.junit.*
 import org.junit.Assert.*
@@ -52,6 +53,28 @@ class RoomInteractionRepositoryTest {
     }
     @After fun close() = runBlocking { scope.coroutineContext[Job]!!.cancelAndJoin(); db.close() }
     private suspend fun state(predicate: (InteractionState) -> Boolean = { it.selected != null }) = withTimeout(10_000) { repository.state.first(predicate) }
+    @Test fun `sidebar selects latest tied turn but keeps earlier occupied state without loading another timeline`() = runBlocking {
+        val c = state().selected!!.conversation
+        val other = repository.create(c.config)
+        val frozen = db.dao().conversation(c.id.value)!!.body
+        val otherFrozen = db.dao().conversation(other.value)!!.body
+        val config = RunConfigSnapshot(RuntimeAgent.CODEX, WorkspaceRef("default"), "test-model", null, GatewayProfileRef("CODEX", 0), emptySet())
+        val older = storageJson.encodeToString(RunSnapshot(RunId("a"), RunPhase.RUNNING, 1, 1, config))
+        val latest = storageJson.encodeToString(RunSnapshot(RunId("z"), RunPhase.FAILED, 1, 1, config))
+        db.dao().save(TurnRow("a", c.id.value, "older", frozen, 100, snapshot = older, pending = false, occupied = true))
+        db.dao().save(TurnRow("z", c.id.value, "latest", frozen, 100, snapshot = latest, pending = false, occupied = false))
+        db.dao().save(TurnRow("other", other.value, "separate", otherFrozen, 101, pending = false, occupied = false))
+        val activities = db.dao().conversationActivities().first()
+        assertEquals(latest, activities.single { it.conversationId == c.id.value }.snapshot)
+        assertTrue(activities.single { it.conversationId == c.id.value }.occupied)
+        assertFalse(activities.single { it.conversationId == other.value }.occupied)
+        assertEquals(listOf("a", "z"), db.dao().turns(c.id.value).first().map { it.id })
+        repository.select(other)
+        val selected = state { it.selected?.conversation?.id == other && it.selected!!.turns.size == 1 }
+        assertEquals("separate", selected.selected!!.turns.single().userText)
+        assertEquals(c.id, selected.occupied!!.conversation.id)
+        assertEquals(ExecutionPhase.FAILED, selected.occupied!!.phase)
+    }
     @Test fun `send cannot freeze an incomplete attachment import`() = runBlocking {
         val c = state().selected!!.conversation
         repository.editDraft(c.id, "review", 6, 6)

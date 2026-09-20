@@ -21,17 +21,21 @@ internal class RoomInteractionRepository(
     private val startupError = MutableStateFlow<String?>(null)
     private val observers = mutableMapOf<String, Job>()
     private val inFlight = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private val summaries = combine(dao.conversations().distinctUntilChanged(), dao.conversationActivities().distinctUntilChanged()) { rows, activities ->
+        val byConversation = activities.associateBy { it.conversationId }
+        rows.map { row ->
+            val activity = byConversation[row.id]
+            val snapshot = activity?.snapshot?.let { storageJson.decodeFromString<RunSnapshot>(it) }
+            ConversationSummary(row.domain(), snapshot?.let { RunProjection.verifiedPhase(it).domain() }, activity?.occupied == true)
+        }
+    }.distinctUntilChanged().flowOn(Dispatchers.Default)
     override val state: StateFlow<InteractionState> = dao.selection().distinctUntilChanged().flatMapLatest { selected ->
-        combine(dao.conversations(), dao.turns(), if (selected == null) flowOf(emptyList()) else dao.chunks(selected)) { rows, turns, chunks ->
-            val conversations = rows.map { row ->
-                val history = turns.filter { it.conversationId == row.id }
-                val snapshot = history.lastOrNull()?.snapshot?.let { storageJson.decodeFromString<RunSnapshot>(it) }
-                ConversationSummary(row.domain(), snapshot?.let { RunProjection.verifiedPhase(it).domain() }, history.any { it.occupied })
-            }
+        combine(summaries, if (selected == null) flowOf(emptyList()) else dao.turns(selected).distinctUntilChanged(),
+            if (selected == null) flowOf(emptyList()) else dao.chunks(selected).distinctUntilChanged()) { conversations, turns, chunks ->
             val conversation = conversations.firstOrNull { it.conversation.id.value == selected }?.conversation
             val content = chunks.associate { it.ref to it.text }
-            InteractionState(conversations, conversation?.let { c -> ConversationDetail(c, turns.filter { it.conversationId == selected }.map { it.domain(content) }) }, loading = false)
-        }
+            InteractionState(conversations, conversation?.let { c -> ConversationDetail(c, turns.map { it.domain(content) }) }, loading = false)
+        }.flowOn(Dispatchers.Default)
     }.combine(startupError) { state, error -> state.copy(error = error ?: state.error) }.catch { emit(InteractionState(loading = false, error = "无法读取会话数据库；原数据已保留，请重启应用后重试")) }
         .stateIn(scope, SharingStarted.Eagerly, InteractionState())
 

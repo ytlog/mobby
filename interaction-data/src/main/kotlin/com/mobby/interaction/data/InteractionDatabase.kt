@@ -19,9 +19,18 @@ internal data class ChunkRow(@PrimaryKey val ref: String, val runId: String, val
 @Entity(tableName = "selection")
 internal data class SelectionRow(@PrimaryKey val key: String = "current", val conversationId: String)
 
+/** Sidebar projection excludes user text, frozen drafts, expanded steps and historic snapshots. */
+internal data class ConversationActivityRow(val conversationId: String, val snapshot: String?, val occupied: Boolean)
+
 @Dao internal interface InteractionDao {
     @Query("SELECT * FROM conversations ORDER BY updatedAt DESC") fun conversations(): Flow<List<ConversationRow>>
-    @Query("SELECT * FROM turns ORDER BY createdAt,id") fun turns(): Flow<List<TurnRow>>
+    @Query("SELECT * FROM turns WHERE conversationId=:id ORDER BY createdAt,id") fun turns(id: String): Flow<List<TurnRow>>
+    @Query("""SELECT c.id AS conversationId, t.snapshot AS snapshot,
+        EXISTS(SELECT 1 FROM turns busy WHERE busy.conversationId=c.id AND busy.occupied=1) AS occupied
+        FROM conversations c LEFT JOIN turns t ON t.id=(
+            SELECT latest.id FROM turns latest WHERE latest.conversationId=c.id
+            ORDER BY latest.createdAt DESC, latest.id DESC LIMIT 1
+        )""") fun conversationActivities(): Flow<List<ConversationActivityRow>>
     @Query("SELECT * FROM chunks WHERE runId IN (SELECT runId FROM turns WHERE conversationId=:id)") fun chunks(id: String): Flow<List<ChunkRow>>
     @Query("SELECT conversationId FROM selection WHERE `key`='current'") fun selection(): Flow<String?>
     @Query("SELECT * FROM conversations WHERE id=:id") suspend fun conversation(id: String): ConversationRow?
