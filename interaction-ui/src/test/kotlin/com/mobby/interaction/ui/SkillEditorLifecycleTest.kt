@@ -135,4 +135,19 @@ class SkillEditorLifecycleTest {
         compose.onNodeWithText("保存技能").assertIsEnabled()
     }
 
+    @Test fun `restored editor route with a new view model explains missing state and returns to catalog`() {
+        var current = vm()
+        val restore = StateRestorationTester(compose)
+        restore.setContent { MaterialTheme { SkillsPage(current, {}, {}) } }
+        manual("unfinished-draft")
+        compose.runOnIdle { current = vm() }
+        restore.emulateSavedInstanceStateRestore()
+        compose.onNodeWithText("编辑状态未恢复。若刚才执行过保存，请先到技能目录核对。").assertIsDisplayed()
+        compose.onNodeWithText("返回技能目录").performClick()
+        compose.onNodeWithText("搜索技能").assertIsDisplayed()
+        manual("new-draft")
+        compose.onNodeWithText("new-draft").assertExists()
+        Assert.assertEquals(0, saves)
+    }
+
 }

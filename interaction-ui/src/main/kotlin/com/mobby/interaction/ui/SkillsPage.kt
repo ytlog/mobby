@@ -69,7 +69,12 @@ internal data class SkillEditor(val agent: AgentId, val manual: Boolean, val nam
             if (page == "list") ActionIcon("添加技能", { adding = true }, Icons.Outlined.Add)
         }
         when (page) {
-            "editor" -> SkillEditorPage(editor, vm)
+            "editor" -> if (editor != null) SkillEditorPage(editor, vm) else Column(
+                Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text("编辑状态未恢复。若刚才执行过保存，请先到技能目录核对。")
+                Button(onClick = { vm.loadSkills(agent); back() }) { Text("返回技能目录") }
+            }
             "detail" -> Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 val skill = skills.firstOrNull { it.ref == selectedRef }
                 Text(skill?.name ?: "技能", style = MaterialTheme.typography.headlineSmall)
