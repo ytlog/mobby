@@ -64,6 +64,9 @@ class ConversationRulesTest {
         assertNull(ConversationRules.createSkillConversation(original, ConversationId("skill"), null))
         val skill = ConversationRules.createSkillConversation(original, ConversationId("skill"), "creator")!!
         assertEquals(original.config, skill.config)
+        assertEquals(original.project, skill.project)
+        assertNull(skill.session)
+        assertFalse(skill.hasTurns)
         assertEquals("请用 /skill-creator 帮我创建技能，要求是：", skill.draft.text)
         assertEquals(skill.draft.text.length, skill.draft.selectionStart)
         assertEquals(setOf("creator"), skill.draft.capabilities)

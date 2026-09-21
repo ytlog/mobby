@@ -100,7 +100,7 @@ object ConversationRules {
         require(newId != current.id)
         return Conversation(newId, current.config, Draft(
             text = "请用 /skill-creator 帮我创建技能，要求是：", capabilities = setOf(creator)
-        ), creator = creator)
+        ), project = current.project, creator = creator)
     }
 }
 
