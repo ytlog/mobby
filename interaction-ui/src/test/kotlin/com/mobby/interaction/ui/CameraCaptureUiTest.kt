@@ -4,6 +4,9 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.MediaStore
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import com.mobby.interaction.domain.*
@@ -70,6 +73,20 @@ class CameraCaptureUiTest {
         try { notice.assertIsDisplayed() } catch (_: AssertionError) { notice.performScrollTo().assertIsDisplayed() }
         compose.onNodeWithText("加入草稿").assertIsDisplayed()
         compose.onNodeWithText("取消").assertIsDisplayed()
+    }
+
+    @Test @Config(sdk = [34], qualifiers = "w640dp-h320dp-land")
+    fun `large font camera review keeps instructions and actions visible`() {
+        compose.setContent { MaterialTheme {
+            CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, 2f)) {
+                CameraReviewDialog(photo, false, { DataResult.Loaded(AttachmentPreview(bytes)) }, {}, {}, {})
+            }
+        } }
+        compose.waitUntil(5_000) { compose.onAllNodesWithContentDescription("拍摄照片预览").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("照片已转为最长边不超过 2048 像素的 JPEG。确认后加入发起拍照的会话，尚未发送。")
+            .assertIsDisplayed()
+        compose.onNodeWithText("加入草稿").assertIsDisplayed().assertIsEnabled()
+        compose.onNodeWithText("取消").assertIsDisplayed().assertIsEnabled()
     }
 
 }
