@@ -19,4 +19,15 @@ class GatewayConfigTest {
     @Test fun allowLocalGatewaysAndKeylessGateways() {
         GatewayConfig("http://192.168.1.2:8080/v1/chat/completions", "local", "", GatewayProtocol.CHAT).validate()
     }
+    @Test fun protocolMustMatchAgentWithoutRewritingLegacyConfig() {
+        val legacy = GatewayConfig("https://example.com/v1", "model", "fake", GatewayProtocol.CHAT)
+        assertEquals(legacy, GatewayConfig.parse(legacy.json()))
+        for (mode in listOf(com.mobby.runtime.engine.AgentMode.CODEX, com.mobby.runtime.engine.AgentMode.CLAUDE)) {
+            assertThrows(IllegalArgumentException::class.java) { legacy.validateFor(mode) }
+            val native = legacy.copy(protocol = if (mode == com.mobby.runtime.engine.AgentMode.CODEX) GatewayProtocol.RESPONSES else GatewayProtocol.MESSAGES)
+            native.validateFor(mode)
+            assertThrows(IllegalArgumentException::class.java) { native.validateFor(if (mode == com.mobby.runtime.engine.AgentMode.CODEX) com.mobby.runtime.engine.AgentMode.CLAUDE else com.mobby.runtime.engine.AgentMode.CODEX) }
+        }
+    }
+
 }

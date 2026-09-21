@@ -131,7 +131,7 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
                 val mode = when (profile.id) { "CODEX" -> AgentMode.CODEX; "CLAUDE" -> AgentMode.CLAUDE; else -> error("invalid profile") }
                 val (version, saved) = GatewayStore(this@RuntimeService).snapshot(mode)
                 require(version == profile.version)
-                saved.validate()
+                saved.validateFor(mode)
                 saved
             }
         } catch (e: CancellationException) { throw e }

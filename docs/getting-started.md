@@ -24,7 +24,7 @@ APK：`app/build/outputs/apk/debug/app-debug.apk`，仅 ARM64，Android 8.0 及�
 
 打开 App 后自动安装 Git、Node.js、npm、Claude Code、Codex，并逐项执行版本检查、初始化 Git 工作区。安装包自带依赖，首次安装不需要手机联网下载。已有工作区和 HOME 中的认证文件保留。
 
-从会话抽屉进入设置，可使用 Shell 诊断页；使用 Agent 时，先打开设置中的「网关设置」，分别为 Claude Code / Codex 保存地址、协议、模型和 API Key。支持 Chat Completions、Responses、Messages；网关配置可稍后填写，不需要官方账号登录。依赖异常时可重试初始化。
+从会话抽屉进入设置，可使用 Shell 诊断页；使用 Agent 时，先打开设置中的「网关设置」，分别为 Claude Code / Codex 保存地址、模型和 API Key。Claude Code 使用 Messages，Codex 使用 Responses；模型请求统一走本地桥接，暂不提供协议转换。网关配置可稍后填写，不需要官方账号登录。依赖异常时可重试初始化。
 加号中的技能页支持手动创建和导入 `.md`，先校验预览再保存；选中的技能属于当前会话草稿，发送时重新校验。当前 Agent 提供 Skill Creator 时可另建创建会话，生成的技能草稿需在会话中校验并明确保存。
 设置中的外观选择会保存；会话菜单的「在聊天中查找」可点击结果定位消息。
 执行中可停止，输出可复制；切换会话保留各自草稿与阅读位置，不停止原任务。归档和删除可在设置中恢复，运行中的会话不允许归档或删除。

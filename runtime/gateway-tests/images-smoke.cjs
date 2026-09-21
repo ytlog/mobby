@@ -9,7 +9,7 @@ const {join,resolve}=require('node:path');
 const {once}=require('node:events');
 const assert=require('node:assert/strict');
 const bridge=resolve(__dirname,'../../runtime-android/src/main/assets/gateway/bridge.cjs');
-const {nativeResponse,sendNative}=require(bridge);
+const {nativeResponse,sendNative}=require('./native-fixture.cjs');
 async function main() {
   const codex=process.env.MOBBY_TEST_CODEX, claude=process.env.MOBBY_TEST_CLAUDE_JS;
   assert.ok(codex && claude,'Set MOBBY_TEST_CODEX and MOBBY_TEST_CLAUDE_JS to the test CLI paths');
@@ -19,7 +19,7 @@ async function main() {
   const imageData='iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEUlEQVR4nGP4z8AARAxg8j8AG/ID/fPnS7EAAAAASUVORK5CYII=';
   writeFileSync(fixture,Buffer.from(imageData,'base64'));
   try {
-    for (const mode of ['CODEX','CLAUDE']) for (const protocol of ['chat','messages','responses']) {
+    for (const mode of ['CODEX','CLAUDE']) for (const protocol of [mode==='CODEX'?'responses':'messages']) {
       if (process.env.NATIVE_ONLY && protocol !== (mode==='CODEX'?'responses':'messages')) continue;
       let count=0, imageSeen=false;
       const prompt='Describe the attached test image.';
@@ -29,7 +29,7 @@ async function main() {
         return Object.values(value).flatMap(images);
       }
       const server=createServer(async(req,res)=>{
-        const expected = protocol === 'chat' ? '/v1/chat/completions' : '/v1/' + protocol;
+        const expected = '/v1/' + protocol;
         // Native CLIs may probe models/capabilities: do not treat those as inference requests.
         if (req.method !== 'POST' || req.url.split('?')[0] !== expected) {
           res.writeHead(404, {'content-type':'application/json'});
@@ -42,7 +42,7 @@ async function main() {
         if(process.env.IMAGE_METADATA) console.log(blocks.map(b=>({type:b.type,detail:b.detail,source:b.source?.type})));
         imageSeen=blocks.some(block=> (block.image_url?.url || block.image_url || block.source?.data || '').includes(imageData));
         const canonical={content:'IMAGE_INPUT_OK',calls:[],input:10,output:4};
-        const result=protocol==='chat'?{choices:[{message:{role:'assistant',content:canonical.content,tool_calls:canonical.calls},finish_reason:canonical.calls.length?'tool_calls':'stop'}],usage:{prompt_tokens:10,completion_tokens:4}}:nativeResponse(canonical,protocol,'test-model');
+        const result=nativeResponse(canonical,protocol,'test-model');
         if(body.stream) sendNative(res,result,protocol,true);
         else {res.setHeader('content-type','application/json');res.end(JSON.stringify(result));}
       });
@@ -66,13 +66,6 @@ async function main() {
       let code;
       try { [code]=await once(child,'exit'); }
       finally {clearTimeout(timer);}
-      if (mode==='CODEX' && protocol==='messages') {
-        assert.notEqual(code,0,output);
-        assert.match(output,/detail/);
-        assert.equal(count,0,'Unrepresentable detail must fail before upstream dispatch');
-        console.log('PASS CODEX -> messages: explicit image detail rejected without losing parameters');
-        continue;
-      }
       assert.equal(code,0,output);
       assert.ok(output.includes('IMAGE_INPUT_OK'),output);
       assert.ok(imageSeen,`${mode}/${protocol}: image bytes missing or changed`);

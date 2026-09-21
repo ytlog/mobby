@@ -18,11 +18,11 @@ internal class AndroidRuntimePorts(
     private fun mode(agent: AgentId) = if (agent == AgentId.CODEX) AgentMode.CODEX else AgentMode.CLAUDE
     override suspend fun capabilities(): CapabilityResult = withContext(Dispatchers.IO) {
         CapabilityResult.Available(RuntimeCapabilities("mobby-local-1", AgentId.values().map { agent ->
-            val config = runCatching { gateways.load(mode(agent)).also { it.validate() } }.getOrNull()
+            val config = runCatching { gateways.load(mode(agent)).also { it.validateFor(mode(agent)) } }.getOrNull()
             AgentCapability(agent, if (config == null) emptyList() else listOf(ModelCapability(config.model, emptySet())),
                 unavailableReason = if (state.value.phase != EnvironmentPhase.READY) RuntimeError(ErrorCode.NOT_READY, true)
                     else if (config == null) RuntimeError(ErrorCode.INVALID_CONFIG) else null,
-                supportsResume = true, supportsApproval = false, supportsResources = true, supportsImages = config != null && !(agent == AgentId.CODEX && config.protocol == GatewayProtocol.MESSAGES), skillCapabilities = skills.list(agent).filter { it.available }.map { it.ref }.toSet())
+                supportsResume = true, supportsApproval = false, supportsResources = true, supportsImages = config != null, skillCapabilities = skills.list(agent).filter { it.available }.map { it.ref }.toSet())
         }))
     }
     override suspend fun validate(request: RunRequest): RuntimeError? = withContext(Dispatchers.IO) {
@@ -45,16 +45,13 @@ internal class AndroidRuntimePorts(
         val valid = runCatching {
             runtime.executable(mode)
             gateways.load(mode, request.gatewayProfileRef.version).also {
-                it.validate(); require(it.model == request.modelId)
-                if (request.agentId == AgentId.CODEX && it.protocol == GatewayProtocol.MESSAGES &&
-                    request.inputParts.filterIsInstance<InputPart.Resource>().any { part -> part.ref.value.startsWith("image:") })
-                    return@withContext RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY)
+                it.validateFor(mode); require(it.model == request.modelId)
             }
         }.isSuccess
         if (valid) null else RuntimeError(ErrorCode.INVALID_CONFIG)
     }
     override suspend fun execute(request: RunRequest, stop: StateFlow<StopCause?>, output: suspend (String, Boolean) -> Unit): ProcessResult = supervisorScope {
-        val config = withContext(Dispatchers.IO) { gateways.load(mode(request.agentId), request.gatewayProfileRef.version).also { it.validate() } }
+        val config = withContext(Dispatchers.IO) { gateways.load(mode(request.agentId), request.gatewayProfileRef.version).also { it.validateFor(mode(request.agentId)) } }
         var started = false
         var exit: Int? = null
         val worker = async(Dispatchers.IO) {

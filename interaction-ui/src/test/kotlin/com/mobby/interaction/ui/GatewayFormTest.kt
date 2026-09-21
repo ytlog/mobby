@@ -34,7 +34,7 @@ class GatewayFormTest {
         field("网关地址").assertIsNotEnabled()
         field("模型名称").assertIsNotEnabled()
         field("已保存密钥，输入可替换").assertIsNotEnabled()
-        compose.onNodeWithText("Messages").assertIsNotEnabled()
+        compose.onNodeWithText("Messages").assertDoesNotExist()
         compose.onNodeWithText("移除已保存密钥").assertIsNotEnabled()
         compose.onNodeWithText("Claude Code").assertIsNotEnabled()
         compose.runOnIdle { runBlocking { pending!!() } }
@@ -99,6 +99,24 @@ class GatewayFormTest {
         compose.onNodeWithText("测试已保存连接").performScrollTo().assertIsEnabled().performClick()
         compose.runOnIdle { assertEquals(legacy, checked) }
         compose.onNodeWithText("测试网络错误").assertExists()
+    }
+
+    @Test fun `legacy incompatible profile requires explicit protocol change before saving or checking`() {
+        var pending: (suspend () -> Unit)? = null
+        var saved: GatewayEdit? = null
+        compose.setContent { MaterialTheme { GatewayForm(listOf(profile.copy(protocol = "CHAT")), { pending = it }, {
+            saved = it; OperationResult.Done
+        }, {}, {}, { DataResult.Failed("unused") }) } }
+        compose.onNodeWithText("当前保存的协议不适用于此 Agent；暂不提供协议转换。").assertExists()
+        compose.onNodeWithText("保存当前配置").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithText("测试已保存连接").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithText("改用 Responses").performScrollTo().performClick()
+        compose.onNodeWithText("保存当前配置").performScrollTo().performClick()
+        compose.runOnIdle { runBlocking { pending!!() } }
+        assertEquals("RESPONSES", saved!!.protocol)
+        assertEquals(profile.endpoint, saved!!.endpoint)
+        assertEquals(profile.model, saved!!.model)
+        assertNull(saved!!.credential)
     }
 
 }

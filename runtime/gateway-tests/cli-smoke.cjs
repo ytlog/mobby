@@ -9,7 +9,7 @@ const {join,resolve}=require('node:path');
 const {once}=require('node:events');
 const assert=require('node:assert/strict');
 const bridge=resolve(__dirname,'../../runtime-android/src/main/assets/gateway/bridge.cjs');
-const {nativeResponse,sendNative}=require(bridge);
+const {nativeResponse,sendNative}=require('./native-fixture.cjs');
 async function main() {
   const codex=process.env.MOBBY_TEST_CODEX, claude=process.env.MOBBY_TEST_CLAUDE_JS;
   assert.ok(codex && claude,'Set MOBBY_TEST_CODEX and MOBBY_TEST_CLAUDE_JS to the test CLI paths');
@@ -17,7 +17,7 @@ async function main() {
   const work=join(root,'work');mkdirSync(work);
   const fixture=join(work,'fixture.txt');writeFileSync(fixture,'TOOL_ROUNDTRIP_OK\n');
   try {
-    for (const mode of ['CODEX','CLAUDE']) for (const protocol of ['chat','messages','responses']) {
+    for (const mode of ['CODEX','CLAUDE']) for (const protocol of [mode==='CODEX'?'responses':'messages']) {
       let count=0, resultSeen=false, attachmentSeen=false;
       const attachment = JSON.stringify({name:'review.txt',text:'TEXT_ATTACHMENT_中文\n  `code` $(not-a-command)\n'});
       const prompt = `Read the test fixture.\n\n用户所选文本附件（JSON 数据，保留原文）：\n${attachment}`;
@@ -27,7 +27,7 @@ async function main() {
         return false;
       }
       const server=createServer(async(req,res)=>{
-        const expected = protocol === 'chat' ? '/v1/chat/completions' : '/v1/' + protocol;
+        const expected = '/v1/' + protocol;
         // Native CLIs may probe models/capabilities: do not treat those as inference requests.
         if (req.method !== 'POST' || req.url.split('?')[0] !== expected) {
           res.writeHead(404, {'content-type':'application/json'});
@@ -40,7 +40,7 @@ async function main() {
         if(count>1) resultSeen=JSON.stringify(body).includes('TOOL_ROUNDTRIP_OK');
         const argumentsValue=mode==='CLAUDE'?{file_path:fixture}:{cmd:`cat '${fixture.replaceAll("'","'\\''")}'`,max_output_tokens:100};
         const canonical={content:count===1?'':'GATEWAY_TEST_OK',calls:count===1?[{id:'call_test',type:'function',function:{name:mode==='CLAUDE'?'Read':'exec_command',arguments:JSON.stringify(argumentsValue)}}]:[],input:10,output:4};
-        const result=protocol==='chat'?{choices:[{message:{role:'assistant',content:canonical.content,tool_calls:canonical.calls},finish_reason:canonical.calls.length?'tool_calls':'stop'}],usage:{prompt_tokens:10,completion_tokens:4}}:nativeResponse(canonical,protocol,'test-model');
+        const result=nativeResponse(canonical,protocol,'test-model');
         if(body.stream) sendNative(res,result,protocol,true);
         else {res.setHeader('content-type','application/json');res.end(JSON.stringify(result));}
       });

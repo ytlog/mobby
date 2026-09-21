@@ -327,3 +327,17 @@ MOBBY_TEST_ADB=/path/to/adb node runtime/gateway-tests/android-codex-network.cjs
 要求连接已安装 debug 主包的设备（可用 ANDROID_SERIAL 选择），不需要辅助测试 APK。测试用 adb reverse 将模型请求限制在主机 loopback；域名预检依赖正常 DNS，默认 127.0.0.1.nip.io，可通过 MOBBY_TEST_LOOPBACK_DNS 指定同样解析到 127.0.0.1 的测试域名。每次创建唯一的设备临时目录，保持默认 Agent 权限与沙箱，不使用跳过权限的参数；finally 清理专属目录和端口映射。测试不会读取真实网关配置或现有 CLI HOME，不打印请求正文。当前设备结果为 Node DNS 通过、Codex IP 通过、Codex DNS 失败，命令按回归门槛返回非零。已确认清理后没有测试目录、端口映射或 Codex 残留进程。
 
 同版本官方源码已下载到忽略的 runtime/cache 用于后续修复评估，未提交依赖缓存。初步源码核对发现 sandboxing::get_platform_sandbox 只为 Linux/macOS/Windows 选择对应沙箱，其他目标返回 None。因此不能直接把目标改成 Android 后宣称已修复：修复域名解析同时必须保留 Agent 权限与沙箱语义，不能通过关闭检查或强制全权限完成验收。本检查点只提交复现与证据，不声称生产 DNS 问题已修复；下一步继续处理该基础阻断。
+
+## 统一本地桥接，撤下协议转换（2026-09-21）
+
+用户最新决定覆盖先前“原生协议优先直连”和“三协议互转”的范围：所有 Agent 模型请求统一经 Android Node 本地桥接；Codex 只用 Responses，Claude Code 只用 Messages，暂不提供转换。核对 Git 证实最早版本全部经 Node 联网，645b7f8 改为原生直连后将 DNS 交给 Linux musl Codex；该变化只经过主机联调，遗漏手机完整请求验证，从而暴露了手机 DNS 不兼容。
+
+已移除生产代码中的协议中间格式、转换器、合成 SSE 和直连分支，只保留原生请求字段（模型按保存配置选择）、原始流式响应、鉴权与路径适配。支持 Responses compact、Messages count_tokens、相关查询参数和原生头；Codex 的响应 x-codex-turn-state 继续回传，避免丢失后续轮次状态。压缩或非法请求、不匹配协议明确拒绝，不以删除消息内容达到兼容。随机 loopback 端口/令牌、退出/取消清理和上游错误脱敏保留；Agent 不再接收真实网关密钥。模拟服务使用的响应生成器移到测试目录，不进入 APK。
+
+配置页按 Agent 展示唯一支持协议。旧的不匹配配置继续可读取、保留地址/模型/密钥，但保存、检查、执行与能力校验均拒绝；用户须明确点击改用原生协议再保存。没有后台迁移或静默更改用户配置。AGENTS.md、架构方案与当前使用说明已同步，旧实施记录作为历史保留，不再用六种转换组合描述当前能力。
+
+验证先复现统一桥接缺少强制约束、辅助接口 404、旧配置仍可执行操作和响应状态头丢失，再修复。11 项 Node 原生桥接测试、8 项 Python 测试通过；runtime-android 33 项与 UI 32 项通过，主包、App/termux-core 单测及 lint 构建通过。真实主机 Codex / Claude 两种原生组合的工具回传、图片输入与 resume、技能发现与调用均通过；这些仍是模拟模型，不等于真实模型能力。
+
+主 APK 已覆盖安装并启动，安装前后在内存中比较加密网关配置摘要一致。设备使用独立 HOME、虚假密钥、已安装 gateway.cjs 和内置 Codex 访问同一个 adb reverse 模拟 Responses 服务：IP 与域名各接收 1 个请求，CLI exit 0 且 turn.completed。先前 DNS 门槛已在 App 启动路径通过，裸 Linux CLI 的 DNS 实现没有被修改。测试专用目录与反向端口映射均清理。
+
+新增可选 `MOBBY_TEST_TOOL=1` 设备门槛，要求真实 shell 工具读取隔离工作区夹具并把内容回传，不能仅依据模型随后输出完成文本判断成功。本机该门槛失败：模型往返已成功，但工具 exit 101，缺少 bubblewrap。官方固定 Codex npm 安装包确有 codex-resources/bwrap，当前打包脚本只提取主二进制，遗漏沙箱配套依赖。下一步修复这项独立的打包基础问题并验证 Android 内核约束；不关闭权限或沙箱。设备随后进入系统锁屏，已请求用户解锁以继续真实会话 UI 验收；尚不能宣称完整 Agent 任务可用。

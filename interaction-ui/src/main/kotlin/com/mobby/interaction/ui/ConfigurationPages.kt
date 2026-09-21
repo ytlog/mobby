@@ -120,6 +120,9 @@ import kotlinx.coroutines.*
     val checkScope = rememberCoroutineScope()
     val busy = saving || checking
     val profile = profiles.firstOrNull { it.agent == agent }
+    val nativeProtocol = if (agent == AgentId.CLAUDE_CODE) "MESSAGES" else "RESPONSES"
+    val nativeLabel = if (agent == AgentId.CLAUDE_CODE) "Messages" else "Responses"
+    val protocolSupported = protocol == nativeProtocol
     var connectionNotice by remember(profile, endpoint, model, protocol, keyEdited) { mutableStateOf("") }
     LaunchedEffect(agent) { notice = "" }
     LaunchedEffect(agent, profile) {
@@ -132,7 +135,12 @@ import kotlinx.coroutines.*
         PageHeader("网关设置", back)
         Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             AgentId.values().forEach { value -> Row { RadioButton(agent == value, { agent = value }, enabled = !busy); TextButton(enabled = !busy, onClick = { agent = value }) { Text(value.label()) } } }
-            listOf("RESPONSES" to "Responses", "MESSAGES" to "Messages", "CHAT" to "Chat Completions").forEach { (value, label) -> Row { RadioButton(protocol == value, { protocol = value; notice = "" }, enabled = !busy); TextButton(enabled = !busy, onClick = { protocol = value; notice = "" }) { Text(label) } } }
+            Text("${agent.label()} 使用 $nativeLabel，通过本地桥接连接网关。")
+            if (!protocolSupported) {
+                Text("当前保存的协议不适用于此 Agent；暂不提供协议转换。", color = MaterialTheme.colorScheme.error)
+                TextButton(enabled = !busy, onClick = { protocol = nativeProtocol; notice = "" }) { Text("改用 $nativeLabel") }
+            }
+
             OutlinedTextField(endpoint, { endpoint = it; notice = "" }, Modifier.fillMaxWidth(), enabled = !busy, label = { Text("网关地址") }, singleLine = true)
             OutlinedTextField(model, { model = it; notice = "" }, Modifier.fillMaxWidth(), enabled = !busy, label = { Text("模型名称") }, singleLine = true)
             val stored = profile?.hasCredential == true
@@ -140,7 +148,7 @@ import kotlinx.coroutines.*
             if (stored) TextButton(enabled = !busy, onClick = { key = ""; keyEdited = true; notice = "" }) { Text("移除已保存密钥") }
             Text("凭据加密保存在设备；保存成功不代表连通性验证通过。", style = MaterialTheme.typography.bodySmall)
             if (endpoint.trim().startsWith("http://", ignoreCase = true)) Text("HTTP 会明文传输密钥和内容，仅用于可信网络；建议使用 HTTPS。", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-            Button(enabled = !busy, onClick = {
+            Button(enabled = !busy && protocolSupported, onClick = {
                 val edit = GatewayEdit(agent, endpoint.trim(), model.trim(), protocol, if (keyEdited) key.toCharArray() else null)
                 saving = true; notice = ""
                 submit {
@@ -154,7 +162,7 @@ import kotlinx.coroutines.*
             }) { Text("保存当前配置") }
             if (notice.isNotBlank()) Text(notice)
             Text("测试连接会用已保存配置发送一个小型模型请求，可能产生少量费用；不验证 CLI、工具或会话恢复。", style = MaterialTheme.typography.bodySmall)
-            val matchesSaved = profile != null && profile.endpoint.isNotBlank() && profile.model.isNotBlank() && !keyEdited &&
+            val matchesSaved = protocolSupported && profile != null && profile.endpoint.isNotBlank() && profile.model.isNotBlank() && !keyEdited &&
                 endpoint.trim() == profile.endpoint && model.trim() == profile.model && protocol == profile.protocol
             OutlinedButton(enabled = !busy && matchesSaved, onClick = {
                 val target = profile ?: return@OutlinedButton

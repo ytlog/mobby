@@ -1,60 +1,46 @@
 # 网关接入
 
-在「网关设置」中选择 Claude Code 或 Codex，填写协议、网关地址、模型名称、API Key，然后保存当前配置。两个 Agent 分别保存；没有配置时仍能使用 Shell。API Key 可留空以连接无鉴权网关。界面保存代表本地配置保存成功，不代表远端鉴权已通过。
+在「网关设置」中选择 Agent，填写网关地址、模型和 API Key，然后保存。两个 Agent 分别保存；密钥可留空以连接无鉴权网关。保存成功只代表设备配置已保存。
 
-| 选项 | 上游接口 |
-| --- | --- |
-| Chat Completions | `/chat/completions` |
-| Responses | `/responses` |
-| Messages | `/messages` |
+| Agent | 唯一支持的协议 | 上游接口 |
+| --- | --- | --- |
+| Codex | Responses | `/responses` |
+| Claude Code | Messages | `/messages` |
 
-地址可为基础路径或完整接口路径，例如 `https://host/v1`、`https://host/v1/messages`；无路径时自动使用 `/v1`。自定义路径会保留，因此 `https://host/api/v2` 会追加所选接口。此处 completion 指 Chat Completions，不包含旧式纯文本 `/completions`。
+按 2026-09-21 用户更新，模型请求统一经过本地 Node 桥接，暂不提供任何协议转换。Chat Completions 不再作为可选协议。旧的 Chat 或 Agent/协议不匹配配置仍保留在加密存储中，但不能执行、检查或原样保存；界面提示后须明确点击“改用 Responses / Messages”并保存，密钥不会因此清空。网关本身也必须支持对应接口。
 
-## 测试已保存连接
-
-保存后点击“测试已保存连接”，应用会向所选网关发送一个不带会话历史的小型模型请求，最多请求 16 个输出 token，可能产生少量费用。修改地址、模型、协议或密钥后，需要先保存才能检查；检查期间可取消，返回页面也会取消等待。
-
-保存提示与连接结果分别显示。只有收到符合所选协议且完整结束的响应才显示通过；HTTP 鉴权/限流/路径错误、DNS、TLS、超时、异常响应和输出达到上限分别报告，不展示上游响应原文。检查不自动重试、不跟随重定向，也不改写已保存配置。
-
-这项检查使用 Android HTTP 客户端，不启动 CLI，不带工具、附件或历史。它不能证明 CLI 的网络栈、沙箱、工具调用、图片能力、流式传输或会话恢复已通过；仍需实际 Agent 任务验收。HTTPS 使用系统证书校验，已有 HTTP 网关支持同时适用于此检查，页面会提示明文风险。
+地址可为基础路径或完整接口路径，例如 `https://host/v1`、`https://host/v1/messages`；无路径时使用 `/v1`。自定义路径会保留，例如 `https://host/api/v2` 会追加原生接口。
 
 ## 运行方式
 
-Claude Code 本身使用 Messages，Codex 使用 Responses。内置 Node.js 以参数数组启动原来的 CLI。协议匹配且带密钥时优先使用 CLI 官方环境变量/provider 配置直连网关；Claude 的直连地址须采用 `/v1/messages` 后缀。跨协议、Claude 特殊路径或无鉴权配置才启动本地桥接。桥接服务仅监听 `127.0.0.1` 随机端口并要求随机令牌，任务结束关闭服务。Shell 不接收网关凭据。没有添加跳过 CLI 沙箱和权限检查参数。
+内置 Android Node 负责域名解析、TLS 和上游请求。CLI 通过官方环境变量/provider 配置连接 `127.0.0.1` 随机端口，每次任务使用随机令牌。CLI 只接收本地令牌，真实网关配置只交给桥接进程，任务结束或取消时关闭服务。Shell 不接收网关凭据；CLI 的权限、沙箱和审批参数保持原有约束。
 
-原生直连由 CLI 处理请求与流式响应，使用配置中的模型。需要同协议路径适配时，桥接透传流式响应。跨协议转换文本、system 指令、函数工具定义、工具调用及结果，并支持 Codex 自定义文本工具（如 apply_patch）的函数封装、命名空间工具的名称映射和还原。跨协议调用上游 `stream:false`，收到完整响应后构造原生 SSE 事件，因此第一条回复需要等待上游生成完成。
+请求 JSON 保留原生字段，只将 model 设置为用户保存的模型。不重新编码图片、工具、推理或未知消息类型。上游成功响应原样流式传输，不缓冲成完整消息、不合成成功或 SSE 终态。辅助接口支持 Responses `/compact` 与 Messages `/count_tokens`，保留查询参数及相关原生版本头。不匹配协议在本地明确拒绝，不请求上游。
 
-原生直连使用 CLI 的 Bearer 认证配置；桥接模式发送 Bearer，Messages 桥接额外发送 `x-api-key` 与 `anthropic-version`。没有配置真实地址前不会执行远端模型调用。HTTP 地址可用于局域网，但界面会提示密钥及内容明文传输；HTTPS 保持正常证书校验；本地桥接不跟随重定向，原生直连的 HTTP 行为由 CLI SDK 管理。
+上游发送 Bearer；Messages 同时发送 `x-api-key`、`anthropic-version` 和 CLI 的 `anthropic-beta`。HTTPS 正常校验证书；HTTP 可用于局域网，界面会提示明文传输。桥接不跟随重定向，不自行重试；CLI 自身的重试仍生效。上游错误正文不回传，只显示 HTTP 状态和脱敏提示；流式中断会断开连接，不追加伪造成功或普通 JSON。
 
-API Key 和配置使用 Android Keystore AES-GCM 加密存储；启动器通过环境变量传递凭据，不主动写入 CLI 配置文件、项目或日志。原生直连时 CLI 使用网关密钥；桥接模式下 CLI 只收到临时本地令牌。桥接的上游错误响应仅保留 HTTP 状态和诊断提示；流式中断会断开连接，交给 CLI 正常报错/重试，不向 SSE 混入普通 JSON。
+API Key 和保存配置使用 Android Keystore AES-GCM 加密。桥接不主动写凭据到 CLI HOME、项目或日志，安装更新保持原应用标识、Keystore 别名、HOME、工作区和配置。
 
-## 当前设备阻断
+## 测试已保存连接
 
-2026-09-21 真机已复现：内置 Codex 的 Linux musl 静态程序可访问 IP 地址的本地模拟服务，却无法访问 Android Node 能解析的域名。Android HTTP 小请求通过不代表该 CLI 网络路径可用。此 DNS 兼容问题尚未修复，完整手机 Codex 原生网关验收未通过。回归命令与隔离范围见[实施记录](implementation.md)；不能通过关闭 Agent 权限或沙箱检查规避。
+“测试已保存连接”使用 Android HTTP 客户端发送不带会话历史、最多 16 个输出 token 的小请求，可能产生少量费用。修改后先保存，检查期间可取消，返回页面会取消等待。保存提示与检查结果独立；只有符合协议且完整结束的响应才显示通过。HTTP、DNS、TLS、超时、异常响应和输出达到上限分别报告。
+
+此检查不启动 CLI，不能证明工具、图片、流式输出、沙箱或会话恢复可用，完整 Agent 任务需要另外验收。
 
 ## 范围和限制
 
-- 跨协议支持文本与用户图片块（PNG/JPEG/WebP/GIF 的 base64 或 HTTP(S) URL），保持图文顺序与图片字节。桥接不主动下载 URL。提供商 file_id、图片 transformations、音频和远端托管工具等未适配输入明确失败。App 已接入照片选择、PNG/JPEG 导入与系统拍照确认；系统相机全链路仍待真机验收。
-- Responses 的图片 detail 转到 Chat/Responses 时保留；Messages 没有等价字段，显式 low/high/original 均拒绝，auto 使用目标默认行为。当前 Codex 图片请求带 high，因此 Codex → Messages 图片路径不支持，不能视为六组合图片兼容。图片工具结果可转到 Messages/Responses，转到 Chat 明确拒绝。
-- 本地转换失败返回 HTTP 400，避免无意义重试；网络与上游响应解析失败仍返回 502。原生同协议请求不受跨协议字段限制。
-- 原生协议私有推理内容不能跨供应商转换；跨协议不转发 hidden reasoning / encrypted reasoning。同协议保留。
-- 不支持跨协议 `previous_response_id`，需要 CLI 携带完整会话；Responses 原生请求可以透传。
-- 仅跨协议时禁用 Codex 自动远端压缩与默认 web_search，跨协议桥接没有伪造压缩响应。长任务可能达到模型上下文上限。
-- 桥接请求/转换响应限制 16 MiB，每次远端请求超时 5 分钟；整个任务沿用 10 分钟限制。
-- CLI 的更新、插件等其他网络能力不属于模型协议桥接；真实网关的模型能力、工具支持与鉴权需要实际联调。
+- 仅模型原生接口及上述辅助接口通过桥接；CLI 更新、插件等其他网络功能不在此范围。
+- 请求上限 16 MiB，每次上游请求超时 5 分钟，整个任务仍受 Runtime 10 分钟限制。响应采用背压流式传输。
+- 压缩请求明确返回 415；当前固定 CLI 在自定义 provider 配置下发送普通 JSON。未支持的接口返回 404，不伪造能力响应。
+- App 图片导入目前只支持受控 PNG/JPEG；拍照、真实视觉模型和不同厂商相机仍需全链路验收。
+- 旧 Linux musl Codex 裸程序在本机 Android 缺少可用的域名解析路径。统一桥接将联网交由 Android Node，没有修改 Codex 二进制或关闭沙箱。裸程序单独执行仍不等于 App 执行路径。
 
-## 验证
+## 验证命令
 
-运行 `node --test runtime/gateway-tests/bridge.test.cjs`。22 项测试覆盖 6 个 Agent 原生协议/上游协议组合、工具 ID 与结果、命名空间名称还原、取消请求、Codex 自定义工具、URL 规范化、SSE 透传、拒绝不支持的输入、鉴权错误脱敏、输出截断状态、并行工具调用分组、断流错误和原生直连配置，并覆盖图文顺序、图片字节、无法表示字段与工具图片结果的拒绝、转换错误不请求上游、受控标准输入文件与符号链接拒绝。
+- `node --test runtime/gateway-tests/bridge.test.cjs`：同协议字段/流完整性、辅助接口、鉴权、拒绝转换、输入限制、取消、断流与错误脱敏。
+- `MOBBY_TEST_ADB=/path/to/adb node runtime/gateway-tests/android-codex-network.cjs`：已安装 App 的实际启动脚本与内置 Codex，比较 IP/域名上游。独立 HOME、虚假密钥、adb reverse 本地模拟服务；不改真实配置。可用 `MOBBY_TEST_TOOL=1` 增加设备 shell 读取与回传门槛（当前因缺少 bwrap 失败）；可用 `MOBBY_TEST_RAW_CODEX=1` 单独诊断裸 CLI，当前域名阶段预期失败。
+- `runtime/gateway-tests/cli-smoke.cjs`、`images-smoke.cjs`、`skills-smoke.cjs`：用 `MOBBY_TEST_CODEX` 与 `MOBBY_TEST_CLAUDE_JS` 指定主机程序，隔离 HOME 并使用虚假密钥。只验证 Codex/Responses 与 Claude/Messages，结果不能替代手机真实网关验收。
 
-参考：[Codex provider 配置](https://learn.chatgpt.com/docs/config-file/config-reference)、[Responses 事件](https://developers.openai.com/api/reference/resources/responses/streaming-events)、[Claude Code 网关配置](https://code.claude.com/docs/en/llm-gateway-connect)。
+历史的六组合转换结果只属于旧版本，见[实施记录](implementation.md)。当前设备与真实模型验证结果也在该记录中持续更新。
 
-2026-09-20 主机联调：Claude Code 2.1.112 与主机现有 Codex 0.154.0-alpha.6.2，各自通过三个本地模拟上游，六种组合的文本回复全部通过；再进行实际工具读取临时文件并回传，六种组合全部通过。使用独立临时 HOME 和虚假测试密钥，未访问真实模型网关。手机内置 Codex 为 0.155.1，手机已更新安装并持久化网关配置，重启后读取正常。真实网关 Messages 和 Responses 小请求均返回 HTTP 200（Responses 的 64 token 探测达到输出上限）；手机端完整 Agent 任务仍待验收。
-
-可复用的 CLI 工具回传验收脚本：`runtime/gateway-tests/cli-smoke.cjs`，通过 `MOBBY_TEST_CODEX` 与 `MOBBY_TEST_CLAUDE_JS` 指定本机测试程序路径。
-
-图片联调脚本：`runtime/gateway-tests/images-smoke.cjs`，使用同样的 CLI 环境变量，生成临时测试图片、隔离 HOME 与虚假密钥。2026-09-21 主机 Codex 0.155.0-alpha.9.2 / Claude Code 2.1.112 实测：五个组合完整传递图片字节；Codex → Messages 确认在上游调用前明确失败。该结果不等于 Android 图片入口、真实模型视觉能力或真实网关验收。
-
-图片格式依据：[OpenAI 图像输入](https://developers.openai.com/api/docs/guides/images-vision)、[Claude 图像输入](https://platform.claude.com/docs/en/build-with-claude/vision)。两个提供商的分辨率与 token 规则不同，不能把 Messages 默认处理推定为 OpenAI 显式 detail 的等价实现。
-
-2026-09-21 Android 图片输入路径：受控图片引用在执行前校验摘要；Codex 使用临时图片文件与 `--image`，Claude 使用临时 JSONL 文件作为标准输入（`--input-format stream-json`）。路径只在本地进程环境短暂传递并从 CLI 环境移除，图片不放入命令行参数或密钥配置。临时输入在结束/取消后删除，启动恢复确认旧进程已处理后清理残留。主机图片脚本已改用同样的标准输入方式，五个支持组合的新建与 resume 均通过；Codex → Messages 仍明确拒绝。
+参考：[Codex provider 配置](https://learn.chatgpt.com/docs/config-file/config-reference)、[Claude Code 网关配置](https://code.claude.com/docs/en/llm-gateway-connect)。

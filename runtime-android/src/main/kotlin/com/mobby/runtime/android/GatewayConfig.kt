@@ -30,6 +30,12 @@ data class GatewayConfig(
         require(model.isNotBlank() && model.length <= 200 && model.none { it.isISOControl() }) { "请填写有效的模型名称" }
         require(key.length <= 8192 && key.none { it.isISOControl() }) { "密钥格式不正确" }
     }
+    fun validateFor(mode: AgentMode) {
+        validate()
+        require(protocol == if (mode == AgentMode.CODEX) GatewayProtocol.RESPONSES else GatewayProtocol.MESSAGES) {
+            "网关协议必须与 Agent 原生协议一致；暂不提供转换"
+        }
+    }
     fun json(): String = buildJsonObject {
         put("endpoint", endpoint); put("model", model); put("key", key); put("protocol", protocol.name.lowercase())
     }.toString()
@@ -70,7 +76,7 @@ class GatewayStore(context: Context) {
     }
     fun snapshot(mode: AgentMode): Pair<Long, GatewayConfig> = synchronized(writeLock) { version(mode) to load(mode) }
     fun save(mode: AgentMode, config: GatewayConfig) = synchronized(writeLock) {
-        config.validate()
+        config.validateFor(mode)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, encryptionKey())
         val encrypted = cipher.iv + cipher.doFinal(config.json().toByteArray(Charsets.UTF_8))
