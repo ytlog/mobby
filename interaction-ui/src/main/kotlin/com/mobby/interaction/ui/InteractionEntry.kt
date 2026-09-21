@@ -83,7 +83,7 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
             actions.importAttachment(ConversationId(captured.conversation), captured.workspace, requireNotNull(captured.attachmentUri))
         }, { message -> vm.report(OperationResult.Failed(message)) })
         Surface(Modifier.fillMaxSize()) {
-            BoxWithConstraints(Modifier.fillMaxSize().systemBarsPadding().imePadding().clipToBounds()) {
+            InteractionViewport {
                 val fullWidth = maxWidth
                 val availableHeight = maxHeight
                 val drawerWidth = minOf(360.dp, (fullWidth - 56.dp).coerceAtLeast(0.dp))
@@ -287,7 +287,6 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
             }
         }
         if (active?.pending == true) TextButton(onClick = { vm.enqueue { vm.actions.reconcile(detail.conversation.id) } }) { Text("查询待确认请求") }
-        Text("在本机执行 · 请核对输出", Modifier.fillMaxWidth().padding(top = 6.dp), style = MaterialTheme.typography.labelSmall, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
     }
 }
 
@@ -372,4 +371,8 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
         }
         if (!follow && detail.turns.isNotEmpty()) FilledTonalButton(onClick = { follow = true; scope.launch { if (keys.isNotEmpty()) list.animateScrollToItem(keys.lastIndex) } }, modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp)) { Text("最新消息") }
     }
+}
+
+@Composable internal fun InteractionViewport(content: @Composable BoxWithConstraintsScope.() -> Unit) {
+    BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding().clipToBounds(), content = content)
 }
