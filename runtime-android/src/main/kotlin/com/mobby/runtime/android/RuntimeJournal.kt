@@ -34,17 +34,13 @@ internal class RuntimeJournal(context: Context, private val historyPolicy: Event
         db.execSQL("CREATE TABLE output_retention (run_id TEXT PRIMARY KEY NOT NULL REFERENCES runs(id), finished_at INTEGER NOT NULL, expired INTEGER NOT NULL DEFAULT 0)")
     }
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        check(oldVersion == 1 && newVersion == 2)
-        createOutputRetention(db)
-        db.rawQuery("SELECT r.id,r.snapshot,e.body FROM runs r LEFT JOIN events e ON e.run_id=r.id AND e.sequence=r.sequence", emptyArray()).use { cursor ->
-            while (cursor.moveToNext()) {
-                val snapshot = json.decodeFromString<RunSnapshot>(cursor.getString(1))
-                if (snapshot.phase.terminal) {
-                    val finished = if (cursor.isNull(2)) clock() else json.decodeFromString<EventEnvelope>(cursor.getString(2)).occurredAtEpochMillis
-                    recordOutputCompletion(db, snapshot.runId, finished)
-                }
-            }
-        }
+        // Development schemas are replaced, not migrated. Only this journal is reset;
+        // encrypted settings, HOME and workspaces are owned by separate stores.
+        db.execSQL("DROP TABLE IF EXISTS output_retention")
+        db.execSQL("DROP TABLE IF EXISTS events")
+        db.execSQL("DROP TABLE IF EXISTS commands")
+        db.execSQL("DROP TABLE IF EXISTS runs")
+        onCreate(db)
     }
     private fun recordOutputCompletion(db: SQLiteDatabase, id: RunId, time: Long) {
         db.insertWithOnConflict("output_retention", null, ContentValues().apply { put("run_id", id.value); put("finished_at", time) }, SQLiteDatabase.CONFLICT_IGNORE)

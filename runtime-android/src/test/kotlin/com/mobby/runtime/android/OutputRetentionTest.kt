@@ -115,21 +115,29 @@ class OutputRetentionTest {
         }
         Unit
     }
-    @Test fun `version one migration preserves state and grants a fresh age window when old events were compacted`() = runBlocking {
-        lateinit var terminal: RunSnapshot
-        RuntimeJournal(context, EventHistoryPolicy(0, 0)) { 1000 }.use { journal ->
-            terminal = run(journal, OutputStore(context), "old", 100)
-            assertTrue(journal.eventsAfter(terminal.runId, 0, 10).isEmpty())
-            journal.writableDatabase.execSQL("DROP TABLE output_retention")
-            journal.writableDatabase.execSQL("PRAGMA user_version=1")
-        }
-        RuntimeJournal(context, unlimited) { 1000 }.use { journal ->
-            assertEquals(2, journal.readableDatabase.version)
-            assertEquals(terminal, journal.snapshot(terminal.runId))
-            assertEquals(1000L, journal.outputCandidates().single().finishedAt)
-            val store = OutputStore(context, journal::outputExpired)
-            store.compact(journal, OutputRetentionPolicy(100, Long.MAX_VALUE), 1000)
-            assertTrue(read(store, "old") is ArtifactReadResult.Chunk)
+    @Test fun `development schema change starts an empty current journal without touching settings or home`() = runBlocking {
+        val prefs = context.getSharedPreferences("development-reset-fixture", 0)
+        prefs.edit().putString("keep", "fixture").commit()
+        val home = File(context.filesDir, "development-home-fixture").apply { writeText("keep") }
+        try {
+            RuntimeJournal(context, unlimited).use { journal ->
+                run(journal, OutputStore(context), "old", 100)
+                journal.writableDatabase.execSQL("PRAGMA user_version=${journal.writableDatabase.version - 1}")
+            }
+            RuntimeJournal(context, unlimited).use { journal ->
+                assertNull(journal.snapshot(RunId("old")))
+                assertNull(journal.find(RequestId("old")))
+                assertTrue(journal.outputCandidates().isEmpty())
+                assertTrue(journal.eventsAfter(RunId("old"), 0, 10).isEmpty())
+                assertTrue(journal.unfinished().isEmpty())
+                val current = run(journal, OutputStore(context), "current", 200)
+                assertEquals(current, journal.snapshot(current.runId))
+            }
+            assertEquals("fixture", prefs.getString("keep", null))
+            assertEquals("keep", home.readText())
+        } finally {
+            prefs.edit().clear().commit()
+            home.delete()
         }
     }
 }
