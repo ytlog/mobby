@@ -48,6 +48,27 @@ class RunCoordinatorTest {
     private fun process(block: suspend (RunRequest, StateFlow<StopCause?>, suspend (String, Boolean) -> Unit) -> ProcessResult) = object : ProcessPort {
         override suspend fun execute(request: RunRequest, stop: StateFlow<StopCause?>, output: suspend (String, Boolean) -> Unit) = block(request, stop, output)
     }
+    @Test fun `first completed tool beyond output budget preserves its result and terminal evidence`() = runTest {
+        val journal = MemoryJournal(); val output = MemoryOutput()
+        val runtime = RunCoordinator(backgroundScope, environment, process { _, _, emit ->
+            val body = "x".repeat(65536)
+            repeat(64) { index -> emit("""{"type":"item.completed","item":{"id":"message-$index","type":"agent_message","text":"$body"}}""", false) }
+            emit("""{"type":"item.completed","item":{"id":"tool","type":"command_execution","command":"fixture","aggregated_output":"over budget","exit_code":0}}""", false)
+            emit("""{"type":"turn.completed"}""", false)
+            ProcessResult(0, true)
+        }, journal, output)
+        runtime.recover()
+        val id = (runtime.submit(request()) as SubmitResult.Accepted).runId
+        runCurrent()
+        val snapshot = journal.states.getValue(id)
+        assertEquals(RunPhase.SUCCEEDED, snapshot.phase)
+        assertEquals(ToolOutcome.SUCCEEDED, snapshot.steps.single().outcome)
+        assertTrue(snapshot.steps.single().output.isEmpty())
+        assertEquals(1, journal.events.count { it.payload is RuntimeEvent.ProgressSummary })
+        assertTrue(snapshot.progressSummary!!.contains("截断"))
+        assertEquals(4 * 1024 * 1024, output.content.values.sumOf { it.toByteArray().size })
+        assertEquals(ConnectionState.CONNECTED, runtime.connection.value)
+    }
     @Test fun `native permission request is durable and survives observer reconnect`() = runTest {
         val journal = MemoryJournal()
         val runtime = RunCoordinator(backgroundScope, environment, process { _, signal, emit ->

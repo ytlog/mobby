@@ -189,7 +189,9 @@ class RunCoordinator(
                 if (outputBytes + bytes > 4 * 1024 * 1024 || chunk >= 2048) {
                     if (!truncated) {
                         truncated = true
-                        append(old, RuntimeEvent.ProgressSummary("输出超过保留上限，后续正文已截断"), old.copy(progressSummary = "输出超过保留上限，后续正文已截断"))
+                        // This fact may already have persisted ToolStarted before writing its output.
+                        val current = journal.snapshot(id)!!
+                        append(current, RuntimeEvent.ProgressSummary("输出超过保留上限，后续正文已截断"), current.copy(progressSummary = "输出超过保留上限，后续正文已截断"))
                     }
                     return null
                 }
