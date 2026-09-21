@@ -17,7 +17,8 @@ import java.nio.file.Files
 import java.nio.file.LinkOption.NOFOLLOW_LINKS
 import java.util.UUID
 
-/** One system-camera request at a time. Nothing enters a conversation before confirmation. */
+/** One system-camera request at a time. Nothing enters a conversation before confirmation.
+ * Workspace is an opaque ownership reference; only capture IDs determine temporary file paths. */
 internal class CameraCaptureStore(private val context: Context) {
     private val prefs = context.getSharedPreferences("camera-capture", Context.MODE_PRIVATE)
     private val root = File(context.filesDir, "captures/output")
@@ -26,7 +27,7 @@ internal class CameraCaptureStore(private val context: Context) {
         CameraCapture(data.getValue("id").jsonPrimitive.content, data.getValue("conversation").jsonPrimitive.content,
             data.getValue("workspace").jsonPrimitive.content, data.getValue("captureUri").jsonPrimitive.content,
             data["attachmentUri"]?.jsonPrimitive?.contentOrNull, CapturePhase.valueOf(data.getValue("phase").jsonPrimitive.content), data["error"]?.jsonPrimitive?.contentOrNull).also { capture ->
-            require(capture.conversation.isNotBlank() && capture.workspace == "default")
+            require(capture.conversation.isNotBlank() && capture.workspace.isNotBlank())
             require(capture.captureUri == uri(File(directory(capture.id), "capture.jpg")))
             require(capture.attachmentUri == null || capture.attachmentUri == uri(File(directory(capture.id), "photo.jpg")))
             if (capture.phase in setOf(CapturePhase.REVIEW, CapturePhase.IMPORTING)) require(capture.attachmentUri != null)
@@ -62,7 +63,7 @@ internal class CameraCaptureStore(private val context: Context) {
     }
     suspend fun begin(conversation: String, workspace: String): CameraCapture = lock.withLock {
         require(read() == null) { "请先处理已有拍照或导入" }
-        require(conversation.isNotBlank() && workspace == "default")
+        require(conversation.isNotBlank() && workspace.isNotBlank())
         val id = UUID.randomUUID().toString()
         val directory = directory(id); check(directory.mkdirs())
         try {

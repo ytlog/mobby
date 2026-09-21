@@ -39,6 +39,22 @@ class CameraCaptureStoreTest {
         assertNull(store.finish(capture.id, false)); assertNull(store.current())
         assertTrue(File(context.filesDir, "captures/output").listFiles()!!.isEmpty())
     }
+    @Test fun `managed workspace capture preserves ownership through restore review and cancellation`() = runBlocking<Unit> {
+        val workspace = "local-12345678-1234-1234-1234-123456789abc"
+        val store = CameraCaptureStore(context)
+        val capture = store.begin("project-conversation", workspace)
+        assertEquals(capture, CameraCaptureStore(context).current())
+        take(capture, 8, 4)
+        val review = CameraCaptureStore(context).finish(capture.id, true)!!
+        assertEquals(workspace, review.workspace)
+        assertEquals("project-conversation", review.conversation)
+        assertEquals(CapturePhase.REVIEW, review.phase)
+        assertEquals(review, CameraCaptureStore(context).current())
+        assertTrue(store.preview(review.id).isNotEmpty())
+        store.discard(review.id)
+        assertNull(CameraCaptureStore(context).current())
+        assertTrue(File(context.filesDir, "captures/output").listFiles()!!.isEmpty())
+    }
     @Test fun `camera result is normalized and remains reviewable until explicit import`() = runBlocking<Unit> {
         val store = CameraCaptureStore(context); val capture = store.begin("original", "default")
         take(capture)
