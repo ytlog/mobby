@@ -5,6 +5,8 @@ const {createServer} = require('node:http');
 const {execFile} = require('node:child_process');
 const {randomBytes} = require('node:crypto');
 const {once} = require('node:events');
+const {readFileSync} = require('node:fs');
+const {resolve} = require('node:path');
 const assert = require('node:assert/strict');
 const {isDeepStrictEqual} = require('node:util');
 const {nativeResponse, sendNative} = require('./native-fixture.cjs');
@@ -14,8 +16,9 @@ const quote = value => "'" + String(value).replaceAll("'", "'\\''") + "'";
 const command = args => new Promise(resolve => execFile(adb, args, {timeout:45000,maxBuffer:2*1024*1024}, (error,stdout,stderr) => resolve({code:error?.code??0,stdout,stderr})).stdin.end());
 const remote = args => command(['shell', ['run-as','com.mdoer.app',...args].map(quote).join(' ')]);
 async function checked(args) { const r=await remote(args); assert.equal(r.code,0,r.stderr); return r.stdout.trim(); }
-const schema = {type:'object',properties:{message:{type:'string'},markdown:{type:'string'}},required:['message','markdown'],additionalProperties:false};
-const answer = {message:'Proposal ready',markdown:'---\nname: structured-fixture\ndescription: Synthetic contract check\n---\nReview the supplied diff.\n'};
+const contract=readFileSync(resolve(__dirname,'../../runtime-engine/src/main/kotlin/com/mobby/runtime/engine/SkillGeneration.kt'),'utf8');
+const schema=JSON.parse(contract.match(/val schema = """([^]*?)"""/)[1]);
+const answer={kind:'proposal',message:'Proposal ready',name:'structured-fixture',description:'Synthetic contract check',body:'Review the supplied diff.'};
 async function main() {
   const home=await checked(['pwd']), prefix=home+'/files/libtermux/usr';
   const native=(await checked(['readlink',prefix+'/bin/codex'])).replace(/\/[^/]+$/,'');
@@ -66,7 +69,7 @@ async function main() {
         await remote(['rm','-f',pidFile]);
         const events=r.stdout.split('\n').flatMap(line=>{try{return[JSON.parse(line)];}catch{return[];}});
         const terminal=events.find(e=>e.type===(mode==='CODEX'?'turn.completed':'result'));
-        const value=mode==='CODEX'?events.filter(e=>e.type==='item.completed'&&e.item?.type==='agent_message').map(e=>{try{return JSON.parse(e.item.text);}catch{return null;}}).find(v=>v?.markdown):terminal?.structured_output;
+        const value=mode==='CODEX'?events.filter(e=>e.type==='item.completed'&&e.item?.type==='agent_message').map(e=>{try{return JSON.parse(e.item.text);}catch{return null;}}).find(v=>v?.kind==='proposal'):terminal?.structured_output;
         session=mode==='CODEX'?events.find(e=>e.type==='thread.started')?.thread_id:terminal?.session_id;
         console.log(`${mode}/${resume?'resume':'new'} exit=${r.code} requests=${count} schema=${!!schemaSeen} structuredTool=${structuredTool} result=${!!value}`);
         assert.equal(r.code,0,r.stderr);assert.ok(schemaSeen,'Native request did not carry schema');assert.ok(terminal,'No terminal evidence');

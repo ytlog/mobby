@@ -186,8 +186,8 @@ class RunCoordinator(
         var outputBytes = 0
         var chunk = 0L
         var truncated = false
-        val decoder = ProtocolDecoder(request.agentId)
-        val proposals = SkillProposalCollector()
+        val decoder = ProtocolDecoder(request.agentId, request.requestedOutput)
+        var proposal: String? = null
         val seenApprovals = mutableMapOf<String, String>()
         var eligible = true
         suspend fun emitFact(fact: AgentFact) = mutex.withLock {
@@ -228,11 +228,11 @@ class RunCoordinator(
                 AgentFact.InvalidApproval -> if (signal.value == null) stopLocked(id, StopCause.PROTOCOL_FAILURE)
                 is AgentFact.Session -> if (old.sessionRef?.value != fact.id) append(old, RuntimeEvent.RunStarted(SessionRef(fact.id)), old.copy(sessionRef = SessionRef(fact.id)))
                 is AgentFact.Text -> {
-                    if (request.requestedOutput == RequestedOutput.SKILL_PROPOSAL) proposals.append(fact.messageId, fact.text)
                     segment(fact.messageId, fact.text)?.let { part ->
                         append(old, RuntimeEvent.AssistantDelta(part), old.copy(outputSegments = old.outputSegments + part))
                     }
                 }
+                is AgentFact.Proposal -> if (request.requestedOutput == RequestedOutput.SKILL_PROPOSAL) proposal = fact.markdown
                 is AgentFact.Tool -> {
                     val existing = old.steps.firstOrNull { it.stepId == fact.id }
                     if (existing == null) {
@@ -305,7 +305,7 @@ class RunCoordinator(
                     }
                     var terminalBase = old
                     if (phase == RunPhase.SUCCEEDED && request.requestedOutput == RequestedOutput.SKILL_PROPOSAL) {
-                        for (content in proposals.complete()) {
+                        for (content in listOfNotNull(proposal)) {
                             val ref = outputStore.write(id, (chunk++).toString(), content)
                             append(terminalBase, RuntimeEvent.ArtifactAvailable(ref), terminalBase.copy(artifacts = terminalBase.artifacts + ref))
                             terminalBase = journal.snapshot(id)!!

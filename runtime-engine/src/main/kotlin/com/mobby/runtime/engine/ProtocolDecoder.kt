@@ -7,6 +7,7 @@ import kotlinx.serialization.json.*
 sealed interface AgentFact {
     data class Session(val id: String) : AgentFact
     data class Text(val messageId: String, val text: String) : AgentFact
+    data class Proposal(val markdown: String) : AgentFact
     data class Tool(val id: String, val kind: String, val summary: String, val output: String? = null, val outcome: ToolOutcome? = null) : AgentFact
     data class Diagnostic(val kind: String, val text: String) : AgentFact
     data class Completed(val success: Boolean, val error: ErrorCode? = null) : AgentFact
@@ -14,7 +15,9 @@ sealed interface AgentFact {
     object InvalidApproval : AgentFact
 }
 
-class ProtocolDecoder(private val agent: AgentId) {
+class ProtocolDecoder(private val agent: AgentId, private val requestedOutput: RequestedOutput = RequestedOutput.TEXT) {
+    private var skillResult: SkillGeneration.Result? = null
+    private val structuredTools = mutableSetOf<String>()
     private var lastAssistant = ""
     private var fallbackId = 0
     fun decode(line: String): List<AgentFact> {
@@ -32,7 +35,7 @@ class ProtocolDecoder(private val agent: AgentId) {
     private fun codex(value: JsonObject, line: String): List<AgentFact> { return when (value.text("type")) {
         "thread.started" -> value.text("thread_id")?.let { listOf(AgentFact.Session(it)) }.orEmpty()
         "turn.started" -> emptyList()
-        "turn.completed" -> listOf(AgentFact.Completed(true))
+        "turn.completed" -> if (requestedOutput == RequestedOutput.SKILL_PROPOSAL) finishSkill(skillResult) else listOf(AgentFact.Completed(true))
         "turn.failed", "error" -> listOf(AgentFact.Diagnostic("error", value["error"]?.toString() ?: value.text("message") ?: "CLI error"), AgentFact.Completed(false, ErrorCode.PROTOCOL_ERROR))
         "item.started", "item.updated", "item.completed" -> {
             val item = value["item"] as? JsonObject ?: return listOf(AgentFact.Diagnostic("invalid-item", line))
@@ -41,7 +44,13 @@ class ProtocolDecoder(private val agent: AgentId) {
             val completed = value.text("type") == "item.completed"
             when (type) {
                 "reasoning" -> emptyList()
-                "agent_message" -> if (completed) listOf(AgentFact.Text(id, item.text("text").orEmpty())) else emptyList()
+                "agent_message" -> if (completed) {
+                    val text = item.text("text").orEmpty()
+                    if (requestedOutput == RequestedOutput.SKILL_PROPOSAL) {
+                        skillResult = SkillGeneration.parse(text)
+                        listOf(AgentFact.Text(id, skillResult?.message ?: text))
+                    } else listOf(AgentFact.Text(id, text))
+                } else emptyList()
                 "command_execution", "file_change", "mcp_tool_call", "web_search", "todo_list" -> {
                     val outcome = if (!completed) null else if (item.text("status") == "failed" ||
                         (item["exit_code"] as? JsonPrimitive)?.intOrNull?.let { it != 0 } == true) ToolOutcome.FAILED else ToolOutcome.SUCCEEDED
@@ -80,7 +89,14 @@ class ProtocolDecoder(private val agent: AgentId) {
                 val blocks = message?.get("content") as? JsonArray ?: return@buildList
                 val text = blocks.mapNotNull { (it as? JsonObject)?.takeIf { block -> block.text("type") == "text" }?.text("text") }.joinToString("\n")
                 if (text.isNotEmpty() && value.text("type") == "assistant") { add(AgentFact.Text(id, text)); lastAssistant = text }
-                for (block in blocks.filterIsInstance<JsonObject>()) when (block.text("type")) {
+                for (block in blocks.filterIsInstance<JsonObject>()) {
+                    if (requestedOutput == RequestedOutput.SKILL_PROPOSAL) {
+                        if (block.text("type") == "tool_use" && block.text("name") == "StructuredOutput") {
+                            block.text("id")?.let { structuredTools.add(it) }; continue
+                        }
+                        if (block.text("type") == "tool_result" && block.text("tool_use_id") in structuredTools) continue
+                    }
+                    when (block.text("type")) {
                     "tool_use" -> add(AgentFact.Tool(block.text("id") ?: "tool-${fallbackId++}", block.text("name") ?: "tool", block["input"]?.toString().orEmpty()))
                     "tool_result" -> add(AgentFact.Tool(block.text("tool_use_id") ?: "tool-${fallbackId++}", "tool", "",
                         block["content"]?.let { content -> if (content is JsonPrimitive) content.content else content.toString() },
@@ -88,29 +104,43 @@ class ProtocolDecoder(private val agent: AgentId) {
                     "image" -> add(AgentFact.Diagnostic("image", "图片输入（内容不写入诊断日志）"))
                     "thinking", "redacted_thinking", "text" -> Unit
                     else -> add(AgentFact.Diagnostic(block.text("type") ?: "unknown-content", block.toString()))
+                    }
                 }
             }
             "result" -> {
                 val result = value.text("result").orEmpty()
-                if (result.isNotEmpty() && result != lastAssistant) add(AgentFact.Text("result", result))
+                if (requestedOutput == RequestedOutput.TEXT && result.isNotEmpty() && result != lastAssistant) add(AgentFact.Text("result", result))
                 val denied = (value["permission_denials"] as? JsonArray)?.isNotEmpty() == true
                 val error = (value["is_error"] as? JsonPrimitive)?.booleanOrNull
                 val success = error == false && value.text("subtype") == "success" && !denied
                 if (!success) add(AgentFact.Diagnostic("result-error", value["errors"]?.toString() ?: value.text("subtype") ?: "Missing terminal evidence"))
-                add(AgentFact.Completed(success, if (denied) ErrorCode.PERMISSION_DENIED else if (!success) ErrorCode.PROTOCOL_ERROR else null))
+                if (success && requestedOutput == RequestedOutput.SKILL_PROPOSAL) {
+                    val structured = value["structured_output"]?.toString()?.let(SkillGeneration::parse)
+                    structured?.let { if (it.message != lastAssistant) add(AgentFact.Text("result", it.message)) }
+                    addAll(finishSkill(structured))
+                } else add(AgentFact.Completed(success, if (denied) ErrorCode.PERMISSION_DENIED else if (!success) ErrorCode.PROTOCOL_ERROR else null))
             }
             else -> add(AgentFact.Diagnostic(value.text("type") ?: "unknown", line))
         }
+    }
+    private fun finishSkill(result: SkillGeneration.Result?): List<AgentFact> = if (result == null)
+        listOf(AgentFact.Diagnostic("invalid-skill-output", "技能生成结果不符合结构要求，请重试或补充需求"), AgentFact.Completed(false, ErrorCode.PROTOCOL_ERROR))
+    else buildList {
+        result.markdown?.let { add(AgentFact.Proposal(it)) }
+        add(AgentFact.Completed(true))
     }
     private fun JsonObject.text(key: String) = (get(key) as? JsonPrimitive)?.contentOrNull
 }
 
 object AgentCommand {
-    fun arguments(request: RunRequest, executable: String, prompt: String, imagePaths: List<String> = emptyList(), streamInput: Boolean = false, approvals: Boolean = false): List<String> {
+    fun arguments(request: RunRequest, executable: String, prompt: String, imagePaths: List<String> = emptyList(), streamInput: Boolean = false, approvals: Boolean = false, schemaPath: String? = null): List<String> {
         require(imagePaths.all { it.startsWith("/") && '\u0000' !in it })
         require(request.agentId == AgentId.CODEX || imagePaths.isEmpty())
         require(request.agentId == AgentId.CLAUDE_CODE || !streamInput)
         require(!approvals || request.agentId == AgentId.CLAUDE_CODE && streamInput)
+        val structured = request.requestedOutput == RequestedOutput.SKILL_PROPOSAL
+        require(schemaPath == null || structured && request.agentId == AgentId.CODEX && schemaPath.startsWith("/") && '\u0000' !in schemaPath)
+        require(!structured || request.agentId != AgentId.CODEX || schemaPath != null)
         val session = request.sessionRef?.value
         require(session == null || session.matches(Regex("[A-Za-z0-9-]{1,100}")))
         return when (request.agentId) {
@@ -122,11 +152,13 @@ object AgentCommand {
                 request.reasoningLevel?.let { addAll(listOf("-c", "model_reasoning_effort=${JsonPrimitive(it)}")) }
                 addAll(listOf("exec", "--json"))
                 if (session != null) addAll(listOf("resume", session))
+                if (structured) addAll(listOf("--output-schema", requireNotNull(schemaPath)))
                 imagePaths.forEach { addAll(listOf("--image", it)) }
                 add("--"); add(prompt)
             }
             AgentId.CLAUDE_CODE -> buildList {
                 addAll(listOf(executable, "-p", "--output-format", "stream-json", "--verbose"))
+                if (structured) addAll(listOf("--json-schema", SkillGeneration.schema))
                 request.reasoningLevel?.let { addAll(listOf("--effort", it)) }
                 if (session != null) addAll(listOf("--resume", session))
                 if (streamInput) addAll(listOf("--input-format", "stream-json"))

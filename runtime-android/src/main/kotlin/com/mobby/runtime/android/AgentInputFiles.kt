@@ -7,7 +7,7 @@ import java.nio.file.Files
 import java.util.Base64
 
 /** Per-run private materialization, removed after exit/cancel and during post-recovery startup. */
-internal class AgentInputFiles private constructor(private val directory: File, val imagePaths: List<String>) : Closeable {
+internal class AgentInputFiles private constructor(private val directory: File, val imagePaths: List<String>, val schemaPath: String?) : Closeable {
     override fun close() = cleanup(directory)
     companion object {
         fun claudeMessage(prompt: String, images: List<ResourceStore.Image>): JsonObject = buildJsonObject {
@@ -27,7 +27,7 @@ internal class AgentInputFiles private constructor(private val directory: File, 
             }
         }
 
-        fun create(root: File, images: List<ResourceStore.Image>): AgentInputFiles {
+        fun create(root: File, images: List<ResourceStore.Image>, schema: String? = null): AgentInputFiles {
             require(!Files.isSymbolicLink(root.toPath()))
             require(root.isDirectory || root.mkdirs())
             val directory = Files.createTempDirectory(root.toPath(), "run-").toFile()
@@ -35,7 +35,8 @@ internal class AgentInputFiles private constructor(private val directory: File, 
                 val paths = images.mapIndexed { index, image ->
                     File(directory, "image-$index.${if (image.mediaType == "image/png") "png" else "jpg"}").apply { writeBytes(image.bytes) }.absolutePath
                 }
-                return AgentInputFiles(directory, paths)
+                val schemaPath = schema?.let { File(directory, "output-schema.json").apply { writeText(it) }.absolutePath }
+                return AgentInputFiles(directory, paths, schemaPath)
             } catch (error: Throwable) { cleanup(directory); throw error }
         }
         fun cleanup(root: File) {

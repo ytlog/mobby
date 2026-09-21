@@ -38,4 +38,13 @@ class AgentInputFilesTest {
         AgentInputFiles.cleanup(root)
         assertFalse(root.exists()); assertEquals("keep", external.readText())
     }
+    @Test fun `structured output schema shares per run cleanup even without images`() {
+        val root = temporary.newFolder()
+        AgentInputFiles.create(root, emptyList(), com.mobby.runtime.engine.SkillGeneration.schema).use { input ->
+            assertTrue(input.imagePaths.isEmpty())
+            assertEquals(com.mobby.runtime.engine.SkillGeneration.schema, File(requireNotNull(input.schemaPath)).readText())
+        }
+        assertTrue(root.listFiles()!!.isEmpty())
+    }
+
 }

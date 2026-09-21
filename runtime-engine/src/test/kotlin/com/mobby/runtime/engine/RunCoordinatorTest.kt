@@ -366,7 +366,13 @@ class RunCoordinatorTest {
     @Test fun `generated artifacts are durable events before terminal and replay in baseline`() = runTest {
         val journal = MemoryJournal(); val output = MemoryOutput()
         val runtime = RunCoordinator(backgroundScope, environment, process { _, _, emit ->
-            emit("""{"type":"item.completed","item":{"id":"proposal","type":"agent_message","text":"````SKILL.md\n---\nname: draft\ndescription: test\n---\nInstructions\n````"}}""", false)
+            emit(kotlinx.serialization.json.buildJsonObject {
+                put("type", kotlinx.serialization.json.JsonPrimitive("item.completed"))
+                put("item", kotlinx.serialization.json.buildJsonObject {
+                    put("id", kotlinx.serialization.json.JsonPrimitive("proposal")); put("type", kotlinx.serialization.json.JsonPrimitive("agent_message"))
+                    put("text", kotlinx.serialization.json.JsonPrimitive("""{"kind":"proposal","message":"Ready","name":"draft","description":"test","body":"Instructions"}"""))
+                })
+            }.toString(), false)
             emit("""{"type":"turn.completed"}""", false)
             ProcessResult(0, true)
         }, journal, output)
@@ -374,7 +380,7 @@ class RunCoordinatorTest {
         runCurrent()
         val snapshot = (runtime.observe(id).first() as RuntimeUpdate.Baseline).snapshot
         assertEquals(RunPhase.SUCCEEDED, snapshot.phase)
-        assertEquals("---\nname: draft\ndescription: test\n---\nInstructions\n", output.content[snapshot.artifacts.single()])
+        assertEquals(SkillDocument.manual("draft", "test", "Instructions").markdown, output.content[snapshot.artifacts.single()])
         val artifactIndex = journal.events.indexOfFirst { it.payload is RuntimeEvent.ArtifactAvailable }
         assertTrue(artifactIndex >= 0)
         assertTrue(artifactIndex < journal.events.indexOfFirst { it.payload is RuntimeEvent.RunFinished })
@@ -383,7 +389,13 @@ class RunCoordinatorTest {
         for ((purpose, exit) in listOf(RequestedOutput.TEXT to 0, RequestedOutput.SKILL_PROPOSAL to 1)) {
             val journal = MemoryJournal()
             val runtime = RunCoordinator(backgroundScope, environment, process { _, _, emit ->
-                emit("""{"type":"item.completed","item":{"id":"proposal","type":"agent_message","text":"````SKILL.md\nbody\n````"}}""", false)
+            emit(kotlinx.serialization.json.buildJsonObject {
+                put("type", kotlinx.serialization.json.JsonPrimitive("item.completed"))
+                put("item", kotlinx.serialization.json.buildJsonObject {
+                    put("id", kotlinx.serialization.json.JsonPrimitive("proposal")); put("type", kotlinx.serialization.json.JsonPrimitive("agent_message"))
+                    put("text", kotlinx.serialization.json.JsonPrimitive("""{"kind":"proposal","message":"Ready","name":"draft","description":"test","body":"Instructions"}"""))
+                })
+            }.toString(), false)
                 emit("""{"type":"turn.completed"}""", false)
                 ProcessResult(exit, true)
             }, journal, MemoryOutput())
@@ -391,6 +403,22 @@ class RunCoordinatorTest {
             runCurrent()
             assertTrue(journal.states.getValue(id).artifacts.isEmpty())
         }
+    }
+
+    @Test fun `skill request with only freeform response fails despite zero exit and CLI completion`() = runTest {
+        val journal = MemoryJournal()
+        val runtime = RunCoordinator(backgroundScope, environment, process { _, _, emit ->
+            emit("""{"type":"item.completed","item":{"id":"m","type":"agent_message","text":"ordinary skill description"}}""", false)
+            emit("""{"type":"turn.completed"}""", false)
+            ProcessResult(0, true)
+        }, journal, MemoryOutput())
+        runtime.recover()
+        val id = (runtime.submit(request().copy(requestedOutput = RequestedOutput.SKILL_PROPOSAL)) as SubmitResult.Accepted).runId
+        runCurrent()
+        val snapshot = journal.states.getValue(id)
+        assertEquals(RunPhase.FAILED, snapshot.phase)
+        assertTrue(snapshot.artifacts.isEmpty())
+        assertEquals(ErrorCode.PROTOCOL_ERROR, snapshot.terminalEvidence?.error?.code)
     }
     @Test fun `disk admission failure never starts process`() = runTest {
         val journal = MemoryJournal(); var started = false
