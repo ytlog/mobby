@@ -1,0 +1,19 @@
+name: Runtime and architecture checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  runtime-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check module boundaries and bootstrap preparation
+        run: python3 -m unittest discover -s runtime -p 'test_*.py'
+      - name: Check native gateway bridge behavior
+        run: node --test runtime/gateway-tests/bridge.test.cjs

@@ -1,4 +1,4 @@
-"""Enforce production module boundaries as the staged UI/runtime migration progresses."""
+"""Enforce the implemented production UI/runtime module boundaries."""
 from pathlib import Path
 import re
 import unittest
@@ -19,8 +19,7 @@ class ModuleBoundaryTests(unittest.TestCase):
     def test_production_project_dependencies_follow_design(self):
         for module, allowed in ALLOWED.items():
             build = ROOT / module / "build.gradle.kts"
-            if not build.exists():  # Later migration stages are not represented as completed modules.
-                continue
+            self.assertTrue(build.is_file(), f"Required module is missing: {module}")
             dependencies = set(re.findall(r'(?:implementation|api)\(project\(":([^"]+)"\)\)', build.read_text()))
             self.assertFalse(dependencies - allowed, f"{module} has forbidden edges: {dependencies - allowed}")
 
