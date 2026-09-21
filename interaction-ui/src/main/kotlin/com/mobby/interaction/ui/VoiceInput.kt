@@ -14,6 +14,8 @@ import android.speech.SpeechRecognizer
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -99,24 +101,33 @@ private class VoiceCapture(context: Context) {
         lifecycle.addObserver(observer)
         onDispose { alive = false; lifecycle.removeObserver(observer); capture.cancel() }
     }
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    VoiceInputPanel(capture.phase, capture.transcript, capture.error, capture.available,
+        onTranscript = { capture.transcript = it }, onFinish = capture::finish,
+        onInsert = { if (insert(capture.transcript)) onDismiss() else capture.error = "原草稿已改变，未插入文字；请复制转写内容后返回" },
+        onStart = {
+            if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) capture.start()
+            else permission.launch(Manifest.permission.RECORD_AUDIO)
+        }, onDismiss = onDismiss)
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable internal fun VoiceInputPanel(phase: String, transcript: String, error: String?, available: Boolean,
+    onTranscript: (String) -> Unit, onFinish: () -> Unit, onInsert: () -> Unit, onStart: () -> Unit, onDismiss: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("语音输入", style = MaterialTheme.typography.titleLarge)
             Text("使用设备的语音识别服务。转写后可校对，放入输入框后由你发送。", style = MaterialTheme.typography.bodySmall)
-            capture.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-            when (capture.phase) {
-                "recording" -> { Text("正在录音…"); Button(onClick = capture::finish) { Text("结束录音") } }
+            error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            when (phase) {
+                "recording" -> { Text("正在录音…"); Button(onClick = onFinish) { Text("结束录音") } }
                 "transcribing" -> { Text("正在转写…"); LinearProgressIndicator(Modifier.fillMaxWidth()) }
                 "editing" -> {
-                    OutlinedTextField(capture.transcript, { capture.transcript = it }, Modifier.fillMaxWidth(), label = { Text("编辑校对") }, maxLines = 5)
-                    Button(onClick = { if (insert(capture.transcript)) onDismiss() else capture.error = "原草稿已改变，未插入文字；请复制转写内容后返回" }, enabled = capture.transcript.isNotBlank()) { Text("放入输入框") }
+                    OutlinedTextField(transcript, onTranscript, Modifier.fillMaxWidth(), label = { Text("编辑校对") }, maxLines = 5)
+                    Button(onClick = onInsert, enabled = transcript.isNotBlank()) { Text("放入输入框") }
                 }
             }
-            if (capture.phase == "idle" || capture.phase == "editing") Button(onClick = {
-                if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) capture.start()
-                else permission.launch(Manifest.permission.RECORD_AUDIO)
-            }, enabled = capture.available) { Text(if (capture.phase == "editing") "重新录音" else "开始录音") }
-            if (!capture.available) Text("设备没有可用的语音识别服务，请使用文字输入")
+            if (phase == "idle" || phase == "editing") Button(onClick = onStart, enabled = available) { Text(if (phase == "editing") "重新录音" else "开始录音") }
+            if (!available) Text("设备没有可用的语音识别服务，请使用文字输入")
             TextButton(onClick = onDismiss) { Text("取消，保留原草稿") }
         }
     }
