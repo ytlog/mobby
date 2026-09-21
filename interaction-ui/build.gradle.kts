@@ -20,7 +20,7 @@ dependencies {
     implementation("org.commonmark:commonmark-ext-task-list-items:0.30.0")
     implementation(project(":interaction-domain"))
     implementation(platform("androidx.compose:compose-bom:2024.04.01"))
-    implementation("androidx.activity:activity-compose:1.9.0")
+    implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")

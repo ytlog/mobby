@@ -3,7 +3,8 @@ package com.mobby.interaction.ui
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.activity.compose.PredictiveBackHandler
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -76,7 +77,6 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
         else lightColorScheme(background = Color(0xFFFAFAFA), surface = Color(0xFFFAFAFA), surfaceVariant = Color(0xFFE5E7E9), primary = Color(0xFF145BB0))
     LaunchedEffect(vm) { for (message in vm.feedback) snackbar.showSnackbar(message) }
     fun navigate(next: String) { keyboard?.hide(); focus.clearFocus(); drawer = false; route = next }
-    BackHandler(drawer) { drawer = false }
     BackHandler(route != "conversation") { route = when (route) { "gateway", "history-limits", "diagnostic", "archived" -> "settings"; "skills", "plugins" -> "add"; else -> "conversation" } }
     MaterialTheme(colorScheme = colors) {
         val camera = rememberCameraCapture(actions, { captured ->
@@ -87,7 +87,7 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                 val fullWidth = maxWidth
                 val availableHeight = maxHeight
                 val drawerWidth = minOf(360.dp, (fullWidth - 56.dp).coerceAtLeast(0.dp))
-                val progress by animateFloatAsState(if (drawer) 1f else 0f, tween(240), label = "推开式会话抽屉")
+                val progress by rememberDrawerProgress(drawer) { drawer = false }
                 val pixels = with(LocalDensity.current) { drawerWidth.toPx() }
                 if (drawer || progress > 0f) ConversationDrawer(state, vm, onSelect = { c -> vm.enqueue { actions.select(c.id) }; drawer = false },
                     onNew = { drawer = false; dialog = "new" }, onSettings = { navigate("settings") }, onClose = { drawer = false },
@@ -375,4 +375,26 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
 
 @Composable internal fun InteractionViewport(content: @Composable BoxWithConstraintsScope.() -> Unit) {
     BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding().clipToBounds(), content = content)
+}
+
+@Composable internal fun rememberDrawerProgress(open: Boolean, close: () -> Unit): State<Float> {
+    val progress = remember { Animatable(if (open) 1f else 0f) }
+    var predicting by remember { mutableStateOf(false) }
+    var gestureEnd by remember { mutableStateOf(0L) }
+    LaunchedEffect(open, predicting, gestureEnd) {
+        if (!predicting) progress.animateTo(if (open) 1f else 0f, tween(240))
+    }
+    PredictiveBackHandler(open) { events ->
+        predicting = true
+        val start = progress.value
+        try {
+            events.collect { progress.snapTo(start * (1f - it.progress.coerceIn(0f, 1f))) }
+            close()
+        } finally {
+            predicting = false
+            // A start and cancel can occur before a frame observes predicting=true.
+            gestureEnd++
+        }
+    }
+    return progress.asState()
 }

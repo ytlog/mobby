@@ -576,3 +576,13 @@ Room 从 3 升至 4，新增 expired_output_cache 表并保留 1→2→3→4 迁
 193 项相关测试通过且无跳过（engine 45、Android 51、domain 12、data 41、UI 44），APK 构建、App/termux-core 单测与 lint 通过。手机覆盖安装前后运行记录、命令回执、加密网关及保留配置和附件摘要全部一致。font_scale=2 的竖屏/横屏检查均确认静态提示消失；横屏左侧切口为 90px，抽屉入口左边界从 55px 移至 145px，添加入口从 77px 移至 167px。截图确认输入区和右侧图标完整，原字体及旋转设置已恢复。
 
 UIAutomator 的可见根框会比截图物理尺寸小 90px，初次右侧图标 bounds 变窄不能证明视觉裁切；截图与窗口证据纠正了该猜测。本修复针对已由 inset 回归证明的切口遗漏。尚未以本次检查代替三键导航、Android 15 预测返回、全部页面大字体或分屏验收。
+
+## 抽屉预测返回与取消恢复（2026-09-21）
+
+原抽屉只有普通 BackHandler，系统返回进度不会传到共享位移。新增生产使用的 rememberDrawerProgress，通过 PredictiveBackHandler 收集手势，抽屉与会话继续使用同一个 progress；手势正常完成才关闭，取消后恢复展开。MainActivity 显式启用 OnBackInvokedCallback，普通返回仍由同一处理器支持。没有向 Runtime 发送取消或重新提交命令。
+
+回归先复现 40%/75% 返回进度下仍完全展开的问题。接入后又实际复现 Activity Compose 1.9.0 在预测返回完成后，重新打开时普通返回无效；按 [AndroidX Activity 官方修复记录](https://developer.android.com/jetpack/androidx/releases/activity#1.9.1)，将 app 与 interaction-ui 统一升到同系列补丁 1.9.3，纳入后续 disabled 回调修复，不另加应用侧兼容处理。
+
+动画审查增加两个先失败的回归：在下一次 Compose frame 前快速取消会停在 60%；打开动画中途开始返回会从约 13% 跳到 90%。结束序号保证即使 predicting 的 true/false 被同帧合并，也触发恢复；每次手势从当前可见进度开始，避免中途跳位。五项测试覆盖正常取消、快速取消、半开启动、界面关闭时取消、完成及重开后的普通返回；包括可见内容位移断言。
+
+198 项相关测试通过且无跳过（engine 45、Android 51、domain 12、data 41、UI 49），APK 构建、App/termux-core 单测及 lint 通过。Android 13 手机覆盖安装后，原运行记录、命令回执、加密网关及保留设置一致；实际连续两次打开抽屉并系统返回均恢复会话，未清空数据。Android 14+ 的实际预测手势还未验收；已启动使用独立临时数据的 Android 16 模拟器，但记录此检查点时系统服务仍在初始化，不把 Robolectric 事件派发或 Android 13 普通返回当作这项实测通过。
