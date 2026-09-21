@@ -180,42 +180,21 @@ internal data class SkillEditor(val agent: AgentId, val manual: Boolean, val nam
     }
 }
 
-@Composable internal fun SkillProposalDialog(proposal: SkillProposal, vm: ConversationViewModel, sourceAvailable: Boolean, onDismiss: () -> Unit, onSaved: () -> Unit) {
-    var markdown by remember(proposal.ref) { mutableStateOf(proposal.markdown) }
-    var preview by remember(proposal.ref) { mutableStateOf<SkillContent?>(null) }
-    var busy by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
-    fun validate() {
-        busy = true; error = null
-        val content = markdown
-        vm.enqueue {
-            try { when (val result = vm.actions.previewSkill(content)) {
-                is DataResult.Loaded -> preview = result.value
-                is DataResult.Failed -> error = result.message
-            } } finally { busy = false }
-        }
-    }
-    LaunchedEffect(proposal.ref) { validate() }
-    AlertDialog(onDismissRequest = { if (!busy) onDismiss() }, title = { Text("技能草稿 · ${proposal.agent.label()}") }, text = {
+@Composable internal fun SkillProposalDialog(proposal: SkillProposal, vm: ConversationViewModel, sourceAvailable: Boolean, onDismiss: () -> Unit) {
+    val state by vm.skillProposal.collectAsStateWithLifecycle()
+    LaunchedEffect(proposal.ref) { vm.openSkillProposal(proposal) }
+    val editor = state?.takeIf { it.proposal.ref == proposal.ref } ?: return
+    AlertDialog(onDismissRequest = { if (!editor.busy) onDismiss() }, title = { Text("技能草稿 · ${proposal.agent.label()}") }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("确认保存后才会加入技能目录。可在这里修改生成内容。", style = MaterialTheme.typography.bodySmall)
-            if (!sourceAvailable) Text("生成草稿已清理或来源失效，编辑内容仍保留", color = MaterialTheme.colorScheme.error)
-            OutlinedTextField(markdown, { markdown = it; preview = null; error = null }, Modifier.fillMaxWidth(), minLines = 5, maxLines = 10, enabled = !busy)
-            preview?.issues?.forEach { Text(it, color = MaterialTheme.colorScheme.error) }
-            error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-            if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (!sourceAvailable) Text("草稿来源暂不可用，编辑内容仍保留", color = MaterialTheme.colorScheme.error)
+            OutlinedTextField(editor.value, vm::editSkillProposal, Modifier.fillMaxWidth(), minLines = 5, maxLines = 10, enabled = !editor.busy)
+            editor.preview?.issues?.forEach { Text(it, color = MaterialTheme.colorScheme.error) }
+            editor.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            if (editor.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         }
     }, confirmButton = {
-        if (preview == null || preview?.issues?.isNotEmpty() == true) TextButton(onClick = ::validate, enabled = !busy) { Text("校验") }
-        else TextButton(onClick = {
-            busy = true; error = null
-            val content = markdown
-            vm.enqueue {
-                try { when (val saved = vm.actions.saveSkillProposal(proposal, content)) {
-                    is DataResult.Loaded -> { vm.feedback.send("技能已保存"); onSaved() }
-                    is DataResult.Failed -> error = saved.message
-                } } finally { busy = false }
-            }
-        }, enabled = !busy && sourceAvailable) { Text("保存技能") }
-    }, dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("返回，稍后处理") } })
+        if (editor.preview == null || editor.preview.issues.isNotEmpty()) TextButton(onClick = vm::validateSkillProposal, enabled = !editor.busy) { Text("校验") }
+        else TextButton(onClick = vm::saveSkillProposal, enabled = !editor.busy && sourceAvailable) { Text("保存技能") }
+    }, dismissButton = { TextButton(onClick = onDismiss, enabled = !editor.busy) { Text("返回，稍后处理") } })
 }

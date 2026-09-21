@@ -60,7 +60,11 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
     var drawer by rememberSaveable { mutableStateOf(false) }
     val appearance by actions.appearance.collectAsStateWithLifecycle()
     var dialog by rememberSaveable { mutableStateOf<String?>(null) }
-    var skillProposal by remember { mutableStateOf<SkillProposal?>(null) }
+    val skillProposal by vm.skillProposal.collectAsStateWithLifecycle()
+    val skillProposalSaved by vm.skillProposalSaved.collectAsStateWithLifecycle()
+    LaunchedEffect(skillProposalSaved?.operation) {
+        skillProposalSaved?.let { route = "skills"; vm.consumeSkillProposalSaved(it.operation) }
+    }
     var voice by remember { mutableStateOf<ComposerState?>(null) }
     var reading by remember { mutableStateOf<Pair<String, String>?>(null) }
     val snackbar = remember { SnackbarHostState() }
@@ -108,7 +112,7 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                                 state.selected == null -> Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { Button(onClick = { dialog = "new" }) { Text("新建对话") } }
                                 else -> {
                                     val detail = state.selected!!
-                                    key(detail.conversation.id) { Timeline(detail, vm, Modifier.weight(1f), read = { title, text -> reading = title to text }, hostActions = hostActions, proposal = { skillProposal = it }) }
+                                    key(detail.conversation.id) { Timeline(detail, vm, Modifier.weight(1f), read = { title, text -> reading = title to text }, hostActions = hostActions, proposal = vm::openSkillProposal) }
                                     Composer(detail, state, system, vm, onAdd = { navigate("add") }, onVoice = { keyboard?.hide(); voice = vm.composer.value })
                                 }
                             }
@@ -143,7 +147,7 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                         Spacer(Modifier.height(16.dp))
                     }
                 }
-                skillProposal?.let { proposal -> SkillProposalDialog(proposal, vm, sourceAvailable = state.selected?.turns?.any { turn -> turn.skillProposals.any { it.ref == proposal.ref } } == true, onDismiss = { skillProposal = null }, onSaved = { skillProposal = null; route = "skills" }) }
+                skillProposal?.let { editor -> SkillProposalDialog(editor.proposal, vm, sourceAvailable = state.selected?.turns?.any { turn -> turn.skillProposals.any { it.ref == editor.proposal.ref } } == true, onDismiss = vm::dismissSkillProposal) }
                 voice?.let { original -> VoiceInputSheet(onDismiss = { voice = null }, insert = { text -> vm.insertVoice(original, text) }) }
                 reading?.let { (title, text) ->
                     ModalBottomSheet(onDismissRequest = { reading = null }) {

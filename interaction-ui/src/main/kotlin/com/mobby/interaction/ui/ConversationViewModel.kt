@@ -10,6 +10,9 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
 
 internal data class ReadingTarget(val conversation: ConversationId, val key: String, val sequence: Long)
+internal data class SkillProposalEditor(val proposal: SkillProposal, val value: TextFieldValue = TextFieldValue(proposal.markdown),
+    val preview: SkillContent? = null, val busy: Boolean = false, val error: String? = null, val operation: Long = 0)
+internal data class SkillProposalSaved(val operation: Long, val ref: String)
 internal class ConversationViewModel(val actions: InteractionUseCases) : ViewModel() {
     fun importAttachment(id: ConversationId, workspace: String, location: String) = enqueue {
         actions.importAttachment(id, workspace, location)
@@ -49,6 +52,71 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
                     is OperationResult.Failed -> feedback.send(result.message)
                 }
             } finally { permissionBusy.value = permissionBusy.value - key }
+        }
+    }
+    val skillProposal = MutableStateFlow<SkillProposalEditor?>(null)
+    val skillProposalSaved = MutableStateFlow<SkillProposalSaved?>(null)
+    private val retainedSkillProposals = mutableMapOf<String, SkillProposalEditor>()
+    private var proposalOperation = 0L
+    fun openSkillProposal(proposal: SkillProposal) {
+        val current = skillProposal.value
+        if (current?.proposal?.ref == proposal.ref || current?.busy == true) return
+        current?.let { retainedSkillProposals[it.proposal.ref] = it }
+        val retained = retainedSkillProposals.remove(proposal.ref)
+        skillProposal.value = retained?.copy(proposal = proposal) ?: SkillProposalEditor(proposal, operation = ++proposalOperation)
+        if (retained == null) validateSkillProposal()
+    }
+    fun dismissSkillProposal() {
+        val editor = skillProposal.value?.takeUnless { it.busy } ?: return
+        retainedSkillProposals[editor.proposal.ref] = editor
+        skillProposal.value = null
+    }
+    fun consumeSkillProposalSaved(operation: Long) {
+        skillProposalSaved.value?.takeIf { it.operation == operation }?.let { skillProposalSaved.compareAndSet(it, null) }
+    }
+    fun editSkillProposal(value: TextFieldValue) {
+        skillProposal.update { current ->
+            current?.takeUnless { it.busy }?.let {
+                val changed = value.text != it.value.text
+                it.copy(value = value, preview = if (changed) null else it.preview, error = if (changed) null else it.error)
+            } ?: current
+        }
+    }
+    fun validateSkillProposal() {
+        val editor = skillProposal.value?.takeUnless { it.busy } ?: return
+        val operation = ++proposalOperation
+        skillProposal.value = editor.copy(busy = true, error = null, operation = operation)
+        viewModelScope.launch {
+            try {
+                val result = actions.previewSkill(editor.value.text)
+                skillProposal.update { current -> if (current?.operation != operation) current else when (result) {
+                    is DataResult.Loaded -> current.copy(preview = result.value)
+                    is DataResult.Failed -> current.copy(preview = null, error = result.message)
+                } }
+            } catch (e: CancellationException) { throw e }
+            catch (_: Exception) { skillProposal.update { if (it?.operation == operation) it.copy(error = "校验未完成，编辑内容已保留，请重试") else it } }
+            finally { skillProposal.update { if (it?.operation == operation) it.copy(busy = false) else it } }
+        }
+    }
+    fun saveSkillProposal() {
+        val editor = skillProposal.value?.takeUnless { it.busy } ?: return
+        if (editor.preview?.issues?.isEmpty() != true) return
+        val operation = ++proposalOperation
+        skillProposal.value = editor.copy(busy = true, error = null, operation = operation)
+        viewModelScope.launch {
+            try {
+                when (val result = actions.saveSkillProposal(editor.proposal, editor.value.text)) {
+                    is DataResult.Loaded -> {
+                        retainedSkillProposals.remove(editor.proposal.ref)
+                        skillProposal.update { if (it?.operation == operation) null else it }
+                        skillProposalSaved.value = SkillProposalSaved(operation, editor.proposal.ref)
+                        feedback.send("技能已保存")
+                    }
+                    is DataResult.Failed -> skillProposal.update { if (it?.operation == operation) it.copy(error = result.message) else it }
+                }
+            } catch (e: CancellationException) { throw e }
+            catch (_: Exception) { skillProposal.update { if (it?.operation == operation) it.copy(error = "保存结果未确认，编辑内容已保留，请核对技能目录") else it } }
+            finally { skillProposal.update { if (it?.operation == operation) it.copy(busy = false) else it } }
         }
     }
     val skillEditor = MutableStateFlow<SkillEditor?>(null)
