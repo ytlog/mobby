@@ -298,3 +298,18 @@ Runtime 承载用户启动的本地终端和编码 Agent 进程，需在切换�
 新增三项表单测试覆盖跨 Agent 隔离、保存期间禁用、失败后重试状态及临时凭据清零；全部 UI 28 项测试通过。主 APK 已覆盖安装并启动，原加密网关配置摘要一致，未更改真实地址、模型或密钥。此表单修复不作为网关连通性验收证据。
 
 最终主包构建、App/termux-core 单元测试和 lint 均通过；未更改 CLI 或桥接协议，本轮不重复计入此前的模拟网关结果。
+
+
+## 独立网关连通性检查（2026-09-21）
+
+新增 RuntimeAdminClient.validateGateway，通过 Domain/SystemPort/Data 接入配置页。检查只引用保存的 profile ID/version；Runtime 原子读取同版本的加密配置，版本不一致则拒绝，不把密钥交给 UI。版本 0 的有效旧配置仍受支持。检查不创建会话、不占 Agent 执行槽、不写 Runtime 事件或交互数据库。
+
+Android HttpURLConnection 发起非流式、16 token 的小型 Chat/Responses/Messages 请求，地址归一化与既有桥接保持一致。Messages 使用与桥接一致的 Bearer、x-api-key 和版本头；无密钥不加鉴权头。不跟随重定向、不自动重试；只返回 profile 引用、结果枚举与 HTTP 状态，不返回响应正文或异常原文。响应读取限制 64 KiB，连接和读取设 10 秒超时，页面等待限制 30 秒；取消中显示等待状态，底层阻塞 I/O 可能需等读取超时释放，不宣称远端已撤销请求。TLS 保持默认验证。
+
+因项目已支持用户填写的 HTTP 局域网网关，宿主明确允许 Android HTTP 客户端的明文请求，并在配置页补齐 HTTP 风险提示；此配置不放宽 HTTPS 证书验证。依据：[Android 网络安全配置](https://developer.android.com/privacy-and-security/security-config)。协议请求参考：[Messages API](https://platform.claude.com/docs/en/api/overview)、[Responses 输出 token 限制](https://developers.openai.com/api/reference/cli/resources/responses/methods/create)。
+
+保存提示与检查结果独立。检查只针对与当前表单一致的已保存配置；修改字段清除旧结果，检查期间禁用配置修改，允许取消。返回或页面销毁取消等待，迟到成功不回填新页面。HTTP 200 的错误页或错误对象不算通过；达到 token 限制、非正常停止与 Responses incomplete 单独报告，不伪装为完整完成。小请求不携带真实会话内容，页面告知可能产生少量费用；这不代替 CLI 全链路验收。
+
+验证：新增 Runtime HTTP 测试覆盖三协议请求和鉴权、路径归一化、重定向不跟随、HTTP 失败、200 错误响应、64 KiB 边界、超时、请求中的取消、异常信息不外泄与未完整结束。UI 测试覆盖已保存版本、编辑禁用、取消后的迟到响应、修改后结果失效和旧版本 0 配置。API 9、runtime-android 32、Domain 12、Data 29、UI 31，共 113 项相关测试通过；Node 22、Python 8 项通过，主包、辅助测试包、App/termux-core 单元测试及 lint 通过。
+
+主 APK 已覆盖安装并启动。M2007J1SC / Android 13 用现有 Codex 保存配置点击“测试已保存连接”，实际返回“最小协议请求通过”，页面滚动后可看到结果；检查前后在内存中比较加密配置摘要一致。操作只读取已保存配置，没有改地址、模型或密钥，也没有携带用户会话历史。已确认最终 Manifest 保持 applicationId，并包含 HTTP 客户端所需的明文选项。真实 CLI 先前的连接超时尚未排除；Android HTTP 小请求通过只能缩小排查范围，下一步仍需验证 CLI 请求/网络路径及完整任务。

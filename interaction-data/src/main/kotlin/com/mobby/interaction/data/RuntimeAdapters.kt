@@ -176,6 +176,11 @@ internal class RuntimeSystemAdapter(private val context: android.content.Context
         is CapabilityResult.Unavailable -> DomainAgent.values().map { AgentOption(it, emptyMap(), result.error.message(), false, emptySet()) }
         is CapabilityResult.Available -> result.capabilities.agents.map { AgentOption(DomainAgent.valueOf(it.agentId.name), it.models.associate { m -> m.id to m.reasoningLevels }, it.unavailableReason?.message(), it.supportsResume, it.skillCapabilities.map { ref -> ref.value }.toSet(), it.supportsResources, it.supportsImages) }
     }
+    override suspend fun checkGateway(profile: GatewayProfile): DataResult<GatewayCheckReport> =
+        when (val result = admin.validateGateway(GatewayProfileRef(profile.id, profile.version))) {
+            is AdminResult.Failed -> DataResult.Failed(result.error.message())
+            is AdminResult.Success -> DataResult.Loaded(GatewayCheckReport(result.value.outcome == GatewayCheckOutcome.SUCCEEDED, result.value.message()))
+        }
     override suspend fun gateways(): List<GatewayProfile> = when (val result = admin.listGatewayProfiles()) {
         is AdminResult.Success -> result.value.map { GatewayProfile(DomainAgent.valueOf(it.agent.name), it.ref.id, it.ref.version, it.endpoint, it.model, it.protocol.name, it.hasCredential) }
         is AdminResult.Failed -> throw IllegalStateException(result.error.message())
@@ -191,4 +196,22 @@ internal class RuntimeSystemAdapter(private val context: android.content.Context
     override suspend fun stopShell() = diagnostics.stopShell().operation()
     private fun AdminResult<*>.operation(): OperationResult = when (this) { is AdminResult.Success -> OperationResult.Done; is AdminResult.Failed -> OperationResult.Failed(error.message()) }
     private fun CommandResult.operation(): OperationResult = when (this) { CommandResult.Accepted, CommandResult.AlreadyTerminal -> OperationResult.Done; is CommandResult.Rejected -> OperationResult.Failed(error.message()) }
+}
+
+internal fun GatewayCheck.message(): String = when (outcome) {
+    GatewayCheckOutcome.SUCCEEDED -> "最小协议请求通过；尚未验证 CLI、工具调用与会话恢复"
+    GatewayCheckOutcome.HTTP_ERROR -> when (httpStatus) {
+        401, 403 -> "鉴权或访问被拒绝（HTTP $httpStatus），请检查密钥及访问权限"
+        404 -> "请求路径或模型不存在（HTTP 404），请检查地址、协议和模型"
+        429 -> "请求受到限流或额度限制（HTTP 429），请稍后重试并检查额度"
+        in 300..399 -> "网关要求重定向（HTTP $httpStatus）；未转发凭据，请填写最终网关地址"
+        else -> "网关拒绝请求（HTTP $httpStatus），请检查配置或服务状态"
+    }
+    GatewayCheckOutcome.INCOMPLETE_RESPONSE -> "网关已响应，但小型请求未完整结束，可能达到输出上限；不计为检查通过"
+    GatewayCheckOutcome.INVALID_RESPONSE -> "收到的内容不符合所选协议，不能确认连接成功"
+    GatewayCheckOutcome.RESPONSE_TOO_LARGE -> "检查响应超过 64 KiB 上限，未判定成功"
+    GatewayCheckOutcome.DNS_ERROR -> "无法解析网关域名，请检查地址与网络"
+    GatewayCheckOutcome.TLS_ERROR -> "TLS 证书或安全连接校验失败；请检查网关证书与设备时间"
+    GatewayCheckOutcome.TIMEOUT -> "连接或读取网关超时，请检查网络或稍后重试"
+    GatewayCheckOutcome.CONNECTION_ERROR -> "无法完成网络请求，请检查地址、网络和网关状态"
 }

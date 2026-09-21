@@ -14,6 +14,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mobby.interaction.domain.*
+import kotlinx.coroutines.*
 
 @Composable internal fun TextEditDialog(title: String, initial: String, dismiss: () -> Unit, save: (String) -> Unit) {
     var value by rememberSaveable { mutableStateOf(initial) }
@@ -98,11 +99,12 @@ import com.mobby.interaction.domain.*
 @Composable internal fun GatewayPage(vm: ConversationViewModel, back: () -> Unit) {
     val profiles by vm.gateways.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { vm.enqueue { vm.refresh() } }
-    GatewayForm(profiles, vm::enqueue, vm.actions::saveGateway, vm::refresh, back)
+    GatewayForm(profiles, vm::enqueue, vm.actions::saveGateway, vm::refresh, back, vm.actions::checkGateway)
 }
 
 @Composable internal fun GatewayForm(profiles: List<GatewayProfile>, submit: (suspend () -> Unit) -> Unit,
-    save: suspend (GatewayEdit) -> OperationResult, refresh: suspend () -> Unit, back: () -> Unit) {
+    save: suspend (GatewayEdit) -> OperationResult, refresh: suspend () -> Unit, back: () -> Unit,
+    check: suspend (GatewayProfile) -> DataResult<GatewayCheckReport>) {
     var agent by rememberSaveable { mutableStateOf(AgentId.CODEX) }
     var endpoint by remember { mutableStateOf("") }
     var model by remember { mutableStateOf("") }
@@ -112,7 +114,13 @@ import com.mobby.interaction.domain.*
     var keyEdited by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf("") }
     var saving by remember { mutableStateOf(false) }
+    var checking by remember { mutableStateOf(false) }
+    var cancelling by remember { mutableStateOf(false) }
+    var checkJob by remember { mutableStateOf<Job?>(null) }
+    val checkScope = rememberCoroutineScope()
+    val busy = saving || checking
     val profile = profiles.firstOrNull { it.agent == agent }
+    var connectionNotice by remember(profile, endpoint, model, protocol, keyEdited) { mutableStateOf("") }
     LaunchedEffect(agent) { notice = "" }
     LaunchedEffect(agent, profile) {
         endpoint = profile?.endpoint.orEmpty()
@@ -123,15 +131,16 @@ import com.mobby.interaction.domain.*
     Column(Modifier.fillMaxSize()) {
         PageHeader("网关设置", back)
         Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            AgentId.values().forEach { value -> Row { RadioButton(agent == value, { agent = value }, enabled = !saving); TextButton(enabled = !saving, onClick = { agent = value }) { Text(value.label()) } } }
-            listOf("RESPONSES" to "Responses", "MESSAGES" to "Messages", "CHAT" to "Chat Completions").forEach { (value, label) -> Row { RadioButton(protocol == value, { protocol = value; notice = "" }, enabled = !saving); TextButton(enabled = !saving, onClick = { protocol = value; notice = "" }) { Text(label) } } }
-            OutlinedTextField(endpoint, { endpoint = it; notice = "" }, Modifier.fillMaxWidth(), enabled = !saving, label = { Text("网关地址") }, singleLine = true)
-            OutlinedTextField(model, { model = it; notice = "" }, Modifier.fillMaxWidth(), enabled = !saving, label = { Text("模型名称") }, singleLine = true)
+            AgentId.values().forEach { value -> Row { RadioButton(agent == value, { agent = value }, enabled = !busy); TextButton(enabled = !busy, onClick = { agent = value }) { Text(value.label()) } } }
+            listOf("RESPONSES" to "Responses", "MESSAGES" to "Messages", "CHAT" to "Chat Completions").forEach { (value, label) -> Row { RadioButton(protocol == value, { protocol = value; notice = "" }, enabled = !busy); TextButton(enabled = !busy, onClick = { protocol = value; notice = "" }) { Text(label) } } }
+            OutlinedTextField(endpoint, { endpoint = it; notice = "" }, Modifier.fillMaxWidth(), enabled = !busy, label = { Text("网关地址") }, singleLine = true)
+            OutlinedTextField(model, { model = it; notice = "" }, Modifier.fillMaxWidth(), enabled = !busy, label = { Text("模型名称") }, singleLine = true)
             val stored = profile?.hasCredential == true
-            OutlinedTextField(key, { key = it; keyEdited = true; notice = "" }, Modifier.fillMaxWidth(), enabled = !saving, label = { Text(if (stored && !keyEdited) "已保存密钥，输入可替换" else "API Key（无鉴权可留空）") }, visualTransformation = PasswordVisualTransformation(), singleLine = true)
-            if (stored) TextButton(enabled = !saving, onClick = { key = ""; keyEdited = true; notice = "" }) { Text("移除已保存密钥") }
+            OutlinedTextField(key, { key = it; keyEdited = true; notice = "" }, Modifier.fillMaxWidth(), enabled = !busy, label = { Text(if (stored && !keyEdited) "已保存密钥，输入可替换" else "API Key（无鉴权可留空）") }, visualTransformation = PasswordVisualTransformation(), singleLine = true)
+            if (stored) TextButton(enabled = !busy, onClick = { key = ""; keyEdited = true; notice = "" }) { Text("移除已保存密钥") }
             Text("凭据加密保存在设备；保存成功不代表连通性验证通过。", style = MaterialTheme.typography.bodySmall)
-            Button(enabled = !saving, onClick = {
+            if (endpoint.trim().startsWith("http://", ignoreCase = true)) Text("HTTP 会明文传输密钥和内容，仅用于可信网络；建议使用 HTTPS。", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            Button(enabled = !busy, onClick = {
                 val edit = GatewayEdit(agent, endpoint.trim(), model.trim(), protocol, if (keyEdited) key.toCharArray() else null)
                 saving = true; notice = ""
                 submit {
@@ -144,6 +153,29 @@ import com.mobby.interaction.domain.*
                 }
             }) { Text("保存当前配置") }
             if (notice.isNotBlank()) Text(notice)
+            Text("测试连接会用已保存配置发送一个小型模型请求，可能产生少量费用；不验证 CLI、工具或会话恢复。", style = MaterialTheme.typography.bodySmall)
+            val matchesSaved = profile != null && profile.endpoint.isNotBlank() && profile.model.isNotBlank() && !keyEdited &&
+                endpoint.trim() == profile.endpoint && model.trim() == profile.model && protocol == profile.protocol
+            OutlinedButton(enabled = !busy && matchesSaved, onClick = {
+                val target = profile ?: return@OutlinedButton
+                checking = true; cancelling = false; connectionNotice = "正在检查已保存配置…"
+                checkJob = checkScope.launch {
+                    try {
+                        connectionNotice = when (val result = withTimeout(30_000) { check(target) }) {
+                            is DataResult.Loaded -> result.value.message
+                            is DataResult.Failed -> result.message
+                        }
+                    } catch (_: TimeoutCancellationException) { connectionNotice = "检查超时，未判定成功" }
+                    catch (e: CancellationException) { connectionNotice = "检查已取消，未判定成功"; throw e }
+                    catch (_: Exception) { connectionNotice = "连接检查未完成，请稍后重试" }
+                    finally { checking = false; cancelling = false; checkJob = null }
+                }
+            }) { Text("测试已保存连接") }
+            if (checking) TextButton(enabled = !cancelling, onClick = {
+                cancelling = true; connectionNotice = "正在取消检查…"; checkJob?.cancel()
+            }) { Text("取消检查") }
+            if (!matchesSaved && !busy) Text("请先保存当前修改，再测试连接。", style = MaterialTheme.typography.bodySmall)
+            if (connectionNotice.isNotBlank()) Text(connectionNotice)
         }
     }
 }

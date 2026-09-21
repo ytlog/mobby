@@ -23,7 +23,11 @@ sealed interface AdminResult<out T> {
     data class Success<T>(val value: T) : AdminResult<T>
     data class Failed(val error: RuntimeError) : AdminResult<Nothing>
 }
+enum class GatewayCheckOutcome { SUCCEEDED, HTTP_ERROR, INCOMPLETE_RESPONSE, INVALID_RESPONSE, RESPONSE_TOO_LARGE, DNS_ERROR, TLS_ERROR, TIMEOUT, CONNECTION_ERROR }
+/** Contains no response body, endpoint or credential. A small protocol request is not a CLI acceptance test. */
+data class GatewayCheck(val profile: GatewayProfileRef, val outcome: GatewayCheckOutcome, val httpStatus: Int? = null)
 interface RuntimeAdminClient {
+    suspend fun validateGateway(profile: GatewayProfileRef): AdminResult<GatewayCheck>
     suspend fun previewResource(ref: ResourceRef, workspace: WorkspaceRef, expanded: Boolean): AdminResult<ResourcePreview>
     suspend fun importResource(request: ImportResourceRequest): AdminResult<ResourceSummary>
     suspend fun resource(ref: ResourceRef, workspace: WorkspaceRef): AdminResult<ResourceSummary>

@@ -27,6 +27,7 @@ class RoomInteractionRepositoryTest {
     private var retainedGrants = emptySet<String>()
     private val importStarted = CompletableDeferred<Unit>()
     private val system = object : SystemPort {
+        override suspend fun checkGateway(profile: GatewayProfile): DataResult<GatewayCheckReport> = DataResult.Failed("unused")
         override suspend fun beginCapture(conversation: String, workspace: String): DataResult<CameraCapture> = DataResult.Failed("unused")
         override suspend fun capture(): DataResult<CameraCapture?> = DataResult.Loaded(null)
         override suspend fun finishCapture(id: String, success: Boolean): DataResult<CameraCapture?> = DataResult.Loaded(null)

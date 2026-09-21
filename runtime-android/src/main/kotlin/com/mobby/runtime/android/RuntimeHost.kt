@@ -72,6 +72,7 @@ class RuntimeHost(context: Context, notification: () -> PendingIntent) {
         override suspend fun importSkill(agent: AgentId, markdown: String) = connected()?.importSkill(agent, markdown) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
         override suspend fun saveManualSkill(request: ManualSkillRequest) = connected()?.saveManualSkill(request) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
         override suspend fun initialize() = connected()?.initialize() ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
+        override suspend fun validateGateway(profile: GatewayProfileRef) = connected()?.validateGateway(profile) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
         override suspend fun listGatewayProfiles() = connected()?.listGatewayProfiles() ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
         override suspend fun saveGatewayProfile(request: SaveGatewayRequest) = connected()?.saveGatewayProfile(request) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
     }

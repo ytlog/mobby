@@ -125,6 +125,21 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
             catch (_: Exception) { return AdminResult.Failed(RuntimeError(ErrorCode.INVALID_CONFIG)) }
         return importSkill(request.agent, preview.markdown)
     }
+    override suspend fun validateGateway(profile: GatewayProfileRef): AdminResult<GatewayCheck> {
+        val config = try {
+            withContext(Dispatchers.IO) {
+                val mode = when (profile.id) { "CODEX" -> AgentMode.CODEX; "CLAUDE" -> AgentMode.CLAUDE; else -> error("invalid profile") }
+                val (version, saved) = GatewayStore(this@RuntimeService).snapshot(mode)
+                require(version == profile.version)
+                saved.validate()
+                saved
+            }
+        } catch (e: CancellationException) { throw e }
+        catch (_: Exception) { return AdminResult.Failed(RuntimeError(ErrorCode.INVALID_CONFIG)) }
+        return try { AdminResult.Success(GatewayProbe().check(profile, config)) }
+        catch (e: CancellationException) { throw e }
+        catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.PROTOCOL_ERROR, true)) }
+    }
     override suspend fun listGatewayProfiles(): AdminResult<List<GatewayProfileSummary>> = withContext(Dispatchers.IO) {
         try { AdminResult.Success(listOf(AgentMode.CODEX, AgentMode.CLAUDE).map { summary(it) }) }
         catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.INVALID_CONFIG)) }

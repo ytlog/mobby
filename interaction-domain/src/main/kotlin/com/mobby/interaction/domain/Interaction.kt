@@ -25,6 +25,7 @@ data class InteractionState(
 }
 data class AgentOption(val agent: AgentId, val models: Map<String, Set<String>>, val unavailable: String?, val resume: Boolean, val skills: Set<String>, val resources: Boolean = false, val images: Boolean = false)
 data class GatewayProfile(val agent: AgentId, val id: String, val version: Long, val endpoint: String, val model: String, val protocol: String, val hasCredential: Boolean)
+data class GatewayCheckReport(val passed: Boolean, val message: String)
 class GatewayEdit(val agent: AgentId, val endpoint: String, val model: String, val protocol: String, val credential: CharArray?) {
     override fun toString() = "GatewayEdit(agent=$agent)"
 }
@@ -62,6 +63,7 @@ interface SystemPort {
     val status: Flow<SystemStatus>
     val diagnostic: Flow<DiagnosticOutput>
     suspend fun agents(): List<AgentOption>
+    suspend fun checkGateway(profile: GatewayProfile): DataResult<GatewayCheckReport>
     suspend fun gateways(): List<GatewayProfile>
     suspend fun saveGateway(edit: GatewayEdit): OperationResult
     suspend fun initialize(): OperationResult
@@ -175,6 +177,7 @@ class InteractionUseCases(
     suspend fun restoreDraft(id: ConversationId, turn: Turn) = repository.restoreDraft(id, turn.userText, turn.attachments)
     suspend fun removeAttachment(id: ConversationId, ref: String) = repository.setAttachment(id, ref, false)
     suspend fun agents() = system.agents()
+    suspend fun checkGateway(profile: GatewayProfile) = system.checkGateway(profile)
     suspend fun gateways() = system.gateways()
     suspend fun saveGateway(edit: GatewayEdit): OperationResult {
         val result = system.saveGateway(edit)
