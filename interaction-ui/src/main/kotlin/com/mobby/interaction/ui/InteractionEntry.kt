@@ -37,7 +37,7 @@ import kotlin.math.roundToInt
 class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String, String) -> Unit, val appearance: (Boolean) -> Unit)
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable fun InteractionEntry(actions: InteractionUseCases, hostActions: InteractionHostActions) {
+@Composable fun InteractionEntry(actions: InteractionUseCases, hostActions: InteractionHostActions, conversationNavigation: String? = null) {
     val factory = remember(actions) { object : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST") override fun <T : ViewModel> create(modelClass: Class<T>): T = ConversationViewModel(actions) as T
     } }
@@ -71,6 +71,19 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
     val snackbar = remember { SnackbarHostState() }
     val keyboard = LocalSoftwareKeyboardController.current
     val focus = LocalFocusManager.current
+    var consumedNavigation by rememberSaveable { mutableStateOf<String?>(null) }
+    LaunchedEffect(conversationNavigation) {
+        if (conversationNavigation != null && conversationNavigation != consumedNavigation) {
+            keyboard?.hide()
+            focus.clearFocus()
+            drawer = false
+            dialog = null
+            reading = null
+            voice = null
+            route = "conversation"
+            consumedNavigation = conversationNavigation
+        }
+    }
     val dark = appearance == Appearance.DARK || appearance == Appearance.SYSTEM && isSystemInDarkTheme()
     LaunchedEffect(dark) { hostActions.appearance(dark) }
     val colors = if (dark) darkColorScheme(background = Color(0xFF111213), surface = Color(0xFF111213), surfaceVariant = Color(0xFF2C2E30), primary = Color(0xFF80BAFF))
