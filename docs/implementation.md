@@ -748,3 +748,11 @@ UI 全部 61 项测试通过，无失败或跳过。本轮仅测试与记录变�
 交互原型 startSkillConversation 明确使用 source.project，但领域创建逻辑此前没有设置项目。新增断言在旧代码上以“期望 Project A，实际 null”失败；修复为直接继承当前项目，继续使用原配置与工作区，新建独立草稿并绑定 Creator，不复用原 session 或附件。其余会话构造入口也已核对项目处理。
 
 116 项相关测试通过且无跳过（domain 13、data 41、UI 62），离线 APK 构建、App/termux-core 单测任务及 lint 通过。手机覆盖安装时 Runtime 记录、命令、加密网关及保留设置摘要一致。真实界面从带文字和图片的项目会话进入技能页，点击“与 mobby 对话创建”：新会话项目、工作区与 Agent 均正确，预填文字及末尾选区正确，Creator 绑定存在，没有原 session、历史或附件。明确跳转回原会话后，完整会话状态与创建前一致。测试未提交模型任务，验收草稿保留。
+
+## 修复旋转重放旧会话链接（2026-09-21）
+
+MainActivity.onCreate 此前每次都消费启动 Intent 的 conversationId；用户从链接进入会话 A 后切到 B，Activity 旋转重建会再次选择 A，覆盖用户当前会话。Android 13 真机先复现：显式链接打开带验收草稿的 A，再从界面新建 B，横屏后选择确实回到 A。
+
+仅首次创建 Activity 时处理初始链接，savedInstanceState 恢复时沿用持久的当前会话；onNewIntent 仍处理新到达的明确链接。修复后覆盖安装，用同样操作确认横屏后仍为 B；随后新的显式链接能返回 A，原文字与图片仍在。手机旋转设置已恢复，测试没有发送模型任务。
+
+新增 ConversationNavigationTest 仪器回归，覆盖打开 A、用户选择 B、Activity 重建保持 B、新链接仍打开 A；使用独立空会话并在 finally 标记删除、恢复原选择。测试 APK 编译通过，但手机拒绝安装额外测试包（INSTALL_FAILED_USER_RESTRICTED），因此未声称此仪器用例执行通过，也未修改手机安全设置；上述前后对照使用已安装生产应用和实际旋转完成。离线应用/测试 APK 构建、App 单测任务与 lint 通过，覆盖安装的 Runtime 记录、命令、加密网关及保留设置摘要一致。

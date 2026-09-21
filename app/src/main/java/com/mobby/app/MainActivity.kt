@@ -20,7 +20,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        openConversation(intent)
+        if (savedInstanceState == null) openConversation(intent)
         val host = InteractionHostActions(share = { text ->
             startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text), "分享消息"))
         }, shortcut = { id, title ->
