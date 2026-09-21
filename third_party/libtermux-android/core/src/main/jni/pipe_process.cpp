@@ -20,7 +20,7 @@ static std::vector<std::string> strings(JNIEnv* env, jobjectArray values) {
     return result;
 }
 extern "C" JNIEXPORT jintArray JNICALL
-Java_com_libtermux_executor_PipeProcess_spawn(JNIEnv* env, jobject, jobjectArray args, jobjectArray environment, jstring directory) {
+Java_com_libtermux_executor_PipeProcess_spawn(JNIEnv* env, jobject, jobjectArray args, jobjectArray environment, jstring directory, jboolean withInput) {
     auto arguments = strings(env, args);
     auto variables = strings(env, environment);
     std::vector<char*> argv, envp;
@@ -30,15 +30,20 @@ Java_com_libtermux_executor_PipeProcess_spawn(JNIEnv* env, jobject, jobjectArray
     const char* raw = env->GetStringUTFChars(directory, nullptr);
     std::string cwd(raw);
     env->ReleaseStringUTFChars(directory, raw);
-    int out[2], err[2];
+    int out[2], err[2], in[2] = {-1, -1};
     if (pipe2(out, O_CLOEXEC) != 0) return nullptr;
     if (pipe2(err, O_CLOEXEC) != 0) { close(out[0]); close(out[1]); return nullptr; }
+    if (withInput && pipe2(in, O_CLOEXEC) != 0) {
+        close(out[0]); close(out[1]); close(err[0]); close(err[1]); return nullptr;
+    }
     pid_t pid = fork();
     if (pid == 0) {
         if (setsid() < 0) _exit(126);
-        int input = open("/dev/null", O_RDONLY);
-        dup2(input, STDIN_FILENO); close(input);
-        dup2(out[1], STDOUT_FILENO); dup2(err[1], STDERR_FILENO);
+        int input = withInput ? in[0] : open("/dev/null", O_RDONLY);
+        if (input < 0 || dup2(input, STDIN_FILENO) < 0 ||
+            dup2(out[1], STDOUT_FILENO) < 0 || dup2(err[1], STDERR_FILENO) < 0) _exit(126);
+        close(input);
+        if (withInput) close(in[1]);
         close(out[0]); close(out[1]); close(err[0]); close(err[1]);
         if (chdir(cwd.c_str()) == 0) execve(argv[0], argv.data(), envp.data());
         const char message[] = "Runtime exec failed: check executable path, ABI, interpreter and Android execution permissions.\n";
@@ -46,10 +51,11 @@ Java_com_libtermux_executor_PipeProcess_spawn(JNIEnv* env, jobject, jobjectArray
         _exit(127);
     }
     close(out[1]); close(err[1]);
-    if (pid < 0) { close(out[0]); close(err[0]); return nullptr; }
-    jint values[] = {pid, out[0], err[0]};
-    auto result = env->NewIntArray(3);
-    env->SetIntArrayRegion(result, 0, 3, values);
+    if (withInput) close(in[0]);
+    if (pid < 0) { close(out[0]); close(err[0]); if (withInput) close(in[1]); return nullptr; }
+    jint values[] = {pid, out[0], err[0], in[1]};
+    auto result = env->NewIntArray(4);
+    env->SetIntArrayRegion(result, 0, 4, values);
     return result;
 }
 extern "C" JNIEXPORT jint JNICALL

@@ -374,3 +374,11 @@ MOBBY_TEST_ADB=/path/to/adb node runtime/gateway-tests/android-codex-network.cjs
 可执行命令：`MOBBY_TEST_CLAUDE_JS=/path/to/cli.js node runtime/gateway-tests/approval-smoke.cjs`；手机改用 `MOBBY_TEST_ADB=/path/to/adb`。后续按既有架构接通双向进程通道、Runtime 持久审批状态与 request/run/revision 校验、Domain/Data 操作和 UI 待审批卡片，并覆盖取消、重启失效与重复决定。Codex 沙箱架构选择仍独立待定，不阻止 Claude 审批接入。
 
 依据：[官方审批与用户输入说明](https://code.claude.com/docs/en/agent-sdk/user-input)、[官方 Python SDK 控制协议实现](https://github.com/anthropics/claude-agent-sdk-python/blob/main/src/claude_agent_sdk/_internal/query.py)。没有安装 SDK 或调用真实模型服务；本检查点只增加测试和实施记录，没有更新 APK。
+
+## 双向 JNI 进程输入通道（2026-09-21）
+
+手机回归先确认原 JNI 只返回 pid/stdout/stderr，无法将审批决定写入运行中的 CLI。PipeProcess.spawn 新增可选 stdin 管道，CommandExecutor.executeArgsStreaming 接收可选 Flow<ByteArray>；没有输入的调用继续使用 /dev/null。输入在 IO 协程写入并保留管道反压，输入流正常结束才关闭 stdin，写入失败如实传递。进程退出或取消时停止输入协程、结束进程组并回收读写描述符；退出前等待写入协程收尾，避免遗漏已发生的写入错误。没有引入协议转换或自动审批。
+
+新增 runtime/native-tests/pipe_process_smoke.py，在应用 UID 下加载已安装 APK 的真实 JNI 库，不安装测试 APK、不读取真实配置。四项手机检查通过：两次交互与输入 EOF；默认关闭输入；等待输入时取消得到非零退出；子进程不读取时写满管道，再取消进程组，确认写入线程退出并收到 IOException。升级会改变 APK 安装路径，因此探针从当前安装包定位 native 库，不依赖应用启动前尚未刷新的 HOME 符号链接。探针只使用独立临时目录，并清理本次进程和文件。
+
+JDK 17 下主 APK 构建、相关单测与 lint 通过；覆盖安装前后内存比较加密网关配置摘要一致。手机探针直接验证 JNI/Android 管道行为，没有覆盖完整 Kotlin Flow 生命周期、应用审批状态机或 Compose 审批操作；这些仍需后续接通验证。当前 supportsApproval 仍为 false，不能把底层通道完成视为应用审批功能完成。

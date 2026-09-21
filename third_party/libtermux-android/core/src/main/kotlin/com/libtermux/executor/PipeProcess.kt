@@ -13,19 +13,21 @@ import kotlin.concurrent.thread
 /** argv execution, concurrent bounded UTF-8 streams and an isolated process group. */
 object PipeProcess {
     init { System.loadLibrary("libtermux_jni") }
-    private external fun spawn(args: Array<String>, environment: Array<String>, directory: String): IntArray?
+    private external fun spawn(args: Array<String>, environment: Array<String>, directory: String, withInput: Boolean): IntArray?
     private external fun poll(pid: Int): Int
     private external fun reap(pid: Int)
     private external fun signalGroup(pid: Int, signal: Int)
 
     fun stream(args: List<String>, directory: File, environment: Map<String, String>, timeoutMs: Long,
-        onStarted: (Int) -> Unit = {}, onTerminated: (Int?) -> Unit = {}): Flow<OutputLine> = channelFlow {
+        onStarted: (Int) -> Unit = {}, onTerminated: (Int?) -> Unit = {},
+        input: Flow<ByteArray>? = null): Flow<OutputLine> = channelFlow {
         require(args.isNotEmpty() && args.none { '\u0000' in it })
-        val child = spawn(args.toTypedArray(), environment.map { "${it.key}=${it.value}" }.toTypedArray(), directory.absolutePath)
+        val child = spawn(args.toTypedArray(), environment.map { "${it.key}=${it.value}" }.toTypedArray(), directory.absolutePath, input != null)
             ?: error("Unable to create runtime process")
         val pid = child[0]
         val stdout = ParcelFileDescriptor.AutoCloseInputStream(ParcelFileDescriptor.adoptFd(child[1]))
         val stderr = ParcelFileDescriptor.AutoCloseInputStream(ParcelFileDescriptor.adoptFd(child[2]))
+        val stdin = if (child[3] >= 0) ParcelFileDescriptor.AutoCloseOutputStream(ParcelFileDescriptor.adoptFd(child[3])) else null
         val failure = AtomicReference<Throwable?>()
         fun reader(input: InputStream, error: Boolean) = thread(isDaemon = true) {
             try {
@@ -35,6 +37,14 @@ object PipeProcess {
             } catch (e: Throwable) { failure.compareAndSet(null, e) }
         }
         val readers = listOf(reader(stdout, false), reader(stderr, true))
+        val writer = if (input != null && stdin != null) launch(Dispatchers.IO) {
+            try {
+                stdin.use { output -> input.collect { bytes -> output.write(bytes); output.flush() } }
+            } catch (e: CancellationException) {
+                // Upstream cancellation is a failure; our own exit/cleanup cancellation is expected.
+                if (currentCoroutineContext().isActive) failure.compareAndSet(null, e)
+            } catch (e: Throwable) { failure.compareAndSet(null, e) }
+        } else null
         var reaped = false
         var exitCode: Int? = null
         try {
@@ -50,12 +60,14 @@ object PipeProcess {
                 }
                 // A completed task must not leave ordinary descendants holding the pipes open.
                 signalGroup(pid, 9)
+                writer?.cancelAndJoin()
                 while (readers.any { it.isAlive }) { delay(10) }
                 failure.get()?.let { throw it }
                 send(OutputLine.Exit(exit))
             }
         } finally {
             withContext(NonCancellable + Dispatchers.IO) {
+                writer?.cancel()
                 signalGroup(pid, 15)
                 if (!reaped) {
                     repeat(20) {
@@ -64,7 +76,8 @@ object PipeProcess {
                 }
                 signalGroup(pid, 9)
                 if (!reaped) { repeat(40) { if (!reaped) { val observed = poll(pid); reaped = observed >= 0; if (reaped) exitCode = observed; if (!reaped) delay(25) } } }
-                stdout.close(); stderr.close()
+                stdin?.close(); stdout.close(); stderr.close()
+                writer?.join()
                 readers.forEach { it.join(200) }
                 if (reaped) reap(pid)
                 onTerminated(exitCode)
