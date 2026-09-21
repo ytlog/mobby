@@ -97,6 +97,12 @@ import com.mobby.interaction.domain.*
 }
 @Composable internal fun GatewayPage(vm: ConversationViewModel, back: () -> Unit) {
     val profiles by vm.gateways.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) { vm.enqueue { vm.refresh() } }
+    GatewayForm(profiles, vm::enqueue, vm.actions::saveGateway, vm::refresh, back)
+}
+
+@Composable internal fun GatewayForm(profiles: List<GatewayProfile>, submit: (suspend () -> Unit) -> Unit,
+    save: suspend (GatewayEdit) -> OperationResult, refresh: suspend () -> Unit, back: () -> Unit) {
     var agent by rememberSaveable { mutableStateOf(AgentId.CODEX) }
     var endpoint by remember { mutableStateOf("") }
     var model by remember { mutableStateOf("") }
@@ -106,31 +112,35 @@ import com.mobby.interaction.domain.*
     var keyEdited by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf("") }
     var saving by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { vm.enqueue { vm.refresh() } }
-    LaunchedEffect(agent, profiles) {
-        profiles.firstOrNull { it.agent == agent }?.let { endpoint = it.endpoint; model = it.model; protocol = it.protocol; key = ""; keyEdited = false }
+    val profile = profiles.firstOrNull { it.agent == agent }
+    LaunchedEffect(agent) { notice = "" }
+    LaunchedEffect(agent, profile) {
+        endpoint = profile?.endpoint.orEmpty()
+        model = profile?.model.orEmpty()
+        protocol = profile?.protocol ?: if (agent == AgentId.CLAUDE_CODE) "MESSAGES" else "RESPONSES"
+        key = ""; keyEdited = false
     }
     Column(Modifier.fillMaxSize()) {
         PageHeader("网关设置", back)
         Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            AgentId.values().forEach { value -> Row { RadioButton(agent == value, { if (!saving) agent = value }); TextButton(enabled = !saving, onClick = { agent = value }) { Text(value.label()) } } }
-            listOf("RESPONSES" to "Responses", "MESSAGES" to "Messages", "CHAT" to "Chat Completions").forEach { (value, label) -> Row { RadioButton(protocol == value, { protocol = value }); TextButton(onClick = { protocol = value }) { Text(label) } } }
-            OutlinedTextField(endpoint, { endpoint = it }, Modifier.fillMaxWidth(), label = { Text("网关地址") }, singleLine = true)
-            OutlinedTextField(model, { model = it }, Modifier.fillMaxWidth(), label = { Text("模型名称") }, singleLine = true)
-            val stored = profiles.firstOrNull { it.agent == agent }?.hasCredential == true
-            OutlinedTextField(key, { key = it; keyEdited = true }, Modifier.fillMaxWidth(), label = { Text(if (stored && !keyEdited) "已保存密钥，输入可替换" else "API Key（无鉴权可留空）") }, visualTransformation = PasswordVisualTransformation(), singleLine = true)
-            if (stored) TextButton(onClick = { key = ""; keyEdited = true }) { Text("移除已保存密钥") }
+            AgentId.values().forEach { value -> Row { RadioButton(agent == value, { agent = value }, enabled = !saving); TextButton(enabled = !saving, onClick = { agent = value }) { Text(value.label()) } } }
+            listOf("RESPONSES" to "Responses", "MESSAGES" to "Messages", "CHAT" to "Chat Completions").forEach { (value, label) -> Row { RadioButton(protocol == value, { protocol = value; notice = "" }, enabled = !saving); TextButton(enabled = !saving, onClick = { protocol = value; notice = "" }) { Text(label) } } }
+            OutlinedTextField(endpoint, { endpoint = it; notice = "" }, Modifier.fillMaxWidth(), enabled = !saving, label = { Text("网关地址") }, singleLine = true)
+            OutlinedTextField(model, { model = it; notice = "" }, Modifier.fillMaxWidth(), enabled = !saving, label = { Text("模型名称") }, singleLine = true)
+            val stored = profile?.hasCredential == true
+            OutlinedTextField(key, { key = it; keyEdited = true; notice = "" }, Modifier.fillMaxWidth(), enabled = !saving, label = { Text(if (stored && !keyEdited) "已保存密钥，输入可替换" else "API Key（无鉴权可留空）") }, visualTransformation = PasswordVisualTransformation(), singleLine = true)
+            if (stored) TextButton(enabled = !saving, onClick = { key = ""; keyEdited = true; notice = "" }) { Text("移除已保存密钥") }
             Text("凭据加密保存在设备；保存成功不代表连通性验证通过。", style = MaterialTheme.typography.bodySmall)
             Button(enabled = !saving, onClick = {
                 val edit = GatewayEdit(agent, endpoint.trim(), model.trim(), protocol, if (keyEdited) key.toCharArray() else null)
-                saving = true
-                vm.enqueue {
+                saving = true; notice = ""
+                submit {
                     try {
-                        when (val result = vm.actions.saveGateway(edit)) {
-                            OperationResult.Done -> { notice = "配置已保存，尚未测试连接"; key = ""; keyEdited = false; vm.refresh() }
+                        when (val result = save(edit)) {
+                            OperationResult.Done -> { notice = "配置已保存，尚未测试连接"; key = ""; keyEdited = false; refresh() }
                             is OperationResult.Failed -> notice = result.message
                         }
-                    } finally { saving = false }
+                    } finally { edit.credential?.fill('\u0000'); saving = false }
                 }
             }) { Text("保存当前配置") }
             if (notice.isNotBlank()) Text(notice)
