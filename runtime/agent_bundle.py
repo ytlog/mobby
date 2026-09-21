@@ -84,11 +84,21 @@ def add_agents(root, files, links, ndk):
                     if member.isfile() and not name.startswith('vendor/'):
                         files['lib/node_modules/@anthropic-ai/claude-code/' + name] = archive.extractfile(member).read()
             else:
-                candidates = [m for m in archive if m.isfile() and (m.name.endswith('/codex/codex') or m.name.endswith('/bin/codex')) and 'aarch64-unknown-linux-musl' in m.name]
-                if len(candidates) != 1:
-                    raise ValueError('Expected one official static musl Codex binary')
-                files['bin/codex'] = archive.extractfile(candidates[0]).read()
-                links.pop('bin/codex', None)
+                # The sandbox launcher searches PATH before package-relative resources.
+                # Install the official helper beside the CLI; do not disable its sandbox.
+                for source_name, target in [('bin/codex', 'bin/codex'), ('codex-resources/bwrap', 'bin/bwrap')]:
+                    name = 'package/vendor/aarch64-unknown-linux-musl/' + source_name
+                    try:
+                        member = archive.getmember(name)
+                    except KeyError as error:
+                        raise ValueError('Missing required Codex program: ' + source_name) from error
+                    if not member.isfile():
+                        raise ValueError('Expected regular Codex program: ' + source_name)
+                    payload = archive.extractfile(member).read()
+                    if not payload.startswith(b'\x7fELF'):
+                        raise ValueError('Expected ELF Codex program: ' + source_name)
+                    files[target] = payload
+                    links.pop(target, None)
     if not ndk:
         raise ValueError('NDK path required to build Android CLI launchers')
     host = 'darwin-x86_64' if platform.system() == 'Darwin' else 'linux-x86_64'

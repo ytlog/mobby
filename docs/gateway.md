@@ -33,12 +33,13 @@ API Key 和保存配置使用 Android Keystore AES-GCM 加密。桥接不主动�
 - 请求上限 16 MiB，每次上游请求超时 5 分钟，整个任务仍受 Runtime 10 分钟限制。响应采用背压流式传输。
 - 压缩请求明确返回 415；当前固定 CLI 在自定义 provider 配置下发送普通 JSON。未支持的接口返回 404，不伪造能力响应。
 - App 图片导入目前只支持受控 PNG/JPEG；拍照、真实视觉模型和不同厂商相机仍需全链路验收。
+- 当前 M2007J1SC / Android 13 内核未启用 USER_NS/PID_NS，Codex 所需的 Linux 沙箱无法运行；官方 bwrap 已补齐，但工具执行门槛仍失败。不能把文本模型响应通过解释为完整 Agent 可用。
 - 旧 Linux musl Codex 裸程序在本机 Android 缺少可用的域名解析路径。统一桥接将联网交由 Android Node，没有修改 Codex 二进制或关闭沙箱。裸程序单独执行仍不等于 App 执行路径。
 
 ## 验证命令
 
 - `node --test runtime/gateway-tests/bridge.test.cjs`：同协议字段/流完整性、辅助接口、鉴权、拒绝转换、输入限制、取消、断流与错误脱敏。
-- `MOBBY_TEST_ADB=/path/to/adb node runtime/gateway-tests/android-codex-network.cjs`：已安装 App 的实际启动脚本与内置 Codex，比较 IP/域名上游。独立 HOME、虚假密钥、adb reverse 本地模拟服务；不改真实配置。可用 `MOBBY_TEST_TOOL=1` 增加设备 shell 读取与回传门槛（当前因缺少 bwrap 失败）；可用 `MOBBY_TEST_RAW_CODEX=1` 单独诊断裸 CLI，当前域名阶段预期失败。
+- `MOBBY_TEST_ADB=/path/to/adb node runtime/gateway-tests/android-codex-network.cjs`：已安装 App 的实际启动脚本与内置 Codex，比较 IP/域名上游。独立 HOME、虚假密钥、adb reverse 本地模拟服务；不改真实配置。用 `MOBBY_TEST_AGENT=CLAUDE` 改测 Claude Code；可用 `MOBBY_TEST_TOOL=1` 增加设备 shell 读取与回传门槛（当前因设备缺少用户/PID 命名空间且限制 bwrap 所需内核信息而失败）；可用 `MOBBY_TEST_RAW_CODEX=1` 单独诊断裸 CLI，当前域名阶段预期失败。
 - `runtime/gateway-tests/cli-smoke.cjs`、`images-smoke.cjs`、`skills-smoke.cjs`：用 `MOBBY_TEST_CODEX` 与 `MOBBY_TEST_CLAUDE_JS` 指定主机程序，隔离 HOME 并使用虚假密钥。只验证 Codex/Responses 与 Claude/Messages，结果不能替代手机真实网关验收。
 
 历史的六组合转换结果只属于旧版本，见[实施记录](implementation.md)。当前设备与真实模型验证结果也在该记录中持续更新。

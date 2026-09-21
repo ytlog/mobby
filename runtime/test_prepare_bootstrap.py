@@ -74,5 +74,42 @@ class DependencyArchiveTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'Integrity mismatch'):
                 checked_download({'name': 'test', 'url': 'https://example.invalid/file.deb', 'sha256': '0' * 64}, root)
 
+class CodexPayloadTest(unittest.TestCase):
+    def test_codex_sandbox_program_is_installed_from_the_locked_archive(self):
+        import io
+        import tarfile
+        from unittest.mock import patch
+        from agent_bundle import add_agents
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cache = root / 'cache'; cache.mkdir()
+            source = cache / 'codex.tgz'
+            codex, bwrap = b'\x7fELFcodex-fixture', b'\x7fELFsandbox-fixture'
+            with tarfile.open(source, 'w:gz') as archive:
+                for path, data in [('bin/codex', codex), ('codex-resources/bwrap', bwrap)]:
+                    member = tarfile.TarInfo('package/vendor/aarch64-unknown-linux-musl/' + path)
+                    member.size = len(data)
+                    archive.addfile(member, io.BytesIO(data))
+            (root / 'agents.lock.json').write_text(json.dumps({'packages': [], 'npm': [{
+                'name': '@openai/codex', 'url': 'https://example.invalid/codex.tgz',
+                'sha256': hashlib.sha256(source.read_bytes()).hexdigest()}]}))
+            (root / 'agent_launcher.c').write_text('fixture launcher')
+            (cache / 'agent-launcher').write_bytes(b'\x7fELFlauncher-fixture')
+            files, links = {}, {}
+            with patch('agent_bundle.subprocess.run'):
+                add_agents(root, files, links, '/unused-fixture-ndk')
+            self.assertEqual(files['bin/codex'], codex)
+            self.assertEqual(files.get('bin/bwrap'), bwrap, 'Codex must find its official sandbox helper on PATH')
+            # A package update that loses the helper must fail at build time, not on a user's phone.
+            with tarfile.open(source, 'w:gz') as archive:
+                member = tarfile.TarInfo('package/vendor/aarch64-unknown-linux-musl/bin/codex')
+                member.size = len(codex)
+                archive.addfile(member, io.BytesIO(codex))
+            lock = json.loads((root / 'agents.lock.json').read_text())
+            lock['npm'][0]['sha256'] = hashlib.sha256(source.read_bytes()).hexdigest()
+            (root / 'agents.lock.json').write_text(json.dumps(lock))
+            with patch('agent_bundle.subprocess.run'), self.assertRaisesRegex(ValueError, 'Missing required Codex program: codex-resources/bwrap'):
+                add_agents(root, {}, {}, '/unused-fixture-ndk')
+
 if __name__ == '__main__':
     unittest.main()

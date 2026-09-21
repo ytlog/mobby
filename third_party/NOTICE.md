@@ -29,6 +29,7 @@
 
 - Claude Code：官方 npm `@anthropic-ai/claude-code` 2.1.112，保留 LICENSE.md。使用 JavaScript 版本配合 Android Node.js；未纳入其他平台的可选音频/图像原生插件。
 - Codex：官方 npm `@openai/codex` 0.155.1-linux-arm64 的静态 musl CLI。源码与许可证：https://github.com/openai/codex/tree/rust-v0.155.1
+- Codex 配套的 bubblewrap 从同一固定 npm 包提取，安装为 `bin/bwrap` 供官方沙箱启动器发现；未修改二进制或关闭隔离。许可证见 [bubblewrap/COPYING](bubblewrap/COPYING)，对应源码为上述 Codex 固定标签内的 `codex-rs/vendor/bubblewrap`。
 - 两个 npm 包均按锁文件中的 npm SHA-512 integrity 校验。当前仅集成命令行任务所需文件，不包含 Codex 语音组件。
 - `runtime/agent_launcher.c` 为 npm / npx / Claude Code 提供 Android 原生入口，参数直接传入 Node.js。
 

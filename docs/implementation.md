@@ -341,3 +341,16 @@ MOBBY_TEST_ADB=/path/to/adb node runtime/gateway-tests/android-codex-network.cjs
 主 APK 已覆盖安装并启动，安装前后在内存中比较加密网关配置摘要一致。设备使用独立 HOME、虚假密钥、已安装 gateway.cjs 和内置 Codex 访问同一个 adb reverse 模拟 Responses 服务：IP 与域名各接收 1 个请求，CLI exit 0 且 turn.completed。先前 DNS 门槛已在 App 启动路径通过，裸 Linux CLI 的 DNS 实现没有被修改。测试专用目录与反向端口映射均清理。
 
 新增可选 `MOBBY_TEST_TOOL=1` 设备门槛，要求真实 shell 工具读取隔离工作区夹具并把内容回传，不能仅依据模型随后输出完成文本判断成功。本机该门槛失败：模型往返已成功，但工具 exit 101，缺少 bubblewrap。官方固定 Codex npm 安装包确有 codex-resources/bwrap，当前打包脚本只提取主二进制，遗漏沙箱配套依赖。下一步修复这项独立的打包基础问题并验证 Android 内核约束；不关闭权限或沙箱。设备随后进入系统锁屏，已请求用户解锁以继续真实会话 UI 验收；尚不能宣称完整 Agent 任务可用。
+
+
+## 补齐 Codex 沙箱依赖与设备内核验收（2026-09-21）
+
+打包回归先确认官方固定 npm 安装包内的 bwrap 未进入生成文件。agent_bundle.py 改为明确提取同一 integrity 锁定包内的 Codex 与 bwrap，要求两者为普通 ELF 文件；缺少沙箱程序时构建直接失败。bwrap 映射到 APK native 库并通过 bin/bwrap 链接进入 CLI PATH，不依赖在 Android 数据目录执行新二进制。许可证与固定源码位置纳入 third_party，未修改官方二进制或权限策略。
+
+9 项 Python 测试、主包构建、App/termux-core 单测与 lint 通过；检查最终 APK 确认包含对应 native 文件。覆盖安装前后加密网关配置摘要一致；手机上 bwrap --version 返回官方 Codex 构建标识。
+
+完整 Codex 工具门槛仍未通过。bwrap --help 在应用 UID 下读取 /proc/sys/kernel/overflowuid 得到 Permission denied，使 Codex 能力探测拒绝该程序；更关键的是设备 /proc/config.gz 明确显示 CONFIG_USER_NS 与 CONFIG_PID_NS 未启用，toybox unshare -U 返回 Invalid argument，unshare -m 返回 Operation not permitted。前者也在 adb shell 身份下复现，因此不能归因于隔离 HOME 或 run-as 测试的 SELinux 身份差异。此设备内核缺少当前 Codex Linux 沙箱的必要能力，补文件不能解决；不得伪造 --help、关闭沙箱或使用全权限参数绕过。
+
+设备回归扩展 MOBBY_TEST_AGENT=CLAUDE，使用实际 PREFIX/独立 HOME 与工作区、已安装启动器和虚假模型服务。Claude Code 通过 IP 和域名各完成两次 Messages 请求、真实 Read 工具读取专属夹具及结果回传，CLI exit 0/result success；不代表 Claude Shell/写入、真实模型或 UI 已完成验收。两个设备测试并行时曾出现 exit 255 且无上游请求，未当作成功；随后串行重试 Claude 两条路径通过；Codex 纯文本 IP/域名也通过。Runtime 本身仅允许一个执行槽，因此设备门槛改为明确要求串行。发现测试 CLI 的后台记账可能在主进程退出后重建临时目录，测试改用独立进程组并在每次 CLI 退出后结束该组，再清理目录/端口；未读取真实会话或密钥。
+
+已向用户提出执行架构选择：保持本地并设计 Android 原生隔离执行，或使用具备所需沙箱能力的 Linux 执行端。这个问题来自已验证的内核能力与“不绕过 Agent 权限或沙箱”要求，不能用静默降低隔离要求替代决定。原完整目标仍未完成，手机仍需解锁后的真实界面验收。

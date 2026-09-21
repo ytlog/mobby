@@ -1,7 +1,9 @@
 'use strict';
-// Device gate: app launcher must connect through Android DNS with the bundled Codex.
+// Device gate: app launcher must connect through Android DNS with the bundled CLI.
+// MOBBY_TEST_AGENT=CLAUDE selects Claude Code; default is CODEX.
 // MOBBY_TEST_TOOL=1 additionally requires a sandboxed fixture read and result roundtrip.
 // MOBBY_TEST_RAW_CODEX=1 diagnoses the unsupported bare Linux binary instead (expected DNS failure).
+// Run device gates serially; concurrent app-UID CLI sessions are not a supported Runtime mode.
 // Uses an isolated HOME/workspace, fake key, adb reverse and a local mock model only.
 const {createServer}=require('node:http');
 const {execFile}=require('node:child_process');
@@ -11,6 +13,9 @@ const assert=require('node:assert/strict');
 const {nativeResponse,sendNative}=require('./native-fixture.cjs');
 const adb=process.env.MOBBY_TEST_ADB || 'adb';
 const app='com.mdoer.app';
+const mode=process.env.MOBBY_TEST_AGENT || 'CODEX';
+assert.ok(['CODEX','CLAUDE'].includes(mode),'Unknown test Agent');
+const protocol=mode==='CODEX'?'responses':'messages';
 const hostname=process.env.MOBBY_TEST_LOOPBACK_DNS || '127.0.0.1.nip.io';
 const quote=value=>"'"+String(value).replaceAll("'","'\\''")+"'";
 function command(args) {
@@ -30,7 +35,7 @@ async function main() {
   let reversePort=null,requests=0,turnRequests=0,toolSeen=false;
   const tool=process.env.MOBBY_TEST_TOOL==='1';
   const server=createServer(async(req,res)=>{
-    if(req.method!=='POST'||req.url!=='/v1/responses'){res.writeHead(404);res.end();return;}
+    if(req.method!=='POST'||req.url.split('?')[0]!=='/v1/'+protocol){res.writeHead(404);res.end();return;}
     const chunks=[];for await(const chunk of req) chunks.push(chunk);
     const body=JSON.parse(Buffer.concat(chunks));
     if(req.headers.authorization!=='Bearer fake-network-key'){res.writeHead(401);res.end();return;}
@@ -39,13 +44,13 @@ async function main() {
       toolSeen=JSON.stringify(body).includes('ANDROID_FIXTURE_CONTENT_OK');
       if(!toolSeen) console.log('Synthetic tool result:', JSON.stringify((body.input||[]).filter(i=>i.type==='function_call_output')).slice(0,1800));
     }
-    if(tool && turnRequests===1) console.log('Offered tools:',(body.tools||[]).map(t=>t.name||t.type).join(', '));
-    const calls=tool && turnRequests===1?[{id:'call_device_read',type:'function',function:{name:'exec_command',arguments:JSON.stringify({cmd:'/system/bin/cat '+quote(root+'/workspace/fixture.txt'),max_output_tokens:200})}}]:[];
-    sendNative(res,nativeResponse({content:calls.length?'':'ANDROID_NETWORK_SMOKE_OK',calls,input:10,output:4},'responses','gpt-4.1'),'responses',Boolean(body.stream));
+
+    const calls=tool && turnRequests===1?[{id:'call_device_read',type:'function',function:{name:mode==='CODEX'?'exec_command':'Read',arguments:JSON.stringify(mode==='CODEX'?{cmd:'/system/bin/cat '+quote(root+'/workspace/fixture.txt'),max_output_tokens:200}:{file_path:root+'/workspace/fixture.txt'})}}]:[];
+    sendNative(res,nativeResponse({content:calls.length?'':'ANDROID_NETWORK_SMOKE_OK',calls,input:10,output:4},protocol,'test-model'),protocol,Boolean(body.stream));
   });
   try {
     await checked(['mkdir','-p',root+'/home/.codex',root+'/workspace',root+'/tmp']);
-    const env=['env','-i','HOME='+root+'/home','CODEX_HOME='+root+'/home/.codex','TMPDIR='+root+'/tmp',
+    const env=['env','-i','PREFIX='+prefix,'HOME='+root+'/home','CODEX_HOME='+root+'/home/.codex','TMPDIR='+root+'/tmp',
       'PATH='+prefix+'/bin:/system/bin','LD_LIBRARY_PATH='+prefix+'/lib:'+native,
       'SHELL='+prefix+'/bin/bash','SSL_CERT_FILE='+prefix+'/etc/tls/cert.pem','GIT_CONFIG_NOSYSTEM=1','GIT_TEMPLATE_DIR='+prefix+'/share/git-core/templates',
       'FAKE_KEY=fake-network-key','NO_COLOR=1','DISABLE_AUTOUPDATER=1'];
@@ -66,13 +71,25 @@ async function main() {
         'model_providers.probe.request_max_retries=0','model_providers.probe.stream_max_retries=0'];
       const before=requests;turnRequests=0;toolSeen=false;
       const raw=process.env.MOBBY_TEST_RAW_CODEX==='1';
-      const config=JSON.stringify({endpoint:`http://${host}:${reversePort}/v1`,protocol:'responses',model:'gpt-4.1',key:'fake-network-key'});
-      const launch=raw?[prefix+'/bin/codex',...options.flatMap(v=>['-c',v])]:[prefix+'/bin/node',home+'/files/gateway.cjs','CODEX',prefix+'/bin/codex'];
-      const r=await remote([...env,'MOBBY_GATEWAY_CONFIG='+config,'timeout','-s','TERM','35',...launch,
-        'exec','-C',root+'/workspace','--json','--',tool?'Read fixture.txt using a shell tool and reply OK.':'Reply OK only. Do not use tools.']);
-      const completed=r.stdout.includes('ANDROID_NETWORK_SMOKE_OK') && r.stdout.includes('turn.completed');
+      assert.ok(!raw || mode==='CODEX','Raw diagnostic is Codex-only');
+      const config=JSON.stringify({endpoint:`http://${host}:${reversePort}/v1`,protocol,model:'test-model',key:'fake-network-key'});
+      const launch=raw?[prefix+'/bin/codex',...options.flatMap(v=>['-c',v])]:[prefix+'/bin/node',home+'/files/gateway.cjs',mode,prefix+'/bin/'+(mode==='CODEX'?'codex':'claude')];
+      const prompt=tool?'Read fixture.txt using a tool and reply OK.':'Reply OK only. Do not use tools.';
+      const args=mode==='CODEX'?['exec','-C',root+'/workspace','--json','--',prompt]:['-p','--output-format','stream-json','--verbose','--',prompt];
+      const command=[...env,'MOBBY_GATEWAY_CONFIG='+config,'timeout','-s','TERM','35',...launch,...args];
+      const pidFile=root+'/process-group';
+      const r=await remote(['/system/bin/toybox','setsid','-w','/system/bin/sh','-c',
+        'echo $$ > '+quote(pidFile)+'; cd '+quote(root+'/workspace')+' && exec '+command.map(quote).join(' ')]);
+      // CLI background bookkeeping can outlive its main process. End only this fixture's session
+      // before the next launch or directory removal; production uses the Runtime process registry.
+      const pid=(await remote(['/system/bin/cat',pidFile])).stdout.trim();
+      if (/^[1-9][0-9]*$/.test(pid)) await remote(['/system/bin/toybox','kill','-KILL','--','-'+pid]);
+      if(r.code!==0) console.log('Isolated CLI launch error:',r.stderr.slice(0,1400));
+      const events=r.stdout.split('\n').flatMap(line=>{try{return [JSON.parse(line)];}catch{return [];}});
+      const completed=mode==='CODEX'?r.stdout.includes('ANDROID_NETWORK_SMOKE_OK') && events.some(e=>e.type==='turn.completed'):
+        events.some(e=>e.type==='result' && e.subtype==='success' && !e.is_error && e.result.includes('ANDROID_NETWORK_SMOKE_OK'));
       const name=host==='127.0.0.1'?'IP':'DNS';
-      console.log(`${name}: exit=${r.code}, requests=${requests-before}, completed=${completed}`);
+      console.log(`${mode}/${name}: exit=${r.code}, requests=${requests-before}, completed=${completed}`);
       if(tool) console.log(`Tool roundtrip: ${toolSeen}`);
       if(tool && !toolSeen) console.log('Tool diagnostics:', ['Operation not permitted','bwrap','No such file','Landlock','seccomp','sandbox'].filter(t=>r.stdout.includes(t)||r.stderr.includes(t)).join(', '));
       assert.ok(!tool || toolSeen,'Sandboxed tool did not return fixture contents');
