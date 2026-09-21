@@ -11,6 +11,8 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.mobby.interaction.domain.*
@@ -41,9 +43,9 @@ private val previewDecodeDispatcher = Dispatchers.Default.limitedParallelism(1)
         if (image) AttachmentImage(attachment.ref, attachment.name, false, loadPreview, Modifier.size(80.dp).clickable(role = Role.Button, onClickLabel = "查看图片") { expanded = true })
         Column(Modifier.weight(1f)) {
             Text("${attachment.name} · ${attachment.sizeBytes} B · 已就绪", Modifier.padding(vertical = 8.dp), style = MaterialTheme.typography.bodySmall)
-            if (image) TextButton(onClick = { expanded = true }) { Text("查看图片") }
+            if (image) TextButton(onClick = { expanded = true }, modifier = Modifier.semantics { contentDescription = "查看图片 ${attachment.name}" }) { Text("查看图片") }
         }
-        if (remove != null) TextButton(onClick = remove) { Text("移除") }
+        if (remove != null) TextButton(onClick = remove, modifier = Modifier.semantics { contentDescription = "移除附件 ${attachment.name}" }) { Text("移除") }
     }
     if (expanded && image) AlertDialog(
         onDismissRequest = { expanded = false },

@@ -81,4 +81,23 @@ class AttachmentPreviewTest {
         compose.onNodeWithText("查看图片").assertIsDisplayed()
     }
 
+    @Test fun `accessible attachment actions identify and operate on their own file`() {
+        val removed = mutableListOf<String>()
+        val other = photo.copy(ref = "image:other", name = "diagram.png")
+        compose.setContent { MaterialTheme {
+            androidx.compose.foundation.layout.Column {
+                listOf(photo, other).forEach { item ->
+                    AttachmentItem(item, { DataResult.Loaded(AttachmentPreview(bytes)) }, { removed.add(item.ref) })
+                }
+            }
+        } }
+        compose.onNodeWithContentDescription("查看图片 diagram.png").performClick()
+        waitImage("diagram.png预览")
+        compose.onNodeWithText("关闭预览").performClick()
+        assertTrue(removed.isEmpty())
+        compose.onNodeWithContentDescription("移除附件 photo.png").performClick()
+        assertEquals(listOf(photo.ref), removed)
+        compose.onNodeWithContentDescription("移除附件 diagram.png").assertHasClickAction()
+    }
+
 }
