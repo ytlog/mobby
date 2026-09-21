@@ -30,7 +30,7 @@ APK：`app/build/outputs/apk/debug/app-debug.apk`，仅 ARM64，Android 8.0 及�
 设置中的外观选择会保存；会话菜单的「在聊天中查找」可点击结果定位消息。
 执行中可停止，输出可复制；切换会话保留各自草稿与阅读位置，不停止原任务。归档和删除可在设置中恢复，运行中的会话不允许归档或删除。
 
-已在 ARM64 Android 13 手机上验证运行环境、真实网关下的 Agent 执行、Codex 项目工作区工具调用、Claude 审批与取消，以及两种 Agent 的图片输入。相机已验证打开和取消，真实拍摄确认、TalkBack 和其他 Android 版本的部分系统行为仍待验收；逐项证据见实施记录。
+已在 ARM64 Android 13 手机上验证运行环境、真实网关下的 Agent 执行、Codex 项目工作区工具调用、Claude 审批与取消，以及两种 Agent 的图片输入。相机已验证真实拍摄、预览确认加入草稿，以及预览期间进程结束后的恢复与取消。语音完整转写、TalkBack 和其他 Android 版本的部分系统行为仍待验收；逐项证据见实施记录。
 网关协议测试：`node --test runtime/gateway-tests/bridge.test.cjs`。协议范围见 [网关说明](gateway.md)。
 已实现内容、已知限制和验收步骤见 [实施记录](implementation.md)。
 
