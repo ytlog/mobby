@@ -44,6 +44,7 @@ Claude 使用双向 stream-json 控制通道。CLI 实际请求授权时，会�
 
 - `node --test runtime/gateway-tests/bridge.test.cjs`：同协议字段/流完整性、辅助接口、鉴权、拒绝转换、输入限制、取消、断流与错误脱敏。
 - `MOBBY_TEST_ADB=/path/to/adb node runtime/gateway-tests/android-codex-network.cjs`：已安装 App 的实际启动脚本与内置 Codex，比较 IP/域名上游。独立 HOME、虚假密钥、adb reverse 本地模拟服务；不改真实配置。用 `MOBBY_TEST_AGENT=CLAUDE` 改测 Claude Code；可用 `MOBBY_TEST_TOOL=1` 增加设备 shell 读取与回传门槛（当前因设备缺少用户/PID 命名空间且限制 bwrap 所需内核信息而失败）；可用 `MOBBY_TEST_RAW_CODEX=1` 单独诊断裸 CLI，当前域名阶段预期失败。
+- `MOBBY_TEST_ADB=/path/to/adb node runtime/gateway-tests/structured-output-smoke.cjs`：已安装固定 CLI 的结构化输出，覆盖 Codex/Claude 的首轮和续接；检查原生请求 schema、成功终态及字段一致。Claude 使用 stream-json 输入与 stdio 审批通道。需空闲真机、串行执行；隔离 HOME、虚假密钥和本地模拟网关，不能代替真实模型生成稳定性验收。
 - `runtime/gateway-tests/approval-smoke.cjs`：固定 Claude CLI 的真实允许/拒绝/等待时取消，用 `MOBBY_TEST_CLAUDE_JS` 验证主机或 `MOBBY_TEST_ADB` 验证手机。该脚本只验证 CLI 协议，不能单独替代应用界面验收。
 - `MOBBY_TEST_CLAUDE_JS=/path/to/cli.js ./gradlew :runtime-engine:test --tests '*ClaudeControl*'`（JDK 17）：生产 Kotlin 控制会话与真实固定 Claude CLI 的允许、拒绝、等待时取消及恢复会话检查，使用隔离 HOME 和模拟模型。
 - `runtime/gateway-tests/cli-smoke.cjs`、`images-smoke.cjs`、`skills-smoke.cjs`：用 `MOBBY_TEST_CODEX` 与 `MOBBY_TEST_CLAUDE_JS` 指定主机程序，隔离 HOME 并使用虚假密钥。只验证 Codex/Responses 与 Claude/Messages，结果不能替代手机真实网关验收。

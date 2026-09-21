@@ -818,3 +818,13 @@ Android 13 真机先复现：进入“设置与运行环境”，通过显式 AC
 49 项 engine、57 项 runtime-android 测试全部通过，无失败或跳过；离线 APK 构建、App/termux-core 单测任务与 lint 通过。覆盖安装前后 Runtime 记录、命令、加密网关和保留设置摘要一致。没有用主机测试代替生成稳定性的真实证明。
 
 更新后再次新建真机 Creator 会话，自动输入草稿核对发现文字与预期不符，在发送前替换为逐字核对一致的简短需求。真实运行 SUCCEEDED、exit 0、协议与进程终止证据一致，但公开过程文本将 SKILL.md 放在无语言标记的代码块正文中，最终回复直接输出 SKILL.md 正文、未使用围栏；因此仍无产物，应用没有误报保存成功。该次没有工具步骤。首次生成的稳定性仍未通过：下一步应核对固定 CLI 的结构化输出能力，不能继续扩大解析猜测或把提示约定当作执行限制。本轮保留新失败会话作为证据，未自动重发、保存或安装技能。
+
+## 固定 CLI 结构化输出协议的真机验证（2026-09-21）
+
+直接检查手机内置 Codex 0.155.1 的 exec 与 exec resume 帮助，两者均支持 --output-schema 文件；固定 Claude Code 2.1.112 支持 --json-schema。没有升级、替换或下载 CLI。
+
+新增 structured-output-smoke.cjs，以已安装应用 UID 运行两种真实 CLI，隔离 HOME、工作区、临时 schema 和会话文件，使用虚假密钥、adb reverse 与本地原生协议模拟网关。Codex 首轮和续接均在 Responses 请求的 text.format.schema 中携带一致 schema，最终 agent_message.text 是符合预期的 JSON。Claude 首轮和续接使用 stream-json 输入、stdio 审批通道和 --json-schema；请求中加入 StructuredOutput 工具，工具调用后继续完成 CLI 轮次，成功 result.structured_output 与模拟值逐字段相同。
+
+四项设备协议门槛通过：Codex 每次 1 个模型请求，Claude 每次 2 个；CLI 均 exit 0，有原生成功终态及正确结构化结果。最初模拟网关每轮都重复发出 StructuredOutput 调用导致 CLI 超时；修正测试模型为调用一次后返回最终回答，才得到通过结果，没有修改生产代码掩盖该测试夹具错误。每轮清理测试进程组，结束后移除本次隔离目录和 adb reverse；未接触真实网关凭据或用户 HOME。
+
+这证明固定 CLI 的结构化输出能力可以覆盖首轮及续接，也明确了两种结果事件的不同入口。生产技能生成尚未改用 schema，真实网关是否完整支持该约束仍需接入后验证。下一步采用明确的澄清/草稿字段，通过文件生成器构造 SKILL.md，替换基于自然语言围栏的生产提取，不同时维护两套生成协议。本轮仅新增可重复的设备协议测试和记录，未改 APK 或重复无关构建。
