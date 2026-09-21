@@ -44,7 +44,10 @@ sealed interface DataResult<out T> {
 }
 data class Attachment(val ref: String, val name: String, val sizeBytes: Int, val mediaType: String = "text/plain")
 class AttachmentPreview(val bytes: ByteArray)
+data class EventHistoryLimits(val days: Int = 30, val mib: Int = 32)
 interface SystemPort {
+    suspend fun eventHistoryLimits(): DataResult<EventHistoryLimits> = DataResult.Failed("当前执行端不支持日志设置")
+    suspend fun saveEventHistoryLimits(value: EventHistoryLimits): OperationResult = OperationResult.Failed("当前执行端不支持日志设置")
     suspend fun beginCapture(conversation: String, workspace: String): DataResult<CameraCapture>
     suspend fun capture(): DataResult<CameraCapture?>
     suspend fun finishCapture(id: String, success: Boolean): DataResult<CameraCapture?>
@@ -109,6 +112,8 @@ class InteractionUseCases(
     private val submissionScope: CoroutineScope,
     private val preferences: PreferencePort
 ) {
+    suspend fun eventHistoryLimits() = system.eventHistoryLimits()
+    suspend fun saveEventHistoryLimits(value: EventHistoryLimits) = submissionScope.async { system.saveEventHistoryLimits(value) }.await()
     val appearance get() = preferences.appearance
     suspend fun setAppearance(value: Appearance) = preferences.setAppearance(value)
     val state get() = repository.state

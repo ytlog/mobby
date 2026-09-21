@@ -82,6 +82,22 @@ class RuntimeJournalRetentionTest {
             assertEquals(listOf(uncertain), journal.unfinished())
         }
     }
+    @Test fun `saved policy is used by the next cleanup without restarting the journal`() = runBlocking {
+        context.getSharedPreferences("runtime-storage-policy", 0).edit().clear().commit()
+        val key = javax.crypto.KeyGenerator.getInstance("AES").apply { init(256) }.generateKey()
+        val store = EventHistorySettingsStore(context) { key }
+        RuntimeJournal(context, policyProvider = store::policy, clock = { 2 * 86_400_000L }).use { journal ->
+            val old = finish(journal, "old", 100)
+            assertEquals(2, journal.eventsAfter(old.runId, 0, 128).size)
+            store.save(EventHistorySettings(1, 32))
+            assertEquals(2, journal.eventsAfter(old.runId, 0, 128).size) // Saving alone does not delete history.
+            journal.compact()
+            assertTrue(journal.eventsAfter(old.runId, 0, 128).isEmpty())
+            assertEquals(old, journal.snapshot(old.runId))
+        }
+        context.getSharedPreferences("runtime-storage-policy", 0).edit().clear().commit()
+        Unit
+    }
     @Test fun `terminal append compacts atomically and cleanup failure rolls back snapshot event and receipt`() = runBlocking {
         RuntimeJournal(context, EventHistoryPolicy(0, 0)) { 600 }.use { journal ->
             val initial = accept(journal, "run", 100)

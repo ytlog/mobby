@@ -19,6 +19,7 @@ internal data class EventHistoryPolicy(val maxAgeMillis: Long = 30L * 24 * 60 * 
 /** Runtime is the only writer; separate from conversations. No gateway credentials or run prompts;
  * bounded, platform-sanitized approval scopes are persisted for explicit user review. */
 internal class RuntimeJournal(context: Context, private val historyPolicy: EventHistoryPolicy = EventHistoryPolicy(),
+    private val policyProvider: () -> EventHistoryPolicy = { historyPolicy },
     private val clock: () -> Long = System::currentTimeMillis) : SQLiteOpenHelper(context, "runtime-journal.db", null, 1), JournalPort {
     private val json = Json { ignoreUnknownKeys = true }
     override fun onConfigure(db: SQLiteDatabase) { db.setForeignKeyConstraintsEnabled(true) }
@@ -81,9 +82,10 @@ internal class RuntimeJournal(context: Context, private val historyPolicy: Event
             }
         }.sortedWith(compareBy<Candidate> { it.finished }.thenBy { it.id })
         var bytes = candidates.sumOf { it.bytes }
-        val cutoff = clock() - historyPolicy.maxAgeMillis
+        val policy = policyProvider()
+        val cutoff = clock() - policy.maxAgeMillis
         for (candidate in candidates) {
-            if (candidate.finished <= cutoff || bytes > historyPolicy.maxBytes) {
+            if (candidate.finished <= cutoff || bytes > policy.maxBytes) {
                 db.delete("events", "run_id=?", arrayOf(candidate.id))
                 bytes -= candidate.bytes
             }

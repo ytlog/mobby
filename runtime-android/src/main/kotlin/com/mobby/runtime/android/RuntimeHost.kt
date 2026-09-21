@@ -61,6 +61,8 @@ class RuntimeHost(context: Context, notification: () -> PendingIntent) {
         override suspend fun stopShell() = connected()?.stopShell() ?: CommandResult.Rejected(RuntimeError(ErrorCode.DISCONNECTED, true))
     }
     val admin: RuntimeAdminClient = object : RuntimeAdminClient {
+        override suspend fun eventHistorySettings() = connected()?.eventHistorySettings() ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
+        override suspend fun saveEventHistorySettings(settings: EventHistorySettings) = connected()?.saveEventHistorySettings(settings) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
         override val environment = environmentState.asStateFlow()
         override suspend fun listSkills(agent: AgentId) = connected()?.listSkills(agent) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
         override suspend fun readSkill(ref: CapabilityRef) = connected()?.readSkill(ref) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))

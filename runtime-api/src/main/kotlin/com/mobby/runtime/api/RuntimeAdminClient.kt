@@ -26,7 +26,12 @@ sealed interface AdminResult<out T> {
 enum class GatewayCheckOutcome { SUCCEEDED, HTTP_ERROR, INCOMPLETE_RESPONSE, INVALID_RESPONSE, RESPONSE_TOO_LARGE, DNS_ERROR, TLS_ERROR, TIMEOUT, CONNECTION_ERROR }
 /** Contains no response body, endpoint or credential. A small protocol request is not a CLI acceptance test. */
 data class GatewayCheck(val profile: GatewayProfileRef, val outcome: GatewayCheckOutcome, val httpStatus: Int? = null)
+data class EventHistorySettings(val retentionDays: Int = 30, val budgetMiB: Int = 32) {
+    init { require(retentionDays in 1..3650 && budgetMiB in 1..1024) }
+}
 interface RuntimeAdminClient {
+    suspend fun eventHistorySettings(): AdminResult<EventHistorySettings> = AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
+    suspend fun saveEventHistorySettings(settings: EventHistorySettings): AdminResult<Unit> = AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
     suspend fun validateGateway(profile: GatewayProfileRef): AdminResult<GatewayCheck>
     suspend fun previewResource(ref: ResourceRef, workspace: WorkspaceRef, expanded: Boolean): AdminResult<ResourcePreview>
     suspend fun importResource(request: ImportResourceRequest): AdminResult<ResourceSummary>

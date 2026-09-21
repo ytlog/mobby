@@ -73,7 +73,7 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
     LaunchedEffect(vm) { for (message in vm.feedback) snackbar.showSnackbar(message) }
     fun navigate(next: String) { keyboard?.hide(); focus.clearFocus(); drawer = false; route = next }
     BackHandler(drawer) { drawer = false }
-    BackHandler(route != "conversation") { route = when (route) { "gateway", "diagnostic", "archived" -> "settings"; "skills", "plugins" -> "add"; else -> "conversation" } }
+    BackHandler(route != "conversation") { route = when (route) { "gateway", "history-limits", "diagnostic", "archived" -> "settings"; "skills", "plugins" -> "add"; else -> "conversation" } }
     MaterialTheme(colorScheme = colors) {
         val camera = rememberCameraCapture(actions, { captured ->
             actions.importAttachment(ConversationId(captured.conversation), captured.workspace, requireNotNull(captured.attachmentUri))
@@ -93,6 +93,7 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                     when (route) {
                         "settings" -> SettingsPage(system, appearance, { value -> vm.enqueue { vm.report(actions.setAppearance(value)) } }, { navigate(it) }, { route = "conversation" }, vm)
                         "gateway" -> GatewayPage(vm) { route = "settings" }
+                        "history-limits" -> EventHistoryPage(actions::eventHistoryLimits, actions::saveEventHistoryLimits) { route = "settings" }
                         "diagnostic" -> DiagnosticPage(vm) { route = "settings" }
                         "archived" -> ArchivedPage(state, vm) { route = "settings" }
                         "skills" -> SkillsPage(vm, onBack = { route = "add" }, onConversation = { route = "conversation" })

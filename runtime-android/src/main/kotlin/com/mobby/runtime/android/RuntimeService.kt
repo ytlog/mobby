@@ -42,7 +42,7 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
         super.onCreate()
         runtime = RuntimeEnvironment(this)
         registry = ProcessRegistry(this)
-        journal = RuntimeJournal(this)
+        journal = RuntimeJournal(this, policyProvider = EventHistorySettingsStore(this)::policy)
         val ports = AndroidRuntimePorts(this, runtime, environment, registry)
         coordinator = RunCoordinator(scope, ports, ports, journal, OutputStore(this))
         getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel("runtime", "任务运行", NotificationManager.IMPORTANCE_LOW))
@@ -73,6 +73,14 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
                 mutableEnvironment.value = EnvironmentSnapshot(EnvironmentPhase.FAILED, "运行环境初始化失败，请重试或检查安装", RuntimeError(ErrorCode.NOT_READY, true))
             }
         }
+    }
+    override suspend fun eventHistorySettings(): AdminResult<EventHistorySettings> = withContext(Dispatchers.IO) {
+        try { AdminResult.Success(EventHistorySettingsStore(this@RuntimeService).load()) }
+        catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.INVALID_CONFIG)) }
+    }
+    override suspend fun saveEventHistorySettings(settings: EventHistorySettings): AdminResult<Unit> = withContext(Dispatchers.IO) {
+        try { EventHistorySettingsStore(this@RuntimeService).save(settings); AdminResult.Success(Unit) }
+        catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.STORAGE_FULL)) }
     }
     override suspend fun initialize(): AdminResult<Unit> = withContext(Dispatchers.Main) {
         if (coordinator.active.value != null) AdminResult.Failed(RuntimeError(ErrorCode.BUSY, true))

@@ -173,6 +173,17 @@ internal class RuntimeSystemAdapter(private val context: android.content.Context
         catch (_: SecurityException) { DataResult.Failed("文件读取权限已失效，请重新选择") }
         catch (_: Exception) { DataResult.Failed("无法导入：请选择不超过 128 KiB 的 UTF-8 Markdown 文件") }
     }
+    override suspend fun eventHistoryLimits(): DataResult<EventHistoryLimits> = when (val result = admin.eventHistorySettings()) {
+        is AdminResult.Success -> DataResult.Loaded(EventHistoryLimits(result.value.retentionDays, result.value.budgetMiB))
+        is AdminResult.Failed -> DataResult.Failed(if (result.error.code == ErrorCode.DISCONNECTED) "连接中断，请重试" else "无法读取日志设置，请重试")
+    }
+    override suspend fun saveEventHistoryLimits(value: EventHistoryLimits): OperationResult {
+        if (value.days !in 1..3650 || value.mib !in 1..1024) return OperationResult.Failed("日志保留设置超出范围")
+        return when (val result = admin.saveEventHistorySettings(EventHistorySettings(value.days, value.mib))) {
+            is AdminResult.Success -> OperationResult.Done
+            is AdminResult.Failed -> OperationResult.Failed(if (result.error.code == ErrorCode.DISCONNECTED) "连接中断，保存未确认" else "无法保存日志设置，请重试")
+        }
+    }
     override val status = combine(client.connection, admin.environment, diagnostics.state) { connection, environment, diagnostic ->
         SystemStatus(environment.phase == EnvironmentPhase.READY, connection == ConnectionState.CONNECTED,
             if (connection == ConnectionState.DISCONNECTED) "连接中断，结果待确认" else environment.summary,
