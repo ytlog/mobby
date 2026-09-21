@@ -11,7 +11,8 @@ class AgentProtocolRegressionTest {
         for (agent in AgentId.values()) {
             val request = RunRequest(RequestId("r"), agent, WorkspaceRef("default"), emptyList(), "model", GatewayProfileRef("g", 0))
             val args = AgentCommand.arguments(request, "/test/agent", prompt)
-            assertEquals(prompt, args.last()); assertEquals("--", args[args.lastIndex - 1]); assertFalse(args.contains("-c"))
+            assertEquals(prompt, args.last()); assertEquals("--", args[args.lastIndex - 1])
+            assertFalse(args.windowed(2).contains(listOf("-c", prompt)))
         }
     }
     @Test fun codexMessageAndFailureAreDecoded() {

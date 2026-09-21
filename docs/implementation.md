@@ -600,3 +600,13 @@ UIAutomator 的可见根框会比截图物理尺寸小 90px，初次右侧图标
 运行入口（仅对选定的验收设备执行）：`adb -s DEVICE_SERIAL shell am instrument -w -r -e class com.mobby.app.DrawerGestureTest com.mdoer.app.test/androidx.test.runner.AndroidJUnitRunner`。先使用现有 SDK 执行 `:app:assembleDebugAndroidTest` 并安装对应测试 APK，不自动创建或下载系统镜像。
 
 该测试 APK 构建与 app lint 通过。此前隔离 Android 16 镜像的两次运行都在进入测试方法前失败，分别是进程未及时 attach 和启动 ANR；同一环境的多个系统应用也出现启动超时。没有获得手势断言执行通过的结果，不能用这份测试代码替代设备验收。后续镜像下载已按用户要求中止，下载残留、未完成包和本次临时 AVD 均已清理，原有镜像保留；后续不自行下载镜像。实际预测返回的中间帧与取消路径仍待合适现有设备验收。
+
+## Codex 使用 Android 应用权限边界（2026-09-21）
+
+用户明确选择“给他所有权限，因为本身受 app 的权限限制”，替代此前待定的额外 Linux 沙箱架构。Codex 新会话和续接统一使用 `--sandbox danger-full-access -c 'approval_policy="never"'`，以 Android 应用 UID/SELinux 和已授予的系统权限为执行边界；不获取 root、不调整系统授权。该模式允许访问应用权限范围内的文件，并非只限单个工作区。Claude Code 原生审批保持不变，Runtime 的取消、错误和超时语义不变。AGENTS.md 与架构文档同步更新；上文“不允许全权限”的记录属于本次授权前的历史决策。
+
+参数采用 [OpenAI 官方配置语义](https://learn.chatgpt.com/docs/sandboxing)。先添加新建/续接权限参数回归，确认旧实现失败，再修改启动参数。真机试验同时发现 `exec` 后的 `-c` 会覆盖桥接位于顶层的配置，导致请求回退到默认服务；将权限和推理配置统一放在 `exec` 前，避免丢失本地桥接设置。测试继续验证提示词为单个字面 argv，保留原生命令规则。
+
+设备门槛 `android-codex-network.cjs` 增加续接和实际写文件检查：每次先删除本测试的结果文件，再要求真实 Codex shell 工具读取夹具、写入结果、回读并向模型回传，之后独立读取结果文件确认落盘。Android 13 手机在 IP/localhost × 新建/续接四组均退出 0、两次模型请求、完整终态及工具回传通过。旧参数的对照测试虽收到模型完成文本，工具仍退出 101，门槛正确拒绝成功。使用独立 HOME/工作区、虚假密钥和 adb reverse 模拟网关，finally 清理测试目录、进程组和端口；未触碰真实网关配置。外部 nip.io 在当前网络解析为非 loopback 地址，预检拒绝后改用 localhost，因此本轮不声称外部 DNS 或真实模型网关验收完成。
+
+验证完成：engine 46 项、runtime-android 51 项单测全部通过，无失败或跳过；Node 桥接 11 项、Python 运行环境 9 项通过。离线执行 APK 构建、App/termux-core 单测任务及 lint 成功，未下载系统镜像。手机覆盖安装后，Runtime 数据库版本仍为 2，原运行记录、命令回执、加密网关和保留配置摘要一致；使用新安装的 CLI/桥接再次执行四组设备工具门槛，全部通过。本轮未发送真实网关模型请求，也未将隔离 CLI 验证视为全部应用交互目标完成。

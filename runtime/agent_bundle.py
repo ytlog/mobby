@@ -85,7 +85,7 @@ def add_agents(root, files, links, ndk):
                         files['lib/node_modules/@anthropic-ai/claude-code/' + name] = archive.extractfile(member).read()
             else:
                 # The sandbox launcher searches PATH before package-relative resources.
-                # Install the official helper beside the CLI; do not disable its sandbox.
+                # Keep the official helper available for explicit sandboxed CLI invocations.
                 for source_name, target in [('bin/codex', 'bin/codex'), ('codex-resources/bwrap', 'bin/bwrap')]:
                     name = 'package/vendor/aarch64-unknown-linux-musl/' + source_name
                     try:

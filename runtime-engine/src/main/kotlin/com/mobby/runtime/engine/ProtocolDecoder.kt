@@ -115,8 +115,12 @@ object AgentCommand {
         require(session == null || session.matches(Regex("[A-Za-z0-9-]{1,100}")))
         return when (request.agentId) {
             AgentId.CODEX -> buildList {
-                add(executable); add("exec"); add("--json")
+                // Android UID/SELinux is the user-authorized execution boundary. The phone
+                // cannot provide Codex's additional Linux namespace sandbox.
+                addAll(listOf(executable, "--sandbox", "danger-full-access",
+                    "-c", "approval_policy=\"never\""))
                 request.reasoningLevel?.let { addAll(listOf("-c", "model_reasoning_effort=${JsonPrimitive(it)}")) }
+                addAll(listOf("exec", "--json"))
                 if (session != null) addAll(listOf("resume", session))
                 imagePaths.forEach { addAll(listOf("--image", it)) }
                 add("--"); add(prompt)

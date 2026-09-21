@@ -14,7 +14,7 @@
 - 使用内置 libtermux-android 和 Compose，保留 Shell、Claude Code、Codex 的执行能力。
 - 按当前用户决定，Agent 模型请求统一走本地 Node 桥接，由 Android 网络栈联网；Codex 仅使用 Responses，Claude Code 仅使用 Messages。暂不提供协议转换。
 - 网关选项必须有实际执行路径；保留但拒绝执行旧的不匹配协议配置，不静默改写用户配置，不丢弃工具、图片、推理或未知消息字段。
-- 不绕过 Agent 的权限或沙箱检查。取消、错误和超时必须如实传递，不能显示为成功。
+- 按用户明确授权，Codex 使用 Android 应用 UID/SELinux 沙箱作为执行边界，以 danger-full-access 与 approval_policy=never 使用应用已有权限，不额外启用 CLI 的 Linux 沙箱；不获取 root、不修改系统权限。Claude Code 保留现有原生审批。取消、错误和超时必须如实传递，不能显示为成功。
 - 网关密钥和真实用户配置仅存放于设备的加密存储；不得写入源码、测试夹具、文档、日志或 Git。
 - 品牌改名不应更改已有 Android applicationId 或 Keystore 别名；此类持久身份变更必须先设计数据迁移方案。
 - 保留设备 SharedPreferences、HOME 和工作区；安装更新使用覆盖安装，不清空数据。

@@ -5,6 +5,18 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ProtocolDecoderTest {
+    @Test fun `codex new and resumed runs use the authorized Android app permission boundary`() {
+        for (session in listOf(null, SessionRef("session-123"))) {
+            val request = RunRequest(RequestId("r"), AgentId.CODEX, WorkspaceRef("default"), emptyList(), "model", GatewayProfileRef("g", 0), sessionRef = session)
+            val args = AgentCommand.arguments(request, "agent", "read and write the fixture")
+            assertTrue(args.windowed(2).contains(listOf("--sandbox", "danger-full-access")))
+            assertTrue(args.windowed(2).contains(listOf("-c", "approval_policy=\"never\"")))
+            assertTrue(args.indexOf("-c") < args.indexOf("exec"))
+            assertTrue(args.indexOf("--sandbox") < args.indexOf("--"))
+            if (session != null) assertTrue(args.indexOf("--sandbox") < args.indexOf("resume"))
+            assertFalse(args.contains("--ignore-rules"))
+        }
+    }
     @Test fun `claude result does not repeat assistant and private thinking stays hidden`() {
         val decoder = ProtocolDecoder(AgentId.CLAUDE_CODE)
         val assistant = decoder.decode("""{"type":"assistant","session_id":"session","message":{"id":"m","content":[{"type":"thinking","thinking":"private"},{"type":"text","text":"answer"}]}}""")
