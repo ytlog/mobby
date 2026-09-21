@@ -43,6 +43,11 @@ sealed interface DataResult<out T> {
 data class Attachment(val ref: String, val name: String, val sizeBytes: Int, val mediaType: String = "text/plain")
 class AttachmentPreview(val bytes: ByteArray)
 interface SystemPort {
+    suspend fun beginCapture(conversation: String, workspace: String): DataResult<CameraCapture>
+    suspend fun capture(): DataResult<CameraCapture?>
+    suspend fun finishCapture(id: String, success: Boolean): DataResult<CameraCapture?>
+    suspend fun discardCapture(id: String): OperationResult
+    suspend fun previewCapture(id: String): DataResult<AttachmentPreview>
     suspend fun retainAttachmentGrants(locations: Set<String>)
     suspend fun importAttachment(workspace: String, location: String): DataResult<Attachment>
     suspend fun previewAttachment(workspace: String, ref: String, expanded: Boolean): DataResult<AttachmentPreview>
@@ -64,6 +69,8 @@ interface SystemPort {
     suspend fun stopShell(): OperationResult
 }
 interface InteractionRepository : ConversationRepository {
+    suspend fun conversation(id: ConversationId): Conversation
+    suspend fun awaitAttachmentRecovery()
     suspend fun loadEarlier(id: ConversationId)
     suspend fun revealTurn(id: ConversationId, turn: TurnId)
     suspend fun history(id: ConversationId): ConversationDetail
@@ -139,6 +146,20 @@ class InteractionUseCases(
             ?: return DataResult.Failed("当前 Agent 没有可用的 Skill Creator；请返回技能页选择其他创建方式")
         return DataResult.Loaded(repository.createSkillConversation(id, creator.ref))
     }
+    suspend fun beginCapture(conversation: ConversationId, workspace: String): DataResult<CameraCapture> {
+        repository.awaitAttachmentRecovery()
+        val current = repository.conversation(conversation)
+        if (current.archived || current.deleted || current.config.workspace != workspace || current.draft.pendingAttachment != null || current.draft.attachments.size >= 4)
+            return DataResult.Failed("当前会话不能添加照片")
+        return system.beginCapture(conversation.value, workspace)
+    }
+    suspend fun capture(): DataResult<CameraCapture?> {
+        repository.awaitAttachmentRecovery()
+        return system.capture()
+    }
+    suspend fun finishCapture(id: String, success: Boolean) = system.finishCapture(id, success)
+    suspend fun discardCapture(id: String) = system.discardCapture(id)
+    suspend fun previewCapture(id: String) = system.previewCapture(id)
     suspend fun importAttachment(id: ConversationId, workspace: String, location: String): DataResult<Attachment> = submissionScope.async {
         val pending = PendingAttachment(nextId(), workspace, location)
         repository.beginAttachment(id, pending)

@@ -75,6 +75,9 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
     BackHandler(drawer) { drawer = false }
     BackHandler(route != "conversation") { route = when (route) { "gateway", "diagnostic", "archived" -> "settings"; "skills", "plugins" -> "add"; else -> "conversation" } }
     MaterialTheme(colorScheme = colors) {
+        val camera = rememberCameraCapture(actions, { captured ->
+            actions.importAttachment(ConversationId(captured.conversation), captured.workspace, requireNotNull(captured.attachmentUri))
+        }, { message -> vm.report(OperationResult.Failed(message)) })
         Surface(Modifier.fillMaxSize()) {
             BoxWithConstraints(Modifier.fillMaxSize().systemBarsPadding().imePadding().clipToBounds()) {
                 val fullWidth = maxWidth
@@ -117,9 +120,10 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                     Column(Modifier.heightIn(max = (availableHeight - 48.dp).coerceAtLeast(120.dp)).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("添加内容与能力", style = MaterialTheme.typography.titleLarge)
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                            TextButton(onClick = {}, enabled = false) { Text("拍照") }
                             val target = state.selected?.conversation
                             val canImport = target != null && !target.archived && !target.deleted && target.draft.pendingAttachment == null && target.draft.attachments.size < 4
+                            TextButton(onClick = { if (target != null) { navigate("conversation"); camera.start(target) } },
+                                enabled = canImport && !camera.busy && agentOptions.any { it.agent == target?.config?.agent && it.images && it.unavailable == null }) { Text("拍照") }
                             TextButton(onClick = {
                                 if (target != null) {
                                     fileTarget = target.id.value; fileWorkspace = target.config.workspace; route = "conversation"
@@ -130,7 +134,7 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                                 if (target != null) { fileTarget = target.id.value; fileWorkspace = target.config.workspace; route = "conversation"; filePicker.launch(arrayOf("*/*")) }
                             }, enabled = target != null && !target.archived && !target.deleted && target.draft.pendingAttachment == null && target.draft.attachments.size < 4 && agentOptions.any { it.agent == target.config.agent && it.resources && it.unavailable == null }) { Text("本地文件") }
                         }
-                        Text("支持 UTF-8 文本（32 KiB）与 PNG/JPEG（2 MiB，最长边 4096、最多 800 万像素），每轮最多 4 个附件；文字编码后合计最多 64 KiB。模型须支持图片，Codex 的 Messages 网关不支持图片。拍照与 PDF 尚不可用。", style = MaterialTheme.typography.bodySmall)
+                        Text("支持 UTF-8 文本（32 KiB）与 PNG/JPEG（2 MiB，最长边 4096、最多 800 万像素），每轮最多 4 个附件；文字编码后合计最多 64 KiB。模型须支持图片，Codex 的 Messages 网关不支持图片。拍照会先预览确认；PDF 尚不可用。", style = MaterialTheme.typography.bodySmall)
                         TextButton(onClick = { route = "conversation"; voice = vm.composer.value }) { Text("语音输入") }
                         TextButton(onClick = { route = "plugins" }) { Text("插件") }
                         TextButton(onClick = { route = "skills" }) { Text("技能") }

@@ -27,6 +27,11 @@ class RoomInteractionRepositoryTest {
     private var retainedGrants = emptySet<String>()
     private val importStarted = CompletableDeferred<Unit>()
     private val system = object : SystemPort {
+        override suspend fun beginCapture(conversation: String, workspace: String): DataResult<CameraCapture> = DataResult.Failed("unused")
+        override suspend fun capture(): DataResult<CameraCapture?> = DataResult.Loaded(null)
+        override suspend fun finishCapture(id: String, success: Boolean): DataResult<CameraCapture?> = DataResult.Loaded(null)
+        override suspend fun discardCapture(id: String): OperationResult = OperationResult.Done
+        override suspend fun previewCapture(id: String): DataResult<AttachmentPreview> = DataResult.Failed("unused")
         override suspend fun retainAttachmentGrants(locations: Set<String>) { retainedGrants = locations }
         override suspend fun importAttachment(workspace: String, location: String): DataResult<Attachment> { importStarted.complete(Unit); return importGate?.await() ?: DataResult.Failed("unused") }
         override suspend fun previewAttachment(workspace: String, ref: String, expanded: Boolean): DataResult<AttachmentPreview> = DataResult.Failed("unused")
@@ -157,6 +162,22 @@ class RoomInteractionRepositoryTest {
         assertEquals("separate", selected.selected!!.turns.single().userText)
         assertEquals(c.id, selected.occupied!!.conversation.id)
         assertEquals(ExecutionPhase.FAILED, selected.occupied!!.phase)
+    }
+    @Test fun `source retention follows pending imports across conversations and releases only completed or discarded ones`() = runBlocking {
+        val c = state().selected!!.conversation
+        repository.editDraft(c.id, "keep original", 2, 4)
+        val other = repository.create(c.config)
+        val first = PendingAttachment("camera-1", c.config.workspace, "content://fixture/camera-1")
+        val second = PendingAttachment("camera-2", c.config.workspace, "content://fixture/camera-2")
+        repository.beginAttachment(c.id, first); repository.beginAttachment(other, second)
+        repository.finishAttachment(c.id, first.id, DataResult.Failed("import failed"))
+        assertEquals(setOf(first.location, second.location), retainedGrants)
+        repository.discardAttachment(c.id, first.id)
+        assertEquals(setOf(second.location), retainedGrants)
+        repository.finishAttachment(other, second.id, DataResult.Loaded(Attachment("image:camera", "photo.jpg", 100, "image/jpeg")))
+        assertTrue(retainedGrants.isEmpty())
+        assertEquals("keep original", db.dao().conversation(c.id.value)!!.domain().draft.text)
+        assertEquals(listOf("image:camera"), db.dao().conversation(other.value)!!.domain().draft.attachments)
     }
     @Test fun `send cannot freeze an incomplete attachment import`() = runBlocking {
         val c = state().selected!!.conversation

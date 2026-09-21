@@ -53,12 +53,12 @@ private val previewDecodeDispatcher = Dispatchers.Default.limitedParallelism(1)
     )
 }
 
-@Composable private fun AttachmentImage(ref: String, name: String, expanded: Boolean, load: suspend (Boolean) -> DataResult<AttachmentPreview>, modifier: Modifier) {
+@Composable internal fun AttachmentImage(ref: String, name: String, expanded: Boolean, load: suspend (Boolean) -> DataResult<AttachmentPreview>, modifier: Modifier, onReady: (Boolean) -> Unit = {}) {
     var bitmap by remember(ref, expanded) { mutableStateOf<ImageBitmap?>(null) }
     var error by remember(ref, expanded) { mutableStateOf<String?>(null) }
     var retry by remember(ref, expanded) { mutableIntStateOf(0) }
     LaunchedEffect(ref, expanded, retry) {
-        bitmap = null; error = null
+        bitmap = null; error = null; onReady(false)
         try {
             when (val result = load(expanded)) {
                 is DataResult.Failed -> error = result.message
@@ -68,6 +68,7 @@ private val previewDecodeDispatcher = Dispatchers.Default.limitedParallelism(1)
             }
         } catch (e: CancellationException) { throw e }
         catch (_: Exception) { error = "图片预览读取失败" }
+        onReady(bitmap != null)
     }
     val ready = bitmap
     if (ready != null) Image(ready, "$name${if (expanded) "预览" else "缩略图"}", modifier, contentScale = ContentScale.Fit)

@@ -60,9 +60,24 @@ internal class RuntimeExecutionAdapter(private val client: RuntimeClient) : Exec
     }
 }
 internal class RuntimeSystemAdapter(private val context: android.content.Context, private val client: RuntimeClient, private val admin: RuntimeAdminClient, private val diagnostics: RuntimeDiagnosticsClient) : SystemPort {
+    private val camera = CameraCaptureStore(context)
+    private suspend fun <T> cameraResult(block: suspend () -> T): DataResult<T> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        try { DataResult.Loaded(block()) }
+        catch (e: CancellationException) { throw e }
+        catch (_: Exception) { DataResult.Failed("拍照状态无法更新，请处理现有照片后重试") }
+    }
+    override suspend fun beginCapture(conversation: String, workspace: String) = cameraResult { camera.begin(conversation, workspace) }
+    override suspend fun capture() = cameraResult { camera.current() }
+    override suspend fun finishCapture(id: String, success: Boolean) = cameraResult { camera.finish(id, success) }
+    override suspend fun previewCapture(id: String) = cameraResult { AttachmentPreview(camera.preview(id)) }
+    override suspend fun discardCapture(id: String): OperationResult = when (val result = cameraResult { camera.discard(id) }) {
+        is DataResult.Loaded -> OperationResult.Done
+        is DataResult.Failed -> OperationResult.Failed(result.message)
+    }
     private val grants = context.getSharedPreferences("attachment-grants", android.content.Context.MODE_PRIVATE)
     private val grantLock = Any()
     override suspend fun retainAttachmentGrants(locations: Set<String>) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        camera.retain(locations)
         val resolver = context.contentResolver
         val owned = synchronized(grantLock) { grants.getStringSet("owned", emptySet())!!.toSet() }
         resolver.persistedUriPermissions.filter { it.uri.toString() in owned && it.uri.toString() !in locations }.forEach { grant ->
@@ -83,6 +98,7 @@ internal class RuntimeSystemAdapter(private val context: android.content.Context
         try {
             val uri = android.net.Uri.parse(location)
             require(uri.scheme == "content")
+            if (uri.authority == "${context.packageName}.captures") camera.importing(location)
             val resolver = context.contentResolver
             // Some providers offer only a transient grant. Import still works now; a later
             // retry reports permission loss explicitly and asks the user to select again.

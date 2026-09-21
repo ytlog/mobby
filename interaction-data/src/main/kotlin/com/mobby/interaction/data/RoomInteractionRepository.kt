@@ -103,6 +103,8 @@ internal class RoomInteractionRepository(
             catch (e: Exception) { importRecovery.completeExceptionally(e); startupError.value = "会话恢复未完成，原数据已保留；请重启应用后重试" }
         }
     }
+    override suspend fun conversation(id: ConversationId): Conversation = withContext(Dispatchers.IO) { requireNotNull(dao.conversation(id.value)).domain() }
+    override suspend fun awaitAttachmentRecovery() { importRecovery.await() }
     override suspend fun beginAttachment(id: ConversationId, pending: PendingAttachment) {
         importRecovery.await()
         mutate(id) { c ->
@@ -111,19 +113,30 @@ internal class RoomInteractionRepository(
             c.copy(draft = c.draft.copy(revision = c.draft.revision + 1, pendingAttachment = pending))
         }
     }
-    override suspend fun finishAttachment(id: ConversationId, pendingId: String, result: DataResult<Attachment>) = mutate(id) { c ->
-        val pending = c.draft.pendingAttachment
-        if (pending?.id != pendingId) c else when (result) {
-            is DataResult.Failed -> c.copy(draft = c.draft.copy(pendingAttachment = pending.copy(error = result.message)))
-            is DataResult.Loaded -> {
-                if (c.archived || c.deleted || c.config.workspace != pending.workspace || (c.draft.attachments + result.value.ref).distinct().size > 4)
-                    c.copy(draft = c.draft.copy(pendingAttachment = pending.copy(error = "会话或附件状态已变化，请恢复会话后重试或移除")))
-                else c.copy(draft = c.draft.copy(revision = c.draft.revision + 1, attachments = (c.draft.attachments + result.value.ref).distinct(), pendingAttachment = null))
+    override suspend fun finishAttachment(id: ConversationId, pendingId: String, result: DataResult<Attachment>) {
+        mutate(id) { c ->
+            val pending = c.draft.pendingAttachment
+            if (pending?.id != pendingId) c else when (result) {
+                is DataResult.Failed -> c.copy(draft = c.draft.copy(pendingAttachment = pending.copy(error = result.message)))
+                is DataResult.Loaded -> {
+                    if (c.archived || c.deleted || c.config.workspace != pending.workspace || (c.draft.attachments + result.value.ref).distinct().size > 4)
+                        c.copy(draft = c.draft.copy(pendingAttachment = pending.copy(error = "会话或附件状态已变化，请恢复会话后重试或移除")))
+                    else c.copy(draft = c.draft.copy(revision = c.draft.revision + 1, attachments = (c.draft.attachments + result.value.ref).distinct(), pendingAttachment = null))
+                }
             }
         }
+        releaseAttachmentSources()
     }
-    override suspend fun discardAttachment(id: ConversationId, pendingId: String) = mutate(id) { c ->
-        if (c.draft.pendingAttachment?.id == pendingId) c.copy(draft = c.draft.copy(revision = c.draft.revision + 1, pendingAttachment = null)) else c
+    override suspend fun discardAttachment(id: ConversationId, pendingId: String) {
+        mutate(id) { c ->
+            if (c.draft.pendingAttachment?.id == pendingId) c.copy(draft = c.draft.copy(revision = c.draft.revision + 1, pendingAttachment = null)) else c
+        }
+        releaseAttachmentSources()
+    }
+    private suspend fun releaseAttachmentSources() = withContext(Dispatchers.IO) {
+        try { system.retainAttachmentGrants(dao.allConversations().mapNotNull { it.domain().draft.pendingAttachment?.location }.toSet()) }
+        catch (e: CancellationException) { throw e }
+        catch (_: Exception) { startupError.value = "附件已更新，但临时文件清理失败；请重启后重试" }
     }
     override suspend fun restoreDraft(id: ConversationId, text: String, attachments: List<String>) = mutate(id) { c ->
         require(!c.archived && !c.deleted && attachments.size <= 4)

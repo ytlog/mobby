@@ -22,7 +22,7 @@ API Key 和配置使用 Android Keystore AES-GCM 加密存储；启动器通过�
 
 ## 范围和限制
 
-- 跨协议支持文本与用户图片块（PNG/JPEG/WebP/GIF 的 base64 或 HTTP(S) URL），保持图文顺序与图片字节。桥接不主动下载 URL。提供商 file_id、图片 transformations、音频和远端托管工具等未适配输入明确失败。App 已接入照片选择与 PNG/JPEG 导入，拍照仍未接通。
+- 跨协议支持文本与用户图片块（PNG/JPEG/WebP/GIF 的 base64 或 HTTP(S) URL），保持图文顺序与图片字节。桥接不主动下载 URL。提供商 file_id、图片 transformations、音频和远端托管工具等未适配输入明确失败。App 已接入照片选择、PNG/JPEG 导入与系统拍照确认；系统相机全链路仍待真机验收。
 - Responses 的图片 detail 转到 Chat/Responses 时保留；Messages 没有等价字段，显式 low/high/original 均拒绝，auto 使用目标默认行为。当前 Codex 图片请求带 high，因此 Codex → Messages 图片路径不支持，不能视为六组合图片兼容。图片工具结果可转到 Messages/Responses，转到 Chat 明确拒绝。
 - 本地转换失败返回 HTTP 400，避免无意义重试；网络与上游响应解析失败仍返回 502。原生同协议请求不受跨协议字段限制。
 - 原生协议私有推理内容不能跨供应商转换；跨协议不转发 hidden reasoning / encrypted reasoning。同协议保留。
