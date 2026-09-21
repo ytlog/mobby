@@ -11,9 +11,15 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
+/** Retention for redundant terminal events, excluding output files and durable request indexes. */
+internal data class EventHistoryPolicy(val maxAgeMillis: Long = 30L * 24 * 60 * 60 * 1000, val maxBytes: Long = 32L * 1024 * 1024) {
+    init { require(maxAgeMillis >= 0 && maxBytes >= 0) }
+}
+
 /** Runtime is the only writer; separate from conversations. No gateway credentials or run prompts;
  * bounded, platform-sanitized approval scopes are persisted for explicit user review. */
-internal class RuntimeJournal(context: Context) : SQLiteOpenHelper(context, "runtime-journal.db", null, 1), JournalPort {
+internal class RuntimeJournal(context: Context, private val historyPolicy: EventHistoryPolicy = EventHistoryPolicy(),
+    private val clock: () -> Long = System::currentTimeMillis) : SQLiteOpenHelper(context, "runtime-journal.db", null, 1), JournalPort {
     private val json = Json { ignoreUnknownKeys = true }
     override fun onConfigure(db: SQLiteDatabase) { db.setForeignKeyConstraintsEnabled(true) }
     override fun onCreate(db: SQLiteDatabase) {
@@ -55,6 +61,32 @@ internal class RuntimeJournal(context: Context) : SQLiteOpenHelper(context, "run
             }, "id=? AND sequence=?", arrayOf(snapshot.runId.value, (snapshot.lastSequence - 1).toString())) == 1) { "Journal sequence conflict" }
             insertEvent(db, event)
             if (command != null) insertCommand(db, command)
+            if (snapshot.phase.terminal) compact(db)
+        }
+    }
+    /** Only redundant terminal event history is removed. Snapshots, request digests and receipts survive. */
+    suspend fun compact() = withContext(Dispatchers.IO) { transaction { compact(it) } }
+    private fun compact(db: SQLiteDatabase) {
+        data class Candidate(val id: String, val finished: Long, val bytes: Long)
+        val candidates = db.rawQuery("""SELECT r.id,r.snapshot,e.body,
+            (SELECT SUM(length(CAST(x.body AS BLOB))) FROM events x WHERE x.run_id=r.id)
+            FROM runs r JOIN events e ON e.run_id=r.id AND e.sequence=r.sequence WHERE r.busy=0""", emptyArray()).use { cursor ->
+            buildList {
+                while (cursor.moveToNext()) {
+                    val snapshot = json.decodeFromString<RunSnapshot>(cursor.getString(1))
+                    val event = json.decodeFromString<EventEnvelope>(cursor.getString(2))
+                    if (snapshot.phase.terminal && event.payload is RuntimeEvent.RunFinished)
+                        add(Candidate(cursor.getString(0), event.occurredAtEpochMillis, cursor.getLong(3)))
+                }
+            }
+        }.sortedWith(compareBy<Candidate> { it.finished }.thenBy { it.id })
+        var bytes = candidates.sumOf { it.bytes }
+        val cutoff = clock() - historyPolicy.maxAgeMillis
+        for (candidate in candidates) {
+            if (candidate.finished <= cutoff || bytes > historyPolicy.maxBytes) {
+                db.delete("events", "run_id=?", arrayOf(candidate.id))
+                bytes -= candidate.bytes
+            }
         }
     }
     override suspend fun snapshot(runId: RunId): RunSnapshot? = withContext(Dispatchers.IO) {

@@ -60,6 +60,7 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
                     registry.recover()
                     if (!recovered) { coordinator.recover(); recovered = coordinator.connection.value == ConnectionState.CONNECTED }
                     check(recovered)
+                    journal.compact()
                     withContext(Dispatchers.IO) { AgentInputFiles.cleanup(java.io.File(filesDir, "agent-inputs")) }
                     runtime.initialize { message -> mutableEnvironment.value = EnvironmentSnapshot(EnvironmentPhase.INITIALIZING, message) }
                     check(runtime.dependenciesReady)
