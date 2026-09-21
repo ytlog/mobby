@@ -12,6 +12,8 @@ internal class AndroidRuntimePorts(
     private val context: Context, private val runtime: RuntimeEnvironment,
     private val state: StateFlow<EnvironmentSnapshot>, private val registry: ProcessRegistry
 ) : EnvironmentPort, ProcessPort {
+    @Volatile private var control: ClaudeControlSession? = null
+    override fun offerApproval(requestId: RequestId, approvalId: String, choice: ApprovalChoice) = control?.offer(requestId, approvalId, choice) == true
     private val skills get() = SkillStore(runtime.sdk.vfs.homeDir)
     private val resources get() = ResourceStore(File(context.filesDir, "input-resources"))
     private val gateways = GatewayStore(context)
@@ -22,7 +24,7 @@ internal class AndroidRuntimePorts(
             AgentCapability(agent, if (config == null) emptyList() else listOf(ModelCapability(config.model, emptySet())),
                 unavailableReason = if (state.value.phase != EnvironmentPhase.READY) RuntimeError(ErrorCode.NOT_READY, true)
                     else if (config == null) RuntimeError(ErrorCode.INVALID_CONFIG) else null,
-                supportsResume = true, supportsApproval = false, supportsResources = true, supportsImages = config != null, skillCapabilities = skills.list(agent).filter { it.available }.map { it.ref }.toSet())
+                supportsResume = true, supportsApproval = agent == AgentId.CLAUDE_CODE, supportsResources = true, supportsImages = config != null, skillCapabilities = skills.list(agent).filter { it.available }.map { it.ref }.toSet())
         }))
     }
     override suspend fun validate(request: RunRequest): RuntimeError? = withContext(Dispatchers.IO) {
@@ -60,24 +62,26 @@ internal class AndroidRuntimePorts(
             if (request.requestedOutput == RequestedOutput.SKILL_PROPOSAL) {
                 prompt += "\n\n本轮创建技能只生成待确认草稿：如已完成澄清，请在最终回复中用四个反引号加 SKILL.md 开始、四个反引号结束的代码块给出完整文件（含 name、description 元信息和正文）。不要写入或安装技能文件；由用户在应用中预览校验并明确保存。需要进一步澄清时先提问。遵守现有权限与沙箱。"
             }
-            val input = if (prepared.images.isEmpty()) null else AgentInputFiles.create(File(context.filesDir, "agent-inputs"), request.agentId, prompt, prepared.images)
+            val input = if (request.agentId != AgentId.CODEX || prepared.images.isEmpty()) null else AgentInputFiles.create(File(context.filesDir, "agent-inputs"), prepared.images)
+            val session = if (request.agentId == AgentId.CLAUDE_CODE) ClaudeControlSession(request.requestId, AgentInputFiles.claudeMessage(prompt, prepared.images)) else null
+            control = session
             try {
-                val args = AgentCommand.arguments(request, runtime.executable(mode(request.agentId)), prompt, input?.imagePaths.orEmpty(), input?.stdin != null)
+                val args = AgentCommand.arguments(request, runtime.executable(mode(request.agentId)), prompt, input?.imagePaths.orEmpty(), session != null, approvals = session != null)
                 runtime.sdk.executor.executeArgsStreaming(listOf(File(runtime.sdk.vfs.binDir, "node").absolutePath,
                     File(context.filesDir, "gateway.cjs").absolutePath, mode(request.agentId).name) + args,
-                    runtime.workspace, mapOf("MOBBY_GATEWAY_CONFIG" to config.json()) + (input?.stdin?.let { mapOf("MOBBY_AGENT_INPUT_FILE" to it.absolutePath) } ?: emptyMap()),
+                    runtime.workspace, mapOf("MOBBY_GATEWAY_CONFIG" to config.json()),
                     onStarted = { pid -> started = true; registry.started(pid) },
-                    onTerminated = { code -> exit = code; registry.terminated(code) }
+                    onTerminated = { code -> exit = code; registry.terminated(code) }, input = session?.input
                 ).collect { line ->
                     when (line) {
-                        is OutputLine.Stdout -> output(sanitize(line.text, config), false)
+                        is OutputLine.Stdout -> if (session?.onStdout(line.text) != false) output(sanitize(line.text, config), false)
                         is OutputLine.Stderr -> output(sanitize(line.text, config), true)
                         is OutputLine.Exit -> exit = line.code
                     }
                 }
-            } finally { input?.close() }
+            } finally { session?.close(); if (control === session) control = null; input?.close() }
         }
-        val watcher = launch { stop.filterNotNull().first(); worker.cancel() }
+        val watcher = launch { stop.filterNotNull().first(); control?.close(); worker.cancel() }
         try {
             worker.await()
             ProcessResult(exit, !started || exit != null)

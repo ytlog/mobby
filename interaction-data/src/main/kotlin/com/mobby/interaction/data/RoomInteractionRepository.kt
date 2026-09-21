@@ -312,6 +312,7 @@ internal class RoomInteractionRepository(
             snapshot?.outputSegments?.filter { it.messageId.startsWith("diagnostic:") }?.messages().orEmpty(),
             error ?: snapshot?.terminalEvidence?.error?.message(), snapshot?.progressSummary, pending, occupied, expanded, storageJson.decodeFromString(expandedSteps),
             snapshot?.artifacts?.mapNotNull { ref -> content[ref.value]?.let { SkillProposal(ref.value, it, DomainAgent.valueOf(snapshot.acceptedConfig.agentId.name)) } }.orEmpty(),
-            storageJson.decodeFromString<StoredConversation>(frozen).creator != null, snapshot?.artifacts?.any { it.value !in content } == true, storageJson.decodeFromString<StoredConversation>(frozen).attachments)
+            storageJson.decodeFromString<StoredConversation>(frozen).creator != null, snapshot?.artifacts?.any { it.value !in content } == true, storageJson.decodeFromString<StoredConversation>(frozen).attachments,
+            snapshot?.pendingApprovals?.map { PermissionRequest(it.approvalId, it.revision, it.actionSummary, it.scopeSummary) }.orEmpty())
     }
 }

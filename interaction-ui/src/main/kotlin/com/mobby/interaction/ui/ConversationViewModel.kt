@@ -32,6 +32,25 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
     val skills = MutableStateFlow<List<Skill>>(emptyList())
     val skillsError = MutableStateFlow<String?>(null)
     val skillsLoading = MutableStateFlow(false)
+    val permissionBusy = MutableStateFlow<Set<PermissionKey>>(emptySet())
+    val permissionSubmitted = MutableStateFlow<Set<PermissionKey>>(emptySet())
+    private val permissionAttempts = mutableMapOf<PermissionKey, PermissionDecision>()
+    fun decidePermission(execution: ExecutionId, permission: PermissionRequest, allow: Boolean) {
+        val key = PermissionKey(execution, permission.id, permission.revision)
+        if (key in permissionBusy.value || key in permissionSubmitted.value) return
+        permissionAttempts.keys.removeAll { it.execution != execution }
+        val decision = permissionAttempts.getOrPut(key) { PermissionDecision(java.util.UUID.randomUUID().toString(), key, allow) }
+        if (decision.allow != allow) { feedback.trySend("上次决定尚待确认，请重试同一决定"); return }
+        permissionBusy.value = permissionBusy.value + key
+        enqueue {
+            try {
+                when (val result = actions.resolvePermission(decision)) {
+                    OperationResult.Done -> permissionSubmitted.value = permissionSubmitted.value.filter { it.execution == execution }.toSet() + key
+                    is OperationResult.Failed -> feedback.send(result.message)
+                }
+            } finally { permissionBusy.value = permissionBusy.value - key }
+        }
+    }
     val skillEditor = MutableStateFlow<SkillEditor?>(null)
     fun loadSkills(agent: AgentId) = enqueue {
         skillsLoading.value = true; skillsError.value = null

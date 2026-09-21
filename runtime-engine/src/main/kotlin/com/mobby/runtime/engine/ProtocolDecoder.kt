@@ -106,10 +106,11 @@ class ProtocolDecoder(private val agent: AgentId) {
 }
 
 object AgentCommand {
-    fun arguments(request: RunRequest, executable: String, prompt: String, imagePaths: List<String> = emptyList(), streamInput: Boolean = false): List<String> {
+    fun arguments(request: RunRequest, executable: String, prompt: String, imagePaths: List<String> = emptyList(), streamInput: Boolean = false, approvals: Boolean = false): List<String> {
         require(imagePaths.all { it.startsWith("/") && '\u0000' !in it })
         require(request.agentId == AgentId.CODEX || imagePaths.isEmpty())
         require(request.agentId == AgentId.CLAUDE_CODE || !streamInput)
+        require(!approvals || request.agentId == AgentId.CLAUDE_CODE && streamInput)
         val session = request.sessionRef?.value
         require(session == null || session.matches(Regex("[A-Za-z0-9-]{1,100}")))
         return when (request.agentId) {
@@ -126,6 +127,7 @@ object AgentCommand {
                 if (session != null) addAll(listOf("--resume", session))
                 if (streamInput) addAll(listOf("--input-format", "stream-json"))
                 else { add("--"); add(prompt) }
+                if (approvals) addAll(listOf("--permission-prompt-tool", "stdio"))
             }
         }
     }

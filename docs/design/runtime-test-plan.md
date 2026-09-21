@@ -51,11 +51,11 @@
 Shell 模式执行单次命令，Agent 模式使用非交互调用：
 
 ```text
-Claude Code: claude -p <prompt> --output-format stream-json --verbose
+Claude Code: claude -p --input-format stream-json --output-format stream-json --verbose --permission-prompt-tool stdio
 Codex:       codex exec --json <prompt>
 ```
 
-运行层通过参数数组传递 Agent 输入，并发读取 stdout/stderr，按完整 JSON 行解析 Agent 事件。参数与输出格式以实际安装版本为准。
+运行层以参数数组启动 CLI，并发读取 stdout/stderr，按完整 JSON 行解析 Agent 事件。Claude 通过双向 stdin JSONL 先初始化、再发送文本/图片与审批决定；原始任务正文不放入 argv，等待决定时不能关闭 stdin。Codex 按其原生参数传递输入。参数与输出格式以实际安装版本为准。
 
 SDK 集成时修正运行路径硬编码、流式输出延迟和管道读取阻塞问题。安装运行依赖与 CLI 后，完成认证并执行最小任务检查。
 
@@ -86,3 +86,7 @@ SDK 集成时修正运行路径硬编码、流式输出延迟和管道读取阻�
 Runtime 当前以 specialUse 声明用户启动的本地终端任务，不再声明 dataSync。Android 14/15 设备需验证：在可见界面启动 Shell/Agent 后切换应用，通知持续显示且可返回停止；退出确认后通知移除；平台拒绝启动时请求不被接纳；系统终止宿主后重新进入只恢复/核实原任务，不自动重发。检查最终 APK 的服务类型、权限及 subtype，不以源码清单代替合并结果。
 
 超时入口的阻塞清理、清理失败和原因保留由 Robolectric/API 34 与引擎单测覆盖；尚未完成 Android 15 实机验收。不要用 dataSync 专用配额测试推断 specialUse 的真实行为，也不要把显式调用回调的测试描述为操作系统实际触发了超时。
+
+## 原生审批验收补充
+
+Claude 应用链路已接通。主机使用生产 Kotlin 控制会话、固定 CLI 和模拟模型验证允许、拒绝、待审批取消及恢复会话；手机原有网关的三次工具运行已由用户点击 ALLOW_ONCE，Runtime 持久事件与文件内容相互印证。手机应用内拒绝、待审批取消、旋转/后台/断连恢复，以及新控制通道上的真实图片模型请求仍需验证。审批验收以 ApprovalRequired/ApprovalResolved 日志、CLI 工具结果和文件副作用共同确认，不能因轮询没有看到卡片就推断未发生审批。详见[实施记录](../implementation.md)。

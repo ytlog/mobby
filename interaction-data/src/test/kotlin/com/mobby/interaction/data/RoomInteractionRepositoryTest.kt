@@ -357,6 +357,29 @@ class RoomInteractionRepositoryTest {
         assertEquals(ref.value, restored.selected!!.turns.single().skillProposals.single().ref)
         assertEquals(body, restored.selected!!.turns.single().skillProposals.single().markdown)
     }
+    @Test fun `permission projection survives database reopen and adapter preserves decision identity`() = runBlocking {
+        val c = state().selected!!.conversation
+        repository.editDraft(c.id, "write", 5, 5)
+        val turn = (repository.prepareTurn(c.id, TurnId("permission-turn")) as PrepareTurnResult.Prepared).turn
+        runtime.admit(turn)
+        val pending = PendingApproval("native-id", 7, "Write", "{\"file_path\":\"/fixture/file\"}")
+        runtime.snapshots[turn.turnId.value] = runtime.snapshots.getValue(turn.turnId.value).copy(phase = RunPhase.AWAITING_APPROVAL, revision = 7, lastSequence = 7, pendingApprovals = listOf(pending))
+        repository.recordSubmission(turn, Submission.Accepted(ExecutionId(turn.turnId.value)))
+        val projected = state { it.selected?.turns?.singleOrNull()?.permissions?.isNotEmpty() == true }.selected!!.turns.single()
+        assertEquals(PermissionRequest(pending.approvalId, pending.revision, pending.actionSummary, pending.scopeSummary), projected.permissions.single())
+        scope.coroutineContext[Job]!!.cancelAndJoin(); db.close(); start()
+        val restored = state { it.selected?.turns?.singleOrNull()?.permissions?.isNotEmpty() == true }.selected!!.turns.single()
+        assertEquals(projected.permissions, restored.permissions)
+        val adapter = RuntimeExecutionAdapter(runtime)
+        val decision = PermissionDecision("command", PermissionKey(restored.execution!!, pending.approvalId, pending.revision), true)
+        runtime.permissionResult = CommandResult.Accepted
+        assertEquals(OperationResult.Done, adapter.resolvePermission(decision))
+        assertEquals(OperationResult.Done, adapter.resolvePermission(decision))
+        assertEquals(listOf(ApprovalDecision(CommandId("command"), RunId(turn.turnId.value), pending.approvalId, ApprovalChoice.ALLOW_ONCE, 7)), runtime.decisions.distinct())
+        runtime.permissionResult = CommandResult.Rejected(RuntimeError(ErrorCode.STALE_APPROVAL))
+        assertEquals(OperationResult.Failed("此确认请求已失效"), adapter.resolvePermission(decision.copy(commandId = "deny", allow = false)))
+        assertEquals(ApprovalChoice.DENY, runtime.decisions.last().choice)
+    }
     private class TestRuntime : RuntimeClient {
         override val connection = MutableStateFlow(ConnectionState.CONNECTED)
         val snapshots = mutableMapOf<String, RunSnapshot>()
@@ -370,7 +393,9 @@ class RoomInteractionRepositoryTest {
         override suspend fun submit(request: RunRequest): SubmitResult { submissions++; return SubmitResult.Rejected(RuntimeError(ErrorCode.BUSY)) }
         override suspend fun findByRequest(requestId: RequestId): RequestLookup = if (requestId.value in snapshots) RequestLookup.Found(RunId(requestId.value)) else RequestLookup.NotFound
         override suspend fun cancel(request: CancelRequest) = CommandResult.Accepted
-        override suspend fun resolveApproval(request: ApprovalDecision) = CommandResult.Rejected(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
+        val decisions = mutableListOf<ApprovalDecision>()
+        var permissionResult: CommandResult = CommandResult.Rejected(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
+        override suspend fun resolveApproval(request: ApprovalDecision): CommandResult { decisions += request; return permissionResult }
         override suspend fun snapshot(runId: RunId): SnapshotResult = snapshots[runId.value]?.let { SnapshotResult.Found(it) } ?: SnapshotResult.Unavailable(RuntimeError(ErrorCode.NOT_FOUND))
         override fun observe(runId: RunId, after: EventCursor?): Flow<RuntimeUpdate> = flow {
             snapshots[runId.value]?.let { emit(RuntimeUpdate.Baseline(it, EventCursor(runId, it.lastSequence))) }

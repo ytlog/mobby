@@ -36,11 +36,16 @@ API Key 和保存配置使用 Android Keystore AES-GCM 加密。桥接不主动�
 - 当前 M2007J1SC / Android 13 内核未启用 USER_NS/PID_NS，Codex 所需的 Linux 沙箱无法运行；官方 bwrap 已补齐，但工具执行门槛仍失败。不能把文本模型响应通过解释为完整 Agent 可用。
 - 旧 Linux musl Codex 裸程序在本机 Android 缺少可用的域名解析路径。统一桥接将联网交由 Android Node，没有修改 Codex 二进制或关闭沙箱。裸程序单独执行仍不等于 App 执行路径。
 
+## Claude 审批
+
+Claude 使用双向 stream-json 控制通道。CLI 实际请求授权时，会话显示独立审批卡，完整展示脱敏后的动作参数，可选择“拒绝”或“仅允许这一次”。决定先持久化，再交给对应运行的 CLI；连接断开、取消、过期和重复决定不能授权新请求。页面退出不自动批准，恢复会话从 Runtime 快照还原。CLI 已允许的操作可能不会发出审批请求；模型在回复中询问确认也不等同于原生审批事件。Codex 审批仍未开放。
+
 ## 验证命令
 
 - `node --test runtime/gateway-tests/bridge.test.cjs`：同协议字段/流完整性、辅助接口、鉴权、拒绝转换、输入限制、取消、断流与错误脱敏。
 - `MOBBY_TEST_ADB=/path/to/adb node runtime/gateway-tests/android-codex-network.cjs`：已安装 App 的实际启动脚本与内置 Codex，比较 IP/域名上游。独立 HOME、虚假密钥、adb reverse 本地模拟服务；不改真实配置。用 `MOBBY_TEST_AGENT=CLAUDE` 改测 Claude Code；可用 `MOBBY_TEST_TOOL=1` 增加设备 shell 读取与回传门槛（当前因设备缺少用户/PID 命名空间且限制 bwrap 所需内核信息而失败）；可用 `MOBBY_TEST_RAW_CODEX=1` 单独诊断裸 CLI，当前域名阶段预期失败。
-- `runtime/gateway-tests/approval-smoke.cjs`：固定 Claude CLI 的真实允许/拒绝/等待时取消，用 `MOBBY_TEST_CLAUDE_JS` 验证主机或 `MOBBY_TEST_ADB` 验证手机。仅验证协议；App 审批界面尚未接通。
+- `runtime/gateway-tests/approval-smoke.cjs`：固定 Claude CLI 的真实允许/拒绝/等待时取消，用 `MOBBY_TEST_CLAUDE_JS` 验证主机或 `MOBBY_TEST_ADB` 验证手机。该脚本只验证 CLI 协议，不能单独替代应用界面验收。
+- `MOBBY_TEST_CLAUDE_JS=/path/to/cli.js ./gradlew :runtime-engine:test --tests '*ClaudeControl*'`（JDK 17）：生产 Kotlin 控制会话与真实固定 Claude CLI 的允许、拒绝、等待时取消及恢复会话检查，使用隔离 HOME 和模拟模型。
 - `runtime/gateway-tests/cli-smoke.cjs`、`images-smoke.cjs`、`skills-smoke.cjs`：用 `MOBBY_TEST_CODEX` 与 `MOBBY_TEST_CLAUDE_JS` 指定主机程序，隔离 HOME 并使用虚假密钥。只验证 Codex/Responses 与 Claude/Messages，结果不能替代手机真实网关验收。
 
 历史的六组合转换结果只属于旧版本，见[实施记录](implementation.md)。当前设备与真实模型验证结果也在该记录中持续更新。

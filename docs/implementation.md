@@ -394,3 +394,17 @@ JDK 17 下主 APK 构建、相关单测与 lint 通过；覆盖安装前后内�
 本检查点尚未实现 AndroidRuntimePorts 的控制消息队列和 CLI stdio 初始化，也未添加 Domain/Data 决定用例与 Compose 审批卡片；supportsApproval 继续为 false，默认进程端拒绝交付。测试中的进程端为可控夹具，不代表手机应用已能审批工具。下一步接通这条真实传输与界面链路后，才能使用此前已验证的 Claude 手机原生协议进行完整验收。
 
 验证：runtime-engine 37 项、interaction-data 30 项、runtime-android 34 项测试通过；主 APK 构建、App/termux-core 单测与 lint 通过。主 APK 已覆盖安装并启动，原加密网关配置摘要在内存中比较一致。本轮没有进行手机审批交互验收，Codex 的设备沙箱限制仍待执行架构决定，完整目标保持未完成。
+
+## Claude 原生审批接入应用（2026-09-21）
+
+新增 ClaudeControlSession 作为单次执行的双向控制会话：先发送 initialize 控制请求，收到匹配的成功响应后才发送用户消息；stdin 保持开放等待决定，仅在 CLI result 后发送 EOF。原始工具参数只保存在该会话内，ALLOW_ONCE 回复完整 updatedInput，DENY 回复明确拒绝；不写持久权限规则。RequestId、原生 request_id、请求重复/冲突、消息大小与数量限制均校验，关闭或取消后拒绝新决定。AndroidRuntimePorts 将真实 stdout 在脱敏前交给控制会话，脱敏后的审批事实才进入执行核心；持久决定经 offerApproval 写回对应进程。初始化、输入写入或协议错误仍触发真实失败与进程清理。
+
+Claude 文本、图片和恢复会话均走同一 stream-json 输入通道，不再用应用内临时 JSONL 文件占用 stdin。Codex 图片继续通过受控临时文件传入，协议与沙箱约束未改变。Claude 的 supportsApproval 开放，Codex 保持不可用。Domain/Data 映射审批快照与带 commandId/run/id/revision 的决定；提交在应用作用域执行。会话中新增独立审批卡，完整展示可滚动、可复制的脱敏参数，提供“拒绝”和“仅允许这一次”；断连、提交中、已接纳时禁用按钮。重复点击不重复提交，不确定结果重试复用原 commandId 和选择，界面消失不自动批准。
+
+156 项相关测试通过：engine 43、domain 12、data 31、runtime-android 34、UI 36，均无跳过；主包构建、App/termux-core 单测及 lint 通过。新增主机真实固定 Claude CLI 门槛，直接使用生产 Kotlin 控制会话与模拟 Messages 服务，隔离 HOME，验证允许、拒绝、等待时取消以及 resume 后再次审批。另覆盖输入图片字节/未知工具参数保留、握手前不发送正文、过期/关闭后拒绝决定、Room 投影重新打开、短屏完整参数展示、禁用操作及不确定决定重试。
+
+主 APK 覆盖安装并启动，原加密网关配置在内存中比较摘要一致。手机使用原有网关与独立测试会话，实际完成工作区内 Write、工作区外 Write、Bash 写入三次测试，用户在手机上点击了授权。读取 Runtime 日志后确认这三次运行各有 1 个 ApprovalRequired 和 1 个 ApprovalResolved(ALLOW_ONCE)，工具均 SUCCEEDED、运行均 SUCCEEDED、待审批均清空；逐一核对测试文件内容后只删除本次测试文件，保留会话记录和原配置。
+
+最初的 UI 轮询没有捕捉到审批卡，本轮曾据此误判 CLI 直接放行；用户告知已点击后，以持久事件纠正，不能用截图/轮询时没看到卡片作为没有审批的证据。工作区外写入之前还有一轮模型自然语言询问确认，该轮没有工具或审批事件，与原生审批明确区分。
+
+仍未完成：手机应用界面内的拒绝与等待审批时取消尚未端到端验收（CLI 协议主机/手机与核心回归已有覆盖）；实际图片模型输入的新控制通道、旋转/重连/后台恢复、其他交互门槛仍需继续验证。Codex 的 Android 内核沙箱限制仍未解决，不能宣称整个目标完成。

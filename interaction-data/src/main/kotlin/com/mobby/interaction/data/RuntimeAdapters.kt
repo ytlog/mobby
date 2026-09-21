@@ -38,6 +38,13 @@ internal fun TurnExecution.request() = RunRequest(RequestId(turnId.value), Runti
     listOf(InputPart.Text(draft.text)) + draft.attachments.map { InputPart.Resource(ResourceRef(it)) }, config.model,
     GatewayProfileRef(config.gatewayProfile, config.gatewayVersion), config.reasoning, session?.let(::SessionRef), draft.capabilities.map(::CapabilityRef).toSet(), requestedOutput = if (creatingSkill) RequestedOutput.SKILL_PROPOSAL else RequestedOutput.TEXT)
 internal class RuntimeExecutionAdapter(private val client: RuntimeClient) : ExecutionPort {
+    override suspend fun resolvePermission(decision: PermissionDecision): OperationResult = when (val result = client.resolveApproval(
+        ApprovalDecision(CommandId(decision.commandId), RunId(decision.key.execution.value), decision.key.approvalId,
+            if (decision.allow) ApprovalChoice.ALLOW_ONCE else ApprovalChoice.DENY, decision.key.revision))) {
+        CommandResult.Accepted -> OperationResult.Done
+        CommandResult.AlreadyTerminal -> OperationResult.Failed("此确认请求已失效")
+        is CommandResult.Rejected -> OperationResult.Failed(result.error.message())
+    }
     override suspend fun submit(turn: TurnExecution): Submission = try {
         when (val result = client.submit(turn.request())) {
             is SubmitResult.Accepted -> Submission.Accepted(ExecutionId(result.runId.value))
@@ -174,7 +181,7 @@ internal class RuntimeSystemAdapter(private val context: android.content.Context
     override val diagnostic = diagnostics.state.map { DiagnosticOutput(it.phase?.domain(), it.output) }
     override suspend fun agents(): List<AgentOption> = when (val result = client.capabilities()) {
         is CapabilityResult.Unavailable -> DomainAgent.values().map { AgentOption(it, emptyMap(), result.error.message(), false, emptySet()) }
-        is CapabilityResult.Available -> result.capabilities.agents.map { AgentOption(DomainAgent.valueOf(it.agentId.name), it.models.associate { m -> m.id to m.reasoningLevels }, it.unavailableReason?.message(), it.supportsResume, it.skillCapabilities.map { ref -> ref.value }.toSet(), it.supportsResources, it.supportsImages) }
+        is CapabilityResult.Available -> result.capabilities.agents.map { AgentOption(DomainAgent.valueOf(it.agentId.name), it.models.associate { m -> m.id to m.reasoningLevels }, it.unavailableReason?.message(), it.supportsResume, it.skillCapabilities.map { ref -> ref.value }.toSet(), it.supportsResources, it.supportsImages, it.supportsApproval) }
     }
     override suspend fun checkGateway(profile: GatewayProfile): DataResult<GatewayCheckReport> =
         when (val result = admin.validateGateway(GatewayProfileRef(profile.id, profile.version))) {

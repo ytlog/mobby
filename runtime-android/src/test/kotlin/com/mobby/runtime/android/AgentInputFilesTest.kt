@@ -1,6 +1,5 @@
 package com.mobby.runtime.android
 
-import com.mobby.runtime.api.AgentId
 import kotlinx.serialization.json.*
 import org.junit.*
 import org.junit.Assert.*
@@ -15,33 +14,27 @@ class AgentInputFilesTest {
         val root = temporary.newFolder()
         val bytes = byteArrayOf(1, 2, 3, -1)
         val images = listOf(ResourceStore.Image("private name.png", "image/png", bytes))
-        for (agent in AgentId.values()) {
-            AgentInputFiles.create(root, agent, "literal \"prompt\"\n中文", images).use { input ->
-                if (agent == AgentId.CODEX) {
-                    assertArrayEquals(bytes, File(input.imagePaths.single()).readBytes()); assertNull(input.stdin)
-                } else {
-                    assertTrue(input.imagePaths.isEmpty())
-                    val message = Json.parseToJsonElement(input.stdin!!.readText().trim()).jsonObject.getValue("message").jsonObject
-                    assertEquals("user", message.getValue("role").jsonPrimitive.content)
-                    val content = message.getValue("content").jsonArray
-                    assertEquals("literal \"prompt\"\n中文", content[0].jsonObject.getValue("text").jsonPrimitive.content)
-                    val source = content[1].jsonObject.getValue("source").jsonObject
-                    assertEquals("image/png", source.getValue("media_type").jsonPrimitive.content)
-                    assertArrayEquals(bytes, Base64.getDecoder().decode(source.getValue("data").jsonPrimitive.content))
-                }
-            }
-            assertTrue(root.listFiles()!!.isEmpty())
+        AgentInputFiles.create(root, images).use { input ->
+            assertArrayEquals(bytes, File(input.imagePaths.single()).readBytes())
         }
+        assertTrue(root.listFiles()!!.isEmpty())
+        val message = AgentInputFiles.claudeMessage("literal \"prompt\"\n中文", images).getValue("message").jsonObject
+        assertEquals("user", message.getValue("role").jsonPrimitive.content)
+        val content = message.getValue("content").jsonArray
+        assertEquals("literal \"prompt\"\n中文", content[0].jsonObject.getValue("text").jsonPrimitive.content)
+        val source = content[1].jsonObject.getValue("source").jsonObject
+        assertEquals("image/png", source.getValue("media_type").jsonPrimitive.content)
+        assertArrayEquals(bytes, Base64.getDecoder().decode(source.getValue("data").jsonPrimitive.content))
     }
     @Test fun `failed or interrupted scope and startup cleanup leave no temporary input and never follow links`() {
         val root = temporary.newFolder()
         assertThrows(IllegalStateException::class.java) {
-            AgentInputFiles.create(root, AgentId.CLAUDE_CODE, "test", emptyList()).use { error("cancelled") }
+            AgentInputFiles.create(root, emptyList()).use { error("cancelled") }
         }
         assertTrue(root.listFiles()!!.isEmpty())
         val external = temporary.newFile().apply { writeText("keep") }
         Files.createSymbolicLink(File(root, "link").toPath(), external.toPath())
-        AgentInputFiles.create(root, AgentId.CLAUDE_CODE, "stale", emptyList())
+        AgentInputFiles.create(root, emptyList())
         AgentInputFiles.cleanup(root)
         assertFalse(root.exists()); assertEquals("keep", external.readText())
     }

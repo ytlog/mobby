@@ -37,10 +37,14 @@ sealed interface StopResult {
 }
 enum class ExecutionPhase { ACCEPTED, RUNNING, AWAITING_APPROVAL, CANCELLING, SUCCEEDED, FAILED, CANCELLED, TIMED_OUT, INTERRUPTED, OUTCOME_UNKNOWN }
 data class ExecutionFact(val executionId: ExecutionId, val phase: ExecutionPhase)
+data class PermissionRequest(val id: String, val revision: Long, val action: String, val scope: String)
+data class PermissionKey(val execution: ExecutionId, val approvalId: String, val revision: Long)
+data class PermissionDecision(val commandId: String, val key: PermissionKey, val allow: Boolean)
 interface ExecutionPort {
     suspend fun submit(turn: TurnExecution): Submission
     suspend fun lookup(turnId: TurnId): Submission
     suspend fun cancel(executionId: ExecutionId): StopResult
+    suspend fun resolvePermission(decision: PermissionDecision): OperationResult = OperationResult.Failed("当前执行端不支持审批")
     fun observe(executionId: ExecutionId): Flow<ExecutionFact>
 }
 sealed interface PrepareTurnResult {

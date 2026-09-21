@@ -82,3 +82,35 @@ internal fun ExecutionPhase?.label(): String = when (this) {
         }
     }
 }
+
+@Composable internal fun PermissionCard(turn: Turn, permission: PermissionRequest, agent: AgentId, vm: ConversationViewModel) {
+    val execution = turn.execution ?: return
+    val key = PermissionKey(execution, permission.id, permission.revision)
+    val status by vm.status.collectAsState()
+    val agents by vm.agents.collectAsState()
+    val busy by vm.permissionBusy.collectAsState()
+    val submitted by vm.permissionSubmitted.collectAsState()
+    val enabled = status.connected && agents.any { it.agent == agent && it.approvals } &&
+        turn.phase == ExecutionPhase.AWAITING_APPROVAL && key !in busy && key !in submitted
+    PermissionContent(permission, enabled, key in busy, key in submitted, status.connected) { allow -> vm.decidePermission(execution, permission, allow) }
+}
+
+@Composable internal fun PermissionContent(permission: PermissionRequest, enabled: Boolean, busy: Boolean, submitted: Boolean, connected: Boolean, decide: (Boolean) -> Unit) {
+    OutlinedCard(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("需要你的授权", style = MaterialTheme.typography.titleMedium)
+            Text(permission.action, style = MaterialTheme.typography.titleSmall)
+            SelectionContainer {
+                Text(permission.scope, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp).verticalScroll(rememberScrollState()))
+            }
+            if (submitted) Text("决定已接纳，等待执行结果")
+            else if (busy) Text("正在提交决定…")
+            else if (!connected) Text("连接中断，恢复连接后再确认")
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedButton(onClick = { decide(false) }, enabled = enabled) { Text("拒绝") }
+                Button(onClick = { decide(true) }, enabled = enabled) { Text("仅允许这一次") }
+            }
+        }
+    }
+}

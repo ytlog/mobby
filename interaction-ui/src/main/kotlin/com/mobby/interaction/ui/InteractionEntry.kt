@@ -288,7 +288,7 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
 
 @OptIn(FlowPreview::class)
 @Composable private fun Timeline(detail: ConversationDetail, vm: ConversationViewModel, modifier: Modifier, read: (String, String) -> Unit, hostActions: InteractionHostActions, proposal: (SkillProposal) -> Unit) {
-    val keys = buildList { if (detail.hasEarlier) add("earlier"); detail.turns.forEach { t -> add("user:${t.id.value}"); add("run:${t.id.value}"); t.messages.forEach { add("message:${t.id.value}:${it.id}") }; t.skillProposals.forEach { add("artifact:${t.id.value}:${it.ref}") }; if (t.creatingSkill && !t.occupied && t.skillProposals.isEmpty() && !t.proposalsLoading) add("creator:${t.id.value}"); if (t.failure != null || t.phase in listOf(ExecutionPhase.CANCELLED, ExecutionPhase.TIMED_OUT, ExecutionPhase.INTERRUPTED, ExecutionPhase.OUTCOME_UNKNOWN, ExecutionPhase.AWAITING_APPROVAL)) add("status:${t.id.value}") } }
+    val keys = buildList { if (detail.hasEarlier) add("earlier"); detail.turns.forEach { t -> add("user:${t.id.value}"); add("run:${t.id.value}"); t.permissions.forEach { add("permission:${t.id.value}:${it.id}:${it.revision}") }; t.messages.forEach { add("message:${t.id.value}:${it.id}") }; t.skillProposals.forEach { add("artifact:${t.id.value}:${it.ref}") }; if (t.creatingSkill && !t.occupied && t.skillProposals.isEmpty() && !t.proposalsLoading) add("creator:${t.id.value}"); if (t.failure != null || t.phase in listOf(ExecutionPhase.CANCELLED, ExecutionPhase.TIMED_OUT, ExecutionPhase.INTERRUPTED, ExecutionPhase.OUTCOME_UNKNOWN, ExecutionPhase.AWAITING_APPROVAL)) add("status:${t.id.value}") } }
     val initial = keys.indexOf(detail.conversation.anchor).coerceAtLeast(0)
     val list = rememberLazyListState(initial, detail.conversation.anchorOffset.coerceAtLeast(0))
     var follow by remember { mutableStateOf(detail.conversation.anchor == null) }
@@ -317,7 +317,7 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
     LaunchedEffect(list) {
         snapshotFlow { list.layoutInfo.totalItemsCount > 0 && !list.isScrollInProgress && !list.canScrollForward }.collect { if (it) follow = true }
     }
-    val outputVersion = detail.turns.map { listOf(it.id, it.phase, it.messages.map { m -> m.text.length }, it.steps.map { s -> s.output.length }) }
+    val outputVersion = detail.turns.map { listOf(it.id, it.phase, it.permissions.map { p -> p.id to p.revision }, it.messages.map { m -> m.text.length }, it.steps.map { s -> s.output.length }) }
     LaunchedEffect(outputVersion) { if (follow && !list.isScrollInProgress && keys.isNotEmpty()) list.scrollToItem(keys.lastIndex) }
     LaunchedEffect(list) {
         snapshotFlow { list.layoutInfo.visibleItemsInfo.firstOrNull()?.key?.toString() to list.firstVisibleItemScrollOffset }.debounce(250).collect { (key, offset) ->
@@ -333,6 +333,9 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
             detail.turns.forEach { turn ->
                 item(key = "user:${turn.id.value}") { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { Surface(shape = RoundedCornerShape(21.dp, 21.dp, 6.dp, 21.dp), color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.widthIn(max = 360.dp)) { Column(Modifier.padding(16.dp)) { androidx.compose.foundation.text.selection.SelectionContainer { Text(turn.userText) }; AttachmentList(turn.attachments, detail.conversation.config.workspace, vm) } } } }
                 item(key = "run:${turn.id.value}") { ExecutionCard(turn, vm, read) }
+                turn.permissions.forEach { permission -> item(key = "permission:${turn.id.value}:${permission.id}:${permission.revision}") {
+                    PermissionCard(turn, permission, detail.conversation.config.agent, vm)
+                } }
                 turn.messages.forEach { message -> item(key = "message:${turn.id.value}:${message.id}") {
                     Column {
                         ReplyContent(message.text, read)

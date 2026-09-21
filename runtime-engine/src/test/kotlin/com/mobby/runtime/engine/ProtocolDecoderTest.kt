@@ -46,6 +46,15 @@ class ProtocolDecoderTest {
             assertTrue(facts.none { it is AgentFact.Approval || it is AgentFact.Completed && it.success })
         }
     }
+    @Test fun `approval launch uses native stdio with no prompt argument and cannot target codex`() {
+        val request = RunRequest(RequestId("r"), AgentId.CLAUDE_CODE, WorkspaceRef("default"), emptyList(), "model", GatewayProfileRef("g", 0))
+        val args = AgentCommand.arguments(request, "agent", "private prompt", streamInput = true, approvals = true)
+        assertTrue(args.windowed(2).contains(listOf("--permission-prompt-tool", "stdio")))
+        assertTrue(args.windowed(2).contains(listOf("--input-format", "stream-json")))
+        assertFalse(args.contains("private prompt"))
+        assertFalse(args.any { "bypass" in it || "skip-permissions" in it })
+        assertThrows(IllegalArgumentException::class.java) { AgentCommand.arguments(request.copy(agentId = AgentId.CODEX), "agent", "x", approvals = true) }
+    }
     @Test fun `resume is explicit and prompt remains literal without bypass flags`() {
         for (agent in AgentId.values()) {
             val request = RunRequest(RequestId("r"), agent, WorkspaceRef("default"), emptyList(), "model", GatewayProfileRef("g", 0), sessionRef = SessionRef("session-123"))

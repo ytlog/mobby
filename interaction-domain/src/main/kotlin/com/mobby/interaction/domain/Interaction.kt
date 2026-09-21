@@ -13,7 +13,8 @@ data class Turn(
     val diagnostics: List<Message> = emptyList(), val failure: String? = null,
     val progress: String? = null, val pending: Boolean = false, val occupied: Boolean = false,
     val expanded: Boolean? = null, val expandedSteps: Set<String> = emptySet(),
-    val skillProposals: List<SkillProposal> = emptyList(), val creatingSkill: Boolean = false, val proposalsLoading: Boolean = false, val attachments: List<String> = emptyList()
+    val skillProposals: List<SkillProposal> = emptyList(), val creatingSkill: Boolean = false, val proposalsLoading: Boolean = false, val attachments: List<String> = emptyList(),
+    val permissions: List<PermissionRequest> = emptyList()
 )
 data class ConversationSummary(val conversation: Conversation, val phase: ExecutionPhase? = null, val occupied: Boolean = false)
 data class ConversationDetail(val conversation: Conversation, val turns: List<Turn>, val hasEarlier: Boolean = false)
@@ -23,7 +24,7 @@ data class InteractionState(
 ) {
     val occupied: ConversationSummary? get() = conversations.firstOrNull { it.occupied }
 }
-data class AgentOption(val agent: AgentId, val models: Map<String, Set<String>>, val unavailable: String?, val resume: Boolean, val skills: Set<String>, val resources: Boolean = false, val images: Boolean = false)
+data class AgentOption(val agent: AgentId, val models: Map<String, Set<String>>, val unavailable: String?, val resume: Boolean, val skills: Set<String>, val resources: Boolean = false, val images: Boolean = false, val approvals: Boolean = false)
 data class GatewayProfile(val agent: AgentId, val id: String, val version: Long, val endpoint: String, val model: String, val protocol: String, val hasCredential: Boolean)
 data class GatewayCheckReport(val passed: Boolean, val message: String)
 class GatewayEdit(val agent: AgentId, val endpoint: String, val model: String, val protocol: String, val credential: CharArray?) {
@@ -126,6 +127,7 @@ class InteractionUseCases(
     }.await()
     suspend fun reconcile(id: ConversationId) = SubmitTurnUseCase(repository, execution).reconcile(id)
     suspend fun stop(id: ExecutionId) = StopRunUseCase(execution)(id)
+    suspend fun resolvePermission(decision: PermissionDecision) = submissionScope.async { execution.resolvePermission(decision) }.await()
     suspend fun skills(agent: AgentId) = system.skills(agent)
     suspend fun readSkill(ref: String) = system.readSkill(ref)
     suspend fun previewSkill(markdown: String) = system.previewSkill(markdown)
