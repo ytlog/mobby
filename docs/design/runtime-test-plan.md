@@ -89,4 +89,4 @@ Runtime 当前以 specialUse 声明用户启动的本地终端任务，不再声
 
 ## 原生审批验收补充
 
-Claude 应用链路已接通。主机使用生产 Kotlin 控制会话、固定 CLI 和模拟模型验证允许、拒绝、待审批取消及恢复会话；手机原有网关的三次工具运行已由用户点击 ALLOW_ONCE，Runtime 持久事件与文件内容相互印证。手机应用内拒绝、待审批取消、旋转/后台/断连恢复，以及新控制通道上的真实图片模型请求仍需验证。审批验收以 ApprovalRequired/ApprovalResolved 日志、CLI 工具结果和文件副作用共同确认，不能因轮询没有看到卡片就推断未发生审批。详见[实施记录](../implementation.md)。
+Claude 应用链路已接通。主机使用生产 Kotlin 控制会话、固定 CLI 和模拟模型验证允许、拒绝、待审批取消及恢复会话；手机原有网关的三次工具运行已由用户点击 ALLOW_ONCE，Runtime 持久事件与文件内容相互印证。手机应用内拒绝与待审批取消已通过：拒绝记录 DENY，最终为 PERMISSION_DENIED；停止记录 CANCELLED/exit 143，两项均未创建目标文件。待审批时短暂返回桌面再打开，卡片仍保留；旋转、长时间后台、宿主重启/断连恢复，以及新控制通道上的真实图片模型请求仍需验证。审批验收以 ApprovalRequired/ApprovalResolved 日志、CLI 工具结果和文件副作用共同确认，不能因轮询没有看到卡片就推断未发生审批。详见[实施记录](../implementation.md)。
