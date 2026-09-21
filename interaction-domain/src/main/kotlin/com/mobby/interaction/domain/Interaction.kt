@@ -75,6 +75,7 @@ interface SystemPort {
     suspend fun stopShell(): OperationResult
 }
 interface InteractionRepository : ConversationRepository {
+    suspend fun saveSkillProposal(proposal: SkillProposal, markdown: String): DataResult<Skill> = DataResult.Failed("当前会话不支持保存生成草稿")
     suspend fun conversation(id: ConversationId): Conversation
     suspend fun awaitAttachmentRecovery()
     suspend fun loadEarlier(id: ConversationId)
@@ -139,6 +140,7 @@ class InteractionUseCases(
     suspend fun previewManualSkill(agent: AgentId, name: String, description: String, body: String) = system.previewManualSkill(agent, name, description, body)
     suspend fun readSkillImport(location: String) = system.readSkillImport(location)
     suspend fun importSkill(agent: AgentId, markdown: String) = system.importSkill(agent, markdown)
+    suspend fun saveSkillProposal(proposal: SkillProposal, markdown: String) = submissionScope.async { repository.saveSkillProposal(proposal, markdown) }.await()
     suspend fun saveManualSkill(agent: AgentId, name: String, description: String, body: String) = system.saveManualSkill(agent, name, description, body)
     suspend fun setSkill(id: ConversationId, skill: Skill, enabled: Boolean): OperationResult {
         if (enabled) {

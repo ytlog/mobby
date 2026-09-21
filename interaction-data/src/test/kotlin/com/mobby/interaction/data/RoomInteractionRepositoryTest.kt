@@ -26,6 +26,7 @@ class RoomInteractionRepositoryTest {
     private var importGate: CompletableDeferred<DataResult<Attachment>>? = null
     private var retainedGrants = emptySet<String>()
     private val importStarted = CompletableDeferred<Unit>()
+    private val importedProposals = mutableListOf<String>()
     private val system = object : SystemPort {
         override suspend fun checkGateway(profile: GatewayProfile): DataResult<GatewayCheckReport> = DataResult.Failed("unused")
         override suspend fun beginCapture(conversation: String, workspace: String): DataResult<CameraCapture> = DataResult.Failed("unused")
@@ -42,7 +43,10 @@ class RoomInteractionRepositoryTest {
         override suspend fun previewSkill(markdown: String) = DataResult.Failed("unavailable")
         override suspend fun previewManualSkill(agent: DomainAgent, name: String, description: String, body: String) = DataResult.Failed("unavailable")
         override suspend fun readSkillImport(location: String) = DataResult.Failed("unavailable")
-        override suspend fun importSkill(agent: DomainAgent, markdown: String) = DataResult.Failed("unavailable")
+        override suspend fun importSkill(agent: DomainAgent, markdown: String): DataResult<Skill> {
+            importedProposals += markdown
+            return DataResult.Loaded(Skill("saved", agent, "fixture", "fixture", "local", true, null))
+        }
         override suspend fun saveManualSkill(agent: DomainAgent, name: String, description: String, body: String) = DataResult.Failed("unavailable")
         override val status = flowOf(SystemStatus(true, true, "ready"))
         override val diagnostic = flowOf(DiagnosticOutput(null, emptyList()))
@@ -122,6 +126,7 @@ class RoomInteractionRepositoryTest {
         assertEquals("turn-003", restored.turns.first().id.value)
     }
     private fun restoreOldChunks(sql: androidx.sqlite.db.SupportSQLiteDatabase) {
+        sql.execSQL("DROP TABLE expired_output_cache")
         sql.execSQL("ALTER TABLE chunks RENAME TO chunks_new")
         sql.execSQL("CREATE TABLE chunks (ref TEXT NOT NULL PRIMARY KEY, runId TEXT NOT NULL, text TEXT NOT NULL)")
         sql.execSQL("INSERT INTO chunks (ref,runId,text) SELECT ref,runId,text FROM chunks_new")
@@ -139,7 +144,7 @@ class RoomInteractionRepositoryTest {
         assertEquals(c.id, restored.conversation.id)
         assertEquals("old assistant body", restored.turns.single { it.id.value == "turn-005" }.messages.single().text)
         assertFalse(db.dao().chunk("history-body")!!.expired)
-        assertEquals(3, db.openHelper.readableDatabase.version)
+        assertEquals(4, db.openHelper.readableDatabase.version)
     }
     @Test fun `version one database migrates with conversation messages and output intact`() = runBlocking {
         val c = seedHistory(7)
@@ -155,7 +160,7 @@ class RoomInteractionRepositoryTest {
         val restored = state { it.selected?.turns?.size == 7 }.selected!!
         assertEquals(original, db.dao().conversation(c.id.value)!!.body)
         assertEquals("old assistant body", restored.turns.single { it.id.value == "turn-005" }.messages.single().text)
-        assertEquals(3, db.openHelper.readableDatabase.version)
+        assertEquals(4, db.openHelper.readableDatabase.version)
         val indexes = mutableSetOf<String>()
         db.openHelper.readableDatabase.query("PRAGMA index_list(turns)").use { cursor ->
             while (cursor.moveToNext()) indexes += cursor.getString(cursor.getColumnIndexOrThrow("name"))
@@ -374,6 +379,99 @@ class RoomInteractionRepositoryTest {
         assertTrue(projected.messages.isEmpty())
         assertNull(db.dao().chunk(ref.value))
     }
+    @Test fun `terminal cache byte budget expires oldest whole run while preserving active output and user data`() = runBlocking {
+        val c = seedHistory(7)
+        repository.editDraft(c.id, "keep draft", 10, 10)
+        val conversation = db.dao().conversation(c.id.value)!!
+        val old = db.dao().turn("turn-005")!!
+        val snapshot = storageJson.decodeFromString<RunSnapshot>(old.snapshot!!)
+        db.dao().chunks(listOf(ChunkRow("history-body", "history-run", "中")))
+        for ((name, phase) in listOf("new" to RunPhase.SUCCEEDED, "active" to RunPhase.AWAITING_APPROVAL, "unknown" to RunPhase.OUTCOME_UNKNOWN)) {
+            val state = snapshot.copy(runId = RunId(name), phase = phase, outputSegments = listOf(OutputSegment("answer", 0, ResourceRef("$name/0"))))
+            db.dao().save(old.copy(id = name, runId = name, createdAt = 10, snapshot = storageJson.encodeToString(state), occupied = name == "active"))
+            db.dao().chunks(listOf(ChunkRow("$name/0", name, "ab")))
+        }
+        OutputCache(db, runtime, 2).compact()
+        assertEquals(ChunkRow("history-body", "history-run", "", true), db.dao().chunk("history-body"))
+        for (name in listOf("new", "active", "unknown")) assertEquals("ab", db.dao().chunk("$name/0")!!.text)
+        assertEquals(old, db.dao().turn(old.id))
+        assertEquals(conversation, db.dao().conversation(c.id.value))
+        scope.coroutineContext[Job]!!.cancelAndJoin(); db.close(); start()
+        assertTrue(db.dao().outputCacheExpired("history-run"))
+        assertEquals("", db.dao().chunk("history-body")!!.text)
+    }
+    @Test fun `cache cleanup traverses multiple pages without skipping rows removed from earlier pages`() = runBlocking {
+        val c = seedHistory(7)
+        val old = db.dao().turn("turn-005")!!
+        val snapshot = storageJson.decodeFromString<RunSnapshot>(old.snapshot!!)
+        db.withTransaction {
+            db.dao().chunks(listOf(ChunkRow("history-body", "history-run", "x")))
+            repeat(140) { n ->
+                val name = "cache-" + n.toString().padStart(3, '0')
+                db.dao().save(old.copy(id = name, runId = name, createdAt = 10, snapshot = storageJson.encodeToString(snapshot.copy(runId = RunId(name)))))
+                db.dao().chunks(listOf(ChunkRow("$name/0", name, "x")))
+            }
+        }
+        OutputCache(db, runtime, 1).compact()
+        assertTrue(db.dao().outputCacheExpired("history-run"))
+        repeat(139) { assertTrue(db.dao().outputCacheExpired("cache-" + it.toString().padStart(3, '0'))) }
+        assertEquals("x", db.dao().chunk("cache-139/0")!!.text)
+        assertEquals("message-005", db.dao().turn(old.id)!!.userText)
+        assertEquals(c.id.value, db.dao().turn(old.id)!!.conversationId)
+    }
+    @Test fun `delayed projection cannot resurrect a run whose cache expired during download`() = runBlocking {
+        val c = seedHistory(7)
+        val old = db.dao().turn("turn-005")!!
+        val ref = ResourceRef("history-run/late")
+        val started = CompletableDeferred<Unit>(); val release = CompletableDeferred<Unit>()
+        runtime.artifactGate = { request -> if (request.artifactRef == ref) { started.complete(Unit); release.await() } }
+        runtime.artifactBodies[ref] = "late proposal".toByteArray()
+        runtime.snapshots["history-run"] = storageJson.decodeFromString<RunSnapshot>(old.snapshot!!).copy(lastSequence = 2, revision = 2, artifacts = listOf(ref))
+        repository.recordSubmission(old.execution(), Submission.Accepted(ExecutionId("history-run")))
+        withTimeout(5000) { started.await() }
+        OutputCache(db, runtime, 0).compact()
+        release.complete(Unit)
+        val projected = state { it.selected?.turns?.singleOrNull { t -> t.id.value == old.id }?.let { t -> !t.proposalsLoading && t.messages.any { it.text == "技能草稿已按保留策略清理" } } == true }
+        assertTrue(projected.selected!!.turns.single { it.id.value == old.id }.skillProposals.isEmpty())
+        assertEquals(ChunkRow(ref.value, "history-run", "", true), db.dao().chunk(ref.value))
+        assertEquals("message-005", repository.history(c.id).turns.single { it.id.value == old.id }.userText)
+    }
+    @Test fun `unavailable original output preserves cached text and is not treated as expiration`() = runBlocking {
+        val c = seedHistory(7)
+        val turn = repository.history(c.id).turns.single { it.id.value == "turn-005" }
+        assertEquals("old assistant body", turn.messages.single().text)
+        assertFalse(db.dao().chunk("history-body")!!.expired)
+        assertTrue(turn.failure!!.contains("已保留缓存"))
+        runtime.artifactBodies[ResourceRef("history-body")] = "old assistant body".toByteArray()
+        assertNull(repository.history(c.id).turns.single { it.id.value == "turn-005" }.failure)
+        runtime.artifactBodies.clear()
+        assertNotNull(repository.history(c.id).turns.single { it.id.value == "turn-005" }.failure)
+        runtime.expireAt[ResourceRef("history-body")] = 0
+        assertNull(repository.history(c.id).turns.single { it.id.value == "turn-005" }.failure)
+        assertNull(repository.history(c.id).turns.single { it.id.value == "turn-005" }.failure)
+    }
+    @Test fun `version three migration retains cached bodies and adds no expired runs`() = runBlocking {
+        val c = seedHistory(7)
+        val before = db.dao().turn("turn-005")!!
+        scope.coroutineContext[Job]!!.cancelAndJoin()
+        db.openHelper.writableDatabase.execSQL("DROP TABLE expired_output_cache")
+        db.openHelper.writableDatabase.execSQL("PRAGMA user_version=3")
+        db.close(); start()
+        assertEquals(4, db.openHelper.readableDatabase.version)
+        assertFalse(db.dao().outputCacheExpired("history-run"))
+        assertEquals(before.userText, db.dao().turn(before.id)!!.userText)
+        assertEquals("old assistant body", repository.history(c.id).turns.single { it.id.value == before.id }.messages.single().text)
+    }
+    @Test fun `already cached terminal output learns expiration without another runtime event`() = runBlocking {
+        val c = seedHistory(7)
+        runtime.expireAt[ResourceRef("history-body")] = 0L
+        val history = repository.history(c.id)
+        assertEquals("输出已按保留策略清理", history.turns.single { it.id.value == "turn-005" }.messages.single().text)
+        assertEquals("", db.dao().chunk("history-body")!!.text)
+        scope.coroutineContext[Job]!!.cancelAndJoin(); db.close(); start()
+        assertEquals("输出已按保留策略清理", repository.history(c.id).turns.single { it.id.value == "turn-005" }.messages.single().text)
+        assertEquals("message-005", db.dao().turn("turn-005")!!.userText)
+    }
     @Test fun `expired output discards partial bytes and expired proposals never become installable`() = runBlocking {
         val c = state().selected!!.conversation
         repository.editDraft(c.id, "fixture", 7, 7)
@@ -415,6 +513,29 @@ class RoomInteractionRepositoryTest {
         val restored = state { it.selected?.turns?.singleOrNull()?.skillProposals?.isNotEmpty() == true }
         assertEquals(ref.value, restored.selected!!.turns.single().skillProposals.single().ref)
         assertEquals(body, restored.selected!!.turns.single().skillProposals.single().markdown)
+    }
+    @Test fun `generated skill save rechecks source and rejects runtime or local expiration`() = runBlocking {
+        val c = state().selected!!.conversation
+        repository.editDraft(c.id, "create", 6, 6)
+        val turn = (repository.prepareTurn(c.id, TurnId("save-proposal")) as PrepareTurnResult.Prepared).turn
+        runtime.admit(turn)
+        val ref = ResourceRef("save-proposal/0")
+        runtime.artifactBodies[ref] = "original".toByteArray()
+        runtime.snapshots[turn.turnId.value] = runtime.snapshots.getValue(turn.turnId.value).copy(phase = RunPhase.SUCCEEDED,
+            artifacts = listOf(ref), terminalEvidence = TerminalEvidence(true, 0))
+        repository.recordSubmission(turn, Submission.Accepted(ExecutionId(turn.turnId.value)))
+        val proposal = state { it.selected?.turns?.singleOrNull()?.skillProposals?.isNotEmpty() == true }.selected!!.turns.single().skillProposals.single()
+        assertTrue(repository.saveSkillProposal(proposal, "user edit") is DataResult.Loaded)
+        assertEquals(listOf("user edit"), importedProposals)
+        runtime.artifactBodies.clear()
+        assertNotNull(repository.history(c.id).turns.single().failure)
+        runtime.expireAt[ref] = 0
+        assertTrue(repository.saveSkillProposal(proposal, "second edit") is DataResult.Failed)
+        assertTrue(db.dao().chunk(ref.value)!!.expired)
+        assertNull(repository.history(c.id).turns.single().failure)
+        runtime.expireAt.clear()
+        assertTrue(repository.saveSkillProposal(proposal, "third edit") is DataResult.Failed)
+        assertEquals(listOf("user edit"), importedProposals)
     }
     @Test fun `permission projection survives database reopen and adapter preserves decision identity`() = runBlocking {
         val c = state().selected!!.conversation
@@ -460,9 +581,11 @@ class RoomInteractionRepositoryTest {
             snapshots[runId.value]?.let { emit(RuntimeUpdate.Baseline(it, EventCursor(runId, it.lastSequence))) }
             awaitCancellation()
         }
+        var artifactGate: suspend (ArtifactReadRequest) -> Unit = {}
         val expireAt = mutableMapOf<ResourceRef, Long>()
         val artifactBodies = mutableMapOf<ResourceRef, ByteArray>()
         override suspend fun readArtifact(request: ArtifactReadRequest): ArtifactReadResult {
+            artifactGate(request)
             if (expireAt[request.artifactRef]?.let { request.offset >= it } == true) return ArtifactReadResult.Expired
             val bytes = artifactBodies[request.artifactRef] ?: return ArtifactReadResult.Unavailable(RuntimeError(ErrorCode.RESOURCE_MISSING))
             val end = minOf(bytes.size, request.offset.toInt() + 17)

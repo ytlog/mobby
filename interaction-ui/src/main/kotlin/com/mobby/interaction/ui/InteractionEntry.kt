@@ -143,7 +143,7 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                         Spacer(Modifier.height(16.dp))
                     }
                 }
-                skillProposal?.let { proposal -> SkillProposalDialog(proposal, vm, onDismiss = { skillProposal = null }, onSaved = { skillProposal = null; route = "skills" }) }
+                skillProposal?.let { proposal -> SkillProposalDialog(proposal, vm, sourceAvailable = state.selected?.turns?.any { turn -> turn.skillProposals.any { it.ref == proposal.ref } } == true, onDismiss = { skillProposal = null }, onSaved = { skillProposal = null; route = "skills" }) }
                 voice?.let { original -> VoiceInputSheet(onDismiss = { voice = null }, insert = { text -> vm.insertVoice(original, text) }) }
                 reading?.let { (title, text) ->
                     ModalBottomSheet(onDismissRequest = { reading = null }) {

@@ -14,9 +14,11 @@ import java.util.UUID
 internal class RoomInteractionRepository(
     private val db: InteractionDatabase, private val client: RuntimeClient, private val system: SystemPort,
     private val scope: CoroutineScope, private val execution: ExecutionPort,
-    private val now: () -> Long = System::currentTimeMillis, private val id: () -> String = { UUID.randomUUID().toString() }
+    private val now: () -> Long = System::currentTimeMillis, private val id: () -> String = { UUID.randomUUID().toString() },
+    cacheBudgetBytes: Long = 256L * 1024 * 1024
 ) : InteractionRepository {
     private val dao = db.dao()
+    private val outputCache = OutputCache(db, client, cacheBudgetBytes)
     private val importRecovery = CompletableDeferred<Unit>()
     private val startupError = MutableStateFlow<String?>(null)
     private val observers = mutableMapOf<String, Job>()
@@ -52,6 +54,28 @@ internal class RoomInteractionRepository(
     }.combine(startupError) { state, error -> state.copy(error = error ?: state.error) }.catch { emit(InteractionState(loading = false, error = "无法读取会话数据库；原数据已保留，请重启应用后重试")) }
         .stateIn(scope, SharingStarted.Eagerly, InteractionState())
 
+    override suspend fun saveSkillProposal(proposal: SkillProposal, markdown: String): DataResult<Skill> {
+        suspend fun sourceAvailable() = db.withTransaction {
+            val chunk = dao.chunk(proposal.ref) ?: return@withTransaction false
+            if (chunk.expired || dao.outputCacheExpired(chunk.runId)) return@withTransaction false
+            val snapshot = dao.turnByRun(chunk.runId)?.snapshot?.let { storageJson.decodeFromString<RunSnapshot>(it) }
+            snapshot?.artifacts?.any { it.value == proposal.ref } == true && snapshot.acceptedConfig.agentId.name == proposal.agent.name
+        }
+        if (!sourceAvailable()) return DataResult.Failed("生成草稿已清理或来源失效，编辑内容仍保留")
+        when (client.readArtifact(ArtifactReadRequest(ResourceRef(proposal.ref), 0, 1))) {
+            ArtifactReadResult.Expired -> {
+                outputCache.expire(proposal.ref)
+                return DataResult.Failed("生成草稿已按保留策略清理，编辑内容仍保留")
+            }
+            is ArtifactReadResult.Unavailable -> return DataResult.Failed("暂时无法核对草稿来源，编辑内容仍保留，请重试")
+            is ArtifactReadResult.Chunk -> Unit
+        }
+        // This final transaction is the acceptance point for the user's edited copy.
+        // Cleanup after acceptance cannot revoke a save already requested by the user.
+        if (!sourceAvailable()) return DataResult.Failed("生成草稿已清理或来源失效，编辑内容仍保留")
+        return system.importSkill(proposal.agent, markdown)
+    }
+
     override suspend fun loadEarlier(id: ConversationId) {
         val current = state.value.selected?.takeIf { it.conversation.id == id } ?: return
         val total = dao.turnCount(id.value).first()
@@ -65,6 +89,7 @@ internal class RoomInteractionRepository(
         window.update { page -> if (page?.id == id.value) Window(id.value, maxOf(loaded, needed), total) else page }
     }
     override suspend fun history(id: ConversationId): ConversationDetail = withContext(Dispatchers.Default) {
+        outputCache.reconcile(id.value)
         db.withTransaction {
             val c = requireNotNull(dao.conversation(id.value)).domain()
             val content = dao.historyChunks(id.value).associateBy { it.ref }
@@ -85,6 +110,7 @@ internal class RoomInteractionRepository(
                         )).row())
                     }
                 }
+                outputCache.compact()
                 system.retainAttachmentGrants(dao.allConversations().mapNotNull { it.domain().draft.pendingAttachment?.location }.toSet())
                 importRecovery.complete(Unit)
                 if (dao.allConversations().isEmpty()) {
@@ -98,6 +124,7 @@ internal class RoomInteractionRepository(
                         if (turn.pending && turn.id !in inFlight) recordSubmission(turn.execution(), execution.lookup(TurnId(turn.id)))
                         else if (turn.runId != null) observe(turn.id, turn.runId)
                     }
+                    outputCache.reconcile()
                 }
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) { importRecovery.completeExceptionally(e); startupError.value = "会话恢复未完成，原数据已保留；请重启应用后重试" }
@@ -162,7 +189,11 @@ internal class RoomInteractionRepository(
     }
     override suspend fun select(id: ConversationId) {
         val c = dao.conversation(id.value)?.domain() ?: return
-        if (!c.deleted) dao.select(SelectionRow(conversationId = id.value))
+        if (!c.deleted) {
+            dao.select(SelectionRow(conversationId = id.value))
+            scope.launch { try { outputCache.reconcile(id.value) } catch (e: CancellationException) { throw e }
+                catch (_: Exception) { startupError.value = "历史输出核对未完成，已保留缓存；请重试" } }
+        }
     }
     override suspend fun create(config: NextTurnConfig): ConversationId {
         val c = Conversation(ConversationId(id()), config, updatedAt = now())
@@ -278,6 +309,10 @@ internal class RoomInteractionRepository(
         val parts = snapshot.outputSegments + snapshot.steps.flatMap { it.output }
         val chunks = mutableListOf<ChunkRow>()
         for (ref in (parts.map { it.ref } + snapshot.artifacts).distinct()) if (dao.chunk(ref.value) == null) {
+            if (dao.outputCacheExpired(snapshot.runId.value)) {
+                chunks += ChunkRow(ref.value, snapshot.runId.value, "", true)
+                continue
+            }
             val bytes = ByteArrayOutputStream()
             var offset: Long? = 0
             var expired = false
@@ -296,8 +331,9 @@ internal class RoomInteractionRepository(
             val row = dao.turn(turnId) ?: return@withTransaction
             val old = row.snapshot?.let { storageJson.decodeFromString<RunSnapshot>(it) }
             if (row.runId != snapshot.runId.value || old != null && old.lastSequence > snapshot.lastSequence) return@withTransaction
-            dao.chunks(chunks)
+            outputCache.save(chunks)
             dao.save(row.copy(snapshot = storageJson.encodeToString(snapshot), occupied = RunProjection.occupied(snapshot), error = null))
+            if (snapshot.phase.terminal && !RunProjection.occupied(snapshot)) outputCache.compact()
             val c = dao.conversation(row.conversationId)?.domain() ?: return@withTransaction
             // Older run replays must not replace a newer CLI session.
             if (dao.conversationTurns(c.id.value).lastOrNull { it.runId != null }?.id == row.id && snapshot.sessionRef != null && c.config.agent.name == snapshot.acceptedConfig.agentId.name) {
@@ -323,7 +359,8 @@ internal class RoomInteractionRepository(
                 if (snapshot?.artifacts?.any { content[it.value]?.expired == true } == true) listOf(Message("retained-artifact-notice", "技能草稿已按保留策略清理")) else emptyList(),
             snapshot?.steps?.map { Step(it.stepId, it.toolKind, it.summary, it.output.render("\n"), it.outcome?.name) }.orEmpty(),
             snapshot?.outputSegments?.filter { it.messageId.startsWith("diagnostic:") }?.messages().orEmpty(),
-            error ?: snapshot?.terminalEvidence?.error?.message(), snapshot?.progressSummary, pending, occupied, expanded, storageJson.decodeFromString(expandedSteps),
+            if (error == OutputCache.VERIFICATION_WARNING) listOfNotNull(snapshot?.terminalEvidence?.error?.message(), error).joinToString("\n")
+            else error ?: snapshot?.terminalEvidence?.error?.message(), snapshot?.progressSummary, pending, occupied, expanded, storageJson.decodeFromString(expandedSteps),
             snapshot?.artifacts?.mapNotNull { ref -> content[ref.value]?.takeUnless { it.expired }?.let { SkillProposal(ref.value, it.text, DomainAgent.valueOf(snapshot.acceptedConfig.agentId.name)) } }.orEmpty(),
             storageJson.decodeFromString<StoredConversation>(frozen).creator != null, snapshot?.artifacts?.any { it.value !in content } == true, storageJson.decodeFromString<StoredConversation>(frozen).attachments,
             snapshot?.pendingApprovals?.map { PermissionRequest(it.approvalId, it.revision, it.actionSummary, it.scopeSummary) }.orEmpty())

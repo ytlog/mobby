@@ -16,6 +16,9 @@ internal data class TurnRow(
 )
 @Entity(tableName = "chunks", indices = [Index("runId")])
 internal data class ChunkRow(@PrimaryKey val ref: String, val runId: String, val text: String, @ColumnInfo(defaultValue = "0") val expired: Boolean = false)
+@Entity(tableName = "expired_output_cache")
+internal data class ExpiredOutputCacheRow(@PrimaryKey val runId: String)
+internal data class OutputCacheCandidate(val turnId: String, val runId: String, val snapshot: String, val bytes: Long, val createdAt: Long)
 @Entity(tableName = "selection")
 internal data class SelectionRow(@PrimaryKey val key: String = "current", val conversationId: String)
 
@@ -46,19 +49,38 @@ internal data class TurnWithChunks(
     @Query("SELECT * FROM conversations ORDER BY updatedAt DESC") suspend fun allConversations(): List<ConversationRow>
     @Query("SELECT * FROM turns WHERE conversationId=:id ORDER BY createdAt,id") suspend fun conversationTurns(id: String): List<TurnRow>
     @Query("SELECT * FROM turns WHERE conversationId=:id AND occupied=1 ORDER BY createdAt,id LIMIT 1") suspend fun earliestOccupied(id: String): TurnRow?
+    @Query("SELECT * FROM turns WHERE runId=:runId LIMIT 1") suspend fun turnByRun(runId: String): TurnRow?
     @Query("SELECT * FROM turns WHERE id=:id") suspend fun turn(id: String): TurnRow?
     @Query("SELECT * FROM turns WHERE pending=1 OR occupied=1") suspend fun unfinished(): List<TurnRow>
     @Query("SELECT * FROM chunks WHERE ref=:ref") suspend fun chunk(ref: String): ChunkRow?
+    @Query("""SELECT t.id AS turnId,t.runId,t.snapshot,t.createdAt,SUM(length(CAST(c.text AS BLOB))) AS bytes
+        FROM turns t JOIN chunks c ON c.runId=t.runId
+        WHERE t.pending=0 AND t.occupied=0 AND t.snapshot IS NOT NULL AND c.expired=0
+        AND (:conversationId IS NULL OR t.conversationId=:conversationId)
+        AND (:afterTime IS NULL OR t.createdAt > :afterTime OR (t.createdAt=:afterTime AND t.id > :afterId))
+        GROUP BY t.id ORDER BY t.createdAt,t.id LIMIT :limit""")
+    suspend fun outputCacheCandidates(conversationId: String?, afterTime: Long?, afterId: String, limit: Int): List<OutputCacheCandidate>
+    @Query("SELECT ref FROM chunks WHERE runId=:runId AND expired=0 ORDER BY ref") suspend fun availableChunkRefs(runId: String): List<String>
+    @Query("SELECT EXISTS(SELECT 1 FROM expired_output_cache WHERE runId=:runId)") suspend fun outputCacheExpired(runId: String): Boolean
+    @Query("UPDATE chunks SET text='',expired=1 WHERE runId=:runId") suspend fun expireOutputCache(runId: String)
+    @Query("SELECT EXISTS(SELECT 1 FROM chunks WHERE ref=:ref AND expired=0)") suspend fun chunkAvailable(ref: String): Boolean
+    @Query("UPDATE chunks SET text='',expired=1 WHERE ref=:ref") suspend fun expireChunk(ref: String)
+    @Upsert suspend fun expire(row: ExpiredOutputCacheRow)
     @Upsert suspend fun save(row: ConversationRow)
     @Upsert suspend fun save(row: TurnRow)
     @Upsert suspend fun select(row: SelectionRow)
     @Upsert suspend fun chunks(rows: List<ChunkRow>)
 }
-@Database(entities = [ConversationRow::class, TurnRow::class, ChunkRow::class, SelectionRow::class], version = 3, exportSchema = true)
+@Database(entities = [ConversationRow::class, TurnRow::class, ChunkRow::class, SelectionRow::class, ExpiredOutputCacheRow::class], version = 4, exportSchema = true)
 internal abstract class InteractionDatabase : RoomDatabase() {
     abstract fun dao(): InteractionDao
     companion object {
-        fun open(context: Context) = Room.databaseBuilder(context.applicationContext, InteractionDatabase::class.java, "interaction.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3).build()
+        fun open(context: Context) = Room.databaseBuilder(context.applicationContext, InteractionDatabase::class.java, "interaction.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build()
+        val MIGRATION_3_4 = object : androidx.room.migration.Migration(3, 4) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS expired_output_cache (runId TEXT NOT NULL PRIMARY KEY)")
+            }
+        }
         val MIGRATION_2_3 = object : androidx.room.migration.Migration(2, 3) {
             override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE chunks ADD COLUMN expired INTEGER NOT NULL DEFAULT 0")

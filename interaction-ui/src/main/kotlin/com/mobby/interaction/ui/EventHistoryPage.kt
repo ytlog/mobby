@@ -39,6 +39,7 @@ import kotlinx.coroutines.launch
         PageHeader("运行日志保留", back)
         Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("按完成时间清理已结束任务的旧日志与原始输出，保留运行结果索引和当前任务。输出清理不可恢复；工作区文件、附件和对话缓存不计入以下上限。")
+            Text("对话输出缓存另有 256 MiB 上限，按轮次创建顺序清理旧正文；用户输入、草稿和附件不计入此缓存上限。")
             OutlinedTextField(days, { days = it; message = null }, label = { Text("保留天数（1–3650）") }, enabled = loaded && !busy, singleLine = true)
             OutlinedTextField(mib, { mib = it; message = null }, label = { Text("事件内容上限（MiB，1–1024）") }, enabled = loaded && !busy, singleLine = true)
             OutlinedTextField(outputDays, { outputDays = it; message = null }, label = { Text("输出保留天数（1–3650）") }, enabled = loaded && !busy, singleLine = true)

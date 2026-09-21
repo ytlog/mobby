@@ -180,7 +180,7 @@ internal data class SkillEditor(val agent: AgentId, val manual: Boolean, val nam
     }
 }
 
-@Composable internal fun SkillProposalDialog(proposal: SkillProposal, vm: ConversationViewModel, onDismiss: () -> Unit, onSaved: () -> Unit) {
+@Composable internal fun SkillProposalDialog(proposal: SkillProposal, vm: ConversationViewModel, sourceAvailable: Boolean, onDismiss: () -> Unit, onSaved: () -> Unit) {
     var markdown by remember(proposal.ref) { mutableStateOf(proposal.markdown) }
     var preview by remember(proposal.ref) { mutableStateOf<SkillContent?>(null) }
     var busy by remember { mutableStateOf(false) }
@@ -199,6 +199,7 @@ internal data class SkillEditor(val agent: AgentId, val manual: Boolean, val nam
     AlertDialog(onDismissRequest = { if (!busy) onDismiss() }, title = { Text("技能草稿 · ${proposal.agent.label()}") }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("确认保存后才会加入技能目录。可在这里修改生成内容。", style = MaterialTheme.typography.bodySmall)
+            if (!sourceAvailable) Text("生成草稿已清理或来源失效，编辑内容仍保留", color = MaterialTheme.colorScheme.error)
             OutlinedTextField(markdown, { markdown = it; preview = null; error = null }, Modifier.fillMaxWidth(), minLines = 5, maxLines = 10, enabled = !busy)
             preview?.issues?.forEach { Text(it, color = MaterialTheme.colorScheme.error) }
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -210,11 +211,11 @@ internal data class SkillEditor(val agent: AgentId, val manual: Boolean, val nam
             busy = true; error = null
             val content = markdown
             vm.enqueue {
-                try { when (val saved = vm.actions.importSkill(proposal.agent, content)) {
+                try { when (val saved = vm.actions.saveSkillProposal(proposal, content)) {
                     is DataResult.Loaded -> { vm.feedback.send("技能已保存"); onSaved() }
                     is DataResult.Failed -> error = saved.message
                 } } finally { busy = false }
             }
-        }, enabled = !busy) { Text("保存技能") }
+        }, enabled = !busy && sourceAvailable) { Text("保存技能") }
     }, dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("返回，稍后处理") } })
 }
