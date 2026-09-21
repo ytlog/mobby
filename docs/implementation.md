@@ -362,3 +362,15 @@ MOBBY_TEST_ADB=/path/to/adb node runtime/gateway-tests/android-codex-network.cjs
 新增回归先失败，随后在这两个只读入口单独传播 CancellationException。测试分别取消挂起的请求查询、快照查询与观察基线，确认连接保持 CONNECTED、任务保持 RUNNING、再次查询可用；最后用显式 cancel 确认真正停止仍结束为 CANCELLED。没有改变已接纳任务的所有权、写入事务、存储异常处理或停止命令。
 
 31 项 engine 测试、主包构建、App/termux-core 单测及 lint 通过。主 APK 覆盖安装成功，原加密网关配置摘要保持一致。该缺陷由真实执行核心与可控挂起持久层的回归验证；手机锁屏状态下没有进行页面切换时序的 UI 复现，不将单元测试代替该实机验收。Codex 的设备沙箱限制与执行架构选择仍待解决，完整目标没有完成。
+
+## Claude 原生审批协议主机与手机验证（2026-09-21）
+
+核对当前生产路径确认：PipeProcess 给子进程的 stdin 是 /dev/null，RunCoordinator.resolveApproval 仍明确返回 UNSUPPORTED_CAPABILITY，能力快照 supportsApproval=false，UI 尚无真实审批卡片。因此 Read 工具通过不能证明 Write/Bash 等需要用户决定的工具流程可用。
+
+新增 approval-smoke.cjs，用固定 Claude Code 2.1.112、独立 HOME/工作区、虚假密钥和本地模拟 Messages 服务验证官方 stdio 控制协议。开启 stream-json 输入/输出与 permission-prompt-tool stdio，先初始化，输入保持开放；实际 CLI 发出 can_use_tool 时校验原始 Write 参数和文件尚不存在，按真实 request_id 回传一次 allow/deny。允许时回传原始 updatedInput，不添加持久规则、不修改权限模式、不使用 bypass 参数。
+
+主机与 M2007J1SC 手机各通过三项：拒绝后无文件且 CLI 终态保留 permission_denials；允许后文件内容完整且真实工具结果回到模型；等待审批时取消进程组，不创建文件、不发起下一轮模型请求。手机使用已经安装的网关启动器与 CLI，经 adb 标准输入传输控制消息，尚未接入应用的 JNI 输入通道或 Compose 页面。测试清理独立目录、进程组和 adb reverse；不读取真实配置、会话或工作区。单独的 SDK/协议验证不能算作 App 审批功能完成。
+
+可执行命令：`MOBBY_TEST_CLAUDE_JS=/path/to/cli.js node runtime/gateway-tests/approval-smoke.cjs`；手机改用 `MOBBY_TEST_ADB=/path/to/adb`。后续按既有架构接通双向进程通道、Runtime 持久审批状态与 request/run/revision 校验、Domain/Data 操作和 UI 待审批卡片，并覆盖取消、重启失效与重复决定。Codex 沙箱架构选择仍独立待定，不阻止 Claude 审批接入。
+
+依据：[官方审批与用户输入说明](https://code.claude.com/docs/en/agent-sdk/user-input)、[官方 Python SDK 控制协议实现](https://github.com/anthropics/claude-agent-sdk-python/blob/main/src/claude_agent_sdk/_internal/query.py)。没有安装 SDK 或调用真实模型服务；本检查点只增加测试和实施记录，没有更新 APK。
