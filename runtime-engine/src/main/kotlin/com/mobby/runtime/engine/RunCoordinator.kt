@@ -77,11 +77,13 @@ class RunCoordinator(
     }
     override suspend fun findByRequest(requestId: RequestId): RequestLookup = mutex.withLock {
         try { journal.find(requestId)?.let { RequestLookup.Found(it.runId) } ?: RequestLookup.NotFound }
+        catch (e: CancellationException) { throw e }
         catch (_: Exception) { failStorage(); RequestLookup.Unavailable }
     }
     override suspend fun snapshot(runId: RunId): SnapshotResult = mutex.withLock {
         if (!healthy) return@withLock SnapshotResult.Unavailable(RuntimeError(ErrorCode.STORAGE_FULL))
         try { journal.snapshot(runId)?.let { SnapshotResult.Found(it) } ?: SnapshotResult.Unavailable(RuntimeError(ErrorCode.NOT_FOUND)) }
+        catch (e: CancellationException) { throw e }
         catch (_: Exception) { failStorage(); SnapshotResult.Unavailable(RuntimeError(ErrorCode.STORAGE_FULL)) }
     }
     override suspend fun cancel(request: CancelRequest): CommandResult = withContext(NonCancellable) {

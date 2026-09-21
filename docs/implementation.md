@@ -354,3 +354,11 @@ MOBBY_TEST_ADB=/path/to/adb node runtime/gateway-tests/android-codex-network.cjs
 设备回归扩展 MOBBY_TEST_AGENT=CLAUDE，使用实际 PREFIX/独立 HOME 与工作区、已安装启动器和虚假模型服务。Claude Code 通过 IP 和域名各完成两次 Messages 请求、真实 Read 工具读取专属夹具及结果回传，CLI exit 0/result success；不代表 Claude Shell/写入、真实模型或 UI 已完成验收。两个设备测试并行时曾出现 exit 255 且无上游请求，未当作成功；随后串行重试 Claude 两条路径通过；Codex 纯文本 IP/域名也通过。Runtime 本身仅允许一个执行槽，因此设备门槛改为明确要求串行。发现测试 CLI 的后台记账可能在主进程退出后重建临时目录，测试改用独立进程组并在每次 CLI 退出后结束该组，再清理目录/端口；未读取真实会话或密钥。
 
 已向用户提出执行架构选择：保持本地并设计 Android 原生隔离执行，或使用具备所需沙箱能力的 Linux 执行端。这个问题来自已验证的内核能力与“不绕过 Agent 权限或沙箱”要求，不能用静默降低隔离要求替代决定。原完整目标仍未完成，手机仍需解锁后的真实界面验收。
+
+## 取消页面查询不再误停运行任务（2026-09-21）
+
+对照“取消调用方等待或订阅不隐式停止已接纳任务”的契约，发现 RunCoordinator.findByRequest 与 snapshot 将 CancellationException 一并作为存储故障处理，调用 failStorage 后断开连接并向活动进程发出 STORAGE_FAILURE。页面切换、生命周期取消或带超时的读取若恰逢持久层挂起，就可能误停任务；已有 first() 读取基线测试只覆盖读完后退订，没有覆盖读取期间取消。
+
+新增回归先失败，随后在这两个只读入口单独传播 CancellationException。测试分别取消挂起的请求查询、快照查询与观察基线，确认连接保持 CONNECTED、任务保持 RUNNING、再次查询可用；最后用显式 cancel 确认真正停止仍结束为 CANCELLED。没有改变已接纳任务的所有权、写入事务、存储异常处理或停止命令。
+
+31 项 engine 测试、主包构建、App/termux-core 单测及 lint 通过。主 APK 覆盖安装成功，原加密网关配置摘要保持一致。该缺陷由真实执行核心与可控挂起持久层的回归验证；手机锁屏状态下没有进行页面切换时序的 UI 复现，不将单元测试代替该实机验收。Codex 的设备沙箱限制与执行架构选择仍待解决，完整目标没有完成。

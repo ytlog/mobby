@@ -198,4 +198,47 @@ class RunCoordinatorTest {
         runCurrent(); assertFalse(started)
         assertTrue(journal.requests.isEmpty())
     }
+    @Test fun `cancelling a pending query or observer does not stop an admitted run`() = runTest {
+        for (operation in listOf("request lookup", "snapshot", "observer")) {
+            val stored = MemoryJournal()
+            var blockReads = false
+            val entered = CompletableDeferred<Unit>()
+            val journal = object : JournalPort by stored {
+                override suspend fun find(requestId: RequestId): RequestRecord? {
+                    if (blockReads) { entered.complete(Unit); awaitCancellation() }
+                    return stored.find(requestId)
+                }
+                override suspend fun snapshot(runId: RunId): RunSnapshot? {
+                    if (blockReads) { entered.complete(Unit); awaitCancellation() }
+                    return stored.snapshot(runId)
+                }
+            }
+            val runtime = RunCoordinator(backgroundScope, environment, process { _, signal, _ ->
+                signal.filterNotNull().first()
+                ProcessResult(143, true)
+            }, journal, MemoryOutput())
+            runtime.recover()
+            val id = (runtime.submit(request()) as SubmitResult.Accepted).runId
+            runCurrent()
+            blockReads = true
+            val reader = launch {
+                when (operation) {
+                    "request lookup" -> runtime.findByRequest(RequestId("request"))
+                    "snapshot" -> runtime.snapshot(id)
+                    else -> runtime.observe(id).collect()
+                }
+            }
+            entered.await()
+            reader.cancelAndJoin()
+            blockReads = false
+            runCurrent()
+            assertEquals(operation, ConnectionState.CONNECTED, runtime.connection.value)
+            assertEquals(operation, RunPhase.RUNNING, stored.states.getValue(id).phase)
+            assertEquals(RequestLookup.Found(id), runtime.findByRequest(RequestId("request")))
+            assertEquals(CommandResult.Accepted, runtime.cancel(CancelRequest(CommandId("stop"), id)))
+            runCurrent()
+            assertEquals(RunPhase.CANCELLED, stored.states.getValue(id).phase)
+        }
+    }
+
 }
