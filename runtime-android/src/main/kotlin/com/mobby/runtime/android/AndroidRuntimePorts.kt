@@ -61,7 +61,20 @@ internal class AndroidRuntimePorts(
             val prepared = resources.prepare(request.inputParts, request.workspaceRef)
             var prompt = skills.prompt(request.agentId, request.capabilityRefs, prepared.prompt)
             if (request.requestedOutput == RequestedOutput.SKILL_PROPOSAL) {
-                prompt += "\n\n本轮创建技能只生成待确认草稿：如已完成澄清，请在最终回复中用四个反引号加 SKILL.md 开始、四个反引号结束的代码块给出完整文件（含 name、description 元信息和正文）。不要写入或安装技能文件；由用户在应用中预览校验并明确保存。需要进一步澄清时先提问。遵守现有权限与沙箱。"
+                prompt += "\n\n" + """
+                    本轮是应用内的技能草稿预览，不是安装任务。使用 Skill Creator 的设计指导，但只读取所需说明：
+                    不运行初始化、打包或安装脚本，不执行 mkdir，不创建目录，不写入或修改任何文件。
+                    保存与目录创建由应用在用户明确确认后完成。需要澄清时先提问，不伪造已安装结果。
+                    需求明确后，最终回复必须提供完整 SKILL.md（含 name、description 元信息和正文）。
+                    输出块的第一行必须逐字为：
+                    ````SKILL.md
+                    输出块的最后一行必须逐字为：
+                    ````
+                    两行之间只放完整文件内容。文件必须以单独一行 --- 开始，其后为 name 和 description，
+                    再以单独一行 --- 结束元信息，之后才是正文。不要遗漏第一个 ---。
+                    不要加外层 markdown 代码块，不要把开始标记换成 ```markdown。
+                    遵守现有权限与沙箱。这些是本轮生成约定，不代表应用已保存或安装技能。
+                """.trimIndent()
             }
             val input = if (request.agentId != AgentId.CODEX || prepared.images.isEmpty()) null else AgentInputFiles.create(File(context.filesDir, "agent-inputs"), prepared.images)
             val session = if (request.agentId == AgentId.CLAUDE_CODE) ClaudeControlSession(request.requestId, AgentInputFiles.claudeMessage(prompt, prepared.images)) else null

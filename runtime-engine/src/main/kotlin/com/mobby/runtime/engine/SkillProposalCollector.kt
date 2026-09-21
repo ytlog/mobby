@@ -17,16 +17,28 @@ internal class SkillProposalCollector {
         for (message in messages.values) {
             val lines = message.toString().replace("\r\n", "\n").lines()
             var fence: String? = null
+            var proposal = false
             var body = StringBuilder()
             for (line in lines) {
-                if (fence == null) {
-                    val opening = Regex("^(`{4,})SKILL\\.md[ \\t]*$").matchEntire(line)
-                    if (opening != null) { fence = opening.groupValues[1]; body = StringBuilder() }
-                } else if (line.trimEnd().length >= fence.length && line.trimEnd().all { it == '`' }) {
-                    val content = body.toString()
-                    if (content.isNotBlank() && content.toByteArray().size <= 128 * 1024) result += content
-                    fence = null
-                } else body.append(line).append('\n')
+                val current = fence
+                if (current == null) {
+                    val opening = Regex("^ {0,3}(`{3,}|~{3,})(.*)$").matchEntire(line) ?: continue
+                    val delimiter = opening.groupValues[1]
+                    val info = opening.groupValues[2]
+                    // Backticks in the info string invalidate a backtick fence.
+                    if (delimiter.first() == '`' && '`' in info) continue
+                    fence = delimiter
+                    proposal = info.trim() == "SKILL.md"
+                    body = StringBuilder()
+                } else {
+                    val trimmed = line.trimStart(' ')
+                    val closing = trimmed.trimEnd(' ', '\t')
+                    if (line.length - trimmed.length <= 3 && closing.length >= current.length && closing.all { it == current.first() }) {
+                        val content = body.toString()
+                        if (proposal && content.isNotBlank() && content.toByteArray().size <= 128 * 1024) result += content
+                        fence = null
+                    } else if (proposal) body.append(line).append('\n')
+                }
             }
         }
         return result.distinct().take(4)
