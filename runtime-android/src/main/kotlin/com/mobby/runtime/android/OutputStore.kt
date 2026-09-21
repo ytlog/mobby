@@ -15,7 +15,8 @@ import java.nio.file.Files
 import java.nio.file.LinkOption.NOFOLLOW_LINKS
 
 /** Opaque references can only address runtime-owned segments, never arbitrary filesystem paths. */
-internal class OutputStore(context: Context, private val expired: suspend (RunId) -> Boolean = { false }) : OutputStorePort {
+internal class OutputStore(context: Context, private val expired: suspend (RunId) -> Boolean = { false },
+    private val policyProvider: () -> OutputRetentionPolicy = { OutputRetentionPolicy() }) : OutputStorePort {
     private val root = File(context.filesDir, "runtime-output").apply { mkdirs() }
     private val valid = Regex("[A-Za-z0-9-]{1,100}/[0-9]{1,20}")
     override suspend fun write(runId: RunId, name: String, text: String): ResourceRef = withContext(Dispatchers.IO) {
@@ -52,7 +53,7 @@ internal class OutputStore(context: Context, private val expired: suspend (RunId
         } catch (_: SecurityException) { ArtifactReadResult.Unavailable(RuntimeError(ErrorCode.PERMISSION_DENIED)) }
         catch (_: java.io.IOException) { if (expired(id)) ArtifactReadResult.Expired else ArtifactReadResult.Unavailable(RuntimeError(ErrorCode.RESOURCE_MISSING)) }
     }
-    suspend fun compact(journal: RuntimeJournal, policy: OutputRetentionPolicy = OutputRetentionPolicy(), now: Long = System.currentTimeMillis()) = withContext(Dispatchers.IO) {
+    suspend fun compact(journal: RuntimeJournal, policy: OutputRetentionPolicy = policyProvider(), now: Long = System.currentTimeMillis()) = withContext(Dispatchers.IO) {
         val candidates = journal.outputCandidates()
         // A prior crash may have committed expiration without removing all files. Retry those first.
         for (candidate in candidates.filter { it.expired }) purge(candidate.id)

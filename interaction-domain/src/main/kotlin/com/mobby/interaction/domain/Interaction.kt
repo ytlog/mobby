@@ -44,7 +44,7 @@ sealed interface DataResult<out T> {
 }
 data class Attachment(val ref: String, val name: String, val sizeBytes: Int, val mediaType: String = "text/plain")
 class AttachmentPreview(val bytes: ByteArray)
-data class EventHistoryLimits(val days: Int = 30, val mib: Int = 32)
+data class EventHistoryLimits(val days: Int = 30, val mib: Int = 32, val outputDays: Int = 30, val outputMiB: Int = 256)
 interface SystemPort {
     suspend fun eventHistoryLimits(): DataResult<EventHistoryLimits> = DataResult.Failed("当前执行端不支持日志设置")
     suspend fun saveEventHistoryLimits(value: EventHistoryLimits): OperationResult = OperationResult.Failed("当前执行端不支持日志设置")

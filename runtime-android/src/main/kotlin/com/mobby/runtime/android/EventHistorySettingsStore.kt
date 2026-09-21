@@ -33,14 +33,15 @@ internal class EventHistorySettingsStore(context: Context, private val key: () -
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, bytes.copyOfRange(0, 12)))
         val parts = cipher.doFinal(bytes.copyOfRange(12, bytes.size)).toString(Charsets.UTF_8).split(':')
-        require(parts.size == 2)
-        EventHistorySettings(parts[0].toInt(), parts[1].toInt())
+        require(parts.size == 2 || parts.size == 4)
+        EventHistorySettings(parts[0].toInt(), parts[1].toInt(), parts.getOrNull(2)?.toInt() ?: 30, parts.getOrNull(3)?.toInt() ?: 256)
     }
     fun save(value: EventHistorySettings) = synchronized(lock) {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, key())
-        val encrypted = cipher.iv + cipher.doFinal("${value.retentionDays}:${value.budgetMiB}".toByteArray(Charsets.UTF_8))
+        val encrypted = cipher.iv + cipher.doFinal("${value.retentionDays}:${value.budgetMiB}:${value.outputRetentionDays}:${value.outputBudgetMiB}".toByteArray(Charsets.UTF_8))
         check(prefs.edit().putString("limits", Base64.encodeToString(encrypted, Base64.NO_WRAP)).commit())
     }
+    fun outputPolicy(): OutputRetentionPolicy = load().let { OutputRetentionPolicy(it.outputRetentionDays * 86_400_000L, it.outputBudgetMiB * 1024L * 1024) }
     fun policy(): EventHistoryPolicy = load().let { EventHistoryPolicy(it.retentionDays * 86_400_000L, it.budgetMiB * 1024L * 1024) }
 }

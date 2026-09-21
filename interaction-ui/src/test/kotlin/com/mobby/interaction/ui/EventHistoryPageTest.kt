@@ -26,17 +26,23 @@ class EventHistoryPageTest {
         assertTrue(saved.isEmpty())
         compose.onNodeWithText("保留天数（1–3650）").performTextReplacement("7")
         compose.onNodeWithText("事件内容上限（MiB，1–1024）").performTextReplacement("8")
-        compose.onNodeWithText("保存日志设置").performClick()
+        compose.onNodeWithText("输出保留天数（1–3650）").performScrollTo().performTextReplacement("14")
+        compose.onNodeWithText("原始输出上限（MiB，1–4096）").performScrollTo().performTextReplacement("0")
+        restoration.emulateSavedInstanceStateRestore()
+        compose.onNodeWithText("保存日志设置").assertIsNotEnabled()
+        assertTrue(saved.isEmpty())
+        compose.onNodeWithText("原始输出上限（MiB，1–4096）").performScrollTo().performTextReplacement("64")
+        compose.onNodeWithText("保存日志设置").assertIsEnabled().performScrollTo().performClick()
         compose.onNodeWithText("已保存，将在下次任务结束或启动时清理").assertExists()
-        assertEquals(listOf(EventHistoryLimits(7, 8)), saved)
+        assertEquals(listOf(EventHistoryLimits(7, 8, 14, 64)), saved)
     }
     @Test fun `load and save failures remain visible and never report success`() {
         var loads = 0
         compose.setContent { MaterialTheme { EventHistoryPage({ if (loads++ == 0) DataResult.Failed("读取失败") else DataResult.Loaded(EventHistoryLimits()) }, { OperationResult.Failed("保存失败") }, {}) } }
         compose.onNodeWithText("读取失败").assertExists()
         compose.onNodeWithText("保存日志设置").assertIsNotEnabled()
-        compose.onNodeWithText("重试读取").performClick()
-        compose.onNodeWithText("保存日志设置").performClick()
+        compose.onNodeWithText("重试读取").performScrollTo().performClick()
+        compose.onNodeWithText("保存日志设置").assertIsEnabled().performScrollTo().performClick()
         compose.onNodeWithText("保存失败").assertExists()
         compose.onNodeWithText("已保存，将在下次任务结束或启动时清理").assertDoesNotExist()
     }

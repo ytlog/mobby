@@ -15,6 +15,8 @@ import kotlinx.coroutines.launch
 @Composable internal fun EventHistoryPage(load: suspend () -> DataResult<EventHistoryLimits>, save: suspend (EventHistoryLimits) -> OperationResult, back: () -> Unit) {
     var days by rememberSaveable { mutableStateOf("") }
     var mib by rememberSaveable { mutableStateOf("") }
+    var outputDays by rememberSaveable { mutableStateOf("") }
+    var outputMiB by rememberSaveable { mutableStateOf("") }
     var initialized by rememberSaveable { mutableStateOf(false) }
     var loaded by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
@@ -25,24 +27,27 @@ import kotlinx.coroutines.launch
         loaded = false; message = null
         try {
             when (val result = load()) {
-                is DataResult.Loaded -> { if (!initialized) { days = result.value.days.toString(); mib = result.value.mib.toString(); initialized = true }; loaded = true }
+                is DataResult.Loaded -> { if (!initialized) { days = result.value.days.toString(); mib = result.value.mib.toString(); outputDays = result.value.outputDays.toString(); outputMiB = result.value.outputMiB.toString(); initialized = true }; loaded = true }
                 is DataResult.Failed -> message = result.message
             }
         } catch (e: CancellationException) { throw e }
         catch (_: Exception) { message = "无法读取日志设置，请重试" }
     }
-    val valid = days.toIntOrNull()?.let { it in 1..3650 } == true && mib.toIntOrNull()?.let { it in 1..1024 } == true
+    val valid = days.toIntOrNull()?.let { it in 1..3650 } == true && mib.toIntOrNull()?.let { it in 1..1024 } == true &&
+        outputDays.toIntOrNull()?.let { it in 1..3650 } == true && outputMiB.toIntOrNull()?.let { it in 1..4096 } == true
     Column(Modifier.fillMaxSize()) {
         PageHeader("运行日志保留", back)
         Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("仅清理已结束任务的旧事件记录，保留对话、文件和当前任务。此上限不包含输出文件及附件。")
+            Text("按完成时间清理已结束任务的旧日志与原始输出，保留运行结果索引和当前任务。输出清理不可恢复；工作区文件、附件和对话缓存不计入以下上限。")
             OutlinedTextField(days, { days = it; message = null }, label = { Text("保留天数（1–3650）") }, enabled = loaded && !busy, singleLine = true)
             OutlinedTextField(mib, { mib = it; message = null }, label = { Text("事件内容上限（MiB，1–1024）") }, enabled = loaded && !busy, singleLine = true)
+            OutlinedTextField(outputDays, { outputDays = it; message = null }, label = { Text("输出保留天数（1–3650）") }, enabled = loaded && !busy, singleLine = true)
+            OutlinedTextField(outputMiB, { outputMiB = it; message = null }, label = { Text("原始输出上限（MiB，1–4096）") }, enabled = loaded && !busy, singleLine = true)
             if (!loaded && message == null) Text("正在读取设置…")
             message?.let { Text(it) }
             if (!loaded && message != null) OutlinedButton(onClick = { retry++ }) { Text("重试读取") }
             Button(enabled = loaded && valid && !busy, onClick = {
-                val value = EventHistoryLimits(days.toInt(), mib.toInt())
+                val value = EventHistoryLimits(days.toInt(), mib.toInt(), outputDays.toInt(), outputMiB.toInt())
                 busy = true; message = null
                 scope.launch {
                     try {

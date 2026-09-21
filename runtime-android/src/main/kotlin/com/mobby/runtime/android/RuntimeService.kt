@@ -54,7 +54,7 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
         registry = ProcessRegistry(this)
         journal = RuntimeJournal(this, policyProvider = EventHistorySettingsStore(this)::policy)
         val ports = AndroidRuntimePorts(this, runtime, environment, registry)
-        outputStore = OutputStore(this, journal::outputExpired)
+        outputStore = OutputStore(this, journal::outputExpired, EventHistorySettingsStore(this)::outputPolicy)
         coordinator = RunCoordinator(scope, ports, ports, journal, outputStore)
         getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel("runtime", "任务运行", NotificationManager.IMPORTANCE_LOW))
         scope.launch { coordinator.active.collect { if (it == null) submission.withLock {

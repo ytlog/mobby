@@ -41,6 +41,27 @@ class OutputRetentionTest {
             assertFalse(File(directory, "0").exists())
         } finally { outside.delete() }
     }
+    @Test fun `saved output limits apply at next cleanup without deleting files during save`() = runBlocking {
+        val prefs = context.getSharedPreferences("runtime-storage-policy", 0)
+        prefs.edit().clear().commit()
+        val key = javax.crypto.KeyGenerator.getInstance("AES").apply { init(256) }.generateKey()
+        val settings = EventHistorySettingsStore(context) { key }
+        try {
+            RuntimeJournal(context, unlimited).use { journal ->
+                val store = OutputStore(context, journal::outputExpired, settings::outputPolicy)
+                run(journal, store, "old", 100)
+                run(journal, store, "active", null)
+                val time = 3 * 86_400_000L
+                store.compact(journal, now = time)
+                assertTrue(read(store, "old") is ArtifactReadResult.Chunk)
+                settings.save(EventHistorySettings(outputRetentionDays = 1, outputBudgetMiB = 1))
+                assertTrue(read(store, "old") is ArtifactReadResult.Chunk)
+                store.compact(journal, now = time)
+                assertEquals(ArtifactReadResult.Expired, read(store, "old"))
+                assertTrue(read(store, "active") is ArtifactReadResult.Chunk)
+            }
+        } finally { prefs.edit().clear().commit() }
+    }
     @Test fun `terminal output budget removes oldest files but preserves snapshots requests and active output`() = runBlocking {
         RuntimeJournal(context, unlimited).use { journal ->
             val store = OutputStore(context, journal::outputExpired)
