@@ -15,7 +15,7 @@ internal data class TurnRow(
     val expanded: Boolean? = null, val expandedSteps: String = "[]"
 )
 @Entity(tableName = "chunks", indices = [Index("runId")])
-internal data class ChunkRow(@PrimaryKey val ref: String, val runId: String, val text: String)
+internal data class ChunkRow(@PrimaryKey val ref: String, val runId: String, val text: String, @ColumnInfo(defaultValue = "0") val expired: Boolean = false)
 @Entity(tableName = "selection")
 internal data class SelectionRow(@PrimaryKey val key: String = "current", val conversationId: String)
 
@@ -54,11 +54,16 @@ internal data class TurnWithChunks(
     @Upsert suspend fun select(row: SelectionRow)
     @Upsert suspend fun chunks(rows: List<ChunkRow>)
 }
-@Database(entities = [ConversationRow::class, TurnRow::class, ChunkRow::class, SelectionRow::class], version = 2, exportSchema = true)
+@Database(entities = [ConversationRow::class, TurnRow::class, ChunkRow::class, SelectionRow::class], version = 3, exportSchema = true)
 internal abstract class InteractionDatabase : RoomDatabase() {
     abstract fun dao(): InteractionDao
     companion object {
-        fun open(context: Context) = Room.databaseBuilder(context.applicationContext, InteractionDatabase::class.java, "interaction.db").addMigrations(MIGRATION_1_2).build()
+        fun open(context: Context) = Room.databaseBuilder(context.applicationContext, InteractionDatabase::class.java, "interaction.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3).build()
+        val MIGRATION_2_3 = object : androidx.room.migration.Migration(2, 3) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE chunks ADD COLUMN expired INTEGER NOT NULL DEFAULT 0")
+            }
+        }
         val MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) {
             override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_turns_conversationId_createdAt_id ON turns (conversationId, createdAt, id)")

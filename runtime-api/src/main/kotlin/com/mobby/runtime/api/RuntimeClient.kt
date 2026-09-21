@@ -234,6 +234,9 @@ data class ArtifactReadRequest(val artifactRef: ResourceRef, val offset: Long, v
 }
 @Serializable
 sealed interface ArtifactReadResult {
+    /** Deliberately removed by retention; discard any earlier partial bytes for this reference. */
+    @Serializable
+    data object Expired : ArtifactReadResult
     /** Offsets count bytes, not decoded characters. Authorization is checked on every read. */
     @Serializable
     data class Chunk(val bytes: List<Byte>, val nextOffset: Long?, val truncated: Boolean) : ArtifactReadResult

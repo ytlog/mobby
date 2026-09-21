@@ -121,11 +121,32 @@ class RoomInteractionRepositoryTest {
         assertEquals(c.id, restored.conversation.id)
         assertEquals("turn-003", restored.turns.first().id.value)
     }
+    private fun restoreOldChunks(sql: androidx.sqlite.db.SupportSQLiteDatabase) {
+        sql.execSQL("ALTER TABLE chunks RENAME TO chunks_new")
+        sql.execSQL("CREATE TABLE chunks (ref TEXT NOT NULL PRIMARY KEY, runId TEXT NOT NULL, text TEXT NOT NULL)")
+        sql.execSQL("INSERT INTO chunks (ref,runId,text) SELECT ref,runId,text FROM chunks_new")
+        sql.execSQL("DROP TABLE chunks_new")
+        sql.execSQL("CREATE INDEX index_chunks_runId ON chunks (runId)")
+    }
+    @Test fun `version two migration retains existing output as available`() = runBlocking {
+        val c = seedHistory(7)
+        scope.coroutineContext[Job]!!.cancelAndJoin()
+        val sql = db.openHelper.writableDatabase
+        restoreOldChunks(sql)
+        sql.execSQL("PRAGMA user_version=2")
+        db.close(); start()
+        val restored = state { it.selected?.turns?.size == 7 }.selected!!
+        assertEquals(c.id, restored.conversation.id)
+        assertEquals("old assistant body", restored.turns.single { it.id.value == "turn-005" }.messages.single().text)
+        assertFalse(db.dao().chunk("history-body")!!.expired)
+        assertEquals(3, db.openHelper.readableDatabase.version)
+    }
     @Test fun `version one database migrates with conversation messages and output intact`() = runBlocking {
         val c = seedHistory(7)
         val original = db.dao().conversation(c.id.value)!!.body
         scope.coroutineContext[Job]!!.cancelAndJoin()
         val sql = db.openHelper.writableDatabase
+        restoreOldChunks(sql)
         sql.execSQL("DROP INDEX index_turns_conversationId_createdAt_id")
         sql.execSQL("DROP INDEX index_turns_conversationId_occupied")
         sql.execSQL("UPDATE room_master_table SET identity_hash='323a224c2892d320614221fcfb9d928c' WHERE id=42")
@@ -134,7 +155,7 @@ class RoomInteractionRepositoryTest {
         val restored = state { it.selected?.turns?.size == 7 }.selected!!
         assertEquals(original, db.dao().conversation(c.id.value)!!.body)
         assertEquals("old assistant body", restored.turns.single { it.id.value == "turn-005" }.messages.single().text)
-        assertEquals(2, db.openHelper.readableDatabase.version)
+        assertEquals(3, db.openHelper.readableDatabase.version)
         val indexes = mutableSetOf<String>()
         db.openHelper.readableDatabase.query("PRAGMA index_list(turns)").use { cursor ->
             while (cursor.moveToNext()) indexes += cursor.getString(cursor.getColumnIndexOrThrow("name"))
@@ -339,6 +360,44 @@ class RoomInteractionRepositoryTest {
         val followUp = (repository.prepareTurn(created, TurnId("creator-followup")) as PrepareTurnResult.Prepared).turn
         assertEquals(setOf("skill:CODEX:BUILTIN:skill-creator:hash"), followUp.draft.capabilities)
     }
+    @Test fun `unexpected missing output remains a synchronization error rather than retention success`() = runBlocking {
+        val c = state().selected!!.conversation
+        repository.editDraft(c.id, "fixture", 7, 7)
+        val turn = (repository.prepareTurn(c.id, TurnId("missing")) as PrepareTurnResult.Prepared).turn
+        runtime.admit(turn)
+        val ref = ResourceRef("missing/0")
+        runtime.snapshots["missing"] = runtime.snapshots.getValue("missing").copy(phase = RunPhase.SUCCEEDED,
+            outputSegments = listOf(OutputSegment("answer", 0, ref)), terminalEvidence = TerminalEvidence(true, 0))
+        repository.recordSubmission(turn, Submission.Accepted(ExecutionId("missing")))
+        val projected = state { it.selected?.turns?.singleOrNull()?.failure != null }.selected!!.turns.single()
+        assertTrue(projected.failure!!.contains("同步中断"))
+        assertTrue(projected.messages.isEmpty())
+        assertNull(db.dao().chunk(ref.value))
+    }
+    @Test fun `expired output discards partial bytes and expired proposals never become installable`() = runBlocking {
+        val c = state().selected!!.conversation
+        repository.editDraft(c.id, "fixture", 7, 7)
+        val turn = (repository.prepareTurn(c.id, TurnId("expired")) as PrepareTurnResult.Prepared).turn
+        runtime.admit(turn)
+        val body = ResourceRef("expired/0"); val proposal = ResourceRef("expired/1")
+        runtime.artifactBodies[body] = "partial text must not survive expiry".toByteArray()
+        runtime.expireAt[body] = 17L; runtime.expireAt[proposal] = 0L
+        runtime.snapshots["expired"] = runtime.snapshots.getValue("expired").copy(phase = RunPhase.SUCCEEDED,
+            outputSegments = listOf(OutputSegment("answer", 0, body)), artifacts = listOf(proposal), terminalEvidence = TerminalEvidence(true, 0))
+        repository.recordSubmission(turn, Submission.Accepted(ExecutionId("expired")))
+        val projected = state { it.selected?.turns?.singleOrNull()?.let { t -> t.failure != null || t.phase == ExecutionPhase.SUCCEEDED } == true }.selected!!.turns.single()
+        assertNull(projected.failure)
+        assertEquals(ExecutionPhase.SUCCEEDED, projected.phase)
+        assertFalse(projected.occupied)
+        assertEquals("输出已按保留策略清理", projected.messages.first().text)
+        assertTrue(projected.messages.any { it.text == "技能草稿已按保留策略清理" })
+        assertTrue(projected.skillProposals.isEmpty())
+        assertFalse(projected.proposalsLoading)
+        scope.coroutineContext[Job]!!.cancelAndJoin(); db.close(); start()
+        val restored = state { it.selected?.turns?.singleOrNull()?.phase == ExecutionPhase.SUCCEEDED }.selected!!.turns.single()
+        assertEquals(projected.messages, restored.messages)
+        assertTrue(restored.skillProposals.isEmpty())
+    }
     @Test fun `proposal text and artifact reference survive projection and database reopen`() = runBlocking {
         val c = state().selected!!.conversation
         repository.editDraft(c.id, "create", 6, 6)
@@ -401,8 +460,10 @@ class RoomInteractionRepositoryTest {
             snapshots[runId.value]?.let { emit(RuntimeUpdate.Baseline(it, EventCursor(runId, it.lastSequence))) }
             awaitCancellation()
         }
+        val expireAt = mutableMapOf<ResourceRef, Long>()
         val artifactBodies = mutableMapOf<ResourceRef, ByteArray>()
         override suspend fun readArtifact(request: ArtifactReadRequest): ArtifactReadResult {
+            if (expireAt[request.artifactRef]?.let { request.offset >= it } == true) return ArtifactReadResult.Expired
             val bytes = artifactBodies[request.artifactRef] ?: return ArtifactReadResult.Unavailable(RuntimeError(ErrorCode.RESOURCE_MISSING))
             val end = minOf(bytes.size, request.offset.toInt() + 17)
             return ArtifactReadResult.Chunk(bytes.copyOfRange(request.offset.toInt(), end).toList(), end.toLong().takeIf { end < bytes.size }, false)

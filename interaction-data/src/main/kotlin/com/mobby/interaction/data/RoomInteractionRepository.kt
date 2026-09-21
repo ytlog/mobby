@@ -44,7 +44,7 @@ internal class RoomInteractionRepository(
             }.distinctUntilChanged().flatMapLatest { (limit, count) ->
                 combine(summaries, dao.timeline(selected, limit).distinctUntilChanged()) { conversations, entries ->
                     val c = conversations.firstOrNull { it.conversation.id.value == selected }?.conversation
-                    val turns = entries.map { entry -> entry.turn.domain(entry.chunks.associate { it.ref to it.text }) }
+                    val turns = entries.map { entry -> entry.turn.domain(entry.chunks.associateBy { it.ref }) }
                     InteractionState(conversations, c?.let { ConversationDetail(it, turns, count > turns.size) }, loading = false)
                 }
             })
@@ -67,7 +67,7 @@ internal class RoomInteractionRepository(
     override suspend fun history(id: ConversationId): ConversationDetail = withContext(Dispatchers.Default) {
         db.withTransaction {
             val c = requireNotNull(dao.conversation(id.value)).domain()
-            val content = dao.historyChunks(id.value).associate { it.ref to it.text }
+            val content = dao.historyChunks(id.value).associateBy { it.ref }
             ConversationDetail(c, dao.conversationTurns(id.value).map { it.domain(content) })
         }
     }
@@ -280,15 +280,17 @@ internal class RoomInteractionRepository(
         for (ref in (parts.map { it.ref } + snapshot.artifacts).distinct()) if (dao.chunk(ref.value) == null) {
             val bytes = ByteArrayOutputStream()
             var offset: Long? = 0
+            var expired = false
             do {
                 val read = client.readArtifact(ArtifactReadRequest(ref, offset!!, 65536))
+                if (read == ArtifactReadResult.Expired) { bytes.reset(); expired = true; break }
                 check(read is ArtifactReadResult.Chunk) { "Output segment unavailable" }
                 bytes.write(read.bytes.toByteArray())
                 check(bytes.size() <= 512 * 1024) { "Output segment too large" }
                 check((read.nextOffset?.let { it > offset!! } ?: true)) { "Non advancing output cursor" }
                 offset = read.nextOffset
             } while (offset != null)
-            chunks += ChunkRow(ref.value, snapshot.runId.value, bytes.toString("UTF-8"))
+            chunks += ChunkRow(ref.value, snapshot.runId.value, bytes.toString("UTF-8"), expired)
         }
         db.withTransaction {
             val row = dao.turn(turnId) ?: return@withTransaction
@@ -303,15 +305,26 @@ internal class RoomInteractionRepository(
             }
         }
     }
-    private fun TurnRow.domain(content: Map<String, String>): Turn {
+    private fun TurnRow.domain(content: Map<String, ChunkRow>): Turn {
         val snapshot = snapshot?.let { storageJson.decodeFromString<RunSnapshot>(it) }
-        fun List<OutputSegment>.messages() = sortedBy { it.chunkIndex }.groupBy { it.messageId }.map { (id, parts) -> Message(id, parts.joinToString("") { content[it.ref.value].orEmpty() }) }
+        fun List<OutputSegment>.render(separator: String = ""): String = buildString {
+            var previousExpired = false
+            for (part in this@render) {
+                val row = content[part.ref.value] ?: continue
+                if (row.expired && previousExpired) continue
+                if (isNotEmpty()) append(if (row.expired || previousExpired) "\n" else separator)
+                append(if (row.expired) "输出已按保留策略清理" else row.text)
+                previousExpired = row.expired
+            }
+        }
+        fun List<OutputSegment>.messages() = sortedBy { it.chunkIndex }.groupBy { it.messageId }.map { (id, parts) -> Message(id, parts.render()) }
         return Turn(TurnId(id), userText, runId?.let(::ExecutionId), snapshot?.let { RunProjection.verifiedPhase(it).domain() },
-            snapshot?.outputSegments?.filterNot { it.messageId.startsWith("diagnostic:") }?.messages().orEmpty(),
-            snapshot?.steps?.map { Step(it.stepId, it.toolKind, it.summary, it.output.joinToString("\n") { p -> content[p.ref.value].orEmpty() }, it.outcome?.name) }.orEmpty(),
+            snapshot?.outputSegments?.filterNot { it.messageId.startsWith("diagnostic:") }?.messages().orEmpty() +
+                if (snapshot?.artifacts?.any { content[it.value]?.expired == true } == true) listOf(Message("retained-artifact-notice", "技能草稿已按保留策略清理")) else emptyList(),
+            snapshot?.steps?.map { Step(it.stepId, it.toolKind, it.summary, it.output.render("\n"), it.outcome?.name) }.orEmpty(),
             snapshot?.outputSegments?.filter { it.messageId.startsWith("diagnostic:") }?.messages().orEmpty(),
             error ?: snapshot?.terminalEvidence?.error?.message(), snapshot?.progressSummary, pending, occupied, expanded, storageJson.decodeFromString(expandedSteps),
-            snapshot?.artifacts?.mapNotNull { ref -> content[ref.value]?.let { SkillProposal(ref.value, it, DomainAgent.valueOf(snapshot.acceptedConfig.agentId.name)) } }.orEmpty(),
+            snapshot?.artifacts?.mapNotNull { ref -> content[ref.value]?.takeUnless { it.expired }?.let { SkillProposal(ref.value, it.text, DomainAgent.valueOf(snapshot.acceptedConfig.agentId.name)) } }.orEmpty(),
             storageJson.decodeFromString<StoredConversation>(frozen).creator != null, snapshot?.artifacts?.any { it.value !in content } == true, storageJson.decodeFromString<StoredConversation>(frozen).attachments,
             snapshot?.pendingApprovals?.map { PermissionRequest(it.approvalId, it.revision, it.actionSummary, it.scopeSummary) }.orEmpty())
     }
