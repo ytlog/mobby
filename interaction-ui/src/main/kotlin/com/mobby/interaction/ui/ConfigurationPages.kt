@@ -82,6 +82,8 @@ import kotlinx.coroutines.*
             WorkspacePicker(vm, workspace, workspaceOwner, canMove) { workspace = it }
             if (!canMove) Text(if (c.hasTurns) "已有任务记录，执行工作区保持不变。" else "请先移除草稿附件，再切换工作区。", style = MaterialTheme.typography.bodySmall)
             Text("变更只影响下一轮，当前执行保持原配置。", style = MaterialTheme.typography.bodySmall)
+            if (agent != c.config.agent && c.draft.capabilities.isNotEmpty())
+                Text("所选技能与 Agent 绑定，切换后请重新选择。", style = MaterialTheme.typography.bodySmall)
             Row {
                 TextButton(onClick = dismiss) { Text("取消") }
                 Button(onClick = {

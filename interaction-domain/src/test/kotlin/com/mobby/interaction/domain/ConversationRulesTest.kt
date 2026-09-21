@@ -33,11 +33,14 @@ class ConversationRulesTest {
         assertEquals(listOf("file"), original.draft.attachments)
         assertEquals("session", original.session)
     }
-    @Test fun `empty conversation agent switch retains its draft and same agent config retains session`() {
-        val empty = original.copy(hasTurns = false, session = null)
+    @Test fun `empty conversation agent switch keeps content but clears agent bound skills`() {
+        val empty = original.copy(hasTurns = false, session = null, creator = "skill")
         val changed = ConversationRules.applyConfig(empty, config.copy(agent = AgentId.CLAUDE_CODE), ConversationId("unused"))
         assertEquals(empty.id, changed.id)
-        assertEquals(empty.draft, changed.draft)
+        assertEquals(empty.draft.copy(revision = empty.draft.revision + 1, capabilities = emptySet()), changed.draft)
+        assertEquals(empty.project, changed.project)
+        assertNull(changed.creator)
+        assertEquals(setOf("skill"), empty.draft.capabilities)
         val next = ConversationRules.applyConfig(original, config.copy(model = "next"), ConversationId("unused"))
         assertEquals(original.id, next.id)
         assertEquals(original.session, next.session)

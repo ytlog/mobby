@@ -85,7 +85,14 @@ object ConversationRules {
         return if (current.hasTurns && config.agent != current.config.agent) {
             require(newId != current.id)
             Conversation(newId, config, Draft(text = current.draft.text), project = current.project)
-        } else current.copy(config = config, session = if (current.config.agent == config.agent) current.session else null, creator = if (current.config.agent == config.agent) current.creator else null)
+        } else {
+            val sameAgent = current.config.agent == config.agent
+            current.copy(config = config,
+                draft = if (!sameAgent && current.draft.capabilities.isNotEmpty())
+                    current.draft.copy(revision = current.draft.revision + 1, capabilities = emptySet()) else current.draft,
+                session = if (sameAgent) current.session else null,
+                creator = if (sameAgent) current.creator else null)
+        }
     }
 
     fun createSkillConversation(current: Conversation, newId: ConversationId, creator: String?): Conversation? {
