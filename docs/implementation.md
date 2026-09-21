@@ -313,3 +313,17 @@ Android HttpURLConnection 发起非流式、16 token 的小型 Chat/Responses/Me
 验证：新增 Runtime HTTP 测试覆盖三协议请求和鉴权、路径归一化、重定向不跟随、HTTP 失败、200 错误响应、64 KiB 边界、超时、请求中的取消、异常信息不外泄与未完整结束。UI 测试覆盖已保存版本、编辑禁用、取消后的迟到响应、修改后结果失效和旧版本 0 配置。API 9、runtime-android 32、Domain 12、Data 29、UI 31，共 113 项相关测试通过；Node 22、Python 8 项通过，主包、辅助测试包、App/termux-core 单元测试及 lint 通过。
 
 主 APK 已覆盖安装并启动。M2007J1SC / Android 13 用现有 Codex 保存配置点击“测试已保存连接”，实际返回“最小协议请求通过”，页面滚动后可看到结果；检查前后在内存中比较加密配置摘要一致。操作只读取已保存配置，没有改地址、模型或密钥，也没有携带用户会话历史。已确认最终 Manifest 保持 applicationId，并包含 HTTP 客户端所需的明文选项。真实 CLI 先前的连接超时尚未排除；Android HTTP 小请求通过只能缩小排查范围，下一步仍需验证 CLI 请求/网络路径及完整任务。
+
+## 手机 Codex 域名解析阻断复现（2026-09-21）
+
+真实独立会话只提交“回复 OK、不使用工具”，仍停留在连接重试；通过正常停止入口结束，UI 确认已停止，未显示成功。进一步使用独立 HOME、工作区、虚假密钥和设备自带 Codex 0.155.1 对比同一个本地模拟 Responses 服务：IP 地址访问接收 1 次模型请求并返回终态；解析到相同 loopback 地址的域名访问 35 秒内未到达服务，由测试超时终止。Android Node 对相同域名解析得到 127.0.0.1，设备缺少 /etc/resolv.conf。当前 agent_bundle.py 提取的是官方 aarch64-unknown-linux-musl 静态程序。证据指向内置 Linux 程序在 Android 上的 DNS 路径不兼容；不能再用 --version 或主机六组合联调宣称手机原生 Codex 已可联网。
+
+新增可重复的设备回归命令：
+
+```sh
+MOBBY_TEST_ADB=/path/to/adb node runtime/gateway-tests/android-codex-network.cjs
+```
+
+要求连接已安装 debug 主包的设备（可用 ANDROID_SERIAL 选择），不需要辅助测试 APK。测试用 adb reverse 将模型请求限制在主机 loopback；域名预检依赖正常 DNS，默认 127.0.0.1.nip.io，可通过 MOBBY_TEST_LOOPBACK_DNS 指定同样解析到 127.0.0.1 的测试域名。每次创建唯一的设备临时目录，保持默认 Agent 权限与沙箱，不使用跳过权限的参数；finally 清理专属目录和端口映射。测试不会读取真实网关配置或现有 CLI HOME，不打印请求正文。当前设备结果为 Node DNS 通过、Codex IP 通过、Codex DNS 失败，命令按回归门槛返回非零。已确认清理后没有测试目录、端口映射或 Codex 残留进程。
+
+同版本官方源码已下载到忽略的 runtime/cache 用于后续修复评估，未提交依赖缓存。初步源码核对发现 sandboxing::get_platform_sandbox 只为 Linux/macOS/Windows 选择对应沙箱，其他目标返回 None。因此不能直接把目标改成 Android 后宣称已修复：修复域名解析同时必须保留 Agent 权限与沙箱语义，不能通过关闭检查或强制全权限完成验收。本检查点只提交复现与证据，不声称生产 DNS 问题已修复；下一步继续处理该基础阻断。

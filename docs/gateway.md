@@ -28,6 +28,10 @@ Claude Code 本身使用 Messages，Codex 使用 Responses。内置 Node.js 以�
 
 API Key 和配置使用 Android Keystore AES-GCM 加密存储；启动器通过环境变量传递凭据，不主动写入 CLI 配置文件、项目或日志。原生直连时 CLI 使用网关密钥；桥接模式下 CLI 只收到临时本地令牌。桥接的上游错误响应仅保留 HTTP 状态和诊断提示；流式中断会断开连接，交给 CLI 正常报错/重试，不向 SSE 混入普通 JSON。
 
+## 当前设备阻断
+
+2026-09-21 真机已复现：内置 Codex 的 Linux musl 静态程序可访问 IP 地址的本地模拟服务，却无法访问 Android Node 能解析的域名。Android HTTP 小请求通过不代表该 CLI 网络路径可用。此 DNS 兼容问题尚未修复，完整手机 Codex 原生网关验收未通过。回归命令与隔离范围见[实施记录](implementation.md)；不能通过关闭 Agent 权限或沙箱检查规避。
+
 ## 范围和限制
 
 - 跨协议支持文本与用户图片块（PNG/JPEG/WebP/GIF 的 base64 或 HTTP(S) URL），保持图文顺序与图片字节。桥接不主动下载 URL。提供商 file_id、图片 transformations、音频和远端托管工具等未适配输入明确失败。App 已接入照片选择、PNG/JPEG 导入与系统拍照确认；系统相机全链路仍待真机验收。
