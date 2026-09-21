@@ -27,6 +27,7 @@ class RunCoordinator(
     private val activeState = MutableStateFlow<RunId?>(null)
     val active = activeState.asStateFlow()
     private var stop: MutableStateFlow<StopCause?>? = null
+    private var activeRequest: RequestId? = null
     private var healthy = true
 
     /** Called once before admission. Never resumes side effects after host death. */
@@ -69,7 +70,7 @@ class RunCoordinator(
                 val snapshot = RunSnapshot(id, RunPhase.ACCEPTED, 1, 1, config, sessionRef = frozen.sessionRef)
                 journal.accept(frozen.requestId, digest, snapshot, envelope(id, 1, RuntimeEvent.RunAccepted(config)))
                 val signal = MutableStateFlow<StopCause?>(null)
-                stop = signal; activeState.value = id; wake.value++
+                stop = signal; activeState.value = id; activeRequest = frozen.requestId; wake.value++
                 scope.launch { execute(id, frozen, signal) }
                 SubmitResult.Accepted(id, config)
             } catch (_: Exception) { failStorage(); SubmitResult.Rejected(RuntimeError(ErrorCode.STORAGE_FULL)) }
@@ -113,13 +114,42 @@ class RunCoordinator(
         }
         val command = commandId?.let { CommandRecord(it, fingerprint, result) }
         if (result == CommandResult.Accepted && old!!.phase != RunPhase.CANCELLING) {
-            append(old, RuntimeEvent.CancellationRequested, old.copy(phase = RunPhase.CANCELLING), command)
+            append(old, RuntimeEvent.CancellationRequested, old.copy(phase = RunPhase.CANCELLING, pendingApprovals = emptyList()), command)
             stop?.value = cause
         } else if (command != null) journal.recordCommand(command)
         return result
     }
-    override suspend fun resolveApproval(request: ApprovalDecision): CommandResult =
-        CommandResult.Rejected(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
+    override suspend fun resolveApproval(request: ApprovalDecision): CommandResult = withContext(NonCancellable) {
+        mutex.withLock {
+            try {
+                val fingerprint = Json.encodeToString(request)
+                journal.command(request.commandId)?.let {
+                    return@withLock if (it.fingerprint == fingerprint) it.result else CommandResult.Rejected(RuntimeError(ErrorCode.REQUEST_CONFLICT))
+                }
+                if (!healthy) return@withLock CommandResult.Rejected(RuntimeError(ErrorCode.STORAGE_FULL))
+                val old = journal.snapshot(request.runId)
+                val pending = old?.pendingApprovals?.firstOrNull { it.approvalId == request.approvalId }
+                val result = when {
+                    old == null -> CommandResult.Rejected(RuntimeError(ErrorCode.NOT_FOUND))
+                    active.value != request.runId || activeRequest == null || stop?.value != null ||
+                        old.phase != RunPhase.AWAITING_APPROVAL || pending?.revision != request.expectedRevision ->
+                        CommandResult.Rejected(RuntimeError(ErrorCode.STALE_APPROVAL))
+                    else -> CommandResult.Accepted
+                }
+                val command = CommandRecord(request.commandId, fingerprint, result)
+                if (result != CommandResult.Accepted) journal.recordCommand(command)
+                else {
+                    val remaining = old!!.pendingApprovals.filterNot { it.approvalId == request.approvalId }
+                    append(old, RuntimeEvent.ApprovalResolved(request.approvalId, request.choice),
+                        old.copy(pendingApprovals = remaining, phase = if (remaining.isEmpty()) RunPhase.RUNNING else RunPhase.AWAITING_APPROVAL), command)
+                    // Persist before handing a decision to the live process. Recovery never replays it.
+                    val queued = try { process.offerApproval(activeRequest!!, request.approvalId, request.choice) } catch (_: Exception) { false }
+                    if (!queued) stopLocked(request.runId, StopCause.PROTOCOL_FAILURE)
+                }
+                result
+            } catch (_: Exception) { failStorage(); CommandResult.Rejected(RuntimeError(ErrorCode.STORAGE_FULL)) }
+        }
+    }
     override suspend fun readArtifact(request: ArtifactReadRequest) = outputStore.read(request)
 
     override fun observe(runId: RunId, after: EventCursor?): Flow<RuntimeUpdate> = flow {
@@ -148,6 +178,7 @@ class RunCoordinator(
         var truncated = false
         val decoder = ProtocolDecoder(request.agentId)
         val proposals = SkillProposalCollector()
+        val seenApprovals = mutableMapOf<String, String>()
         var eligible = true
         suspend fun emitFact(fact: AgentFact) = mutex.withLock {
             if (!healthy) return@withLock
@@ -168,6 +199,21 @@ class RunCoordinator(
                 return OutputSegment(messageId, index, ref)
             }
             when (fact) {
+                is AgentFact.Approval -> {
+                    if (old.phase == RunPhase.CANCELLING || signal.value != null) return@withLock
+                    val fingerprint = MessageDigest.getInstance("SHA-256").digest(Json.encodeToString(listOf(fact.action, fact.scope)).toByteArray()).joinToString("") { "%02x".format(it) }
+                    val previous = seenApprovals[fact.id]
+                    if (previous != null) {
+                        if (previous != fingerprint || old.pendingApprovals.none { it.approvalId == fact.id })
+                            stopLocked(id, StopCause.PROTOCOL_FAILURE)
+                    } else if (seenApprovals.size >= 512 || old.pendingApprovals.size >= 16) stopLocked(id, StopCause.PROTOCOL_FAILURE)
+                    else {
+                        val pending = PendingApproval(fact.id, old.revision + 1, fact.action, fact.scope)
+                        append(old, RuntimeEvent.ApprovalRequired(pending), old.copy(phase = RunPhase.AWAITING_APPROVAL, pendingApprovals = old.pendingApprovals + pending))
+                        seenApprovals[fact.id] = fingerprint
+                    }
+                }
+                AgentFact.InvalidApproval -> if (signal.value == null) stopLocked(id, StopCause.PROTOCOL_FAILURE)
                 is AgentFact.Session -> if (old.sessionRef?.value != fact.id) append(old, RuntimeEvent.RunStarted(SessionRef(fact.id)), old.copy(sessionRef = SessionRef(fact.id)))
                 is AgentFact.Text -> {
                     if (request.requestedOutput == RequestedOutput.SKILL_PROPOSAL) proposals.append(fact.messageId, fact.text)
@@ -233,9 +279,9 @@ class RunCoordinator(
                         !result.terminationConfirmed -> RunPhase.OUTCOME_UNKNOWN
                         cause == StopCause.TIMEOUT || result.error == ErrorCode.TIMEOUT -> RunPhase.TIMED_OUT
                         cause == StopCause.HOST_STOP -> RunPhase.INTERRUPTED
-                        cause == StopCause.STORAGE_FAILURE -> RunPhase.FAILED
+                        cause == StopCause.STORAGE_FAILURE || cause == StopCause.PROTOCOL_FAILURE -> RunPhase.FAILED
                         old.phase == RunPhase.CANCELLING -> RunPhase.CANCELLED
-                        result.error != null || protocolError != null -> RunPhase.FAILED
+                        result.error != null || protocolError != null || old.pendingApprovals.isNotEmpty() -> RunPhase.FAILED
                         result.exitCode == 0 && protocolSuccess == true -> RunPhase.SUCCEEDED
                         else -> RunPhase.FAILED
                     }
@@ -255,7 +301,7 @@ class RunCoordinator(
                     }
                     val evidence = TerminalEvidence(protocolSuccess, result.exitCode, error, result.terminationConfirmed)
                     append(terminalBase, RuntimeEvent.RunFinished(phase, evidence), terminalBase.copy(phase = phase, terminalEvidence = evidence, pendingApprovals = emptyList()))
-                    if (result.terminationConfirmed) { activeState.value = null; stop = null }
+                    if (result.terminationConfirmed) { activeState.value = null; activeRequest = null; stop = null }
                 } catch (_: Exception) { failStorage() }
             }
         }

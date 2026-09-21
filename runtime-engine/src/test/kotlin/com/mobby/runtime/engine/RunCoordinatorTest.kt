@@ -48,6 +48,156 @@ class RunCoordinatorTest {
     private fun process(block: suspend (RunRequest, StateFlow<StopCause?>, suspend (String, Boolean) -> Unit) -> ProcessResult) = object : ProcessPort {
         override suspend fun execute(request: RunRequest, stop: StateFlow<StopCause?>, output: suspend (String, Boolean) -> Unit) = block(request, stop, output)
     }
+    @Test fun `native permission request is durable and survives observer reconnect`() = runTest {
+        val journal = MemoryJournal()
+        val runtime = RunCoordinator(backgroundScope, environment, process { _, signal, emit ->
+            emit("""{"type":"control_request","request_id":"approval-1","request":{"subtype":"can_use_tool","tool_name":"Write","input":{"file_path":"/workspace/approved.txt","content":"fixture"}}}""", false)
+            signal.filterNotNull().first(); ProcessResult(143, true)
+        }, journal, MemoryOutput())
+        runtime.recover()
+        val id = (runtime.submit(request().copy(agentId = AgentId.CLAUDE_CODE)) as SubmitResult.Accepted).runId
+        runCurrent()
+        val snapshot = (runtime.snapshot(id) as SnapshotResult.Found).snapshot
+        assertEquals(RunPhase.AWAITING_APPROVAL, snapshot.phase)
+        val pending = snapshot.pendingApprovals.single()
+        assertEquals("approval-1", pending.approvalId)
+        assertEquals(snapshot.revision, pending.revision)
+        assertEquals("Write", pending.actionSummary)
+        assertTrue(pending.scopeSummary.contains("/workspace/approved.txt"))
+        assertEquals(snapshot, (runtime.observe(id).first() as RuntimeUpdate.Baseline).snapshot)
+        assertEquals(1, journal.events.count { it.payload is RuntimeEvent.ApprovalRequired })
+        runtime.cancel(CancelRequest(CommandId("cancel"), id)); runCurrent()
+        assertTrue(journal.states.getValue(id).pendingApprovals.isEmpty())
+    }
+    private fun approvalLine(id: String = "approval-1", path: String = "/workspace/file") =
+        """{"type":"control_request","request_id":"$id","request":{"subtype":"can_use_tool","tool_name":"Write","input":{"file_path":"$path"}}}"""
+
+    @Test fun `approval is persisted before single delivery and stale or conflicting decisions do not reach process`() = runTest {
+        for (choice in ApprovalChoice.values()) {
+            val journal = MemoryJournal(); val deliveries = mutableListOf<Pair<String, ApprovalChoice>>()
+            val gate = CompletableDeferred<Unit>()
+            val port = object : ProcessPort {
+                override suspend fun execute(request: RunRequest, stop: StateFlow<StopCause?>, output: suspend (String, Boolean) -> Unit): ProcessResult {
+                    output(approvalLine(), false); output(approvalLine(), false) // Pending duplicate is idempotent.
+                    output(approvalLine("approval-2"), false)
+                    gate.await()
+                    output("""{"type":"result","subtype":"success","is_error":false,"permission_denials":${if (choice == ApprovalChoice.DENY) "[{}]" else "[]"}}""", false)
+                    return ProcessResult(0, true)
+                }
+                override fun offerApproval(requestId: RequestId, approvalId: String, choice: ApprovalChoice): Boolean {
+                    assertEquals(RequestId("request"), requestId)
+                    assertTrue(journal.commands.values.any { it.result == CommandResult.Accepted })
+                    assertTrue(journal.states.values.single().pendingApprovals.none { it.approvalId == approvalId })
+                    assertTrue(journal.events.any { (it.payload as? RuntimeEvent.ApprovalResolved)?.approvalId == approvalId })
+                    deliveries += approvalId to choice
+                    return true
+                }
+            }
+            val runtime = RunCoordinator(backgroundScope, environment, port, journal, MemoryOutput())
+            runtime.recover(); val id = (runtime.submit(request().copy(agentId = AgentId.CLAUDE_CODE)) as SubmitResult.Accepted).runId
+            runCurrent()
+            val state = journal.states.getValue(id)
+            assertEquals(2, state.pendingApprovals.size)
+            val first = state.pendingApprovals.first()
+            val decision = ApprovalDecision(CommandId("decision"), id, first.approvalId, choice, first.revision)
+            assertEquals(ErrorCode.STALE_APPROVAL, (runtime.resolveApproval(decision.copy(commandId = CommandId("old"), expectedRevision = first.revision - 1)) as CommandResult.Rejected).error.code)
+            assertEquals(CommandResult.Accepted, runtime.resolveApproval(decision))
+            assertEquals(CommandResult.Accepted, runtime.resolveApproval(decision))
+            assertEquals(ErrorCode.REQUEST_CONFLICT, (runtime.resolveApproval(decision.copy(choice = if (choice == ApprovalChoice.DENY) ApprovalChoice.ALLOW_ONCE else ApprovalChoice.DENY)) as CommandResult.Rejected).error.code)
+            assertEquals(ErrorCode.STALE_APPROVAL, (runtime.resolveApproval(decision.copy(commandId = CommandId("new-id"))) as CommandResult.Rejected).error.code)
+            assertEquals(listOf(first.approvalId to choice), deliveries)
+            assertEquals(RunPhase.AWAITING_APPROVAL, journal.states.getValue(id).phase)
+            val second = journal.states.getValue(id).pendingApprovals.single()
+            runtime.resolveApproval(decision.copy(commandId = CommandId("second"), approvalId = second.approvalId, expectedRevision = second.revision))
+            assertEquals(RunPhase.RUNNING, journal.states.getValue(id).phase)
+            gate.complete(Unit); runCurrent()
+            assertEquals(if (choice == ApprovalChoice.DENY) RunPhase.FAILED else RunPhase.SUCCEEDED, journal.states.getValue(id).phase)
+            assertEquals(CommandResult.Accepted, runtime.resolveApproval(decision))
+            assertEquals(2, deliveries.size)
+        }
+    }
+
+    @Test fun `cancellation storage failure restart and lost transport never grant pending permission`() = runTest {
+        for (scenario in listOf("cancel", "storage", "restart", "transport")) {
+            val journal = MemoryJournal(); var deliveries = 0
+            val scope = CoroutineScope(backgroundScope.coroutineContext + SupervisorJob(backgroundScope.coroutineContext[Job]))
+            val port = object : ProcessPort {
+                override suspend fun execute(request: RunRequest, stop: StateFlow<StopCause?>, output: suspend (String, Boolean) -> Unit): ProcessResult {
+                    output(approvalLine(), false); stop.filterNotNull().first(); return ProcessResult(143, true)
+                }
+                override fun offerApproval(requestId: RequestId, approvalId: String, choice: ApprovalChoice): Boolean { deliveries++; return false }
+            }
+            val runtime = RunCoordinator(scope, environment, port, journal, MemoryOutput())
+            runtime.recover(); val id = (runtime.submit(request().copy(agentId = AgentId.CLAUDE_CODE)) as SubmitResult.Accepted).runId
+            runCurrent()
+            val pending = journal.states.getValue(id).pendingApprovals.single()
+            val decision = ApprovalDecision(CommandId("decision"), id, pending.approvalId, ApprovalChoice.ALLOW_ONCE, pending.revision)
+            when (scenario) {
+                "cancel" -> {
+                    runtime.cancel(CancelRequest(CommandId("cancel"), id))
+                    assertTrue(journal.states.getValue(id).pendingApprovals.isEmpty())
+                    assertEquals(ErrorCode.STALE_APPROVAL, (runtime.resolveApproval(decision) as CommandResult.Rejected).error.code)
+                    runCurrent(); assertEquals(RunPhase.CANCELLED, journal.states.getValue(id).phase)
+                }
+                "storage" -> {
+                    journal.broken = true
+                    assertEquals(ErrorCode.STORAGE_FULL, (runtime.resolveApproval(decision) as CommandResult.Rejected).error.code)
+                    assertEquals(ConnectionState.DISCONNECTED, runtime.connection.value)
+                    assertFalse(journal.commands.containsKey(decision.commandId))
+                }
+                "restart" -> {
+                    scope.cancel(); runCurrent()
+                    // An unclean process death leaves the durable pending snapshot for recovery.
+                    journal.states[id] = journal.states.getValue(id).copy(phase = RunPhase.AWAITING_APPROVAL, pendingApprovals = listOf(pending))
+                    val recovered = RunCoordinator(backgroundScope, environment, port, journal, MemoryOutput())
+                    recovered.recover()
+                    assertEquals(RunPhase.INTERRUPTED, journal.states.getValue(id).phase)
+                    assertTrue(journal.states.getValue(id).pendingApprovals.isEmpty())
+                    assertEquals(ErrorCode.STALE_APPROVAL, (recovered.resolveApproval(decision) as CommandResult.Rejected).error.code)
+                }
+                "transport" -> {
+                    assertEquals(CommandResult.Accepted, runtime.resolveApproval(decision))
+                    runCurrent()
+                    assertEquals(RunPhase.FAILED, journal.states.getValue(id).phase)
+                    assertEquals(ErrorCode.PROTOCOL_ERROR, journal.states.getValue(id).terminalEvidence!!.error!!.code)
+                    assertEquals(CommandResult.Accepted, runtime.resolveApproval(decision))
+                }
+            }
+            assertEquals(if (scenario == "transport") 1 else 0, deliveries)
+            scope.cancel()
+        }
+    }
+
+    @Test fun `conflicting reused or malformed approval and completion while pending cannot succeed`() = runTest {
+        for (scenario in listOf("conflict", "malformed", "completed", "reused", "flood")) {
+            val journal = MemoryJournal(); val advance = CompletableDeferred<Unit>()
+            val port = object : ProcessPort {
+                override fun offerApproval(requestId: RequestId, approvalId: String, choice: ApprovalChoice) = true
+                override suspend fun execute(request: RunRequest, stop: StateFlow<StopCause?>, output: suspend (String, Boolean) -> Unit): ProcessResult {
+                    output(approvalLine(), false)
+                    advance.await()
+                    if (scenario == "conflict") output(approvalLine(path = "/different"), false)
+                    if (scenario == "flood") repeat(1000) { output(approvalLine("flood-$it"), false) }
+                    if (scenario == "malformed") output("""{"type":"control_request","request_id":"bad","request":{"subtype":"future"}}""", false)
+                    if (scenario == "reused") output(approvalLine(), false)
+                    if (scenario != "completed") assertEquals(StopCause.PROTOCOL_FAILURE, stop.filterNotNull().first())
+                    output("""{"type":"result","subtype":"success","is_error":false}""", false)
+                    return ProcessResult(0, true)
+                }
+            }
+            val runtime = RunCoordinator(backgroundScope, environment, port, journal, MemoryOutput())
+            runtime.recover(); val id = (runtime.submit(request().copy(agentId = AgentId.CLAUDE_CODE)) as SubmitResult.Accepted).runId
+            runCurrent()
+            if (scenario == "reused") {
+                val pending = journal.states.getValue(id).pendingApprovals.single()
+                runtime.resolveApproval(ApprovalDecision(CommandId("allow"), id, pending.approvalId, ApprovalChoice.ALLOW_ONCE, pending.revision))
+            }
+            advance.complete(Unit); runCurrent()
+            assertEquals(RunPhase.FAILED, journal.states.getValue(id).phase)
+            if (scenario == "flood") assertTrue(journal.events.count { it.payload is RuntimeEvent.ApprovalRequired } < 1000)
+            assertEquals(ErrorCode.PROTOCOL_ERROR, journal.states.getValue(id).terminalEvidence!!.error!!.code)
+        }
+    }
     @Test fun `production coordinator persists admission before starting and deduplicates after completion`() = runTest {
         val journal = MemoryJournal(); val output = MemoryOutput(); var starts = 0
         val runtime = RunCoordinator(backgroundScope, environment, process { req, _, emit ->

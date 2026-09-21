@@ -3,11 +3,14 @@ package com.mobby.runtime.engine
 import com.mobby.runtime.api.*
 import kotlinx.coroutines.flow.StateFlow
 
-enum class StopCause { USER, TIMEOUT, HOST_STOP, STORAGE_FAILURE }
+enum class StopCause { USER, TIMEOUT, HOST_STOP, STORAGE_FAILURE, PROTOCOL_FAILURE }
 data class ProcessResult(val exitCode: Int?, val terminationConfirmed: Boolean, val error: ErrorCode? = null)
 interface ProcessPort {
     /** Returns only after stream drain and process cleanup. Stop is explicit, not caller subscription. */
     suspend fun execute(request: RunRequest, stop: StateFlow<StopCause?>, output: suspend (String, Boolean) -> Unit): ProcessResult
+    /** Nonblocking handoff after durable acceptance. Never applies to another request or unknown approval.
+     * True means queued, not executed. Delivery/write failure must fail execute; never replay after restart. */
+    fun offerApproval(requestId: RequestId, approvalId: String, choice: ApprovalChoice): Boolean = false
 }
 interface EnvironmentPort {
     suspend fun capabilities(): CapabilityResult

@@ -382,3 +382,15 @@ MOBBY_TEST_ADB=/path/to/adb node runtime/gateway-tests/android-codex-network.cjs
 新增 runtime/native-tests/pipe_process_smoke.py，在应用 UID 下加载已安装 APK 的真实 JNI 库，不安装测试 APK、不读取真实配置。四项手机检查通过：两次交互与输入 EOF；默认关闭输入；等待输入时取消得到非零退出；子进程不读取时写满管道，再取消进程组，确认写入线程退出并收到 IOException。升级会改变 APK 安装路径，因此探针从当前安装包定位 native 库，不依赖应用启动前尚未刷新的 HOME 符号链接。探针只使用独立临时目录，并清理本次进程和文件。
 
 JDK 17 下主 APK 构建、相关单测与 lint 通过；覆盖安装前后内存比较加密网关配置摘要一致。手机探针直接验证 JNI/Android 管道行为，没有覆盖完整 Kotlin Flow 生命周期、应用审批状态机或 Compose 审批操作；这些仍需后续接通验证。当前 supportsApproval 仍为 false，不能把底层通道完成视为应用审批功能完成。
+
+## 持久审批状态与决定幂等（2026-09-21）
+
+原 RunCoordinator.resolveApproval 无条件返回 UNSUPPORTED_CAPABILITY，原生 can_use_tool 请求只作为未知诊断保存。新增回归先证明待审批快照缺失，再接通执行核心：Claude control_request 按真实 request_id、工具名称与完整参数解析为审批事实；待审批及其固定 revision 写入事件和快照，观察者重新订阅可恢复。参数先经平台现有脱敏，再进入审批范围；超过 64 KiB UTF-8、非法、未知或被截断的控制请求停止运行并报告 PROTOCOL_ERROR，不截取部分参数供批准。同一次运行最多保留 16 个待审批、接受 512 个审批 ID；已处理请求只在内存保留摘要用于冲突检测。
+
+决定按 commandId 幂等，严格核对 runId、approvalId、审批自身 revision 和当前运行状态。事件、快照和命令结果先在同一日志事务提交，再通过非阻塞 ProcessPort.offerApproval 交给对应 RequestId 的活动进程。返回 Accepted 表示决定已被持久接纳，不表示工具已经执行；交付失败则停止运行并最终报告协议错误，不把失败交付当作成功运行，也不在恢复时重放决定。同 ID 相同待审批事件去重，参数冲突或已决定 ID 重用则停止。取消立即清除待审批，存储故障拒绝授权，宿主重启沿用 INTERRUPTED 恢复规则；仍有待审批时收到 CLI 成功结果也不能宣告运行成功。
+
+数据投影回归另行复现并修复：session 更新不能覆盖 AWAITING_APPROVAL；完成其中一个审批后仍有其他待审批时不能提前回到 RUNNING；CancellationRequested 清除审批列表。执行核心测试覆盖允许/拒绝、重复决定、版本过期、命令冲突、取消、存储失败、恢复、交付失败、ID 重用、审批洪泛和未决审批下的伪成功。Robolectric 下直接使用 RuntimeJournal 的 SQLite 实现验证重新打开后保留状态，并在命令唯一约束冲突时证明快照与事件整体回滚。
+
+本检查点尚未实现 AndroidRuntimePorts 的控制消息队列和 CLI stdio 初始化，也未添加 Domain/Data 决定用例与 Compose 审批卡片；supportsApproval 继续为 false，默认进程端拒绝交付。测试中的进程端为可控夹具，不代表手机应用已能审批工具。下一步接通这条真实传输与界面链路后，才能使用此前已验证的 Claude 手机原生协议进行完整验收。
+
+验证：runtime-engine 37 项、interaction-data 30 项、runtime-android 34 项测试通过；主 APK 构建、App/termux-core 单测与 lint 通过。主 APK 已覆盖安装并启动，原加密网关配置摘要在内存中比较一致。本轮没有进行手机审批交互验收，Codex 的设备沙箱限制仍待执行架构决定，完整目标保持未完成。

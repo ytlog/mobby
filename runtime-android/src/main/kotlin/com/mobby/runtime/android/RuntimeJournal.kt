@@ -11,7 +11,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
-/** Runtime is the only writer; separate from the conversation database. No credentials or input bodies. */
+/** Runtime is the only writer; separate from conversations. No gateway credentials or run prompts;
+ * bounded, platform-sanitized approval scopes are persisted for explicit user review. */
 internal class RuntimeJournal(context: Context) : SQLiteOpenHelper(context, "runtime-journal.db", null, 1), JournalPort {
     private val json = Json { ignoreUnknownKeys = true }
     override fun onConfigure(db: SQLiteDatabase) { db.setForeignKeyConstraintsEnabled(true) }

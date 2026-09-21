@@ -25,6 +25,27 @@ class ProtocolDecoderTest {
             assertTrue(ProtocolDecoder(AgentId.CODEX).decode(line).single() is AgentFact.Diagnostic)
         }
     }
+    @Test fun `approval uses native request identity and full unmodified scope`() {
+        val input = """{"command":"printf '%s' 'literal'","unknown":{"preserved":true}}"""
+        val facts = ProtocolDecoder(AgentId.CLAUDE_CODE).decode("""{"type":"control_request","request_id":"request-id","request":{"subtype":"can_use_tool","tool_name":"Bash","input":$input}}""")
+        assertEquals(AgentFact.Approval("request-id", "Bash", input), facts.single())
+    }
+    @Test fun `malformed unknown oversized and truncated control requests cannot authorize partial scope`() {
+        val lines = listOf(
+            """{"type":"control_request","request_id":broken}""",
+            """{"type":"control_request","request_id":1,"request":{"subtype":"can_use_tool","tool_name":"Write","input":{}}}""",
+            """{"type":"control_request","request_id":"id","request":{"subtype":"future","tool_name":"Write","input":{}}}""",
+            """{"type":"control_request","request_id":"id","request":{"subtype":"can_use_tool","tool_name":"Write","input":"not an object"}}""",
+            """{"type":"control_request","request_id":"id","request":{"subtype":"can_use_tool","tool_name":"Write","input":{"content":"${"x".repeat(65537)}"}}}""",
+            """{"type":"control_request","request_id":"id","request":{"subtype":"can_use_tool","tool_name":"Write","input":{"content":"${"中".repeat(22000)}"}}}""",
+            """{"type":"control_request","request_id":"id" [line truncated]"""
+        )
+        for (line in lines) {
+            val facts = ProtocolDecoder(AgentId.CLAUDE_CODE).decode(line)
+            assertTrue(facts.contains(AgentFact.InvalidApproval))
+            assertTrue(facts.none { it is AgentFact.Approval || it is AgentFact.Completed && it.success })
+        }
+    }
     @Test fun `resume is explicit and prompt remains literal without bypass flags`() {
         for (agent in AgentId.values()) {
             val request = RunRequest(RequestId("r"), agent, WorkspaceRef("default"), emptyList(), "model", GatewayProfileRef("g", 0), sessionRef = SessionRef("session-123"))

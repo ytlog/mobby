@@ -22,6 +22,23 @@ class RunProjectionTest {
         val stopping = RunProjection.apply(initial, event(2, RuntimeEvent.CancellationRequested))!!
         assertEquals(RunPhase.CANCELLING, RunProjection.apply(stopping, event(3, RuntimeEvent.RunStarted(SessionRef("session"))))!!.phase)
     }
+    @Test fun `pending approvals survive session updates and resolve independently until cancellation`() {
+        val first = PendingApproval("first", 2, "Write", "/first")
+        val second = PendingApproval("second", 3, "Write", "/second")
+        val one = RunProjection.apply(initial, event(2, RuntimeEvent.ApprovalRequired(first)))!!
+        val two = RunProjection.apply(one, event(3, RuntimeEvent.ApprovalRequired(second)))!!
+        val session = RunProjection.apply(two, event(4, RuntimeEvent.RunStarted(SessionRef("session"))))!!
+        assertEquals(RunPhase.AWAITING_APPROVAL, session.phase)
+        val resolved = RunProjection.apply(session, event(5, RuntimeEvent.ApprovalResolved("first", ApprovalChoice.DENY)))!!
+        assertEquals(RunPhase.AWAITING_APPROVAL, resolved.phase)
+        assertEquals(listOf(second), resolved.pendingApprovals)
+        val stopped = RunProjection.apply(resolved, event(6, RuntimeEvent.CancellationRequested))!!
+        assertEquals(RunPhase.CANCELLING, stopped.phase)
+        assertTrue(stopped.pendingApprovals.isEmpty())
+        val complete = RunProjection.apply(resolved, event(6, RuntimeEvent.ApprovalResolved("second", ApprovalChoice.ALLOW_ONCE)))!!
+        assertEquals(RunPhase.RUNNING, complete.phase)
+        assertTrue(complete.pendingApprovals.isEmpty())
+    }
     @Test fun `success without evidence is never projected as success`() {
         assertEquals(RunPhase.OUTCOME_UNKNOWN, RunProjection.verifiedPhase(initial.copy(phase = RunPhase.SUCCEEDED)))
         assertEquals(RunPhase.SUCCEEDED, RunProjection.verifiedPhase(initial.copy(phase = RunPhase.SUCCEEDED, terminalEvidence = TerminalEvidence(true, 0))))

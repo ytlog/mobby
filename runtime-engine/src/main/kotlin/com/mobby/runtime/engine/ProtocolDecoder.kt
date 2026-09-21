@@ -10,17 +10,23 @@ sealed interface AgentFact {
     data class Tool(val id: String, val kind: String, val summary: String, val output: String? = null, val outcome: ToolOutcome? = null) : AgentFact
     data class Diagnostic(val kind: String, val text: String) : AgentFact
     data class Completed(val success: Boolean, val error: ErrorCode? = null) : AgentFact
+    data class Approval(val id: String, val action: String, val scope: String) : AgentFact
+    object InvalidApproval : AgentFact
 }
 
 class ProtocolDecoder(private val agent: AgentId) {
     private var lastAssistant = ""
     private var fallbackId = 0
     fun decode(line: String): List<AgentFact> {
+        val controlRequest = agent == AgentId.CLAUDE_CODE && Regex("""^\s*\{\s*"type"\s*:\s*"control_request"""").containsMatchIn(line)
+        if (controlRequest && line.endsWith(" [line truncated]"))
+            return listOf(AgentFact.Diagnostic("truncated-approval", "CLI 审批请求超过输出行上限，已停止授权流程"), AgentFact.InvalidApproval)
         if (agent == AgentId.CLAUDE_CODE && line.endsWith(" [line truncated]") &&
             Regex("""^\s*\{\s*"type"\s*:\s*"user"""").containsMatchIn(line))
             return listOf(AgentFact.Diagnostic("truncated-user-event", "CLI 用户事件超过输出行上限，无法完整解析"))
         val value = runCatching { Json.parseToJsonElement(line) as? JsonObject }.getOrNull()
-            ?: return listOf(AgentFact.Diagnostic("invalid-json", line))
+            ?: return if (controlRequest) listOf(AgentFact.Diagnostic("invalid-approval", "无法解析 CLI 审批请求，已停止授权流程"), AgentFact.InvalidApproval)
+                else listOf(AgentFact.Diagnostic("invalid-json", line))
         return if (agent == AgentId.CODEX) codex(value, line) else claude(value, line)
     }
     private fun codex(value: JsonObject, line: String): List<AgentFact> { return when (value.text("type")) {
@@ -54,6 +60,19 @@ class ProtocolDecoder(private val agent: AgentId) {
     private fun claude(value: JsonObject, line: String): List<AgentFact> = buildList {
         value.text("session_id")?.let { add(AgentFact.Session(it)) }
         when (value.text("type")) {
+            "control_request" -> {
+                val request = value["request"] as? JsonObject
+                val id = (value["request_id"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+                val tool = (request?.get("tool_name") as? JsonPrimitive)?.takeIf { it.isString }?.content
+                val input = request?.get("input") as? JsonObject
+                if (request?.text("subtype") == "can_use_tool" && !id.isNullOrBlank() && id.length <= 256 &&
+                    !tool.isNullOrBlank() && tool.length <= 256 && input != null && input.toString().toByteArray().size <= 65536) {
+                    add(AgentFact.Approval(id, tool, input.toString()))
+                } else {
+                    add(AgentFact.Diagnostic("invalid-approval", "无法完整解析 CLI 审批请求，已停止授权流程"))
+                    add(AgentFact.InvalidApproval)
+                }
+            }
             "system" -> if (value.text("subtype") != "init") add(AgentFact.Diagnostic(value.text("subtype") ?: "system", line))
             "assistant", "user" -> {
                 val message = value["message"] as? JsonObject
