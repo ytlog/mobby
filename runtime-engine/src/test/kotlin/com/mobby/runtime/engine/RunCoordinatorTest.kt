@@ -316,6 +316,37 @@ class RunCoordinatorTest {
         assertEquals(RunPhase.INTERRUPTED, journal.states.getValue(admitted.runId).phase)
         assertEquals(0, starts)
     }
+    @Test fun `slow observer replaces projection when terminal history is compacted`() = runTest {
+        for (keepTerminalEvent in listOf(false, true)) {
+            val journal = MemoryJournal(); val finish = CompletableDeferred<Unit>(); val resumeObserver = CompletableDeferred<Unit>()
+            val runtime = RunCoordinator(backgroundScope, environment, process { _, _, emit ->
+                finish.await()
+                emit("""{"type":"item.completed","item":{"id":"answer","type":"agent_message","text":"retained answer"}}""", false)
+                emit("""{"type":"turn.completed"}""", false)
+                ProcessResult(0, true)
+            }, journal, MemoryOutput())
+            runtime.recover()
+            val id = (runtime.submit(request()) as SubmitResult.Accepted).runId
+            runCurrent()
+            val updates = mutableListOf<RuntimeUpdate>()
+            val observer = backgroundScope.launch { runtime.observe(id).collect {
+                updates += it
+                if (updates.size == 1) resumeObserver.await()
+            } }
+            runCurrent()
+            finish.complete(Unit); runCurrent()
+            val terminal = journal.states.getValue(id)
+            assertEquals(RunPhase.SUCCEEDED, terminal.phase)
+            journal.events.removeAll { !keepTerminalEvent || it.sequence < terminal.lastSequence }
+            resumeObserver.complete(Unit); runCurrent()
+            assertEquals(listOf(RuntimeUpdate.ResyncRequired(ResyncReason.CURSOR_EXPIRED)), updates.filterIsInstance<RuntimeUpdate.ResyncRequired>())
+            val restored = updates.filterIsInstance<RuntimeUpdate.Baseline>().last()
+            assertEquals(terminal, restored.snapshot)
+            assertEquals(terminal.lastSequence, restored.cursor.sequence)
+            assertTrue(updates.none { it is RuntimeUpdate.Event })
+            observer.cancel()
+        }
+    }
     @Test fun `observe baseline has complete output and unsubscribing does not stop process`() = runTest {
         val journal = MemoryJournal(); val output = MemoryOutput()
         val runtime = RunCoordinator(backgroundScope, environment, process { _, signal, emit ->

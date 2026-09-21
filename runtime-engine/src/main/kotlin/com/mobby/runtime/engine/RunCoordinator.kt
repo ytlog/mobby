@@ -164,9 +164,19 @@ class RunCoordinator(
         emit(RuntimeUpdate.Baseline(current, EventCursor(runId, cursor)))
         wake.collect {
             do {
-                val events = mutex.withLock { journal.eventsAfter(runId, cursor, 128) }
-                for (event in events) { emit(RuntimeUpdate.Event(event)); cursor = event.sequence }
-            } while (events.size == 128)
+                val (events, replacement) = mutex.withLock {
+                    val batch = journal.eventsAfter(runId, cursor, 128)
+                    val latest = checkNotNull(journal.snapshot(runId))
+                    val gap = batch.withIndex().any { (index, event) -> event.sequence != cursor + index + 1 } ||
+                        (batch.isEmpty() && latest.lastSequence > cursor)
+                    batch to latest.takeIf { gap }
+                }
+                if (replacement != null) {
+                    emit(RuntimeUpdate.ResyncRequired(ResyncReason.CURSOR_EXPIRED))
+                    cursor = replacement.lastSequence
+                    emit(RuntimeUpdate.Baseline(replacement, EventCursor(runId, cursor)))
+                } else for (event in events) { emit(RuntimeUpdate.Event(event)); cursor = event.sequence }
+            } while (replacement == null && events.size == 128)
         }
     }
 
