@@ -67,6 +67,7 @@ class RuntimeHost(context: Context, notification: () -> PendingIntent) {
         override suspend fun listWorkspaces() = connected()?.listWorkspaces() ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
         override suspend fun createWorkspace(name: String) = connected()?.createWorkspace(name) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
         override suspend fun listSkills(agent: AgentId) = connected()?.listSkills(agent) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
+        override suspend fun listPlugins() = connected()?.listPlugins() ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
         override suspend fun readSkill(ref: CapabilityRef) = connected()?.readSkill(ref) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
         override suspend fun previewManualSkill(request: ManualSkillRequest) = connected()?.previewManualSkill(request) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
         override suspend fun previewSkill(markdown: String) = connected()?.previewSkill(markdown) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))

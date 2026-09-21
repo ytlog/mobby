@@ -7,6 +7,7 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -124,7 +125,7 @@ internal class CapturePictureContract : ActivityResultContracts.TakePicture() {
 
 @Composable internal fun CameraReviewDialog(capture: CameraCapture, busy: Boolean, preview: suspend (Boolean) -> DataResult<AttachmentPreview>, onDiscard: () -> Unit, onConfirm: () -> Unit, onCheck: () -> Unit, problem: String? = null) {
     var ready by remember(capture.id) { mutableStateOf(false) }
-    AlertDialog(onDismissRequest = { if (!busy) onDiscard() }, title = { Text("拍照预览") },
+    AlertDialog(onDismissRequest = { if (!busy) onDiscard() }, containerColor = raisedColor(), shape = RoundedCornerShape(24.dp), title = { Text("拍照预览") },
         text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (problem != null) Text(problem, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             if (busy) Text("正在处理照片…", style = MaterialTheme.typography.bodySmall)

@@ -8,8 +8,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Add
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -65,8 +64,9 @@ internal data class SkillEditor(val agent: AgentId, val manual: Boolean, val nam
     BackHandler(page != "list" || adding) { if (adding) adding = false else back() }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth()) {
-            Box(Modifier.weight(1f)) { PageHeader(when (page) { "editor" -> "添加技能"; "detail" -> "技能详情"; else -> "技能" }, ::back) }
-            if (page == "list") ActionIcon("添加技能", { adding = true }, Icons.Outlined.Add)
+            Box(Modifier.weight(1f)) { PageHeader(when (page) { "editor" -> "添加技能"; "detail" -> "技能详情"; else -> "技能" }, ::back) {
+                if (page == "list") ActionIcon("添加技能", { adding = true }, AppIcons.Plus)
+            } }
         }
         when (page) {
             "editor" -> if (editor != null) SkillEditorPage(editor, vm) else Column(
@@ -86,14 +86,16 @@ internal data class SkillEditor(val agent: AgentId, val manual: Boolean, val nam
                     val bound = conversation?.creator != null && conversation.creator == skill?.ref
                     val chosen = conversation?.draft?.capabilities?.contains(skill?.ref) == true
                     Button(onClick = { if (conversation != null && skill != null) vm.enqueue { vm.report(vm.actions.setSkill(conversation.id, skill, !chosen)) } }, enabled = conversation != null && skill?.available == true && !bound) { Text(if (bound) "已绑定此创建会话" else if (chosen) "从本轮移除" else "加入本轮草稿") }
-                    androidx.compose.foundation.text.selection.SelectionContainer { Text(content.body, style = MaterialTheme.typography.bodyLarge) }
+                    ReplyContent(content.body, streaming = false, read = { _, _ -> })
                 }
                 if (detail == null && detailError == null) CircularProgressIndicator()
             }
             else -> {
                 Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("为 ${agent.label()} 保存和选择可重复使用的工作流程。", style = MaterialTheme.typography.bodySmall)
-                    OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth(), label = { Text("搜索技能") }, singleLine = true)
+                    OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth(), label = { Text("搜索技能") }, singleLine = true, shape = RoundedCornerShape(28.dp),
+                        colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = raisedColor(), unfocusedContainerColor = raisedColor(),
+                            focusedBorderColor = androidx.compose.ui.graphics.Color.Transparent, unfocusedBorderColor = androidx.compose.ui.graphics.Color.Transparent))
                     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf("全部", "用户技能", "CLI 内置", "不可用").forEach { value -> FilterChip(filter == value, { filter = value }, label = { Text(value) }) }
                     }
@@ -102,9 +104,9 @@ internal data class SkillEditor(val agent: AgentId, val manual: Boolean, val nam
                 }
                 LazyColumn(Modifier.weight(1f), state = listState, contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     val visible = skills.filter { (it.name.contains(query, true) || it.description.contains(query, true)) && (filter == "全部" || filter == "不可用" && !it.available || filter == it.source) }
-                    if (visible.isEmpty() && !loading && error == null) item { Text(if (skills.isEmpty()) "尚无技能，可从右上角添加。" else "没有匹配的技能") }
+                    if (visible.isEmpty() && !loading && error == null) item { EmptyPlaceholder(if (skills.isEmpty()) "尚无技能" else "没有匹配的技能", if (skills.isEmpty()) "点右上角添加，把常用流程保存下来" else "换个分类或关键词试试") }
                     items(visible, key = { it.ref }) { skill ->
-                        OutlinedCard(onClick = { selectedRef = skill.ref; page = "detail" }) {
+                        Surface(onClick = { selectedRef = skill.ref; page = "detail" }, shape = RoundedCornerShape(18.dp), color = raisedColor()) {
                             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text(skill.name, style = MaterialTheme.typography.titleMedium)
                                 Text(skill.description, maxLines = 3)
@@ -116,7 +118,7 @@ internal data class SkillEditor(val agent: AgentId, val manual: Boolean, val nam
             }
         }
     }
-    if (adding) ModalBottomSheet(onDismissRequest = { adding = false }) {
+    if (adding) ModalBottomSheet(onDismissRequest = { adding = false }, containerColor = raisedColor()) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("添加技能", style = MaterialTheme.typography.titleLarge)
             val creator = skills.firstOrNull { it.name == "skill-creator" && it.available }
@@ -148,7 +150,7 @@ internal data class SkillEditor(val agent: AgentId, val manual: Boolean, val nam
             Text("保存前预览", style = MaterialTheme.typography.titleMedium)
             Text(preview.name); Text(preview.description)
             preview.issues.forEach { Text(it, color = MaterialTheme.colorScheme.error) }
-            androidx.compose.foundation.text.selection.SelectionContainer { Text(preview.body, style = MaterialTheme.typography.bodyLarge) }
+            androidx.compose.foundation.text.selection.SelectionContainer { ReplyContent(preview.body, streaming = false, read = { _, _ -> }) }
             TextButton(onClick = { change(editor.copy(preview = null)) }, enabled = !editor.busy) { Text("返回修改") }
             Button(onClick = vm::saveSkillEditor, enabled = !editor.busy && preview.issues.isEmpty()) { Text("保存技能") }
         } else {
@@ -171,7 +173,7 @@ internal data class SkillEditor(val agent: AgentId, val manual: Boolean, val nam
     val state by vm.skillProposal.collectAsStateWithLifecycle()
     LaunchedEffect(proposal.ref) { vm.openSkillProposal(proposal) }
     val editor = state?.takeIf { it.proposal.ref == proposal.ref } ?: return
-    AlertDialog(onDismissRequest = { if (!editor.busy) onDismiss() }, title = { Text("技能草稿 · ${proposal.agent.label()}") }, text = {
+    AlertDialog(onDismissRequest = { if (!editor.busy) onDismiss() }, containerColor = raisedColor(), shape = RoundedCornerShape(24.dp), title = { Text("技能草稿 · ${proposal.agent.label()}") }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("确认保存后才会加入技能目录。可在这里修改生成内容。", style = MaterialTheme.typography.bodySmall)
             if (!sourceAvailable) Text("草稿来源暂不可用，编辑内容仍保留", color = MaterialTheme.colorScheme.error)

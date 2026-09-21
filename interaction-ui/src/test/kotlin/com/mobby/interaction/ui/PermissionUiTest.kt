@@ -27,7 +27,9 @@ class PermissionUiTest {
         var busy by mutableStateOf(false)
         compose.setContent { MaterialTheme { PermissionContent(permission, !busy, busy, false, true) { choices += it; busy = true } } }
         compose.onNodeWithText("需要你的授权").assertIsDisplayed()
-        compose.onNodeWithText(permission.scope).assertIsDisplayed()
+        compose.onNodeWithText("写入 /fixture/file").assertExists()
+        compose.onNodeWithText("文件\n/fixture/file\n\n内容\nliteral", useUnmergedTree = true).assertExists()
+        compose.onNodeWithText(permission.scope).assertDoesNotExist()
         assertTrue(choices.isEmpty())
         compose.onNodeWithText("仅允许这一次").performClick()
         compose.onNodeWithText("拒绝").assertIsNotEnabled()

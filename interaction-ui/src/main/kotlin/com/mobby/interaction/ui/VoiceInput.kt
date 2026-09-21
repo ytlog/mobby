@@ -113,7 +113,7 @@ private class VoiceCapture(context: Context) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable internal fun VoiceInputPanel(phase: String, transcript: String, error: String?, available: Boolean,
     onTranscript: (String) -> Unit, onFinish: () -> Unit, onInsert: () -> Unit, onStart: () -> Unit, onDismiss: () -> Unit) {
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = raisedColor()) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("语音输入", style = MaterialTheme.typography.titleLarge)
             Text("使用设备的语音识别服务。转写后可校对，放入输入框后由你发送。", style = MaterialTheme.typography.bodySmall)

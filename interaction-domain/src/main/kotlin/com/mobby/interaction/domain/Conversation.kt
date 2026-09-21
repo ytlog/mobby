@@ -87,9 +87,10 @@ object ConversationRules {
             Conversation(newId, config, Draft(text = current.draft.text), project = current.project)
         } else {
             val sameAgent = current.config.agent == config.agent
+            val kept = if (sameAgent) current.draft.capabilities else current.draft.capabilities.filter { it.startsWith("plugin:") }.toSet()
             current.copy(config = config,
-                draft = if (!sameAgent && current.draft.capabilities.isNotEmpty())
-                    current.draft.copy(revision = current.draft.revision + 1, capabilities = emptySet()) else current.draft,
+                draft = if (kept != current.draft.capabilities)
+                    current.draft.copy(revision = current.draft.revision + 1, capabilities = kept) else current.draft,
                 session = if (sameAgent) current.session else null,
                 creator = if (sameAgent) current.creator else null)
         }

@@ -1,18 +1,25 @@
 package com.mobby.interaction.ui
 
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.mobby.interaction.domain.*
 
@@ -30,19 +37,35 @@ internal fun ExecutionPhase?.label(): String = when (this) {
     ExecutionPhase.INTERRUPTED -> "异常中断"
     ExecutionPhase.OUTCOME_UNKNOWN -> "结果待确认"
 }
-@Composable internal fun ActionIcon(label: String, onClick: () -> Unit, icon: androidx.compose.ui.graphics.vector.ImageVector, enabled: Boolean = true) {
-    IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.size(48.dp)) { Icon(icon, label) }
+internal fun Turn.hasVisibleExecution(): Boolean = steps.isNotEmpty()
+internal fun Turn.executionHeadline(): String {
+    val count = steps.size
+    return when (phase) {
+        ExecutionPhase.SUCCEEDED -> "已完成 ${count} 个步骤"
+        ExecutionPhase.ACCEPTED, ExecutionPhase.RUNNING, null -> if (occupied) "执行中" else phase.label()
+        ExecutionPhase.CANCELLING -> "停止中"
+        else -> "${phase.label()} · ${count} 个步骤"
+    }
+}
+internal fun stepKindIcon(kind: String): ImageVector = when (kind.lowercase()) {
+    "websearch", "web_search", "grep", "glob" -> AppIcons.Search
+    "webfetch" -> AppIcons.Globe
+    "read", "write", "edit", "editnotebook", "ls", "file_change" -> AppIcons.File
+    "bash", "shell", "command_execution" -> AppIcons.Terminal
+    "todo_list", "task" -> AppIcons.Skill
+    "mcp_tool_call", "tool" -> AppIcons.Plugin
+    else -> AppIcons.More
 }
 @Composable internal fun CodeContent(title: String, text: String, read: (String, String) -> Unit) {
     val clipboard = LocalClipboardManager.current
     var wrap by rememberSaveable { mutableStateOf(false) }
-    Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
+    Surface(shape = RoundedCornerShape(16.dp), color = raisedColor(), modifier = Modifier.fillMaxWidth()) {
         Column {
-            Row(Modifier.fillMaxWidth().padding(start = 12.dp)) {
-                Text(title.take(30), Modifier.weight(1f).padding(top = 14.dp), style = MaterialTheme.typography.labelMedium)
-                ActionIcon("复制原始代码", { clipboard.setText(AnnotatedString(text)) }, Icons.Outlined.ContentCopy)
-                ActionIcon(if (wrap) "关闭代码换行" else "代码自动换行", { wrap = !wrap }, Icons.Outlined.WrapText)
-                ActionIcon("放大代码", { read(title, text) }, Icons.Outlined.OpenInFull)
+            Row(Modifier.fillMaxWidth().padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(title.take(30), Modifier.weight(1f), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                ActionIcon("复制原始代码", { clipboard.setText(AnnotatedString(text)) }, AppIcons.Copy)
+                ActionIcon(if (wrap) "关闭代码换行" else "代码自动换行", { wrap = !wrap }, AppIcons.Wrap)
+                ActionIcon("放大代码", { read(title, text) }, AppIcons.Expand)
             }
             SelectionContainer {
                 Text(text, modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp).verticalScroll(rememberScrollState())
@@ -53,31 +76,61 @@ internal fun ExecutionPhase?.label(): String = when (this) {
     }
 }
 @Composable internal fun ExecutionCard(turn: Turn, vm: ConversationViewModel, read: (String, String) -> Unit) {
+    if (!turn.hasVisibleExecution()) return
     val expanded = ExecutionExpansion(turn.expanded).expanded(turn.phase ?: ExecutionPhase.ACCEPTED)
-    OutlinedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
-        Row(Modifier.fillMaxWidth().clickable { vm.enqueue { vm.actions.expansion(turn.id, !expanded) } }.padding(start = 12.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-            Text("${turn.phase.label()} · ${turn.steps.size} 个步骤", Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
-            ActionIcon(if (expanded) "收起执行过程" else "展开执行过程", { vm.enqueue { vm.actions.expansion(turn.id, !expanded) } }, if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore)
-        }
-        if (expanded) Column(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
-            turn.progress?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
-            if (turn.steps.isEmpty() && turn.diagnostics.isEmpty()) Text(if (turn.occupied) "等待 Agent 返回公开进度…" else "没有工具执行步骤", style = MaterialTheme.typography.bodySmall)
-            turn.steps.forEach { step ->
-                val open = step.id in turn.expandedSteps
-                Row(Modifier.fillMaxWidth().clickable { vm.enqueue {
-                    vm.actions.stepExpansion(turn.id, step.id, !open)
-                    if (!open) vm.actions.expansion(turn.id, true)
-                } }.heightIn(min = 48.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                    StepStatus(step.outcome, turn.phase)
-                    Text(step.summary.ifBlank { step.kind }, Modifier.weight(1f).padding(horizontal = 10.dp), maxLines = 2, style = MaterialTheme.typography.bodySmall)
-                    Icon(if (open) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, if (open) "已展开" else "已收起")
-                }
-                if (open) SelectionContainer {
-                    Text(step.output.ifBlank { "尚无输出" }, Modifier.fillMaxWidth().heightIn(max = 240.dp).verticalScroll(rememberScrollState()).padding(8.dp),
-                        fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
-                }
+    val running = turn.occupied && turn.phase in setOf(ExecutionPhase.ACCEPTED, ExecutionPhase.RUNNING, ExecutionPhase.AWAITING_APPROVAL, ExecutionPhase.CANCELLING)
+    Surface(
+        Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        color = raisedColor(),
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
+    ) {
+        Column {
+            Row(
+                Modifier.fillMaxWidth().clickable { vm.enqueue { vm.actions.expansion(turn.id, !expanded) } }
+                    .heightIn(min = 44.dp).padding(start = 14.dp, end = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(turn.executionHeadline(), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Icon(if (expanded) AppIcons.ChevronUp else AppIcons.ChevronRight, if (expanded) "已展开" else "已收起", Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            if (turn.diagnostics.isNotEmpty()) TextButton(onClick = { read("运行诊断", turn.diagnostics.joinToString("\n\n") { it.text }) }) { Text("查看诊断（${turn.diagnostics.size}）") }
+            if (expanded) Column(Modifier.padding(start = 2.dp, end = 8.dp, bottom = 8.dp)) {
+                turn.progress?.let { Text(it, Modifier.padding(horizontal = 12.dp, vertical = 2.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                turn.steps.forEach { step ->
+                    val open = step.id in turn.expandedSteps
+                    val view = remember(step.kind, step.summary, step.output) { ToolPresentation.step(step.kind, step.summary, step.output) }
+                    Row(Modifier.fillMaxWidth().clickable { vm.enqueue {
+                        vm.actions.stepExpansion(turn.id, step.id, !open)
+                        if (!open) vm.actions.expansion(turn.id, true)
+                    } }.heightIn(min = 40.dp).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        StepGlyph(step.kind, step.outcome, turn.phase, running && step.outcome == null)
+                        Text(
+                            view.title,
+                            Modifier.weight(1f).padding(horizontal = 10.dp),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Icon(if (open) AppIcons.ChevronDown else AppIcons.ChevronRight, if (open) "已展开" else "已收起", Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    if (open) {
+                        val body = view.detail.ifBlank { "尚无输出" }
+                        Column(Modifier.fillMaxWidth().padding(start = 40.dp, end = 8.dp, bottom = 8.dp)) {
+                            when {
+                                view.terminal -> CodeContent(view.title, body, read)
+                                ToolPresentation.looksLikeMarkdown(body) -> ReplyContent(body, streaming = running && step.outcome == null, read = read)
+                                else -> SelectionContainer {
+                                    Text(body, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp).verticalScroll(rememberScrollState()))
+                                }
+                            }
+                        }
+                    }
+                }
+                if (turn.diagnostics.isNotEmpty()) TextButton(onClick = { read("运行诊断", turn.diagnostics.joinToString("\n\n") { it.text }) }) { Text("查看诊断（${turn.diagnostics.size}）") }
+            }
         }
     }
 }
@@ -95,12 +148,13 @@ internal fun ExecutionPhase?.label(): String = when (this) {
 }
 
 @Composable internal fun PermissionContent(permission: PermissionRequest, enabled: Boolean, busy: Boolean, submitted: Boolean, connected: Boolean, decide: (Boolean) -> Unit) {
-    OutlinedCard(Modifier.fillMaxWidth()) {
+    val view = remember(permission.action, permission.scope) { ToolPresentation.permission(permission.action, permission.scope) }
+    Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = raisedColor()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("需要你的授权", style = MaterialTheme.typography.titleMedium)
-            Text(permission.action, style = MaterialTheme.typography.titleSmall)
+            Text(view.title, style = MaterialTheme.typography.titleSmall)
             SelectionContainer {
-                Text(permission.scope, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall,
+                Text(view.detail, style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp).verticalScroll(rememberScrollState()))
             }
             if (submitted) Text("决定已接纳，等待执行结果")
@@ -114,17 +168,36 @@ internal fun ExecutionPhase?.label(): String = when (this) {
     }
 }
 
-@Composable internal fun StepStatus(outcome: String?, phase: ExecutionPhase?) {
-    val (icon, label) = when (outcome) {
-        "SUCCEEDED" -> Icons.Outlined.Check to "步骤完成"
-        "FAILED" -> Icons.Outlined.ErrorOutline to "步骤失败"
-        "CANCELLED" -> Icons.Outlined.Cancel to "步骤已取消"
-        null -> when (phase) {
-            ExecutionPhase.ACCEPTED, ExecutionPhase.RUNNING, ExecutionPhase.AWAITING_APPROVAL -> Icons.Outlined.MoreHoriz to "步骤进行中"
-            ExecutionPhase.CANCELLING -> Icons.Outlined.MoreHoriz to "步骤停止中"
-            else -> Icons.Outlined.HelpOutline to "步骤结果未确认"
-        }
-        else -> Icons.Outlined.HelpOutline to "步骤结果未确认"
+internal fun stepStatusLabel(outcome: String?, phase: ExecutionPhase?): String = when (outcome) {
+    "SUCCEEDED" -> "步骤完成"
+    "FAILED" -> "步骤失败"
+    "CANCELLED" -> "步骤已取消"
+    null -> when (phase) {
+        ExecutionPhase.ACCEPTED, ExecutionPhase.RUNNING, ExecutionPhase.AWAITING_APPROVAL -> "步骤进行中"
+        ExecutionPhase.CANCELLING -> "步骤停止中"
+        else -> "步骤结果未确认"
     }
-    Icon(icon, label, Modifier.size(20.dp))
+    else -> "步骤结果未确认"
+}
+
+@Composable internal fun StepGlyph(kind: String, outcome: String?, phase: ExecutionPhase?, active: Boolean = false) {
+    val icon = when (outcome) {
+        "FAILED" -> AppIcons.Error
+        "CANCELLED" -> AppIcons.Close
+        else -> stepKindIcon(kind)
+    }
+    val reduced = rememberReducedMotion()
+    val alpha = if (!active || reduced) 1f else {
+        val pulse = rememberInfiniteTransition(label = "step")
+        val value by pulse.animateFloat(0.35f, 1f, infiniteRepeatable(tween(900), RepeatMode.Reverse), label = "step-alpha")
+        value
+    }
+    Icon(icon, stepStatusLabel(outcome, phase), Modifier.size(18.dp).alpha(alpha), tint = when (outcome) {
+        "FAILED" -> MaterialTheme.colorScheme.error
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    })
+}
+
+@Composable internal fun StepStatus(outcome: String?, phase: ExecutionPhase?, active: Boolean = false) {
+    StepGlyph("", outcome, phase, active)
 }

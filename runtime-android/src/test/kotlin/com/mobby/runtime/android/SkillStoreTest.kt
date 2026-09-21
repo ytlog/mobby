@@ -53,4 +53,13 @@ class SkillStoreTest {
         assertTrue(store.prompt(AgentId.CLAUDE_CODE, setOf(saved.ref), "request").contains("/review"))
         assertFalse(File(home, "should-not-exist").exists())
     }
+    @Test fun `plugin capability refs are not treated as skills`() {
+        val home = temporary.newFolder(); val store = SkillStore(home)
+        val creator = store.save(AgentId.CODEX, document("skill-creator"))
+        assertThrows(IllegalArgumentException::class.java) {
+            store.prompt(AgentId.CODEX, setOf(CapabilityRef(PhonePlugin.REF)), "request")
+        }
+        assertFalse(store.hasCreator(AgentId.CODEX, setOf(CapabilityRef(PhonePlugin.REF))))
+        assertTrue(store.hasCreator(AgentId.CODEX, setOf(creator.ref, CapabilityRef(PhonePlugin.REF))))
+    }
 }

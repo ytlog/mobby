@@ -36,6 +36,9 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
     val skills = MutableStateFlow<List<Skill>>(emptyList())
     val skillsError = MutableStateFlow<String?>(null)
     val skillsLoading = MutableStateFlow(false)
+    val plugins = MutableStateFlow<List<Plugin>>(emptyList())
+    val pluginsError = MutableStateFlow<String?>(null)
+    val pluginsLoading = MutableStateFlow(false)
     val permissionBusy = MutableStateFlow<Set<PermissionKey>>(emptySet())
     val permissionSubmitted = MutableStateFlow<Set<PermissionKey>>(emptySet())
     private val permissionAttempts = mutableMapOf<PermissionKey, PermissionDecision>()
@@ -264,6 +267,22 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
             } catch (e: CancellationException) { throw e }
             catch (_: Exception) { if (operation == catalogueOperation) skillsError.value = "技能目录读取未完成，请重试" }
             finally { if (operation == catalogueOperation) skillsLoading.value = false }
+        }
+    }
+    private var pluginCatalogueOperation = 0L
+    fun loadPlugins() {
+        val operation = ++pluginCatalogueOperation
+        pluginsLoading.value = true; pluginsError.value = null
+        viewModelScope.launch {
+            try {
+                val result = actions.plugins()
+                if (operation == pluginCatalogueOperation) when (result) {
+                    is DataResult.Loaded -> plugins.value = result.value
+                    is DataResult.Failed -> { plugins.value = emptyList(); pluginsError.value = result.message }
+                }
+            } catch (e: CancellationException) { throw e }
+            catch (_: Exception) { if (operation == pluginCatalogueOperation) pluginsError.value = "插件目录读取未完成，请重试" }
+            finally { if (operation == pluginCatalogueOperation) pluginsLoading.value = false }
         }
     }
     val feedback = Channel<String>(Channel.BUFFERED)

@@ -43,16 +43,22 @@ internal val LocalReplyParser = staticCompositionLocalOf<(String) -> Node> { Rep
 private val replyParsingDispatcher = Dispatchers.Default.limitedParallelism(1)
 private data class ParsedReply(val source: String, val document: Node)
 
-@Composable internal fun ReplyContent(text: String, read: (String, String) -> Unit) {
+@Composable internal fun ReplyContent(text: String, streaming: Boolean = false, read: (String, String) -> Unit) {
+    val stream = if (streaming) rememberStreamPresentation(text, true) else StreamPresentation(text, "", false)
+    val source = if (streaming) stream.markdown else text
     val parse = LocalReplyParser.current
-    val parsed by produceState<ParsedReply?>(null, text, parse) {
+    val parsed by produceState<ParsedReply?>(null, source, parse) {
         // withContext checks cancellation before returning, so superseded work cannot publish.
-        value = withContext(replyParsingDispatcher) { ParsedReply(text, parse(text)) }
+        value = if (source.isEmpty()) null else withContext(replyParsingDispatcher) { ParsedReply(source, parse(source)) }
     }
-    val visible = parsed?.takeIf { text.startsWith(it.source) }
+    val visible = parsed?.takeIf { source.startsWith(it.source) }
     Column {
         visible?.let { MarkdownBlocks(ReplyMarkdown.children(it.document), read) }
-        if (parsed?.source != text) Text(if (visible == null) "正在排版…" else "正在更新排版…", style = MaterialTheme.typography.labelSmall)
+        if (stream.tail.isNotEmpty()) Text(stream.tail, style = MaterialTheme.typography.bodyLarge)
+        if (stream.cursor) StreamingCursor()
+        if (source.isNotEmpty() && parsed?.source != source && stream.tail.isEmpty()) {
+            Text(if (visible == null) "正在排版…" else "正在更新排版…", style = MaterialTheme.typography.labelSmall)
+        }
     }
 }
 

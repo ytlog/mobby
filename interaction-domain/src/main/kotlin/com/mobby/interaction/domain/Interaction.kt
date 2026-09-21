@@ -47,6 +47,7 @@ data class Attachment(val ref: String, val name: String, val sizeBytes: Int, val
 class AttachmentPreview(val bytes: ByteArray)
 data class EventHistoryLimits(val days: Int = 30, val mib: Int = 32, val outputDays: Int = 30, val outputMiB: Int = 256, val attachmentMiB: Int = 512)
 data class WorkspaceOption(val ref: String, val name: String)
+data class Plugin(val ref: String, val name: String, val description: String, val available: Boolean, val unavailableReason: String?)
 interface SystemPort {
     suspend fun workspaces(): DataResult<List<WorkspaceOption>> = DataResult.Failed("当前执行端不支持工作区选择")
     suspend fun createWorkspace(name: String): DataResult<WorkspaceOption> = DataResult.Failed("当前执行端不支持创建工作区")
@@ -62,6 +63,7 @@ interface SystemPort {
     suspend fun previewAttachment(workspace: String, ref: String, expanded: Boolean): DataResult<AttachmentPreview>
     suspend fun attachment(workspace: String, ref: String): DataResult<Attachment>
     suspend fun skills(agent: AgentId): DataResult<List<Skill>>
+    suspend fun plugins(): DataResult<List<Plugin>> = DataResult.Loaded(emptyList())
     suspend fun readSkill(ref: String): DataResult<SkillContent>
     suspend fun previewSkill(markdown: String): DataResult<SkillContent>
     suspend fun previewManualSkill(agent: AgentId, name: String, description: String, body: String): DataResult<SkillContent>
@@ -150,6 +152,7 @@ class InteractionUseCases(
     suspend fun stop(id: ExecutionId) = StopRunUseCase(execution)(id)
     suspend fun resolvePermission(decision: PermissionDecision) = submissionScope.async { execution.resolvePermission(decision) }.await()
     suspend fun skills(agent: AgentId) = system.skills(agent)
+    suspend fun plugins() = system.plugins()
     suspend fun readSkill(ref: String) = system.readSkill(ref)
     suspend fun previewSkill(markdown: String) = system.previewSkill(markdown)
     suspend fun previewManualSkill(agent: AgentId, name: String, description: String, body: String) = system.previewManualSkill(agent, name, description, body)
@@ -164,6 +167,16 @@ class InteractionUseCases(
             if (current.none { it.ref == skill.ref && it.available }) return OperationResult.Failed("技能已改变或不可用，请重新选择")
         }
         repository.setSkill(id, skill.ref, enabled)
+        return OperationResult.Done
+    }
+    suspend fun setPlugin(id: ConversationId, plugin: Plugin, enabled: Boolean): OperationResult {
+        if (enabled) {
+            val current = (system.plugins() as? DataResult.Loaded)?.value
+                ?: return OperationResult.Failed("插件目录不可用，请重试")
+            if (current.none { it.ref == plugin.ref && it.available })
+                return OperationResult.Failed(plugin.unavailableReason ?: "请先在系统设置中开启“使用当前手机”无障碍服务")
+        }
+        repository.setSkill(id, plugin.ref, enabled)
         return OperationResult.Done
     }
     suspend fun removeSkill(id: ConversationId, ref: String) = repository.setSkill(id, ref, false)

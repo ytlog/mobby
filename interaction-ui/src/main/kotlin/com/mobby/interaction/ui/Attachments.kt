@@ -4,6 +4,7 @@ import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -49,6 +50,8 @@ private val previewDecodeDispatcher = Dispatchers.Default.limitedParallelism(1)
     }
     if (expanded && image) AlertDialog(
         onDismissRequest = { expanded = false },
+        containerColor = raisedColor(),
+        shape = RoundedCornerShape(24.dp),
         title = { Text(attachment.name, maxLines = 2, overflow = TextOverflow.Ellipsis) },
         text = { AttachmentImage(attachment.ref, attachment.name, true, loadPreview, Modifier.fillMaxWidth().heightIn(min = 120.dp, max = 360.dp)) },
         confirmButton = { TextButton(onClick = { expanded = false }) { Text("关闭预览") } }

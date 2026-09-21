@@ -150,6 +150,8 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
     override suspend fun listSkills(agent: AgentId): AdminResult<List<SkillSummary>> = withContext(Dispatchers.IO) {
         try { AdminResult.Success(skills().list(agent)) } catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.RESOURCE_MISSING)) }
     }
+    override suspend fun listPlugins(): AdminResult<List<PluginSummary>> =
+        AdminResult.Success(listOf(PhonePlugin.summary(PhoneAccessibilityService.connected())))
     override suspend fun readSkill(ref: CapabilityRef): AdminResult<SkillPreview> = withContext(Dispatchers.IO) {
         try { skills().preview(ref)?.let { AdminResult.Success(it) } ?: AdminResult.Failed(RuntimeError(ErrorCode.RESOURCE_MISSING)) }
         catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.INVALID_CONFIG)) }

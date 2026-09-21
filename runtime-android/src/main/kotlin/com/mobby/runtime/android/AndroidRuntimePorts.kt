@@ -32,8 +32,10 @@ internal class AndroidRuntimePorts(
         if (runtime.workspaces.resolve(request.workspaceRef) == null) return@withContext RuntimeError(ErrorCode.PERMISSION_DENIED)
         if (request.reasoningLevel != null)
             return@withContext RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY)
-        if (request.capabilityRefs.size > 8 || request.capabilityRefs.any { skills.resolve(it, request.agentId) == null })
+        if (request.capabilityRefs.size > 8 || request.capabilityRefs.any { !PhonePlugin.accepts(it) && skills.resolve(it, request.agentId) == null })
             return@withContext RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY)
+        if (request.capabilityRefs.any { PhonePlugin.accepts(it) } && !PhoneAccessibilityService.connected())
+            return@withContext RuntimeError(ErrorCode.PERMISSION_DENIED)
         if (request.requestedOutput == RequestedOutput.SKILL_PROPOSAL && !skills.hasCreator(request.agentId, request.capabilityRefs))
             return@withContext RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY)
         if (request.inputParts.filterIsInstance<InputPart.Resource>().any { runCatching { resources.summary(it.ref, request.workspaceRef) }.isFailure })
@@ -59,7 +61,17 @@ internal class AndroidRuntimePorts(
         val worker = async(Dispatchers.IO) {
             val workingDirectory = requireNotNull(runtime.workspaces.resolve(request.workspaceRef))
             val prepared = resources.prepare(request.inputParts, request.workspaceRef)
-            var prompt = skills.prompt(request.agentId, request.capabilityRefs, prepared.prompt)
+            val skillRefs = request.capabilityRefs.filterNot { PhonePlugin.accepts(it) }.toSet()
+            var prompt = skills.prompt(request.agentId, skillRefs, prepared.prompt)
+            var phone: PhoneCommandServer? = null
+            var helperDir: File? = null
+            if (request.capabilityRefs.any { PhonePlugin.accepts(it) }) {
+                val token = PhoneCommands.token()
+                phone = PhoneCommandServer(token, PhoneAccessibilityService.operator())
+                helperDir = File(context.filesDir, "phone-bridge/${request.requestId.value}")
+                val helper = PhoneCommandServer.helper(helperDir, phone.port, token)
+                prompt = PhonePlugin.instruction(helper.absolutePath) + "\n\n" + prompt
+            }
             val structured = request.requestedOutput == RequestedOutput.SKILL_PROPOSAL
             if (structured) prompt += "\n\n" + SkillGeneration.instruction
             val input = if (request.agentId != AgentId.CODEX || prepared.images.isEmpty() && !structured) null
@@ -80,7 +92,10 @@ internal class AndroidRuntimePorts(
                         is OutputLine.Exit -> exit = line.code
                     }
                 }
-            } finally { session?.close(); if (control === session) control = null; input?.close() }
+            } finally {
+                session?.close(); if (control === session) control = null; input?.close(); phone?.close()
+                helperDir?.deleteRecursively()
+            }
         }
         val watcher = launch { stop.filterNotNull().first(); control?.close(); worker.cancel() }
         try {

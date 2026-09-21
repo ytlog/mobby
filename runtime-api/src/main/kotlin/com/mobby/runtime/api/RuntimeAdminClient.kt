@@ -41,6 +41,7 @@ interface RuntimeAdminClient {
     suspend fun resource(ref: ResourceRef, workspace: WorkspaceRef): AdminResult<ResourceSummary>
     val environment: StateFlow<EnvironmentSnapshot>
     suspend fun listSkills(agent: AgentId): AdminResult<List<SkillSummary>>
+    suspend fun listPlugins(): AdminResult<List<PluginSummary>> = AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
     suspend fun readSkill(ref: CapabilityRef): AdminResult<SkillPreview>
     suspend fun previewManualSkill(request: ManualSkillRequest): AdminResult<SkillPreview>
     suspend fun previewSkill(markdown: String): AdminResult<SkillPreview>
@@ -67,6 +68,7 @@ data class SkillSummary(val ref: CapabilityRef, val agent: AgentId, val name: St
 data class SkillPreview(val name: String, val description: String, val body: String, val markdown: String,
     val issues: List<SkillIssue>)
 data class ManualSkillRequest(val agent: AgentId, val name: String, val description: String, val body: String)
+data class PluginSummary(val ref: CapabilityRef, val name: String, val description: String, val available: Boolean, val error: RuntimeError? = null)
 
 /** Transient bytes only; persisted requests contain the returned controlled reference. */
 class ImportResourceRequest(val workspaceRef: WorkspaceRef, val name: String, val bytes: ByteArray) {
