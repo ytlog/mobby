@@ -140,7 +140,7 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                                 if (target != null) { fileTarget = target.id.value; fileWorkspace = target.config.workspace; route = "conversation"; filePicker.launch(arrayOf("*/*")) }
                             }, enabled = target != null && !target.archived && !target.deleted && target.draft.pendingAttachment == null && target.draft.attachments.size < 4 && agentOptions.any { it.agent == target.config.agent && it.resources && it.unavailable == null }) { Text("本地文件") }
                         }
-                        Text("支持 UTF-8 文本（32 KiB）与 PNG/JPEG（2 MiB，最长边 4096、最多 800 万像素），每轮最多 4 个附件；文字编码后合计最多 64 KiB。模型须支持图片，Codex 的 Messages 网关不支持图片。拍照会先预览确认；PDF 尚不可用。", style = MaterialTheme.typography.bodySmall)
+                        Text("支持 UTF-8 文本（32 KiB）与 PNG/JPEG（2 MiB，最长边 4096、最多 800 万像素），每轮最多 4 个附件；文字编码后合计最多 64 KiB。所选模型须支持图片。拍照会先预览确认；PDF 尚不可用。", style = MaterialTheme.typography.bodySmall)
                         TextButton(onClick = { route = "conversation"; voice = vm.composer.value }) { Text("语音输入") }
                         TextButton(onClick = { route = "plugins" }) { Text("插件") }
                         TextButton(onClick = { route = "skills" }) { Text("技能") }
