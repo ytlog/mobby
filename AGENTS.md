@@ -30,6 +30,8 @@
 
 ## 常用验证
 
+- 不得自行下载新的 Android 系统镜像；设备验证优先使用已连接手机和已有环境，避免额外占用带宽与磁盘。
+
 - `node --test runtime/gateway-tests/bridge.test.cjs`
 - `python3 -m unittest discover -s runtime -p 'test_*.py'`
 - 使用 JDK 17 执行 `./gradlew :app:assembleDebug :app:testDebugUnitTest :termux-core:testDebugUnitTest :app:lintDebug`
