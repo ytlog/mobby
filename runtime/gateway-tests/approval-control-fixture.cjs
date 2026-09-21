@@ -1,6 +1,7 @@
 'use strict';
 // Host fixture transport for testing the production Kotlin control session against pinned Claude.
 const {createServer}=require('node:http');
+const assert=require('node:assert/strict');
 const {spawn}=require('node:child_process');
 const {join,resolve}=require('node:path');
 const {nativeResponse,sendNative}=require('./native-fixture.cjs');
@@ -10,6 +11,15 @@ const server=createServer(async(req,res)=>{
   if(req.method!=='POST'||req.url.split('?')[0]!=='/v1/messages'){res.writeHead(404);res.end();return;}
   const chunks=[];for await(const c of req)chunks.push(c);
   const body=JSON.parse(Buffer.concat(chunks));requests++;
+  if(requests===1) {
+    // Check the newest user message: an image from resumed history must not satisfy this gate.
+    const content=body.messages.filter(message=>message.role==='user').at(-1)?.content;
+    const images=Array.isArray(content)?content.filter(block=>block.type==='image'):[];
+    try {
+      assert.equal(images.length,1,'Newest user message must include its image');
+      assert.deepEqual(images[0].source,{type:'base64',media_type:'image/png',data:'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEUlEQVR4nGP4z8AARAxg8j8AG/ID/fPnS7EAAAAASUVORK5CYII='});
+    } catch { cleanup(1); return; }
+  }
   const calls=requests===1?[{id:'write-fixture',function:{name:'Write',arguments:JSON.stringify({file_path:join(work,'approved.txt'),content:'KOTLIN_CONTROL_OK\n'})}}]:[];
   sendNative(res,nativeResponse({content:calls.length?'':'FIXTURE_FINISHED',calls,input:10,output:5},'messages','test-model'),'messages',Boolean(body.stream));
 });

@@ -13,7 +13,7 @@ import java.util.concurrent.TimeUnit
 
 /** Opt-in real pinned CLI test. Isolated HOME and fake model only; no saved gateway/config access. */
 class ClaudeControlHostTest {
-    @Test fun `production control session allows denies and cancels real Claude writes`() = runBlocking {
+    @Test fun `production control session preserves images and allows denies and cancels real Claude writes`() = runBlocking {
         val cli = System.getenv("MOBBY_TEST_CLAUDE_JS")
         assumeTrue("Set MOBBY_TEST_CLAUDE_JS for real CLI gate", cli != null)
         val fixture = File("../runtime/gateway-tests/approval-control-fixture.cjs").canonicalFile
@@ -25,7 +25,19 @@ class ClaudeControlHostTest {
             if (mode == "resume") { assertNotNull(resumeId); assertTrue(File(root, "approved.txt").delete()) }
             val process = ProcessBuilder(listOf("node", fixture.path, cli!!, root.path) + if (mode == "resume") listOf(resumeId!!) else emptyList()).start()
             val control = ClaudeControlSession(RequestId(mode), buildJsonObject {
-                put("type", "user"); putJsonObject("message") { put("role", "user"); put("content", "Write approved.txt using the supplied content, requesting permission as needed.") }
+                put("type", "user"); putJsonObject("message") {
+                    put("role", "user")
+                    putJsonArray("content") {
+                        add(buildJsonObject { put("type", "text"); put("text", "Write approved.txt using the supplied content, requesting permission as needed.") })
+                        add(buildJsonObject {
+                            put("type", "image")
+                            putJsonObject("source") {
+                                put("type", "base64"); put("media_type", "image/png")
+                                put("data", "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEUlEQVR4nGP4z8AARAxg8j8AG/ID/fPnS7EAAAAASUVORK5CYII=")
+                            }
+                        })
+                    }
+                }
             })
             var permissions = 0
             var terminal: AgentFact.Completed? = null
