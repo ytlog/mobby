@@ -90,11 +90,12 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                 val progress by rememberDrawerProgress(drawer) { drawer = false }
                 val pixels = with(LocalDensity.current) { drawerWidth.toPx() }
                 if (drawer || progress > 0f) ConversationDrawer(state, vm, onSelect = { c -> vm.enqueue { actions.select(c.id) }; drawer = false },
-                    onNew = { drawer = false; dialog = "new" }, onSettings = { navigate("settings") }, onClose = { drawer = false },
+                    onNew = { drawer = false; dialog = "new" }, onSettings = { navigate("settings") }, onProjects = { navigate("projects") }, onClose = { drawer = false },
                     modifier = Modifier.width(drawerWidth).fillMaxHeight().offset { IntOffset(((progress - 1f) * pixels).roundToInt(), 0) })
                 Surface(Modifier.requiredWidth(fullWidth).fillMaxHeight().offset { IntOffset((pixels * progress).roundToInt(), 0) }
                     .then(if (drawer) Modifier.clearAndSetSemantics {} else Modifier)) {
                     when (route) {
+                        "projects" -> ProjectPage(vm) { route = "conversation" }
                         "settings" -> SettingsPage(system, appearance, { value -> vm.enqueue { vm.report(actions.setAppearance(value)) } }, { navigate(it) }, { route = "conversation" }, vm)
                         "gateway" -> GatewayPage(vm) { route = "settings" }
                         "history-limits" -> EventHistoryPage(actions::eventHistoryLimits, actions::saveEventHistoryLimits) { route = "settings" }
@@ -165,10 +166,10 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                     }
                 }
                 val c = state.selected?.conversation
-                if (dialog == "new") ConfigDialog(vm, c, onDismiss = { dialog = null }, onApply = { config -> vm.enqueue { actions.create(config) }; route = "conversation"; dialog = null })
+                if (dialog == "new") ConfigDialog(vm, c, onDismiss = { dialog = null }, onApply = { config, project -> vm.enqueue { actions.create(config, project) }; route = "conversation"; dialog = null })
                 if (c != null) when (dialog) {
                     "rename" -> TextEditDialog("重命名", c.title, { dialog = null }) { value -> vm.enqueue { vm.report(actions.rename(c.id, value)) }; dialog = null }
-                    "project" -> TextEditDialog("添加到项目（留空移出分组）", c.project.orEmpty(), { dialog = null }) { value -> vm.enqueue { actions.project(c.id, value) }; dialog = null }
+                    "project" -> ProjectGroupDialog(c, state.projects, { dialog = null }) { project -> vm.enqueue { actions.project(c.id, project) }; dialog = null }
                     "delete" -> AlertDialog(onDismissRequest = { dialog = null }, title = { Text("删除对话？") }, text = { Text("对话将移入最近删除，可在设置中恢复；工作区文件不会删除。") },
                         confirmButton = { TextButton(onClick = { vm.enqueue { vm.report(actions.delete(c.id, true)) }; dialog = null }) { Text("删除") } }, dismissButton = { TextButton(onClick = { dialog = null }) { Text("取消") } })
                     "attachments" -> HistoryDialog(c.id, vm, { dialog = null }) { full -> AlertDialog(onDismissRequest = { dialog = null }, title = { Text("对话附件") }, text = { Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
@@ -187,7 +188,7 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
     }
 }
 
-@Composable private fun ConversationDrawer(state: InteractionState, vm: ConversationViewModel, onSelect: (Conversation) -> Unit, onNew: () -> Unit, onSettings: () -> Unit, onClose: () -> Unit, modifier: Modifier) {
+@Composable private fun ConversationDrawer(state: InteractionState, vm: ConversationViewModel, onSelect: (Conversation) -> Unit, onNew: () -> Unit, onSettings: () -> Unit, onProjects: () -> Unit, onClose: () -> Unit, modifier: Modifier) {
     var query by rememberSaveable { mutableStateOf("") }
     Surface(modifier, color = MaterialTheme.colorScheme.surfaceVariant) {
         Column(Modifier.padding(12.dp)) {
@@ -196,6 +197,7 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                 ActionIcon("关闭会话抽屉", onClose, Icons.Outlined.Close)
             }
             TextButton(onClick = onNew, Modifier.fillMaxWidth()) { Icon(Icons.Outlined.Add, null); Text("新对话") }
+            TextButton(onClick = onProjects, Modifier.fillMaxWidth()) { Text("项目管理") }
             val visible = state.conversations.filter { !it.conversation.archived && !it.conversation.deleted && it.conversation.title.contains(query, true) }
             LazyColumn(Modifier.weight(1f)) {
                 val groups = visible.groupBy { if (it.conversation.pinned) "置顶" else it.conversation.project?.let { name -> "项目 · $name" } ?: "历史会话" }

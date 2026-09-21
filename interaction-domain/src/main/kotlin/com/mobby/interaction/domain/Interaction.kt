@@ -18,9 +18,10 @@ data class Turn(
 )
 data class ConversationSummary(val conversation: Conversation, val phase: ExecutionPhase? = null, val occupied: Boolean = false)
 data class ConversationDetail(val conversation: Conversation, val turns: List<Turn>, val hasEarlier: Boolean = false)
+data class Project(val name: String, val defaultWorkspace: String)
 data class InteractionState(
     val conversations: List<ConversationSummary> = emptyList(), val selected: ConversationDetail? = null,
-    val loading: Boolean = true, val error: String? = null
+    val loading: Boolean = true, val error: String? = null, val projects: List<Project> = emptyList()
 ) {
     val occupied: ConversationSummary? get() = conversations.firstOrNull { it.occupied }
 }
@@ -78,6 +79,8 @@ interface SystemPort {
     suspend fun stopShell(): OperationResult
 }
 interface InteractionRepository : ConversationRepository {
+    suspend fun saveProject(project: Project, createOnly: Boolean = false): OperationResult = OperationResult.Failed("当前存储不支持项目默认工作区")
+    suspend fun createInProject(config: NextTurnConfig, project: String, workspaceOverride: String? = null): ConversationId = error("Project creation is unsupported")
     suspend fun saveSkillProposal(proposal: SkillProposal, markdown: String): DataResult<Skill> = DataResult.Failed("当前会话不支持保存生成草稿")
     suspend fun conversation(id: ConversationId): Conversation
     suspend fun awaitAttachmentRecovery()
@@ -129,7 +132,14 @@ class InteractionUseCases(
     suspend fun revealTurn(id: ConversationId, turn: TurnId) = repository.revealTurn(id, turn)
     suspend fun history(id: ConversationId) = repository.history(id)
     suspend fun select(id: ConversationId) = repository.select(id)
-    suspend fun create(config: NextTurnConfig) = repository.create(config)
+    suspend fun create(config: NextTurnConfig, project: String? = null) =
+        if (project == null) repository.create(config) else repository.createInProject(config, project, config.workspace)
+    suspend fun saveProject(project: Project, createOnly: Boolean = false): OperationResult = submissionScope.async {
+        val workspaces = (system.workspaces() as? DataResult.Loaded)?.value
+            ?: return@async OperationResult.Failed("无法读取工作区，请刷新后重试")
+        if (workspaces.none { it.ref == project.defaultWorkspace }) return@async OperationResult.Failed("工作区不可用，请重新选择")
+        repository.saveProject(project, createOnly)
+    }.await()
     suspend fun draft(id: ConversationId, text: String, start: Int, end: Int) = repository.editDraft(id, text, start, end)
     suspend fun configure(id: ConversationId, config: NextTurnConfig) = repository.configure(id, config)
     suspend fun prepareSend(id: ConversationId) = repository.prepareTurn(id, TurnId(nextId()))

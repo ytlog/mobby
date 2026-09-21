@@ -9,6 +9,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
 
+internal data class CreatedWorkspace(val owner: String, val workspace: WorkspaceOption)
 internal data class ReadingTarget(val conversation: ConversationId, val key: String, val sequence: Long)
 internal data class SkillProposalEditor(val proposal: SkillProposal, val value: TextFieldValue = TextFieldValue(proposal.markdown),
     val preview: SkillContent? = null, val busy: Boolean = false, val error: String? = null, val operation: Long = 0)
@@ -119,10 +120,36 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
             finally { skillProposal.update { if (it?.operation == operation) it.copy(busy = false) else it } }
         }
     }
+    val projectEditor = MutableStateFlow<ProjectEditor?>(null)
+    private var projectOperation = 0L
+    fun openProject(project: Project?) {
+        if (projectEditor.value?.busy == true) return
+        projectEditor.value = ProjectEditor(project?.name.orEmpty(), project?.defaultWorkspace ?: "default", project != null, operation = ++projectOperation)
+    }
+    fun editProject(value: ProjectEditor) {
+        projectEditor.update { if (it?.operation == value.operation && !it.busy) value.copy(error = null) else it }
+    }
+    fun dismissProject() { if (projectEditor.value?.busy != true) projectEditor.value = null }
+    fun saveProject() {
+        if (workspaceCreating.value) return
+        val editor = projectEditor.value?.takeUnless { it.busy } ?: return
+        projectEditor.value = editor.copy(busy = true, error = null)
+        viewModelScope.launch {
+            try {
+                val result = actions.saveProject(Project(editor.name.trim(), editor.workspace), createOnly = !editor.existing)
+                projectEditor.update { current -> if (current?.operation != editor.operation) current else when (result) {
+                    OperationResult.Done -> null
+                    is OperationResult.Failed -> current.copy(error = result.message)
+                } }
+            } catch (e: CancellationException) { throw e }
+            catch (_: Exception) { projectEditor.update { if (it?.operation == editor.operation) it.copy(error = "项目保存未完成，请核对后重试") else it } }
+            finally { projectEditor.update { if (it?.operation == editor.operation) it.copy(busy = false) else it } }
+        }
+    }
     val workspaces = MutableStateFlow<List<WorkspaceOption>>(emptyList())
     val workspaceError = MutableStateFlow<String?>(null)
     val workspaceCreating = MutableStateFlow(false)
-    val workspaceCreated = MutableStateFlow<WorkspaceOption?>(null)
+    val workspaceCreated = MutableStateFlow<CreatedWorkspace?>(null)
     private var workspaceQuery = 0L
     fun loadWorkspaces() {
         val query = ++workspaceQuery
@@ -138,13 +165,13 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
             catch (_: Exception) { if (query == workspaceQuery) workspaceError.value = "工作区读取失败，请重试" }
         }
     }
-    fun createWorkspace(name: String) {
+    fun createWorkspace(name: String, owner: String) {
         if (workspaceCreating.value) return
         workspaceCreating.value = true; workspaceError.value = null
         viewModelScope.launch {
             try {
                 when (val result = actions.createWorkspace(name)) {
-                    is DataResult.Loaded -> { workspaceCreated.value = result.value; loadWorkspaces() }
+                    is DataResult.Loaded -> { workspaceCreated.value = CreatedWorkspace(owner, result.value); loadWorkspaces() }
                     is DataResult.Failed -> workspaceError.value = result.message
                 }
             } catch (e: CancellationException) { throw e }
@@ -152,7 +179,7 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
             finally { workspaceCreating.value = false }
         }
     }
-    fun consumeWorkspaceCreated(value: WorkspaceOption) { workspaceCreated.compareAndSet(value, null) }
+    fun consumeWorkspaceCreated(value: CreatedWorkspace) { workspaceCreated.compareAndSet(value, null) }
     val skillEditor = MutableStateFlow<SkillEditor?>(null)
     val skillEditorSaved = MutableStateFlow<Long?>(null)
     private var editorOperation = 0L

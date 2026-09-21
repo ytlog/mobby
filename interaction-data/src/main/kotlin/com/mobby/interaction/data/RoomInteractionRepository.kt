@@ -51,7 +51,7 @@ internal class RoomInteractionRepository(
                 }
             })
         }.flowOn(Dispatchers.Default)
-    }.combine(startupError) { state, error -> state.copy(error = error ?: state.error) }.catch { emit(InteractionState(loading = false, error = "无法读取会话数据库；原数据已保留，请重启应用后重试")) }
+    }.combine(dao.projects()) { state, projects -> state.copy(projects = projects.map { Project(it.name, it.defaultWorkspace) }) }.combine(startupError) { state, error -> state.copy(error = error ?: state.error) }.catch { emit(InteractionState(loading = false, error = "无法读取会话数据库；原数据已保留，请重启应用后重试")) }
         .stateIn(scope, SharingStarted.Eagerly, InteractionState())
 
     override suspend fun saveSkillProposal(proposal: SkillProposal, markdown: String): DataResult<Skill> {
@@ -195,6 +195,20 @@ internal class RoomInteractionRepository(
                 catch (_: Exception) { startupError.value = "历史输出核对未完成，已保留缓存；请重试" } }
         }
     }
+    override suspend fun saveProject(project: Project, createOnly: Boolean): OperationResult = db.withTransaction {
+        val existing = dao.project(project.name)
+        if (project.name.isBlank() || project.name != project.name.trim() || project.name.any { it.isISOControl() } || (existing == null && project.name.length > 80))
+            return@withTransaction OperationResult.Failed("项目名称不能为空，最多 80 字")
+        if (createOnly && existing != null) return@withTransaction OperationResult.Failed("同名项目已存在，请使用其他名称")
+        if (project.defaultWorkspace.isBlank()) return@withTransaction OperationResult.Failed("请选择默认工作区")
+        dao.save(ProjectRow(project.name, project.defaultWorkspace))
+        OperationResult.Done
+    }
+    override suspend fun createInProject(config: NextTurnConfig, project: String, workspaceOverride: String?): ConversationId = db.withTransaction {
+        val defaults = requireNotNull(dao.project(project)) { "Project no longer exists" }
+        val c = Conversation(ConversationId(id()), config.copy(workspace = workspaceOverride ?: defaults.defaultWorkspace), project = defaults.name, updatedAt = now())
+        dao.save(c.row()); dao.select(SelectionRow(conversationId = c.id.value)); c.id
+    }
     override suspend fun create(config: NextTurnConfig): ConversationId {
         val c = Conversation(ConversationId(id()), config, updatedAt = now())
         db.withTransaction { dao.save(c.row()); dao.select(SelectionRow(conversationId = c.id.value)) }
@@ -259,7 +273,10 @@ internal class RoomInteractionRepository(
     }
     override suspend fun rename(id: ConversationId, title: String): OperationResult { mutate(id) { it.copy(title = title) }; return OperationResult.Done }
     override suspend fun pin(id: ConversationId) = mutate(id) { it.copy(pinned = !it.pinned) }
-    override suspend fun setProject(id: ConversationId, project: String?) = mutate(id) { it.copy(project = project) }
+    override suspend fun setProject(id: ConversationId, project: String?) = db.withTransaction {
+        require(project == null || dao.project(project) != null) { "Project no longer exists" }
+        mutate(id) { it.copy(project = project) }
+    }
     override suspend fun archive(id: ConversationId, archived: Boolean) = changeVisibility(id) { it.copy(archived = archived) }
     override suspend fun delete(id: ConversationId, deleted: Boolean) = changeVisibility(id) { it.copy(deleted = deleted) }
     private suspend fun changeVisibility(id: ConversationId, transform: (Conversation) -> Conversation): OperationResult = db.withTransaction {

@@ -4,6 +4,9 @@ import android.content.Context
 import androidx.room.*
 import kotlinx.coroutines.flow.Flow
 
+@Entity(tableName = "projects")
+internal data class ProjectRow(@PrimaryKey val name: String, val defaultWorkspace: String)
+
 @Entity(tableName = "conversations")
 internal data class ConversationRow(@PrimaryKey val id: String, val body: String, val updatedAt: Long)
 @Entity(tableName = "turns", indices = [Index("conversationId"), Index("runId", unique = true), Index(value = ["conversationId", "createdAt", "id"]), Index(value = ["conversationId", "occupied"])],
@@ -30,6 +33,9 @@ internal data class TurnWithChunks(
     @Relation(parentColumn = "runId", entityColumn = "runId") val chunks: List<ChunkRow>
 )
 @Dao internal interface InteractionDao {
+    @Query("SELECT * FROM projects ORDER BY name") fun projects(): Flow<List<ProjectRow>>
+    @Query("SELECT * FROM projects WHERE name=:name") suspend fun project(name: String): ProjectRow?
+    @Upsert suspend fun save(row: ProjectRow)
     @Query("SELECT * FROM conversations ORDER BY updatedAt DESC") fun conversations(): Flow<List<ConversationRow>>
     @Transaction
     @Query("SELECT * FROM (SELECT * FROM turns WHERE conversationId=:id ORDER BY createdAt DESC,id DESC LIMIT :limit) ORDER BY createdAt,id")
@@ -71,26 +77,12 @@ internal data class TurnWithChunks(
     @Upsert suspend fun select(row: SelectionRow)
     @Upsert suspend fun chunks(rows: List<ChunkRow>)
 }
-@Database(entities = [ConversationRow::class, TurnRow::class, ChunkRow::class, SelectionRow::class, ExpiredOutputCacheRow::class], version = 4, exportSchema = true)
+@Database(entities = [ConversationRow::class, TurnRow::class, ChunkRow::class, SelectionRow::class, ExpiredOutputCacheRow::class, ProjectRow::class], version = 5, exportSchema = true)
 internal abstract class InteractionDatabase : RoomDatabase() {
     abstract fun dao(): InteractionDao
     companion object {
-        fun open(context: Context) = Room.databaseBuilder(context.applicationContext, InteractionDatabase::class.java, "interaction.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build()
-        val MIGRATION_3_4 = object : androidx.room.migration.Migration(3, 4) {
-            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
-                db.execSQL("CREATE TABLE IF NOT EXISTS expired_output_cache (runId TEXT NOT NULL PRIMARY KEY)")
-            }
-        }
-        val MIGRATION_2_3 = object : androidx.room.migration.Migration(2, 3) {
-            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
-                db.execSQL("ALTER TABLE chunks ADD COLUMN expired INTEGER NOT NULL DEFAULT 0")
-            }
-        }
-        val MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) {
-            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
-                db.execSQL("CREATE INDEX IF NOT EXISTS index_turns_conversationId_createdAt_id ON turns (conversationId, createdAt, id)")
-                db.execSQL("CREATE INDEX IF NOT EXISTS index_turns_conversationId_occupied ON turns (conversationId, occupied)")
-            }
-        }
+        fun open(context: Context) = Room.databaseBuilder(
+            context.applicationContext, InteractionDatabase::class.java, "interaction.db"
+        ).fallbackToDestructiveMigration().build()
     }
 }

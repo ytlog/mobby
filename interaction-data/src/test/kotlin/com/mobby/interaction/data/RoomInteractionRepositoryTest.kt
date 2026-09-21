@@ -65,6 +65,49 @@ class RoomInteractionRepositoryTest {
     }
     @After fun close() = runBlocking { scope.coroutineContext[Job]!!.cancelAndJoin(); db.close() }
     private suspend fun state(predicate: (InteractionState) -> Boolean = { it.selected != null }) = withTimeout(10_000) { repository.state.first(predicate) }
+    @Test fun `project defaults persist and only new conversations adopt them`() = runBlocking {
+        val original = state().selected!!.conversation
+        repository.editDraft(original.id, "keep draft", 3, 3)
+        val before = repository.conversation(original.id)
+        assertEquals(OperationResult.Done, repository.saveProject(Project("Project A", "workspace-a")))
+        assertTrue(repository.saveProject(Project("Project A", "unwanted"), createOnly = true) is OperationResult.Failed)
+        assertEquals("workspace-a", db.dao().project("Project A")!!.defaultWorkspace)
+        repository.setProject(original.id, "Project A")
+        val grouped = repository.conversation(original.id)
+        assertEquals(before.config, grouped.config)
+        assertEquals(before.draft, grouped.draft)
+        assertEquals("Project A", grouped.project)
+        val created = repository.createInProject(before.config, "Project A")
+        assertEquals("workspace-a", repository.conversation(created).config.workspace)
+        assertEquals("Project A", repository.conversation(created).project)
+        assertEquals(OperationResult.Done, repository.saveProject(Project("Project A", "workspace-b")))
+        assertEquals("workspace-a", repository.conversation(created).config.workspace)
+        val explicit = repository.createInProject(before.config, "Project A", "chosen-workspace")
+        assertEquals("chosen-workspace", repository.conversation(explicit).config.workspace)
+        repository.setProject(original.id, null)
+        assertEquals(before.config, repository.conversation(original.id).config)
+        assertEquals(before.draft, repository.conversation(original.id).draft)
+        scope.coroutineContext[Job]!!.cancelAndJoin(); db.close(); start()
+        assertEquals(listOf(Project("Project A", "workspace-b")), state { it.projects.isNotEmpty() }.projects)
+        val latest = repository.createInProject(before.config, "Project A")
+        assertEquals("workspace-b", repository.conversation(latest).config.workspace)
+    }
+    @Test fun `development schema changes initialize an empty current database`() = runBlocking {
+        val old = seedHistory(7)
+        repository.saveProject(Project("Old project", "old-workspace"))
+        scope.coroutineContext[Job]!!.cancelAndJoin()
+        db.openHelper.writableDatabase.execSQL("DROP TABLE projects")
+        db.openHelper.writableDatabase.execSQL("PRAGMA user_version=4")
+        db.close(); start()
+        val fresh = state().selected!!
+        assertNotEquals(old.id, fresh.conversation.id)
+        assertTrue(fresh.turns.isEmpty())
+        assertTrue(db.dao().projects().first().isEmpty())
+        assertNull(db.dao().conversation(old.id.value))
+        assertNull(db.dao().turn("turn-005"))
+        assertNull(db.dao().chunk("history-body"))
+        assertEquals(5, db.openHelper.readableDatabase.version)
+    }
     @Test fun `initial page loads forty turns and older pages preserve range when a new reply arrives`() = runBlocking {
         val c = seedHistory(110)
         scope.coroutineContext[Job]!!.cancelAndJoin(); db.close(); start()
@@ -124,49 +167,6 @@ class RoomInteractionRepositoryTest {
         val restored = state { it.selected?.turns?.any { t -> t.id.value == row.id && t.occupied } == true }.selected!!
         assertEquals(c.id, restored.conversation.id)
         assertEquals("turn-003", restored.turns.first().id.value)
-    }
-    private fun restoreOldChunks(sql: androidx.sqlite.db.SupportSQLiteDatabase) {
-        sql.execSQL("DROP TABLE expired_output_cache")
-        sql.execSQL("ALTER TABLE chunks RENAME TO chunks_new")
-        sql.execSQL("CREATE TABLE chunks (ref TEXT NOT NULL PRIMARY KEY, runId TEXT NOT NULL, text TEXT NOT NULL)")
-        sql.execSQL("INSERT INTO chunks (ref,runId,text) SELECT ref,runId,text FROM chunks_new")
-        sql.execSQL("DROP TABLE chunks_new")
-        sql.execSQL("CREATE INDEX index_chunks_runId ON chunks (runId)")
-    }
-    @Test fun `version two migration retains existing output as available`() = runBlocking {
-        val c = seedHistory(7)
-        scope.coroutineContext[Job]!!.cancelAndJoin()
-        val sql = db.openHelper.writableDatabase
-        restoreOldChunks(sql)
-        sql.execSQL("PRAGMA user_version=2")
-        db.close(); start()
-        val restored = state { it.selected?.turns?.size == 7 }.selected!!
-        assertEquals(c.id, restored.conversation.id)
-        assertEquals("old assistant body", restored.turns.single { it.id.value == "turn-005" }.messages.single().text)
-        assertFalse(db.dao().chunk("history-body")!!.expired)
-        assertEquals(4, db.openHelper.readableDatabase.version)
-    }
-    @Test fun `version one database migrates with conversation messages and output intact`() = runBlocking {
-        val c = seedHistory(7)
-        val original = db.dao().conversation(c.id.value)!!.body
-        scope.coroutineContext[Job]!!.cancelAndJoin()
-        val sql = db.openHelper.writableDatabase
-        restoreOldChunks(sql)
-        sql.execSQL("DROP INDEX index_turns_conversationId_createdAt_id")
-        sql.execSQL("DROP INDEX index_turns_conversationId_occupied")
-        sql.execSQL("UPDATE room_master_table SET identity_hash='323a224c2892d320614221fcfb9d928c' WHERE id=42")
-        sql.execSQL("PRAGMA user_version=1")
-        db.close(); start()
-        val restored = state { it.selected?.turns?.size == 7 }.selected!!
-        assertEquals(original, db.dao().conversation(c.id.value)!!.body)
-        assertEquals("old assistant body", restored.turns.single { it.id.value == "turn-005" }.messages.single().text)
-        assertEquals(4, db.openHelper.readableDatabase.version)
-        val indexes = mutableSetOf<String>()
-        db.openHelper.readableDatabase.query("PRAGMA index_list(turns)").use { cursor ->
-            while (cursor.moveToNext()) indexes += cursor.getString(cursor.getColumnIndexOrThrow("name"))
-        }
-        assertTrue("index_turns_conversationId_createdAt_id" in indexes)
-        assertTrue("index_turns_conversationId_occupied" in indexes)
     }
     @Test fun `sidebar selects latest tied turn but keeps earlier occupied state without loading another timeline`() = runBlocking {
         val c = state().selected!!.conversation
@@ -449,18 +449,6 @@ class RoomInteractionRepositoryTest {
         runtime.expireAt[ResourceRef("history-body")] = 0
         assertNull(repository.history(c.id).turns.single { it.id.value == "turn-005" }.failure)
         assertNull(repository.history(c.id).turns.single { it.id.value == "turn-005" }.failure)
-    }
-    @Test fun `version three migration retains cached bodies and adds no expired runs`() = runBlocking {
-        val c = seedHistory(7)
-        val before = db.dao().turn("turn-005")!!
-        scope.coroutineContext[Job]!!.cancelAndJoin()
-        db.openHelper.writableDatabase.execSQL("DROP TABLE expired_output_cache")
-        db.openHelper.writableDatabase.execSQL("PRAGMA user_version=3")
-        db.close(); start()
-        assertEquals(4, db.openHelper.readableDatabase.version)
-        assertFalse(db.dao().outputCacheExpired("history-run"))
-        assertEquals(before.userText, db.dao().turn(before.id)!!.userText)
-        assertEquals("old assistant body", repository.history(c.id).turns.single { it.id.value == before.id }.messages.single().text)
     }
     @Test fun `already cached terminal output learns expiration without another runtime event`() = runBlocking {
         val c = seedHistory(7)

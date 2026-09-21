@@ -17,7 +17,7 @@
 - 按用户明确授权，Codex 使用 Android 应用 UID/SELinux 沙箱作为执行边界，以 danger-full-access 与 approval_policy=never 使用应用已有权限，不额外启用 CLI 的 Linux 沙箱；不获取 root、不修改系统权限。Claude Code 保留现有原生审批。取消、错误和超时必须如实传递，不能显示为成功。
 - 网关密钥和真实用户配置仅存放于设备的加密存储；不得写入源码、测试夹具、文档、日志或 Git。
 - 品牌改名不应更改已有 Android applicationId 或 Keystore 别名；此类持久身份变更必须先设计数据迁移方案。
-- 保留设备 SharedPreferences、HOME 和工作区；安装更新使用覆盖安装，不清空数据。
+- 开发阶段数据库结构变化直接清空对应开发数据库并按当前结构重建，不维护旧版本迁移、升级兼容代码或历史迁移测试。保留设备 SharedPreferences、HOME 和工作区；安装更新使用覆盖安装。
 - 构建产物、下载缓存和本地机器配置不得提交。
 
 ## Git 提交规范
