@@ -84,7 +84,7 @@ object ConversationRules {
         require(!current.hasTurns || config.workspace == current.config.workspace) { "Existing workspace must be preserved" }
         return if (current.hasTurns && config.agent != current.config.agent) {
             require(newId != current.id)
-            Conversation(newId, config, Draft(text = current.draft.text))
+            Conversation(newId, config, Draft(text = current.draft.text), project = current.project)
         } else current.copy(config = config, session = if (current.config.agent == config.agent) current.session else null, creator = if (current.config.agent == config.agent) current.creator else null)
     }
 

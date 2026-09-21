@@ -10,7 +10,7 @@ import org.junit.Test
 class ConversationRulesTest {
     private val config = NextTurnConfig(AgentId.CODEX, "model", "low", "workspace", "gateway-v1")
     private val original = Conversation(ConversationId("original"), config,
-        Draft(7, "draft", attachments = listOf("file"), capabilities = setOf("skill")), true, "session")
+        Draft(7, "draft", attachments = listOf("file"), capabilities = setOf("skill")), true, "session", project = "Project A")
     private val accepted = Submission.Accepted(ExecutionId("execution"))
 
     @Test fun `only accepted matching draft is cleared`() {
@@ -23,6 +23,8 @@ class ConversationRulesTest {
     @Test fun `cross agent creates conversation with text only and leaves original intact`() {
         val switched = ConversationRules.applyConfig(original, config.copy(agent = AgentId.CLAUDE_CODE), ConversationId("new"))
         assertEquals("new", switched.id.value)
+        assertEquals(original.project, switched.project)
+        assertEquals(original.config.workspace, switched.config.workspace)
         assertEquals("draft", switched.draft.text)
         assertTrue(switched.draft.attachments.isEmpty())
         assertTrue(switched.draft.capabilities.isEmpty())
