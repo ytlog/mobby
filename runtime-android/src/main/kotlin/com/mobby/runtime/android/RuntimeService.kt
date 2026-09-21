@@ -21,6 +21,7 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
     private lateinit var registry: ProcessRegistry
     private lateinit var coordinator: RunCoordinator
     private lateinit var journal: RuntimeJournal
+    private lateinit var outputStore: OutputStore
     private var initialization: Job? = null
     private var shell: Job? = null
     private val shellId = RunId("shell-diagnostic")
@@ -31,11 +32,20 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
     private var notificationStarted = false
     @Volatile private var hostStopCause: StopCause? = null
     val client: RuntimeClient by lazy { object : RuntimeClient by coordinator {
-        override suspend fun submit(request: RunRequest): SubmitResult = submission.withLock {
-            if (environment.value.phase != EnvironmentPhase.READY) return@withLock SubmitResult.Rejected(RuntimeError(ErrorCode.NOT_READY, true))
-            try { withContext(Dispatchers.Main) { beginForeground() } }
-            catch (_: Exception) { return@withLock SubmitResult.Rejected(RuntimeError(ErrorCode.PERMISSION_DENIED, true)) }
-            coordinator.submit(request).also { if (coordinator.active.value == null) endForeground() }
+        override suspend fun submit(request: RunRequest): SubmitResult {
+            if (environment.value.phase != EnvironmentPhase.READY) return SubmitResult.Rejected(RuntimeError(ErrorCode.NOT_READY, true))
+            return submission.withLock {
+                if (environment.value.phase != EnvironmentPhase.READY) return@withLock SubmitResult.Rejected(RuntimeError(ErrorCode.NOT_READY, true))
+                try { outputStore.compact(journal) }
+                catch (e: CancellationException) { throw e }
+                catch (_: Exception) {
+                    mutableEnvironment.value = EnvironmentSnapshot(EnvironmentPhase.FAILED, "输出清理未完成，请重新检查运行环境", RuntimeError(ErrorCode.STORAGE_FULL, true))
+                    return@withLock SubmitResult.Rejected(RuntimeError(ErrorCode.STORAGE_FULL, true))
+                }
+                try { withContext(Dispatchers.Main) { beginForeground() } }
+                catch (_: Exception) { return@withLock SubmitResult.Rejected(RuntimeError(ErrorCode.PERMISSION_DENIED, true)) }
+                coordinator.submit(request).also { if (coordinator.active.value == null) endForeground() }
+            }
         }
     } }
     override fun onCreate() {
@@ -44,23 +54,36 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
         registry = ProcessRegistry(this)
         journal = RuntimeJournal(this, policyProvider = EventHistorySettingsStore(this)::policy)
         val ports = AndroidRuntimePorts(this, runtime, environment, registry)
-        coordinator = RunCoordinator(scope, ports, ports, journal, OutputStore(this))
+        outputStore = OutputStore(this, journal::outputExpired)
+        coordinator = RunCoordinator(scope, ports, ports, journal, outputStore)
         getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel("runtime", "任务运行", NotificationManager.IMPORTANCE_LOW))
-        scope.launch { coordinator.active.collect { if (it == null) submission.withLock { if (coordinator.active.value == null) endForeground() } } }
+        scope.launch { coordinator.active.collect { if (it == null) submission.withLock {
+            if (coordinator.active.value == null) {
+                endForeground()
+                if (recovered && environment.value.phase == EnvironmentPhase.READY) {
+                    try { outputStore.compact(journal) }
+                    catch (e: CancellationException) { throw e }
+                    catch (_: Exception) { mutableEnvironment.value = EnvironmentSnapshot(EnvironmentPhase.FAILED, "输出清理未完成，请重新检查运行环境", RuntimeError(ErrorCode.STORAGE_FULL, true)) }
+                }
+            }
+        } } }
         startInitialization()
     }
     override fun onBind(intent: Intent): IBinder = LocalBinder()
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int) = START_NOT_STICKY
     private fun startInitialization() {
         if (initialization?.isActive == true || coordinator.active.value != null) return
-        initialization = scope.launch {
-            mutableEnvironment.value = EnvironmentSnapshot(EnvironmentPhase.INITIALIZING, "正在验证本机运行环境")
+        // Reserve readiness before releasing admission; initialization uses the same boundary
+        // as submissions and idle cleanup, so maintenance cannot overlap a new run.
+        mutableEnvironment.value = EnvironmentSnapshot(EnvironmentPhase.INITIALIZING, "正在验证本机运行环境")
+        initialization = scope.launch { submission.withLock {
             try {
                 withTimeout(120_000) {
                     registry.recover()
                     if (!recovered) { coordinator.recover(); recovered = coordinator.connection.value == ConnectionState.CONNECTED }
                     check(recovered)
                     journal.compact()
+                    outputStore.compact(journal)
                     withContext(Dispatchers.IO) { AgentInputFiles.cleanup(java.io.File(filesDir, "agent-inputs")) }
                     runtime.initialize { message -> mutableEnvironment.value = EnvironmentSnapshot(EnvironmentPhase.INITIALIZING, message) }
                     check(runtime.dependenciesReady)
@@ -72,7 +95,7 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
             } catch (_: Exception) {
                 mutableEnvironment.value = EnvironmentSnapshot(EnvironmentPhase.FAILED, "运行环境初始化失败，请重试或检查安装", RuntimeError(ErrorCode.NOT_READY, true))
             }
-        }
+        } }
     }
     override suspend fun eventHistorySettings(): AdminResult<EventHistorySettings> = withContext(Dispatchers.IO) {
         try { AdminResult.Success(EventHistorySettingsStore(this@RuntimeService).load()) }
@@ -82,10 +105,10 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
         try { EventHistorySettingsStore(this@RuntimeService).save(settings); AdminResult.Success(Unit) }
         catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.STORAGE_FULL)) }
     }
-    override suspend fun initialize(): AdminResult<Unit> = withContext(Dispatchers.Main) {
+    override suspend fun initialize(): AdminResult<Unit> = withContext(Dispatchers.Main) { submission.withLock {
         if (coordinator.active.value != null) AdminResult.Failed(RuntimeError(ErrorCode.BUSY, true))
         else { startInitialization(); AdminResult.Success(Unit) }
-    }
+    } }
     @OptIn(ExperimentalCoroutinesApi::class)
     private val resourceDispatcher = Dispatchers.IO.limitedParallelism(1)
     override suspend fun previewResource(ref: ResourceRef, workspace: WorkspaceRef, expanded: Boolean): AdminResult<ResourcePreview> = withContext(resourceDispatcher) {
@@ -172,53 +195,56 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
         finally { chars?.fill('\u0000') }
     }
     @OptIn(ExperimentalCoroutinesApi::class)
-    override suspend fun executeShell(command: String): CommandResult = submission.withLock {
-        if (environment.value.phase != EnvironmentPhase.READY) return@withLock CommandResult.Rejected(RuntimeError(ErrorCode.NOT_READY, true))
-        if (command.isBlank() || command.toByteArray().size > 65536 || '\u0000' in command) return@withLock CommandResult.Rejected(RuntimeError(ErrorCode.INVALID_CONFIG))
-        if (!coordinator.acquireDiagnostic(shellId)) return@withLock CommandResult.Rejected(RuntimeError(ErrorCode.BUSY, true))
-        try { withContext(Dispatchers.Main) { beginForeground() } }
-        catch (_: Exception) { coordinator.releaseDiagnostic(shellId, true); return@withLock CommandResult.Rejected(RuntimeError(ErrorCode.PERMISSION_DENIED)) }
-        shellStopCause = null
-        diagnosticState.value = DiagnosticState(RunPhase.RUNNING)
-        shell = scope.launch(start = CoroutineStart.ATOMIC) {
-            var exit: Int? = null
-            var started = false
-            var error: ErrorCode? = null
-            try {
-                val secrets = listOf(AgentMode.CODEX, AgentMode.CLAUDE).mapNotNull { runCatching { GatewayStore(this@RuntimeService).load(it).key }.getOrNull() }.filter { it.isNotEmpty() }
-                runtime.runShell(command,
-                    onStarted = { started = true; registry.started(it) }, onTerminated = { exit = it; registry.terminated(it) }).collect { line ->
-                    val text = when (line) {
-                        is com.libtermux.executor.OutputLine.Stdout -> line.text
-                        is com.libtermux.executor.OutputLine.Stderr -> line.text
-                        is com.libtermux.executor.OutputLine.Exit -> { exit = line.code; null }
+    override suspend fun executeShell(command: String): CommandResult {
+        if (environment.value.phase != EnvironmentPhase.READY) return CommandResult.Rejected(RuntimeError(ErrorCode.NOT_READY, true))
+        return submission.withLock {
+            if (environment.value.phase != EnvironmentPhase.READY) return@withLock CommandResult.Rejected(RuntimeError(ErrorCode.NOT_READY, true))
+            if (command.isBlank() || command.toByteArray().size > 65536 || '\u0000' in command) return@withLock CommandResult.Rejected(RuntimeError(ErrorCode.INVALID_CONFIG))
+            if (!coordinator.acquireDiagnostic(shellId)) return@withLock CommandResult.Rejected(RuntimeError(ErrorCode.BUSY, true))
+            try { withContext(Dispatchers.Main) { beginForeground() } }
+            catch (_: Exception) { coordinator.releaseDiagnostic(shellId, true); return@withLock CommandResult.Rejected(RuntimeError(ErrorCode.PERMISSION_DENIED)) }
+            shellStopCause = null
+            diagnosticState.value = DiagnosticState(RunPhase.RUNNING)
+            shell = scope.launch(start = CoroutineStart.ATOMIC) {
+                var exit: Int? = null
+                var started = false
+                var error: ErrorCode? = null
+                try {
+                    val secrets = listOf(AgentMode.CODEX, AgentMode.CLAUDE).mapNotNull { runCatching { GatewayStore(this@RuntimeService).load(it).key }.getOrNull() }.filter { it.isNotEmpty() }
+                    runtime.runShell(command,
+                        onStarted = { started = true; registry.started(it) }, onTerminated = { exit = it; registry.terminated(it) }).collect { line ->
+                        val text = when (line) {
+                            is com.libtermux.executor.OutputLine.Stdout -> line.text
+                            is com.libtermux.executor.OutputLine.Stderr -> line.text
+                            is com.libtermux.executor.OutputLine.Exit -> { exit = line.code; null }
+                        }
+                        if (text != null) {
+                            val redacted = secrets.fold(text) { value, key -> value.replace(key, "[redacted]") }
+                            diagnosticState.update { it.copy(output = (it.output + redacted.take(4096)).takeLast(200)) }
+                        }
                     }
-                    if (text != null) {
-                        val redacted = secrets.fold(text) { value, key -> value.replace(key, "[redacted]") }
-                        diagnosticState.update { it.copy(output = (it.output + redacted.take(4096)).takeLast(200)) }
+                } catch (_: TimeoutCancellationException) { error = ErrorCode.TIMEOUT }
+                catch (_: CancellationException) { if (shellStopCause == null) error = ErrorCode.INTERRUPTED }
+                catch (_: Exception) { error = ErrorCode.PROTOCOL_ERROR }
+                finally {
+                    withContext(NonCancellable) {
+                        val confirmed = !started || exit != null
+                        val phase = when {
+                            !confirmed -> RunPhase.OUTCOME_UNKNOWN
+                            error == ErrorCode.TIMEOUT || shellStopCause == StopCause.TIMEOUT -> RunPhase.TIMED_OUT
+                            shellStopCause == StopCause.HOST_STOP -> RunPhase.INTERRUPTED
+                            error != null -> RunPhase.FAILED
+                            shellStopCause == StopCause.USER -> RunPhase.CANCELLED
+                            exit == 0 -> RunPhase.SUCCEEDED
+                            else -> RunPhase.FAILED
+                        }
+                        diagnosticState.update { it.copy(phase = phase, error = error?.let { code -> RuntimeError(code) }) }
+                        coordinator.releaseDiagnostic(shellId, confirmed)
                     }
-                }
-            } catch (_: TimeoutCancellationException) { error = ErrorCode.TIMEOUT }
-            catch (_: CancellationException) { if (shellStopCause == null) error = ErrorCode.INTERRUPTED }
-            catch (_: Exception) { error = ErrorCode.PROTOCOL_ERROR }
-            finally {
-                withContext(NonCancellable) {
-                    val confirmed = !started || exit != null
-                    val phase = when {
-                        !confirmed -> RunPhase.OUTCOME_UNKNOWN
-                        error == ErrorCode.TIMEOUT || shellStopCause == StopCause.TIMEOUT -> RunPhase.TIMED_OUT
-                        shellStopCause == StopCause.HOST_STOP -> RunPhase.INTERRUPTED
-                        error != null -> RunPhase.FAILED
-                        shellStopCause == StopCause.USER -> RunPhase.CANCELLED
-                        exit == 0 -> RunPhase.SUCCEEDED
-                        else -> RunPhase.FAILED
-                    }
-                    diagnosticState.update { it.copy(phase = phase, error = error?.let { code -> RuntimeError(code) }) }
-                    coordinator.releaseDiagnostic(shellId, confirmed)
                 }
             }
+            CommandResult.Accepted
         }
-        CommandResult.Accepted
     }
     override suspend fun stopShell(): CommandResult = requestShellStop(StopCause.USER)
     private fun requestShellStop(cause: StopCause): CommandResult {
@@ -258,6 +284,7 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
     }
     override fun onTimeout(startId: Int, fgsType: Int) {
         hostStopCause = StopCause.TIMEOUT
+        initialization?.cancel()
         mutableEnvironment.value = EnvironmentSnapshot(EnvironmentPhase.FAILED, "系统要求结束后台任务，正在停止执行", RuntimeError(ErrorCode.TIMEOUT, true))
         // The Android deadline must not depend on a journal lock or process cleanup completing.
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -266,6 +293,7 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
         scope.launch { finishHostStop(StopCause.TIMEOUT) }
     }
     override fun onDestroy() {
+        initialization?.cancel()
         val cause = hostStopCause ?: StopCause.HOST_STOP
         mutableEnvironment.value = EnvironmentSnapshot(EnvironmentPhase.FAILED, "运行服务已停止，正在核实任务状态", RuntimeError(if (cause == StopCause.TIMEOUT) ErrorCode.TIMEOUT else ErrorCode.INTERRUPTED, true))
         scope.launch(NonCancellable) {

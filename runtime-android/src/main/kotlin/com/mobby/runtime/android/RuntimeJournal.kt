@@ -20,7 +20,7 @@ internal data class EventHistoryPolicy(val maxAgeMillis: Long = 30L * 24 * 60 * 
  * bounded, platform-sanitized approval scopes are persisted for explicit user review. */
 internal class RuntimeJournal(context: Context, private val historyPolicy: EventHistoryPolicy = EventHistoryPolicy(),
     private val policyProvider: () -> EventHistoryPolicy = { historyPolicy },
-    private val clock: () -> Long = System::currentTimeMillis) : SQLiteOpenHelper(context, "runtime-journal.db", null, 1), JournalPort {
+    private val clock: () -> Long = System::currentTimeMillis) : SQLiteOpenHelper(context, "runtime-journal.db", null, 2), JournalPort {
     private val json = Json { ignoreUnknownKeys = true }
     override fun onConfigure(db: SQLiteDatabase) { db.setForeignKeyConstraintsEnabled(true) }
     override fun onCreate(db: SQLiteDatabase) {
@@ -28,8 +28,39 @@ internal class RuntimeJournal(context: Context, private val historyPolicy: Event
         db.execSQL("CREATE UNIQUE INDEX execution_slot ON runs(busy) WHERE busy=1")
         db.execSQL("CREATE TABLE commands (id TEXT PRIMARY KEY, body TEXT NOT NULL)")
         db.execSQL("CREATE TABLE events (run_id TEXT NOT NULL REFERENCES runs(id), sequence INTEGER NOT NULL, body TEXT NOT NULL, PRIMARY KEY(run_id,sequence))")
+        createOutputRetention(db)
     }
-    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) { error("Explicit runtime journal migration required") }
+    private fun createOutputRetention(db: SQLiteDatabase) {
+        db.execSQL("CREATE TABLE output_retention (run_id TEXT PRIMARY KEY NOT NULL REFERENCES runs(id), finished_at INTEGER NOT NULL, expired INTEGER NOT NULL DEFAULT 0)")
+    }
+    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        check(oldVersion == 1 && newVersion == 2)
+        createOutputRetention(db)
+        db.rawQuery("SELECT r.id,r.snapshot,e.body FROM runs r LEFT JOIN events e ON e.run_id=r.id AND e.sequence=r.sequence", emptyArray()).use { cursor ->
+            while (cursor.moveToNext()) {
+                val snapshot = json.decodeFromString<RunSnapshot>(cursor.getString(1))
+                if (snapshot.phase.terminal) {
+                    val finished = if (cursor.isNull(2)) clock() else json.decodeFromString<EventEnvelope>(cursor.getString(2)).occurredAtEpochMillis
+                    recordOutputCompletion(db, snapshot.runId, finished)
+                }
+            }
+        }
+    }
+    private fun recordOutputCompletion(db: SQLiteDatabase, id: RunId, time: Long) {
+        db.insertWithOnConflict("output_retention", null, ContentValues().apply { put("run_id", id.value); put("finished_at", time) }, SQLiteDatabase.CONFLICT_IGNORE)
+    }
+    suspend fun outputCandidates(): List<OutputRetentionCandidate> = withContext(Dispatchers.IO) {
+        readableDatabase.rawQuery("SELECT o.run_id,o.finished_at,o.expired FROM output_retention o JOIN runs r ON r.id=o.run_id WHERE r.busy=0 ORDER BY o.finished_at,o.run_id", emptyArray()).use { cursor ->
+            buildList { while (cursor.moveToNext()) add(OutputRetentionCandidate(RunId(cursor.getString(0)), cursor.getLong(1), cursor.getInt(2) != 0)) }
+        }
+    }
+    suspend fun outputExpired(id: RunId): Boolean = withContext(Dispatchers.IO) {
+        readableDatabase.rawQuery("SELECT expired FROM output_retention WHERE run_id=?", arrayOf(id.value)).use { it.moveToFirst() && it.getInt(0) != 0 }
+    }
+    suspend fun expireOutput(id: RunId): Boolean = withContext(Dispatchers.IO) {
+        writableDatabase.update("output_retention", ContentValues().apply { put("expired", 1) },
+            "run_id=? AND run_id IN (SELECT id FROM runs WHERE busy=0)", arrayOf(id.value)) == 1
+    }
     override suspend fun command(id: CommandId): CommandRecord? = withContext(Dispatchers.IO) {
         readableDatabase.rawQuery("SELECT body FROM commands WHERE id=?", arrayOf(id.value)).use {
             if (it.moveToFirst()) json.decodeFromString<CommandRecord>(it.getString(0)) else null
@@ -62,7 +93,7 @@ internal class RuntimeJournal(context: Context, private val historyPolicy: Event
             }, "id=? AND sequence=?", arrayOf(snapshot.runId.value, (snapshot.lastSequence - 1).toString())) == 1) { "Journal sequence conflict" }
             insertEvent(db, event)
             if (command != null) insertCommand(db, command)
-            if (snapshot.phase.terminal) compact(db)
+            if (snapshot.phase.terminal) { recordOutputCompletion(db, snapshot.runId, event.occurredAtEpochMillis); compact(db) }
         }
     }
     /** Only redundant terminal event history is removed. Snapshots, request digests and receipts survive. */
@@ -121,3 +152,5 @@ internal class RuntimeJournal(context: Context, private val historyPolicy: Event
         })
     }
 }
+
+internal data class OutputRetentionCandidate(val id: RunId, val finishedAt: Long, val expired: Boolean)
