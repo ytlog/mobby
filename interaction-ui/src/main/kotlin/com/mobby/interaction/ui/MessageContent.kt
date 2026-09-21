@@ -68,8 +68,7 @@ internal fun ExecutionPhase?.label(): String = when (this) {
                     vm.actions.stepExpansion(turn.id, step.id, !open)
                     if (!open) vm.actions.expansion(turn.id, true)
                 } }.heightIn(min = 48.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                    Icon(if (step.outcome == "FAILED") Icons.Outlined.ErrorOutline else if (step.outcome != null) Icons.Outlined.Check else Icons.Outlined.MoreHoriz,
-                        step.outcome ?: "步骤进行中", Modifier.size(20.dp))
+                    StepStatus(step.outcome, turn.phase)
                     Text(step.summary.ifBlank { step.kind }, Modifier.weight(1f).padding(horizontal = 10.dp), maxLines = 2, style = MaterialTheme.typography.bodySmall)
                     Icon(if (open) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, if (open) "已展开" else "已收起")
                 }
@@ -113,4 +112,19 @@ internal fun ExecutionPhase?.label(): String = when (this) {
             }
         }
     }
+}
+
+@Composable internal fun StepStatus(outcome: String?, phase: ExecutionPhase?) {
+    val (icon, label) = when (outcome) {
+        "SUCCEEDED" -> Icons.Outlined.Check to "步骤完成"
+        "FAILED" -> Icons.Outlined.ErrorOutline to "步骤失败"
+        "CANCELLED" -> Icons.Outlined.Cancel to "步骤已取消"
+        null -> when (phase) {
+            ExecutionPhase.ACCEPTED, ExecutionPhase.RUNNING, ExecutionPhase.AWAITING_APPROVAL -> Icons.Outlined.MoreHoriz to "步骤进行中"
+            ExecutionPhase.CANCELLING -> Icons.Outlined.MoreHoriz to "步骤停止中"
+            else -> Icons.Outlined.HelpOutline to "步骤结果未确认"
+        }
+        else -> Icons.Outlined.HelpOutline to "步骤结果未确认"
+    }
+    Icon(icon, label, Modifier.size(20.dp))
 }
