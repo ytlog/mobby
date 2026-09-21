@@ -15,7 +15,7 @@ import java.security.MessageDigest
 import java.util.Base64
 
 /** Immutable imported content. External URIs and caller-chosen paths never reach execution. */
-internal class ResourceStore(private val root: File) {
+internal class ResourceStore(private val root: File, private val budgetBytes: () -> Long = { DEFAULT_BUDGET_BYTES }) {
     @Serializable private data class Document(val name: String, val text: String)
     @Serializable private data class ImageDocument(val name: String, val mediaType: String, val base64: String)
     class Image(val name: String, val mediaType: String, val bytes: ByteArray)
@@ -26,7 +26,7 @@ internal class ResourceStore(private val root: File) {
         require(root.isDirectory || root.mkdirs())
         return root
     }
-    fun save(request: ImportResourceRequest): ResourceSummary {
+    fun save(request: ImportResourceRequest): ResourceSummary = synchronized(importLock) {
         require(request.workspaceRef.value == "default")
         require(request.name.isNotBlank() && request.name.length <= 200 && request.name.none { it.isISOControl() || it == '/' || it == '\\' })
         require(request.bytes.isNotEmpty() && request.bytes.size <= MAX_IMAGE_BYTES)
@@ -48,13 +48,22 @@ internal class ResourceStore(private val root: File) {
         val digest = hash(encoded)
         val target = File(directory(), digest)
         if (!target.exists()) {
+            val limit = budgetBytes().also { require(it >= 0) }
+            var used = 0L
+            Files.newDirectoryStream(root.toPath()).use { entries ->
+                for (entry in entries) {
+                    check(Files.isRegularFile(entry, NOFOLLOW_LINKS)) { "Unexpected attachment storage entry" }
+                    used = Math.addExact(used, Files.size(entry))
+                }
+            }
+            if (used > limit || encoded.size.toLong() > limit - used) throw QuotaExceeded()
             val temporary = File.createTempFile("import-", ".tmp", root)
             try {
                 FileOutputStream(temporary).use { it.write(encoded); it.fd.sync() }
                 Files.move(temporary.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE)
             } finally { temporary.delete() }
         }
-        return summary(ResourceRef("$prefix:$digest"), request.workspaceRef)
+        summary(ResourceRef("$prefix:$digest"), request.workspaceRef)
     }
     private fun encoded(ref: ResourceRef, workspace: WorkspaceRef, prefix: String, limit: Int): ByteArray {
         require(workspace.value == "default")
@@ -143,6 +152,7 @@ internal class ResourceStore(private val root: File) {
         bitmap.recycle()
     }
     private fun hash(bytes: ByteArray) = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+    class QuotaExceeded : java.io.IOException("Attachment storage budget exceeded")
     class InputTooLarge : IllegalArgumentException()
-    companion object { const val MAX_BYTES = 32 * 1024; const val MAX_IMAGE_BYTES = 2 * 1024 * 1024; const val MAX_FILES = 4; const val MAX_INPUT_BYTES = 65536 }
+    companion object { private val importLock = Any(); const val DEFAULT_BUDGET_BYTES = 512L * 1024 * 1024; const val MAX_BYTES = 32 * 1024; const val MAX_IMAGE_BYTES = 2 * 1024 * 1024; const val MAX_FILES = 4; const val MAX_INPUT_BYTES = 65536 }
 }

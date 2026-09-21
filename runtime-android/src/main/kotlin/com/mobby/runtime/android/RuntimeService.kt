@@ -116,9 +116,10 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
         catch (e: CancellationException) { throw e }
         catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.RESOURCE_MISSING)) }
     }
-    private fun resources() = ResourceStore(java.io.File(filesDir, "input-resources"))
+    private fun resources() = ResourceStore(java.io.File(filesDir, "input-resources"), EventHistorySettingsStore(this)::attachmentBudgetBytes)
     override suspend fun importResource(request: ImportResourceRequest): AdminResult<ResourceSummary> = withContext(resourceDispatcher) {
         try { AdminResult.Success(resources().save(request)) }
+        catch (_: ResourceStore.QuotaExceeded) { AdminResult.Failed(RuntimeError(ErrorCode.RESOURCE_BUDGET_EXCEEDED)) }
         catch (_: IllegalArgumentException) { AdminResult.Failed(RuntimeError(ErrorCode.INVALID_CONFIG)) }
         catch (_: java.nio.charset.CharacterCodingException) { AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY)) }
         catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.STORAGE_FULL, true)) }

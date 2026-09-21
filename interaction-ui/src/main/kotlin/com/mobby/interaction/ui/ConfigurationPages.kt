@@ -85,7 +85,7 @@ import kotlinx.coroutines.*
         PageHeader("设置", back)
         Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             TextButton(onClick = { navigate("gateway") }) { Text("网关设置") }
-            TextButton(onClick = { navigate("history-limits") }) { Text("运行日志保留") }
+            TextButton(onClick = { navigate("history-limits") }) { Text("存储与保留") }
             Text("运行环境：${system.message}")
             OutlinedButton(onClick = { vm.enqueue { vm.report(vm.actions.initialize()) } }) { Text("重新检查运行环境") }
             TextButton(onClick = { navigate("diagnostic") }) { Text("Shell 诊断") }

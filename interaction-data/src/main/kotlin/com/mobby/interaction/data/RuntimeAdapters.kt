@@ -17,6 +17,7 @@ internal fun RuntimeError.message(): String = when (code) {
     ErrorCode.UNSUPPORTED_CAPABILITY -> "当前 Agent 尚不支持此能力"
     ErrorCode.DISCONNECTED -> "连接中断，结果待确认"
     ErrorCode.RESOURCE_MISSING -> "所需文件不存在或不可读取"
+    ErrorCode.RESOURCE_BUDGET_EXCEEDED -> "附件存储已达上限，可在存储与保留设置中提高附件容量；已有附件已保留"
     ErrorCode.STORAGE_FULL -> "存储写入失败，请检查可用空间"
     ErrorCode.TIMEOUT -> "任务执行超时"
     ErrorCode.INTERRUPTED -> "执行中断，结果待确认"
@@ -174,14 +175,14 @@ internal class RuntimeSystemAdapter(private val context: android.content.Context
         catch (_: Exception) { DataResult.Failed("无法导入：请选择不超过 128 KiB 的 UTF-8 Markdown 文件") }
     }
     override suspend fun eventHistoryLimits(): DataResult<EventHistoryLimits> = when (val result = admin.eventHistorySettings()) {
-        is AdminResult.Success -> DataResult.Loaded(EventHistoryLimits(result.value.retentionDays, result.value.budgetMiB, result.value.outputRetentionDays, result.value.outputBudgetMiB))
-        is AdminResult.Failed -> DataResult.Failed(if (result.error.code == ErrorCode.DISCONNECTED) "连接中断，请重试" else "无法读取日志设置，请重试")
+        is AdminResult.Success -> DataResult.Loaded(EventHistoryLimits(result.value.retentionDays, result.value.budgetMiB, result.value.outputRetentionDays, result.value.outputBudgetMiB, result.value.attachmentBudgetMiB))
+        is AdminResult.Failed -> DataResult.Failed(if (result.error.code == ErrorCode.DISCONNECTED) "连接中断，请重试" else "无法读取存储设置，请重试")
     }
     override suspend fun saveEventHistoryLimits(value: EventHistoryLimits): OperationResult {
-        if (value.days !in 1..3650 || value.mib !in 1..1024 || value.outputDays !in 1..3650 || value.outputMiB !in 1..4096) return OperationResult.Failed("日志保留设置超出范围")
-        return when (val result = admin.saveEventHistorySettings(EventHistorySettings(value.days, value.mib, value.outputDays, value.outputMiB))) {
+        if (value.days !in 1..3650 || value.mib !in 1..1024 || value.outputDays !in 1..3650 || value.outputMiB !in 1..4096 || value.attachmentMiB !in 1..8192) return OperationResult.Failed("存储设置超出范围")
+        return when (val result = admin.saveEventHistorySettings(EventHistorySettings(value.days, value.mib, value.outputDays, value.outputMiB, value.attachmentMiB))) {
             is AdminResult.Success -> OperationResult.Done
-            is AdminResult.Failed -> OperationResult.Failed(if (result.error.code == ErrorCode.DISCONNECTED) "连接中断，保存未确认" else "无法保存日志设置，请重试")
+            is AdminResult.Failed -> OperationResult.Failed(if (result.error.code == ErrorCode.DISCONNECTED) "连接中断，保存未确认" else "无法保存存储设置，请重试")
         }
     }
     override val status = combine(client.connection, admin.environment, diagnostics.state) { connection, environment, diagnostic ->
