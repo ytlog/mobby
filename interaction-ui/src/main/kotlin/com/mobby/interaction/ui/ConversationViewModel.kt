@@ -120,14 +120,90 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
         }
     }
     val skillEditor = MutableStateFlow<SkillEditor?>(null)
-    fun loadSkills(agent: AgentId) = enqueue {
-        skillsLoading.value = true; skillsError.value = null
-        try {
-            when (val result = actions.skills(agent)) {
-                is DataResult.Loaded -> skills.value = result.value
-                is DataResult.Failed -> { skills.value = emptyList(); skillsError.value = result.message }
+    val skillEditorSaved = MutableStateFlow<Long?>(null)
+    private var editorOperation = 0L
+    fun openManualSkill(agent: AgentId) {
+        skillEditorSaved.value = null
+        skillEditor.value = SkillEditor(agent, manual = true, operation = ++editorOperation)
+    }
+    fun editSkill(value: SkillEditor) {
+        skillEditor.update { current ->
+            if (current?.operation == value.operation && !current.busy) value.copy(error = null) else current
+        }
+    }
+    fun consumeSkillEditorSaved(operation: Long) { skillEditorSaved.compareAndSet(operation, null) }
+    fun importSkillFile(agent: AgentId, location: String) {
+        skillEditorSaved.value = null
+        skillEditor.value = SkillEditor(agent, manual = false, operation = ++editorOperation)
+        runSkillEditor("文件读取未完成，请重新选择") { editor ->
+            when (val result = actions.readSkillImport(location)) {
+                is DataResult.Loaded -> editor.copy(name = result.value.name, description = result.value.description,
+                    body = result.value.body, markdown = result.value.markdown,
+                    preview = result.value.takeIf { it.issues.isEmpty() },
+                    error = result.value.issues.joinToString("\n").ifBlank { null })
+                is DataResult.Failed -> editor.copy(error = result.message)
             }
-        } finally { skillsLoading.value = false }
+        }
+    }
+    fun validateSkillEditor() = runSkillEditor("校验未完成，编辑内容已保留，请重试") { editor ->
+        when (val result = if (editor.manual) actions.previewManualSkill(editor.agent, editor.name, editor.description, editor.body)
+            else actions.previewSkill(editor.markdown)) {
+            is DataResult.Loaded -> editor.copy(preview = result.value)
+            is DataResult.Failed -> editor.copy(error = result.message)
+        }
+    }
+    fun saveSkillEditor() {
+        if (skillEditor.value?.preview?.issues?.isEmpty() != true) return
+        runSkillEditor("保存结果未确认，编辑内容已保留，请核对技能目录") { editor ->
+            when (val result = if (editor.manual) actions.saveManualSkill(editor.agent, editor.name, editor.description, editor.body)
+                else actions.importSkill(editor.agent, requireNotNull(editor.preview).markdown)) {
+                is DataResult.Loaded -> null
+                is DataResult.Failed -> editor.copy(error = result.message)
+            }
+        }
+    }
+    // Each operation owns only the editor version it started from. A late import,
+    // validation or save cannot replace a newer draft or navigate its page away.
+    private fun runSkillEditor(failure: String, action: suspend (SkillEditor) -> SkillEditor?) {
+        val original = skillEditor.value?.takeUnless { it.busy } ?: return
+        val editor = original.copy(busy = true, error = null, operation = ++editorOperation)
+        skillEditor.value = editor
+        viewModelScope.launch {
+            try {
+                val result = action(editor)
+                if (skillEditor.value?.operation == editor.operation) {
+                    skillEditor.value = result?.copy(busy = false)
+                    if (result == null) skillEditorSaved.value = editor.operation
+                }
+                if (result == null) {
+                    loadSkills(catalogueAgent ?: editor.agent)
+                    feedback.trySend("技能已保存，可加入本轮草稿")
+                }
+            } catch (e: CancellationException) { throw e }
+            catch (_: Exception) {
+                skillEditor.update { if (it?.operation == editor.operation) it.copy(error = failure) else it }
+            } finally {
+                skillEditor.update { if (it?.operation == editor.operation) it.copy(busy = false) else it }
+            }
+        }
+    }
+    private var catalogueOperation = 0L
+    private var catalogueAgent: AgentId? = null
+    fun loadSkills(agent: AgentId) {
+        catalogueAgent = agent
+        val operation = ++catalogueOperation
+        skillsLoading.value = true; skillsError.value = null
+        viewModelScope.launch {
+            try {
+                val result = actions.skills(agent)
+                if (operation == catalogueOperation) when (result) {
+                    is DataResult.Loaded -> skills.value = result.value
+                    is DataResult.Failed -> { skills.value = emptyList(); skillsError.value = result.message }
+                }
+            } catch (e: CancellationException) { throw e }
+            catch (_: Exception) { if (operation == catalogueOperation) skillsError.value = "技能目录读取未完成，请重试" }
+            finally { if (operation == catalogueOperation) skillsLoading.value = false }
+        }
     }
     val feedback = Channel<String>(Channel.BUFFERED)
     private val queue = Channel<suspend () -> Unit>(Channel.UNLIMITED)

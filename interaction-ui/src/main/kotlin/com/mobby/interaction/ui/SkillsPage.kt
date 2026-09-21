@@ -19,7 +19,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mobby.interaction.domain.*
 
 internal data class SkillEditor(val agent: AgentId, val manual: Boolean, val name: String = "", val description: String = "", val body: String = "",
-    val markdown: String = "", val preview: SkillContent? = null, val error: String? = null, val busy: Boolean = false)
+    val markdown: String = "", val preview: SkillContent? = null, val error: String? = null, val busy: Boolean = false, val operation: Long = 0)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable internal fun SkillsPage(vm: ConversationViewModel, onBack: () -> Unit, onConversation: () -> Unit) {
@@ -43,14 +43,14 @@ internal data class SkillEditor(val agent: AgentId, val manual: Boolean, val nam
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             page = "editor"
-            vm.skillEditor.value = SkillEditor(importAgent, manual = false, busy = true)
-            vm.enqueue {
-                when (val loaded = vm.actions.readSkillImport(uri.toString())) {
-                    is DataResult.Loaded -> vm.skillEditor.value = SkillEditor(importAgent, false, loaded.value.name, loaded.value.description, loaded.value.body, loaded.value.markdown,
-                        preview = loaded.value.takeIf { it.issues.isEmpty() }, error = loaded.value.issues.joinToString("\n").ifBlank { null })
-                    is DataResult.Failed -> vm.skillEditor.value = SkillEditor(importAgent, false, error = loaded.message)
-                }
-            }
+            vm.importSkillFile(importAgent, uri.toString())
+        }
+    }
+    val saved by vm.skillEditorSaved.collectAsStateWithLifecycle()
+    LaunchedEffect(saved) {
+        saved?.let { operation ->
+            if (page == "editor" && vm.skillEditor.value == null) page = "list"
+            vm.consumeSkillEditorSaved(operation)
         }
     }
     LaunchedEffect(agent) { vm.loadSkills(agent) }
@@ -69,7 +69,7 @@ internal data class SkillEditor(val agent: AgentId, val manual: Boolean, val nam
             if (page == "list") ActionIcon("添加技能", { adding = true }, Icons.Outlined.Add)
         }
         when (page) {
-            "editor" -> SkillEditorPage(editor, vm, onSaved = { page = "list"; vm.loadSkills(agent) })
+            "editor" -> SkillEditorPage(editor, vm)
             "detail" -> Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 val skill = skills.firstOrNull { it.ref == selectedRef }
                 Text(skill?.name ?: "技能", style = MaterialTheme.typography.headlineSmall)
@@ -126,14 +126,14 @@ internal data class SkillEditor(val agent: AgentId, val manual: Boolean, val nam
             }, enabled = creator != null && conversation != null) { Text("与 mobby 对话创建") }
             if (creator == null) Text("当前 Agent 未发现可用的 Skill Creator", style = MaterialTheme.typography.bodySmall)
             TextButton(onClick = { adding = false; importAgent = agent; picker.launch(arrayOf("text/markdown", "text/plain", "text/x-markdown", "application/octet-stream")) }) { Text("导入技能文件（.md）") }
-            TextButton(onClick = { adding = false; vm.skillEditor.value = SkillEditor(agent, manual = true); page = "editor" }) { Text("手动创建") }
+            TextButton(onClick = { adding = false; vm.openManualSkill(agent); page = "editor" }) { Text("手动创建") }
         }
     }
 }
 
-@Composable private fun SkillEditorPage(editor: SkillEditor?, vm: ConversationViewModel, onSaved: () -> Unit) {
+@Composable private fun SkillEditorPage(editor: SkillEditor?, vm: ConversationViewModel) {
     if (editor == null) return
-    fun change(value: SkillEditor) { vm.skillEditor.value = value.copy(error = null) }
+    fun change(value: SkillEditor) { vm.editSkill(value) }
     Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("适用 Agent：${editor.agent.label()}")
         editor.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -145,17 +145,7 @@ internal data class SkillEditor(val agent: AgentId, val manual: Boolean, val nam
             preview.issues.forEach { Text(it, color = MaterialTheme.colorScheme.error) }
             androidx.compose.foundation.text.selection.SelectionContainer { Text(preview.body, style = MaterialTheme.typography.bodyLarge) }
             TextButton(onClick = { change(editor.copy(preview = null)) }, enabled = !editor.busy) { Text("返回修改") }
-            Button(onClick = {
-                change(editor.copy(busy = true))
-                vm.enqueue {
-                    val result = if (editor.manual) vm.actions.saveManualSkill(editor.agent, editor.name, editor.description, editor.body)
-                        else vm.actions.importSkill(editor.agent, preview.markdown)
-                    when (result) {
-                        is DataResult.Loaded -> { vm.skillEditor.value = null; vm.feedback.send("技能已保存，可加入本轮草稿"); onSaved() }
-                        is DataResult.Failed -> vm.skillEditor.value = editor.copy(error = result.message, busy = false)
-                    }
-                }
-            }, enabled = !editor.busy && preview.issues.isEmpty()) { Text("保存技能") }
+            Button(onClick = vm::saveSkillEditor, enabled = !editor.busy && preview.issues.isEmpty()) { Text("保存技能") }
         } else {
             if (editor.manual) {
                 OutlinedTextField(editor.name, { change(editor.copy(name = it)) }, Modifier.fillMaxWidth(), label = { Text("名称（小写英文、数字、连字符）") }, singleLine = true, enabled = !editor.busy)
@@ -166,15 +156,7 @@ internal data class SkillEditor(val agent: AgentId, val manual: Boolean, val nam
                 OutlinedTextField(editor.markdown, { change(editor.copy(markdown = it)) }, Modifier.fillMaxWidth(), label = { Text("SKILL.md 原文") }, minLines = 6, maxLines = 14, enabled = !editor.busy)
                 if (!editor.markdown.removePrefix("\uFEFF").trimStart().startsWith("---")) TextButton(onClick = { change(editor.copy(manual = true, body = editor.markdown)) }, enabled = !editor.busy) { Text("为普通 Markdown 补全元信息") }
             }
-            Button(onClick = {
-                change(editor.copy(busy = true))
-                vm.enqueue {
-                    when (val result = if (editor.manual) vm.actions.previewManualSkill(editor.agent, editor.name, editor.description, editor.body) else vm.actions.previewSkill(editor.markdown)) {
-                        is DataResult.Loaded -> vm.skillEditor.value = editor.copy(preview = result.value, busy = false)
-                        is DataResult.Failed -> vm.skillEditor.value = editor.copy(error = result.message, busy = false)
-                    }
-                }
-            }, enabled = !editor.busy) { Text("校验并预览") }
+            Button(onClick = vm::validateSkillEditor, enabled = !editor.busy) { Text("校验并预览") }
         }
         Text("同名技能不会覆盖。保存不会启动任务；技能会进入 Agent 的本机技能目录。", style = MaterialTheme.typography.bodySmall)
     }
