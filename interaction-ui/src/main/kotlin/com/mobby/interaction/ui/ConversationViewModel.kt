@@ -119,6 +119,40 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
             finally { skillProposal.update { if (it?.operation == operation) it.copy(busy = false) else it } }
         }
     }
+    val workspaces = MutableStateFlow<List<WorkspaceOption>>(emptyList())
+    val workspaceError = MutableStateFlow<String?>(null)
+    val workspaceCreating = MutableStateFlow(false)
+    val workspaceCreated = MutableStateFlow<WorkspaceOption?>(null)
+    private var workspaceQuery = 0L
+    fun loadWorkspaces() {
+        val query = ++workspaceQuery
+        workspaceError.value = null
+        viewModelScope.launch {
+            try {
+                val result = actions.workspaces()
+                if (query == workspaceQuery) when (result) {
+                    is DataResult.Loaded -> workspaces.value = result.value
+                    is DataResult.Failed -> { workspaces.value = emptyList(); workspaceError.value = result.message }
+                }
+            } catch (e: CancellationException) { throw e }
+            catch (_: Exception) { if (query == workspaceQuery) workspaceError.value = "工作区读取失败，请重试" }
+        }
+    }
+    fun createWorkspace(name: String) {
+        if (workspaceCreating.value) return
+        workspaceCreating.value = true; workspaceError.value = null
+        viewModelScope.launch {
+            try {
+                when (val result = actions.createWorkspace(name)) {
+                    is DataResult.Loaded -> { workspaceCreated.value = result.value; loadWorkspaces() }
+                    is DataResult.Failed -> workspaceError.value = result.message
+                }
+            } catch (e: CancellationException) { throw e }
+            catch (_: Exception) { workspaceError.value = "工作区创建结果未确认，请刷新目录核对" }
+            finally { workspaceCreating.value = false }
+        }
+    }
+    fun consumeWorkspaceCreated(value: WorkspaceOption) { workspaceCreated.compareAndSet(value, null) }
     val skillEditor = MutableStateFlow<SkillEditor?>(null)
     val skillEditorSaved = MutableStateFlow<Long?>(null)
     private var editorOperation = 0L

@@ -29,7 +29,10 @@ data class GatewayCheck(val profile: GatewayProfileRef, val outcome: GatewayChec
 data class EventHistorySettings(val retentionDays: Int = 30, val budgetMiB: Int = 32, val outputRetentionDays: Int = 30, val outputBudgetMiB: Int = 256, val attachmentBudgetMiB: Int = 512) {
     init { require(retentionDays in 1..3650 && budgetMiB in 1..1024 && outputRetentionDays in 1..3650 && outputBudgetMiB in 1..4096 && attachmentBudgetMiB in 1..8192) }
 }
+data class WorkspaceSummary(val ref: WorkspaceRef, val name: String)
 interface RuntimeAdminClient {
+    suspend fun listWorkspaces(): AdminResult<List<WorkspaceSummary>> = AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
+    suspend fun createWorkspace(name: String): AdminResult<WorkspaceSummary> = AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
     suspend fun eventHistorySettings(): AdminResult<EventHistorySettings> = AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
     suspend fun saveEventHistorySettings(settings: EventHistorySettings): AdminResult<Unit> = AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
     suspend fun validateGateway(profile: GatewayProfileRef): AdminResult<GatewayCheck>

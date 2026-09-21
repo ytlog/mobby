@@ -16,6 +16,13 @@ class ImageResourceTest {
     @get:Rule val temporary = TemporaryFolder()
     private val workspace = WorkspaceRef("default")
     private val png = Base64.getDecoder().decode("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEUlEQVR4nGP4z8AARAxg8j8AG/ID/fPnS7EAAAAASUVORK5CYII=")
+    @Test fun `image attachments retain bytes and reject a different workspace`() {
+        val store = ResourceStore(temporary.newFolder())
+        val other = WorkspaceRef("local-12345678-1234-1234-1234-123456789abc")
+        val image = store.save(ImportResourceRequest(other, "photo.png", png))
+        assertArrayEquals(png, store.image(image.ref, other).bytes)
+        assertThrows(Exception::class.java) { store.image(image.ref, workspace) }
+    }
     @Test fun `selected PNG imports as an image instead of invalid UTF8`() {
         val root = temporary.newFolder()
         val result = ResourceStore(root).save(ImportResourceRequest(workspace, "photo.png", png))

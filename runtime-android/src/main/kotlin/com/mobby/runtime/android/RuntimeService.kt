@@ -118,7 +118,10 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
     }
     private fun resources() = ResourceStore(java.io.File(filesDir, "input-resources"), EventHistorySettingsStore(this)::attachmentBudgetBytes)
     override suspend fun importResource(request: ImportResourceRequest): AdminResult<ResourceSummary> = withContext(resourceDispatcher) {
-        try { AdminResult.Success(resources().save(request)) }
+        try {
+            require(WorkspaceStore.forContext(this@RuntimeService).resolve(request.workspaceRef) != null)
+            AdminResult.Success(resources().save(request))
+        }
         catch (_: ResourceStore.QuotaExceeded) { AdminResult.Failed(RuntimeError(ErrorCode.RESOURCE_BUDGET_EXCEEDED)) }
         catch (_: IllegalArgumentException) { AdminResult.Failed(RuntimeError(ErrorCode.INVALID_CONFIG)) }
         catch (_: java.nio.charset.CharacterCodingException) { AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY)) }
@@ -127,6 +130,21 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
     override suspend fun resource(ref: ResourceRef, workspace: WorkspaceRef): AdminResult<ResourceSummary> = withContext(resourceDispatcher) {
         try { AdminResult.Success(resources().summary(ref, workspace)) }
         catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.RESOURCE_MISSING)) }
+    }
+    override suspend fun listWorkspaces(): AdminResult<List<WorkspaceSummary>> = withContext(Dispatchers.IO) {
+        if (environment.value.phase != EnvironmentPhase.READY) return@withContext AdminResult.Failed(RuntimeError(ErrorCode.NOT_READY, true))
+        try { AdminResult.Success(runtime.workspaces.list()) }
+        catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.RESOURCE_MISSING)) }
+    }
+    override suspend fun createWorkspace(name: String): AdminResult<WorkspaceSummary> = withContext(Dispatchers.IO) {
+        if (environment.value.phase != EnvironmentPhase.READY) return@withContext AdminResult.Failed(RuntimeError(ErrorCode.NOT_READY, true))
+        try {
+            AdminResult.Success(runtime.workspaces.create(name) { directory ->
+                check(runtime.sdk.executor.execute("git init -q .", directory).isSuccess)
+            })
+        } catch (e: CancellationException) { throw e }
+        catch (_: IllegalArgumentException) { AdminResult.Failed(RuntimeError(ErrorCode.INVALID_CONFIG)) }
+        catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.STORAGE_FULL, true)) }
     }
     private fun skills() = SkillStore(runtime.sdk.vfs.homeDir)
     override suspend fun listSkills(agent: AgentId): AdminResult<List<SkillSummary>> = withContext(Dispatchers.IO) {

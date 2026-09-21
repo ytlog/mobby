@@ -29,7 +29,7 @@ internal class AndroidRuntimePorts(
     }
     override suspend fun validate(request: RunRequest): RuntimeError? = withContext(Dispatchers.IO) {
         if (state.value.phase != EnvironmentPhase.READY) return@withContext RuntimeError(ErrorCode.NOT_READY, true)
-        if (request.workspaceRef.value != "default") return@withContext RuntimeError(ErrorCode.PERMISSION_DENIED)
+        if (runtime.workspaces.resolve(request.workspaceRef) == null) return@withContext RuntimeError(ErrorCode.PERMISSION_DENIED)
         if (request.reasoningLevel != null)
             return@withContext RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY)
         if (request.capabilityRefs.size > 8 || request.capabilityRefs.any { skills.resolve(it, request.agentId) == null })
@@ -57,6 +57,7 @@ internal class AndroidRuntimePorts(
         var started = false
         var exit: Int? = null
         val worker = async(Dispatchers.IO) {
+            val workingDirectory = requireNotNull(runtime.workspaces.resolve(request.workspaceRef))
             val prepared = resources.prepare(request.inputParts, request.workspaceRef)
             var prompt = skills.prompt(request.agentId, request.capabilityRefs, prepared.prompt)
             if (request.requestedOutput == RequestedOutput.SKILL_PROPOSAL) {
@@ -69,7 +70,7 @@ internal class AndroidRuntimePorts(
                 val args = AgentCommand.arguments(request, runtime.executable(mode(request.agentId)), prompt, input?.imagePaths.orEmpty(), session != null, approvals = session != null)
                 runtime.sdk.executor.executeArgsStreaming(listOf(File(runtime.sdk.vfs.binDir, "node").absolutePath,
                     File(context.filesDir, "gateway.cjs").absolutePath, mode(request.agentId).name) + args,
-                    runtime.workspace, mapOf("MOBBY_GATEWAY_CONFIG" to config.json()),
+                    workingDirectory, mapOf("MOBBY_GATEWAY_CONFIG" to config.json()),
                     onStarted = { pid -> started = true; registry.started(pid) },
                     onTerminated = { code -> exit = code; registry.terminated(code) }, input = session?.input
                 ).collect { line ->

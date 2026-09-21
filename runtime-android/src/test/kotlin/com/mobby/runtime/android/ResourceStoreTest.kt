@@ -10,6 +10,19 @@ import java.nio.file.Files
 class ResourceStoreTest {
     @get:Rule val temporary = TemporaryFolder()
     private val workspace = WorkspaceRef("default")
+    @Test fun `attachments belong to their selected workspace and survive reopening`() {
+        val root = temporary.newFolder()
+        val other = WorkspaceRef("local-12345678-1234-1234-1234-123456789abc")
+        val store = ResourceStore(root)
+        val original = store.save(ImportResourceRequest(workspace, "file", "same".toByteArray()))
+        val selected = store.save(ImportResourceRequest(other, "file", "same".toByteArray()))
+        assertEquals("""{"name":"file","text":"same"}""", File(root, original.ref.value.substringAfter(':')).readText())
+        assertNotEquals(original.ref, selected.ref)
+        assertEquals("same", ResourceStore(root).read(selected.ref, other).second)
+        assertEquals("same", ResourceStore(root).read(original.ref, workspace).second)
+        assertThrows(Exception::class.java) { store.read(selected.ref, workspace) }
+        assertThrows(Exception::class.java) { store.read(original.ref, other) }
+    }
     @Test fun `imported text survives restart and prompt contains original Unicode without shell expansion`() {
         val root = temporary.newFolder(); val text = "中文\n  `touch x` ${'$'}(echo no)\n"
         val saved = ResourceStore(root).save(ImportResourceRequest(workspace, "review.md", text.toByteArray()))

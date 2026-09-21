@@ -45,7 +45,10 @@ sealed interface DataResult<out T> {
 data class Attachment(val ref: String, val name: String, val sizeBytes: Int, val mediaType: String = "text/plain")
 class AttachmentPreview(val bytes: ByteArray)
 data class EventHistoryLimits(val days: Int = 30, val mib: Int = 32, val outputDays: Int = 30, val outputMiB: Int = 256, val attachmentMiB: Int = 512)
+data class WorkspaceOption(val ref: String, val name: String)
 interface SystemPort {
+    suspend fun workspaces(): DataResult<List<WorkspaceOption>> = DataResult.Failed("当前执行端不支持工作区选择")
+    suspend fun createWorkspace(name: String): DataResult<WorkspaceOption> = DataResult.Failed("当前执行端不支持创建工作区")
     suspend fun eventHistoryLimits(): DataResult<EventHistoryLimits> = DataResult.Failed("当前执行端不支持存储设置")
     suspend fun saveEventHistoryLimits(value: EventHistoryLimits): OperationResult = OperationResult.Failed("当前执行端不支持存储设置")
     suspend fun beginCapture(conversation: String, workspace: String): DataResult<CameraCapture>
@@ -113,6 +116,8 @@ class InteractionUseCases(
     private val submissionScope: CoroutineScope,
     private val preferences: PreferencePort
 ) {
+    suspend fun workspaces() = system.workspaces()
+    suspend fun createWorkspace(name: String) = submissionScope.async { system.createWorkspace(name) }.await()
     suspend fun eventHistoryLimits() = system.eventHistoryLimits()
     suspend fun saveEventHistoryLimits(value: EventHistoryLimits) = submissionScope.async { system.saveEventHistoryLimits(value) }.await()
     val appearance get() = preferences.appearance

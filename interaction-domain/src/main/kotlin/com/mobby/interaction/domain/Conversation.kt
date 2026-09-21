@@ -80,6 +80,7 @@ object ConversationRules {
         if (result is Submission.Accepted && current.revision == submittedRevision) Draft(revision = current.revision + 1) else current
 
     fun applyConfig(current: Conversation, config: NextTurnConfig, newId: ConversationId): Conversation {
+        require(config.workspace == current.config.workspace || current.draft.attachments.isEmpty() && current.draft.pendingAttachment == null) { "Remove draft attachments before changing workspace" }
         require(!current.hasTurns || config.workspace == current.config.workspace) { "Existing workspace must be preserved" }
         return if (current.hasTurns && config.agent != current.config.agent) {
             require(newId != current.id)

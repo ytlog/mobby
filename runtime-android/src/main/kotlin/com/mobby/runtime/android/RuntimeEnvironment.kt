@@ -19,6 +19,7 @@ class RuntimeEnvironment(private val context: Context) {
         private set
     var dependenciesReady: Boolean = false
         private set
+    internal val workspaces get() = WorkspaceStore.forContext(context)
     val workspace get() = File(sdk.vfs.homeDir, "workspace")
 
     suspend fun initialize(output: (String) -> Unit) = withContext(Dispatchers.IO) {

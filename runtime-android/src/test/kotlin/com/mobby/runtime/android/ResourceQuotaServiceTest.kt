@@ -20,6 +20,7 @@ class ResourceQuotaServiceTest {
         val controller = Robolectric.buildService(FixtureService::class.java)
         val service = controller.get()
         service.getSharedPreferences("runtime-storage-policy", 0).edit().clear().commit()
+        File(service.filesDir, "libtermux/home/workspace").mkdirs()
         val root = File(service.filesDir, "input-resources").apply { mkdirs() }
         val existing = File(root, "quota-fixture")
         RandomAccessFile(existing, "rw").use { it.setLength(ResourceStore.DEFAULT_BUDGET_BYTES) }

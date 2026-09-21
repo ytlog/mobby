@@ -149,6 +149,11 @@ internal class RuntimeSystemAdapter(private val context: android.content.Context
             else -> error.message()
         })
     }
+    override suspend fun workspaces() = admin.listWorkspaces().result { list -> list.map { WorkspaceOption(it.ref.value, it.name) } }
+    override suspend fun createWorkspace(name: String) = when (val result = admin.createWorkspace(name)) {
+        is AdminResult.Success -> DataResult.Loaded(WorkspaceOption(result.value.ref.value, result.value.name))
+        is AdminResult.Failed -> DataResult.Failed(if (result.error.code == ErrorCode.INVALID_CONFIG) "工作区名称无效或已存在，请使用不同的名称（最多 80 字）" else result.error.message())
+    }
     override suspend fun skills(agent: DomainAgent) = admin.listSkills(RuntimeAgent.valueOf(agent.name)).result { list -> list.map { it.domain() } }
     override suspend fun readSkill(ref: String) = admin.readSkill(CapabilityRef(ref)).result { it.domain() }
     override suspend fun previewSkill(markdown: String) = admin.previewSkill(markdown).result { it.domain() }

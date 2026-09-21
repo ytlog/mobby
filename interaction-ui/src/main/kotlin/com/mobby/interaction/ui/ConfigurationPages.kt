@@ -37,24 +37,55 @@ import kotlinx.coroutines.*
         Row { RadioButton(reasoning == null, { setReasoning(null) }); TextButton(onClick = { setReasoning(null) }) { Text("默认") } }
         levels.forEach { level -> Row { RadioButton(reasoning == level, { setReasoning(level) }); TextButton(onClick = { setReasoning(level) }) { Text(level) } } }
     } else Text("思考程度：当前能力接口未开放调整", style = MaterialTheme.typography.bodySmall)
-    Text("工作区：默认本机工作区", style = MaterialTheme.typography.bodySmall)
+}
+@Composable internal fun WorkspacePicker(vm: ConversationViewModel, selected: String, enabled: Boolean = true, select: (String) -> Unit) {
+    val workspaces by vm.workspaces.collectAsStateWithLifecycle()
+    val error by vm.workspaceError.collectAsStateWithLifecycle()
+    val creating by vm.workspaceCreating.collectAsStateWithLifecycle()
+    val created by vm.workspaceCreated.collectAsStateWithLifecycle()
+    var adding by rememberSaveable { mutableStateOf(false) }
+    var name by rememberSaveable { mutableStateOf("") }
+    LaunchedEffect(Unit) { vm.loadWorkspaces() }
+    LaunchedEffect(created, enabled) { if (enabled) created?.let { select(it.ref); adding = false; name = ""; vm.consumeWorkspaceCreated(it) } }
+    Text("工作区", style = MaterialTheme.typography.labelLarge)
+    if (!enabled) Text(workspaces.firstOrNull { it.ref == selected }?.name ?: selected, style = MaterialTheme.typography.bodySmall)
+    else {
+        workspaces.forEach { workspace -> Row {
+            RadioButton(selected == workspace.ref, { select(workspace.ref) }, enabled = !creating)
+            TextButton(onClick = { select(workspace.ref) }, enabled = !creating) { Text(workspace.name) }
+        } }
+        if (workspaces.none { it.ref == selected }) Text("当前工作区尚不可用，请刷新或选择其他工作区", style = MaterialTheme.typography.bodySmall)
+        TextButton(onClick = { adding = !adding }, enabled = !creating) { Text("新建工作区") }
+        if (adding) {
+            OutlinedTextField(name, { name = it }, label = { Text("工作区名称") }, singleLine = true, enabled = !creating)
+            Text("在应用本机目录中创建独立文件夹。", style = MaterialTheme.typography.bodySmall)
+            TextButton(onClick = { vm.createWorkspace(name) }, enabled = !creating && name.isNotBlank() && name.length <= 80) { Text("创建工作区") }
+        }
+        if (creating) LinearProgressIndicator(Modifier.fillMaxWidth())
+    }
+    error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+    TextButton(onClick = vm::loadWorkspaces) { Text("刷新工作区") }
 }
 @Composable internal fun AgentConfigMenu(expanded: Boolean, dismiss: () -> Unit, c: Conversation, vm: ConversationViewModel) {
     if (!expanded) return
     val agents by vm.agents.collectAsStateWithLifecycle()
     val profiles by vm.gateways.collectAsStateWithLifecycle()
-    var agent by remember { mutableStateOf(c.config.agent) }
-    var model by remember { mutableStateOf(c.config.model) }
-    var reasoning by remember { mutableStateOf(c.config.reasoning) }
+    var agent by rememberSaveable(c.id.value) { mutableStateOf(c.config.agent) }
+    var model by rememberSaveable(c.id.value) { mutableStateOf(c.config.model) }
+    var reasoning by rememberSaveable(c.id.value) { mutableStateOf(c.config.reasoning) }
+    var workspace by rememberSaveable(c.id.value) { mutableStateOf(c.config.workspace) }
     DropdownMenu(true, dismiss, modifier = Modifier.widthIn(max = 320.dp)) {
         Column(Modifier.padding(16.dp)) {
             ConfigurationFields(agent, model, reasoning, agents, { agent = it; model = profiles.firstOrNull { p -> p.agent == it }?.model.orEmpty(); reasoning = null }, { model = it; reasoning = null }, { reasoning = it })
+            val canMove = !c.hasTurns && c.draft.attachments.isEmpty() && c.draft.pendingAttachment == null
+            WorkspacePicker(vm, workspace, canMove) { workspace = it }
+            if (!canMove) Text(if (c.hasTurns) "已有任务记录，执行工作区保持不变。" else "请先移除草稿附件，再切换工作区。", style = MaterialTheme.typography.bodySmall)
             Text("变更只影响下一轮，当前执行保持原配置。", style = MaterialTheme.typography.bodySmall)
             Row {
                 TextButton(onClick = dismiss) { Text("取消") }
                 Button(onClick = {
                     val p = profiles.firstOrNull { it.agent == agent }
-                    vm.enqueue { vm.actions.configure(c.id, NextTurnConfig(agent, model, reasoning, c.config.workspace, p?.id ?: if (agent == AgentId.CODEX) "CODEX" else "CLAUDE", p?.version ?: 0)) }
+                    vm.enqueue { vm.actions.configure(c.id, NextTurnConfig(agent, model, reasoning, workspace, p?.id ?: if (agent == AgentId.CODEX) "CODEX" else "CLAUDE", p?.version ?: 0)) }
                     dismiss()
                 }) { Text(if (c.hasTurns && c.config.agent != agent) "新建并使用此配置" else "应用") }
             }
@@ -64,15 +95,19 @@ import kotlinx.coroutines.*
 @Composable internal fun ConfigDialog(vm: ConversationViewModel, c: Conversation?, onDismiss: () -> Unit, onApply: (NextTurnConfig) -> Unit) {
     val agents by vm.agents.collectAsStateWithLifecycle()
     val profiles by vm.gateways.collectAsStateWithLifecycle()
-    var agent by remember { mutableStateOf(c?.config?.agent ?: AgentId.CODEX) }
-    var model by remember { mutableStateOf(c?.config?.model.orEmpty()) }
-    var reasoning by remember { mutableStateOf(c?.config?.reasoning) }
+    var agent by rememberSaveable { mutableStateOf(c?.config?.agent ?: AgentId.CODEX) }
+    var model by rememberSaveable { mutableStateOf(c?.config?.model.orEmpty()) }
+    var reasoning by rememberSaveable { mutableStateOf(c?.config?.reasoning) }
+    var workspace by rememberSaveable { mutableStateOf(c?.config?.workspace ?: "default") }
+    val workspaces by vm.workspaces.collectAsStateWithLifecycle()
+    val creating by vm.workspaceCreating.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { vm.enqueue { vm.refresh() } }
     AlertDialog(onDismissRequest = onDismiss, title = { Text("新建对话") }, text = {
         Column(Modifier.verticalScroll(rememberScrollState())) {
             ConfigurationFields(agent, model, reasoning, agents, { agent = it; model = profiles.firstOrNull { p -> p.agent == it }?.model.orEmpty(); reasoning = null }, { model = it; reasoning = null }, { reasoning = it })
+            WorkspacePicker(vm, workspace) { workspace = it }
         }
-    }, confirmButton = { TextButton(onClick = { val p = profiles.firstOrNull { it.agent == agent }; onApply(NextTurnConfig(agent, model.ifBlank { p?.model.orEmpty() }, reasoning, "default", p?.id ?: if (agent == AgentId.CODEX) "CODEX" else "CLAUDE", p?.version ?: 0)) }) { Text("创建") } },
+    }, confirmButton = { TextButton(enabled = !creating && workspaces.any { it.ref == workspace }, onClick = { val p = profiles.firstOrNull { it.agent == agent }; onApply(NextTurnConfig(agent, model.ifBlank { p?.model.orEmpty() }, reasoning, workspace, p?.id ?: if (agent == AgentId.CODEX) "CODEX" else "CLAUDE", p?.version ?: 0)) }) { Text("创建") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } })
 }
 @Composable internal fun PageHeader(title: String, back: () -> Unit) {

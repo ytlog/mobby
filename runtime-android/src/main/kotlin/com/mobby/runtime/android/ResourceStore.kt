@@ -16,8 +16,8 @@ import java.util.Base64
 
 /** Immutable imported content. External URIs and caller-chosen paths never reach execution. */
 internal class ResourceStore(private val root: File, private val budgetBytes: () -> Long = { DEFAULT_BUDGET_BYTES }) {
-    @Serializable private data class Document(val name: String, val text: String)
-    @Serializable private data class ImageDocument(val name: String, val mediaType: String, val base64: String)
+    @Serializable private data class Document(val name: String, val text: String, val workspace: String = "default")
+    @Serializable private data class ImageDocument(val name: String, val mediaType: String, val base64: String, val workspace: String = "default")
     class Image(val name: String, val mediaType: String, val bytes: ByteArray)
     class Prepared(val prompt: String, val images: List<Image>)
     private val json = Json
@@ -27,7 +27,7 @@ internal class ResourceStore(private val root: File, private val budgetBytes: ()
         return root
     }
     fun save(request: ImportResourceRequest): ResourceSummary = synchronized(importLock) {
-        require(request.workspaceRef.value == "default")
+        require(WorkspaceStore.validRef(request.workspaceRef.value))
         require(request.name.isNotBlank() && request.name.length <= 200 && request.name.none { it.isISOControl() || it == '/' || it == '\\' })
         require(request.bytes.isNotEmpty() && request.bytes.size <= MAX_IMAGE_BYTES)
         val imageType = imageType(request.bytes)
@@ -36,14 +36,14 @@ internal class ResourceStore(private val root: File, private val budgetBytes: ()
         if (imageType != null) {
             validateImage(request.bytes, imageType)
             prefix = "image"
-            encoded = json.encodeToString(ImageDocument(request.name, imageType, Base64.getEncoder().encodeToString(request.bytes))).toByteArray()
+            encoded = json.encodeToString(ImageDocument(request.name, imageType, Base64.getEncoder().encodeToString(request.bytes), request.workspaceRef.value)).toByteArray()
         } else {
             require(request.bytes.size <= MAX_BYTES)
             val text = Charsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(request.bytes)).toString()
             require(!request.name.endsWith(".pdf", ignoreCase = true) && !text.trimStart('\uFEFF', ' ', '\n', '\r').startsWith("%PDF-"))
             require(text.none { it.isISOControl() && it !in "\n\r\t" })
             prefix = "text"
-            encoded = json.encodeToString(Document(request.name, text)).toByteArray()
+            encoded = json.encodeToString(Document(request.name, text, request.workspaceRef.value)).toByteArray()
         }
         val digest = hash(encoded)
         val target = File(directory(), digest)
@@ -66,7 +66,7 @@ internal class ResourceStore(private val root: File, private val budgetBytes: ()
         summary(ResourceRef("$prefix:$digest"), request.workspaceRef)
     }
     private fun encoded(ref: ResourceRef, workspace: WorkspaceRef, prefix: String, limit: Int): ByteArray {
-        require(workspace.value == "default")
+        require(WorkspaceStore.validRef(workspace.value))
         val digest = ref.value.removePrefix("$prefix:")
         require(ref.value == "$prefix:$digest" && digest.matches(Regex("[a-f0-9]{64}")))
         val file = File(directory(), digest)
@@ -82,10 +82,12 @@ internal class ResourceStore(private val root: File, private val budgetBytes: ()
     }
     fun read(ref: ResourceRef, workspace: WorkspaceRef): Pair<ResourceSummary, String> {
         val document = json.decodeFromString<Document>(encoded(ref, workspace, "text", MAX_BYTES * 6 + 2048).toString(Charsets.UTF_8))
+        require(document.workspace == workspace.value)
         return ResourceSummary(ref, document.name, document.text.toByteArray().size, "text/plain") to document.text
     }
     fun image(ref: ResourceRef, workspace: WorkspaceRef): Image {
         val document = json.decodeFromString<ImageDocument>(encoded(ref, workspace, "image", MAX_IMAGE_BYTES * 2 + 2048).toString(Charsets.UTF_8))
+        require(document.workspace == workspace.value)
         val bytes = Base64.getDecoder().decode(document.base64)
         require(bytes.size <= MAX_IMAGE_BYTES && imageType(bytes) == document.mediaType)
         return Image(document.name, document.mediaType, bytes)

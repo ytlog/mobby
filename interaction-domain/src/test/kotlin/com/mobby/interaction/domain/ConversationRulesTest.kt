@@ -42,10 +42,17 @@ class ConversationRulesTest {
     }
     @Test fun `workspace can change before first turn but cannot move existing history`() {
         val changedConfig = config.copy(workspace = "other-workspace")
-        val changed = ConversationRules.applyConfig(original.copy(hasTurns = false), changedConfig, ConversationId("unused"))
+        val changed = ConversationRules.applyConfig(original.copy(hasTurns = false, draft = original.draft.copy(attachments = emptyList())), changedConfig, ConversationId("unused"))
         assertEquals("other-workspace", changed.config.workspace)
         assertThrows(IllegalArgumentException::class.java) {
             ConversationRules.applyConfig(original, changedConfig, ConversationId("unused"))
+        }
+    }
+    @Test fun `workspace change cannot strand imported or pending attachments`() {
+        for (draft in listOf(original.draft, Draft(pendingAttachment = PendingAttachment("p", config.workspace, "content://file")))) {
+            assertThrows(IllegalArgumentException::class.java) {
+                ConversationRules.applyConfig(original.copy(hasTurns = false, draft = draft), config.copy(workspace = "next"), ConversationId("unused"))
+            }
         }
     }
     @Test fun `skill creator makes independent prefilled conversation only when available`() {
