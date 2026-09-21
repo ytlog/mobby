@@ -49,16 +49,42 @@ class PluginPageTest {
         val vm = ConversationViewModel(InteractionUseCases(repository, stub { name, _ -> error(name) }, system, { "id" }, CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate), stub { name, _ -> error(name) }))
         compose.setContent { MaterialTheme { PluginPage(vm) {} } }
         compose.onNodeWithText("使用当前手机").assertIsDisplayed()
-        compose.onNodeWithText("打开系统无障碍设置").assertIsDisplayed()
-        compose.onNodeWithText("加入本轮草稿").assertIsNotEnabled()
+        compose.onNodeWithText("已安装").assertIsDisplayed()
+        compose.onNodeWithText("开启").assertIsDisplayed()
+        compose.onNodeWithText("使用").assertDoesNotExist()
+        compose.onNodeWithText("金融").performClick()
+        compose.waitUntil(5_000) { compose.onAllNodesWithText("这个分类还没有插件").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("已安装").performClick()
+        compose.waitUntil(5_000) { compose.onAllNodesWithText("使用当前手机").fetchSemanticsNodes().isNotEmpty() }
         compose.runOnIdle {
             available = true
             vm.loadPlugins()
         }
-        compose.waitUntil(5_000) { compose.onAllNodesWithText("已就绪，可加入本轮").fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithText("加入本轮草稿").assertIsEnabled().performClick()
+        compose.waitUntil(5_000) { compose.onAllNodesWithText("使用").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("使用").assertIsEnabled().performClick()
         compose.waitUntil(5_000) { written.isNotEmpty() }
         assertEquals(listOf(Triple("c", plugin.ref, true)), written)
-        compose.onNodeWithText("从本轮移除").assertIsDisplayed()
+        compose.onNodeWithText("移除").assertIsDisplayed()
+    }
+
+    @Test fun `category tabs filter the catalogue`() {
+        val conversation = Conversation(ConversationId("c"), NextTurnConfig(AgentId.CODEX, "model", null, "default", "CODEX"))
+        val interaction = MutableStateFlow(InteractionState(loading = false, selected = ConversationDetail(conversation, emptyList())))
+        val system = stub<SystemPort> { name, _ -> when (name) {
+            "getStatus" -> flowOf(SystemStatus(true, true))
+            "getDiagnostic" -> flowOf(DiagnosticOutput(null, emptyList()))
+            "agents" -> emptyList<AgentOption>()
+            "gateways" -> emptyList<GatewayProfile>()
+            "plugins" -> DataResult.Loaded(listOf(plugin.copy(available = true, unavailableReason = null)))
+            else -> error(name)
+        } }
+        val repository = stub<InteractionRepository> { name, _ -> if (name == "getState") interaction else error(name) }
+        val vm = ConversationViewModel(InteractionUseCases(repository, stub { name, _ -> error(name) }, system, { "id" }, CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate), stub { name, _ -> error(name) }))
+        compose.setContent { MaterialTheme { PluginPage(vm) {} } }
+        compose.waitUntil(5_000) { compose.onAllNodesWithText("使用当前手机").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("金融").performClick()
+        compose.waitUntil(5_000) { compose.onAllNodesWithText("这个分类还没有插件").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("效率与办公").performClick()
+        compose.waitUntil(5_000) { compose.onAllNodesWithText("使用当前手机").fetchSemanticsNodes().isNotEmpty() }
     }
 }

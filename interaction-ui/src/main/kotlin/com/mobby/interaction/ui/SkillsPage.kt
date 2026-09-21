@@ -8,26 +8,32 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mobby.interaction.domain.*
+import kotlinx.coroutines.launch
 
 internal data class SkillEditor(val agent: AgentId, val manual: Boolean, val name: String = "", val description: String = "", val body: String = "",
     val markdown: String = "", val preview: SkillContent? = null, val error: String? = null, val busy: Boolean = false, val operation: Long = 0)
 
-@OptIn(ExperimentalMaterial3Api::class)
+private val skillCatalogTabs = listOf("已添加", "精选", "用户技能", "CLI 内置")
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable internal fun SkillsPage(vm: ConversationViewModel, onBack: () -> Unit, onConversation: () -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
     val conversation = state.selected?.conversation
     val agent = conversation?.config?.agent ?: AgentId.CODEX
-    val listState = rememberLazyListState()
     var query by rememberSaveable { mutableStateOf("") }
-    var filter by rememberSaveable { mutableStateOf("全部") }
+    val pagerState = rememberPagerState(pageCount = { skillCatalogTabs.size })
+    val pagerScope = rememberCoroutineScope()
     var page by rememberSaveable { mutableStateOf("list") }
     var adding by rememberSaveable { mutableStateOf(false) }
     var selectedRef by rememberSaveable { mutableStateOf<String?>(null) }
@@ -85,33 +91,44 @@ internal data class SkillEditor(val agent: AgentId, val manual: Boolean, val nam
                     Text(content.description)
                     val bound = conversation?.creator != null && conversation.creator == skill?.ref
                     val chosen = conversation?.draft?.capabilities?.contains(skill?.ref) == true
-                    Button(onClick = { if (conversation != null && skill != null) vm.enqueue { vm.report(vm.actions.setSkill(conversation.id, skill, !chosen)) } }, enabled = conversation != null && skill?.available == true && !bound) { Text(if (bound) "已绑定此创建会话" else if (chosen) "从本轮移除" else "加入本轮草稿") }
+                    Button(onClick = { if (conversation != null && skill != null) vm.enqueue { vm.report(vm.actions.setSkill(conversation.id, skill, !chosen)) } }, enabled = conversation != null && skill?.available == true && !bound) { Text(if (bound) "已绑定此创建会话" else if (chosen) "移除" else "使用") }
                     ReplyContent(content.body, streaming = false, read = { _, _ -> })
                 }
                 if (detail == null && detailError == null) CircularProgressIndicator()
             }
             else -> {
                 Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("为 ${agent.label()} 保存和选择可重复使用的工作流程。", style = MaterialTheme.typography.bodySmall)
                     OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth(), label = { Text("搜索技能") }, singleLine = true, shape = RoundedCornerShape(28.dp),
                         colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = raisedColor(), unfocusedContainerColor = raisedColor(),
                             focusedBorderColor = androidx.compose.ui.graphics.Color.Transparent, unfocusedBorderColor = androidx.compose.ui.graphics.Color.Transparent))
-                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("全部", "用户技能", "CLI 内置", "不可用").forEach { value -> FilterChip(filter == value, { filter = value }, label = { Text(value) }) }
-                    }
                     error?.let { Text(it, color = MaterialTheme.colorScheme.error); TextButton(onClick = { vm.loadSkills(agent) }) { Text("重试") } }
                     if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
                 }
-                LazyColumn(Modifier.weight(1f), state = listState, contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    val visible = skills.filter { (it.name.contains(query, true) || it.description.contains(query, true)) && (filter == "全部" || filter == "不可用" && !it.available || filter == it.source) }
-                    if (visible.isEmpty() && !loading && error == null) item { EmptyPlaceholder(if (skills.isEmpty()) "尚无技能" else "没有匹配的技能", if (skills.isEmpty()) "点右上角添加，把常用流程保存下来" else "换个分类或关键词试试") }
-                    items(visible, key = { it.ref }) { skill ->
-                        Surface(onClick = { selectedRef = skill.ref; page = "detail" }, shape = RoundedCornerShape(18.dp), color = raisedColor()) {
-                            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text(skill.name, style = MaterialTheme.typography.titleMedium)
-                                Text(skill.description, maxLines = 3)
-                                Text(if (!skill.available) skill.unavailableReason ?: "技能不可用" else if (conversation?.draft?.capabilities?.contains(skill.ref) == true) "已加入本轮 · ${skill.source}" else skill.source, style = MaterialTheme.typography.labelSmall)
-                            }
+                CatalogTabs(skillCatalogTabs, pagerState.currentPage) { pagerScope.launch { pagerState.animateScrollToPage(it) } }
+                HorizontalPager(state = pagerState, modifier = Modifier.weight(1f).fillMaxWidth(), key = { skillCatalogTabs[it] }) { pageIndex ->
+                    val filter = skillCatalogTabs[pageIndex]
+                    val visible = skills.filter { (it.name.contains(query, true) || it.description.contains(query, true)) && (filter == "已添加" || filter == "精选" || filter == it.source) }
+                    LazyColumn(Modifier.fillMaxSize(), state = rememberLazyListState(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        if (visible.isEmpty() && !loading && error == null) item { EmptyPlaceholder(if (skills.isEmpty()) "尚无技能" else "没有匹配的技能", if (skills.isEmpty()) "点右上角添加，把常用流程保存下来" else "换个分类或关键词试试") }
+                        items(visible, key = { it.ref }) { skill ->
+                            val chosen = conversation?.draft?.capabilities?.contains(skill.ref) == true
+                            val bound = conversation?.creator != null && conversation.creator == skill.ref
+                            val swatch = catalogSwatch(skill.ref)
+                            CatalogRow(
+                                title = skill.name,
+                                subtitle = if (!skill.available) skill.unavailableReason ?: "技能不可用" else skill.description,
+                                icon = AppIcons.Skill,
+                                iconForeground = swatch.first,
+                                iconBackground = swatch.second,
+                                action = when {
+                                    bound -> "已绑定"
+                                    chosen -> "移除"
+                                    else -> "使用"
+                                },
+                                actionEnabled = conversation != null && skill.available && !bound,
+                                onAction = { if (conversation != null && skill.available && !bound) vm.enqueue { vm.report(vm.actions.setSkill(conversation.id, skill, !chosen)) } },
+                                onClick = { selectedRef = skill.ref; page = "detail" },
+                            )
                         }
                     }
                 }

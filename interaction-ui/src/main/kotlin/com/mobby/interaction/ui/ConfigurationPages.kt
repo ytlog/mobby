@@ -6,15 +6,20 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -67,7 +72,7 @@ import kotlinx.coroutines.*
     error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     TextButton(onClick = vm::loadWorkspaces) { Text("刷新工作区") }
 }
-@Composable internal fun AgentConfigMenu(expanded: Boolean, dismiss: () -> Unit, c: Conversation, vm: ConversationViewModel) {
+@Composable internal fun AgentConfigMenu(expanded: Boolean, dismiss: () -> Unit, c: Conversation, vm: ConversationViewModel, anchor: IntRect = IntRect.Zero) {
     if (!expanded) return
     val agents by vm.agents.collectAsStateWithLifecycle()
     val profiles by vm.gateways.collectAsStateWithLifecycle()
@@ -76,24 +81,65 @@ import kotlinx.coroutines.*
     var reasoning by rememberSaveable(c.id.value) { mutableStateOf(c.config.reasoning) }
     var workspace by rememberSaveable(c.id.value) { mutableStateOf(c.config.workspace) }
     val workspaceOwner = rememberSaveable(c.id.value) { java.util.UUID.randomUUID().toString() }
-    RaisedDropdownMenu(true, dismiss, modifier = Modifier.widthIn(max = 320.dp)) {
-        Column(Modifier.padding(16.dp)) {
-            ConfigurationFields(agent, model, reasoning, agents, { agent = it; model = profiles.firstOrNull { p -> p.agent == it }?.model.orEmpty(); reasoning = null }, { model = it; reasoning = null }, { reasoning = it })
-            val canMove = !c.hasTurns && c.draft.attachments.isEmpty() && c.draft.pendingAttachment == null
-            WorkspacePicker(vm, workspace, workspaceOwner, canMove) { workspace = it }
-            if (!canMove) Text(if (c.hasTurns) "已有任务记录，执行工作区保持不变。" else "请先移除草稿附件，再切换工作区。", style = MaterialTheme.typography.bodySmall)
-            Text("变更只影响下一轮，当前执行保持原配置。", style = MaterialTheme.typography.bodySmall)
-            if (agent != c.config.agent && c.draft.capabilities.any { !it.startsWith("plugin:") })
-                Text("所选技能与 Agent 绑定，切换后请重新选择。插件选择会保留。", style = MaterialTheme.typography.bodySmall)
-            Row {
-                TextButton(onClick = dismiss) { Text("取消") }
-                Button(onClick = {
-                    val p = profiles.firstOrNull { it.agent == agent }
-                    vm.enqueue { vm.actions.configure(c.id, NextTurnConfig(agent, model, reasoning, workspace, p?.id ?: if (agent == AgentId.CODEX) "CODEX" else "CLAUDE", p?.version ?: 0)) }
-                    dismiss()
-                }) { Text(if (c.hasTurns && c.config.agent != agent) "新建并使用此配置" else "应用") }
+    val workspaces by vm.workspaces.collectAsStateWithLifecycle()
+    val error by vm.workspaceError.collectAsStateWithLifecycle()
+    val creating by vm.workspaceCreating.collectAsStateWithLifecycle()
+    val created by vm.workspaceCreated.collectAsStateWithLifecycle()
+    var adding by rememberSaveable { mutableStateOf(false) }
+    var name by rememberSaveable { mutableStateOf("") }
+    val canMove = !c.hasTurns && c.draft.attachments.isEmpty() && c.draft.pendingAttachment == null
+    val option = agents.firstOrNull { it.agent == agent }
+    val levels = option?.models?.get(model).orEmpty()
+    LaunchedEffect(Unit) { vm.loadWorkspaces() }
+    LaunchedEffect(created, canMove) { if (canMove) created?.takeIf { it.owner == workspaceOwner }?.let { workspace = it.workspace.ref; adding = false; name = ""; vm.consumeWorkspaceCreated(it) } }
+    FrostedMenu(true, dismiss, anchor) {
+        Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()).padding(bottom = 12.dp)) {
+            MenuSection("Agent") {
+                AgentId.values().forEach { value -> MenuOption(value.label(), agent == value) { agent = value; model = profiles.firstOrNull { p -> p.agent == value }?.model.orEmpty(); reasoning = null } }
             }
+            MenuSection("模型") {
+                if (option?.models.isNullOrEmpty()) MenuCaption("尚未配置模型，请前往网关设置。")
+                option?.models?.keys?.forEach { item -> MenuOption(item, model == item) { model = item; reasoning = null } }
+            }
+            MenuSection("思考程度") {
+                if (levels.isEmpty()) MenuCaption("当前模型未开放调整")
+                else {
+                    MenuOption("默认", reasoning == null) { reasoning = null }
+                    levels.forEach { level -> MenuOption(level, reasoning == level) { reasoning = level } }
+                }
+            }
+            HorizontalDivider(Modifier.padding(horizontal = 20.dp, vertical = 8.dp), color = menuInk().copy(alpha = 0.08f))
+            MenuSection("工作区") {
+                if (!canMove) MenuCaption(if (c.hasTurns) "已有任务记录，执行工作区保持不变。" else "请先移除草稿附件，再切换工作区。")
+                workspaces.forEach { item -> MenuOption(item.name, workspace == item.ref, enabled = canMove && !creating) { workspace = item.ref } }
+                if (workspaces.none { it.ref == workspace }) MenuCaption("当前工作区尚不可用，请刷新或选择其他工作区")
+                if (canMove) {
+                    MenuAction("新建工作区", !creating) { adding = !adding }
+                    if (adding) {
+                        OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth().padding(horizontal = 20.dp), label = { Text("工作区名称") }, singleLine = true, enabled = !creating)
+                        MenuCaption("在应用本机目录中创建独立文件夹。")
+                        MenuAction("创建工作区", !creating && name.isNotBlank() && name.length <= 80) { vm.createWorkspace(name, workspaceOwner) }
+                    }
+                    if (creating) LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 20.dp))
+                }
+                error?.let { MenuCaption(it) }
+                MenuAction("刷新工作区") { vm.loadWorkspaces() }
+            }
+            MenuCaption("变更只影响下一轮，当前执行保持原配置。")
+            if (agent != c.config.agent && c.draft.capabilities.any { !it.startsWith("plugin:") })
+                MenuCaption("所选技能与 Agent 绑定，切换后请重新选择。插件选择会保留。")
         }
+        Button(
+            onClick = {
+                val p = profiles.firstOrNull { it.agent == agent }
+                vm.enqueue { vm.actions.configure(c.id, NextTurnConfig(agent, model, reasoning, workspace, p?.id ?: if (agent == AgentId.CODEX) "CODEX" else "CLAUDE", p?.version ?: 0)) }
+                dismiss()
+            },
+            modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 20.dp).heightIn(min = 48.dp),
+            shape = RoundedCornerShape(22.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = menuAccent(), contentColor = Color.White),
+            elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp, pressedElevation = 0.dp, focusedElevation = 0.dp, hoveredElevation = 0.dp),
+        ) { Text(if (c.hasTurns && c.config.agent != agent) "新建并使用此配置" else "应用", fontWeight = FontWeight.SemiBold) }
     }
 }
 @Composable internal fun ConfigDialog(vm: ConversationViewModel, c: Conversation?, onDismiss: () -> Unit, onApply: (NextTurnConfig, String?) -> Unit) {
@@ -285,12 +331,22 @@ import kotlinx.coroutines.*
         }
     }
 }
+private val pluginCatalogTabs = listOf("已安装", "精选", "金融", "效率与办公", "创意与设计")
+private fun pluginInTab(plugin: Plugin, tab: String) = when (tab) {
+    "已安装", "精选" -> true
+    "效率与办公" -> plugin.ref == "plugin:PHONE:ACCESSIBILITY"
+    else -> false
+}
+
+@OptIn(ExperimentalFoundationApi::class)
 @Composable internal fun PluginPage(vm: ConversationViewModel, onBack: () -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
     val conversation = state.selected?.conversation
     val catalogue by vm.plugins.collectAsStateWithLifecycle()
     val error by vm.pluginsError.collectAsStateWithLifecycle()
     val loading by vm.pluginsLoading.collectAsStateWithLifecycle()
+    val pagerState = rememberPagerState(pageCount = { pluginCatalogTabs.size })
+    val scope = rememberCoroutineScope()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val context = LocalContext.current
     DisposableEffect(lifecycle) {
@@ -300,43 +356,43 @@ import kotlinx.coroutines.*
     }
     Column(Modifier.fillMaxSize()) {
         PageHeader("插件", onBack)
-        Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("插件由本应用提供。开启系统授权并把插件加入本轮后，Agent 才能使用对应能力；未加入草稿时不会操作手机。", style = MaterialTheme.typography.bodySmall)
-            error?.let { Text(it, color = MaterialTheme.colorScheme.error); TextButton(onClick = vm::loadPlugins) { Text("重试") } }
-            if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-        }
-        LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (catalogue.isEmpty() && !loading && error == null) item { EmptyPlaceholder("当前没有可调用的插件", "应用提供的插件就绪后会显示在这里") }
-            items(catalogue, key = { it.ref }) { plugin ->
-                val chosen = conversation?.draft?.capabilities?.contains(plugin.ref) == true
-                Surface(shape = RoundedCornerShape(18.dp), color = raisedColor()) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(AppIcons.Plugin, null, Modifier.size(26.dp))
-                            Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(plugin.name, style = MaterialTheme.typography.titleMedium)
-                                Text(
-                                    when {
-                                        !plugin.available -> plugin.unavailableReason ?: "插件不可用"
-                                        chosen -> "已加入本轮草稿"
-                                        else -> "已就绪，可加入本轮"
-                                    },
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                        Text(plugin.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        if (!plugin.available) OutlinedButton(onClick = {
-                            context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                        }, modifier = Modifier.fillMaxWidth()) { Text("打开系统无障碍设置") }
-                        Button(
-                            onClick = { if (conversation != null) vm.enqueue { vm.report(vm.actions.setPlugin(conversation.id, plugin, !chosen)) } },
-                            enabled = conversation != null && (chosen || plugin.available),
-                            modifier = Modifier.fillMaxWidth()
-                        ) { Text(if (chosen) "从本轮移除" else "加入本轮草稿") }
-                    }
+        CatalogTabs(pluginCatalogTabs, pagerState.currentPage) { scope.launch { pagerState.animateScrollToPage(it) } }
+        error?.let { Text(it, Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.error); TextButton(onClick = vm::loadPlugins) { Text("重试") } }
+        if (loading) LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 16.dp))
+        HorizontalPager(state = pagerState, modifier = Modifier.weight(1f).fillMaxWidth(), key = { pluginCatalogTabs[it] }) { page ->
+            val tab = pluginCatalogTabs[page]
+            val visible = catalogue.filter { pluginInTab(it, tab) }
+            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (visible.isEmpty() && !loading && error == null) item {
+                    EmptyPlaceholder(
+                        if (catalogue.isEmpty()) "当前没有可调用的插件" else "这个分类还没有插件",
+                        if (catalogue.isEmpty()) "应用提供的插件就绪后会显示在这里" else "已提供的插件在「已安装」中",
+                    )
+                }
+                items(visible, key = { it.ref }) { plugin ->
+                    val chosen = conversation?.draft?.capabilities?.contains(plugin.ref) == true
+                    val phone = plugin.ref == "plugin:PHONE:ACCESSIBILITY"
+                    val swatch = if (phone) {
+                        if (darkChrome()) Color(0xFF80BAFF) to Color(0xFF1A3050)
+                        else Color(0xFF2F80FF) to Color(0xFFE8F1FF)
+                    } else catalogSwatch(plugin.ref)
+                    CatalogRow(
+                        title = plugin.name,
+                        subtitle = plugin.description,
+                        icon = if (phone) AppIcons.Phone else AppIcons.Plugin,
+                        iconForeground = swatch.first,
+                        iconBackground = swatch.second,
+                        action = when {
+                            !plugin.available -> "开启"
+                            chosen -> "移除"
+                            else -> "使用"
+                        },
+                        actionEnabled = !plugin.available || conversation != null,
+                        onAction = {
+                            if (!plugin.available && phone) context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                            else if (conversation != null) vm.enqueue { vm.report(vm.actions.setPlugin(conversation.id, plugin, !chosen)) }
+                        },
+                    )
                 }
             }
         }

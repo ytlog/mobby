@@ -23,4 +23,14 @@ class ToolPresentationTest {
         assertEquals("文件\n/fixture/file\n\n内容\nliteral", view.detail)
         assertFalse(view.detail.contains("file_path"))
     }
+
+    @Test fun `phone click is a screen action instead of raw protocol kind`() {
+        val view = ToolPresentation.step("click", """{"query":"确定"}""", "已点击：确定")
+        assertEquals("点击 确定", view.title)
+        assertTrue(view.detail.contains("确定"))
+        assertFalse(view.detail.contains("mcp_tool_call"))
+        val snapshot = ToolPresentation.step("mcp__phone__snapshot", "", "Launcher")
+        assertEquals("读取屏幕", snapshot.title)
+        assertTrue(snapshot.detail.contains("Launcher"))
+    }
 }

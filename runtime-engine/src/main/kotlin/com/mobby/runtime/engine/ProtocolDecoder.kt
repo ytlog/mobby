@@ -54,10 +54,12 @@ class ProtocolDecoder(private val agent: AgentId, private val requestedOutput: R
                 "command_execution", "file_change", "mcp_tool_call", "web_search", "todo_list" -> {
                     val outcome = if (!completed) null else if (item.text("status") == "failed" ||
                         (item["exit_code"] as? JsonPrimitive)?.intOrNull?.let { it != 0 } == true) ToolOutcome.FAILED else ToolOutcome.SUCCEEDED
-                    val summary = item.text("command") ?: item.text("tool") ?: item.text("query") ?: type
+                    val kind = if (type == "mcp_tool_call") item.text("tool") ?: type else type
+                    val summary = item.text("command") ?: item["arguments"]?.toString()?.takeIf { it != "{}" }
+                        ?: item.text("tool") ?: item.text("query") ?: type
                     val output = if (completed) item.text("aggregated_output") ?: item["changes"]?.toString()
-                        ?: item["result"]?.toString() ?: item["error"]?.toString() ?: item["items"]?.toString() else null
-                    listOf(AgentFact.Tool(id, type, summary, output, outcome))
+                        ?: item.text("result") ?: item["error"]?.toString() ?: item["items"]?.toString() else null
+                    listOf(AgentFact.Tool(id, kind, summary, output, outcome))
                 }
                 else -> listOf(AgentFact.Diagnostic(type, line))
             }

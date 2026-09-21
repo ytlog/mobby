@@ -38,6 +38,7 @@ internal object AppIcons {
     val Photo = stroke("photo", "M3 3h18v18H3zM3 17l6-6 4 4 3-3 5 5M8 7h.01")
     val Upload = stroke("upload", "M3 6h7l2 3h9v12H3zM12 18v-6m-3 3 3-3 3 3")
     val Plugin = stroke("plug", "m8 3 3 4m5-4 3 4M7 8l9-3 3 8-6 6-6-6zM7 17l-4 4")
+    val Phone = stroke("phone", "M8 3h8v18H8zM12 18h.01")
     val Skill = stroke("skill", "M5 3h14v18H5zM8 7h8M8 11h8M8 15h5")
     val Globe = stroke("globe", "M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0M3 12h18M12 3c-5 5-5 13 0 18M12 3c5 5 5 13 0 18")
     val ArrowDown = stroke("arrowDown", "M12 4v16m-6-6 6 6 6-6")

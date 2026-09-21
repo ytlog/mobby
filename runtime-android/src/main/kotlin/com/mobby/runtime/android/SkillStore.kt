@@ -41,7 +41,7 @@ internal class SkillStore(private val home: File) {
     private fun entries(agent: AgentId): List<Pair<SkillSummary, File>> = roots.filter { it.agent == agent }.flatMap { root ->
         val directory = File(home, root.relative)
         if (!safe(directory)) return@flatMap emptyList()
-        directory.listFiles()?.filter { !it.name.startsWith(".") }?.sortedBy { it.name }?.map { folder ->
+        directory.listFiles()?.filter { !it.name.startsWith(".") && !File(it, MARKER).isFile }?.sortedBy { it.name }?.map { folder ->
             val file = File(folder, "SKILL.md")
             val preview = runCatching { SkillDocument.preview(read(file)) }.getOrNull()
             val valid = preview != null && preview.issues.isEmpty() && preview.name == folder.name
@@ -77,8 +77,12 @@ internal class SkillStore(private val home: File) {
         return list(agent).single { it.name == preview.name && it.source == root.source }
     }
     fun hasCreator(agent: AgentId, refs: Set<CapabilityRef>): Boolean = list(agent).any { it.available && it.name == "skill-creator" && it.ref in refs }
-    fun prompt(agent: AgentId, refs: Set<CapabilityRef>, text: String): String {
-        if (refs.isEmpty()) return text
+    fun prompt(agent: AgentId, refs: Set<CapabilityRef>, text: String, extras: List<Pair<String, File>> = emptyList()): String {
+        extras.forEach { (name, file) ->
+            require(name.matches(Regex("[a-z0-9]+(?:-[a-z0-9]+)*")) && file.isFile && file.length() <= SkillDocument.MAX_BYTES &&
+                file.absolutePath.startsWith("/") && '\u0000' !in file.absolutePath)
+        }
+        if (refs.isEmpty() && extras.isEmpty()) return text
         val selectedNames = mutableSetOf<String>()
         val selections = refs.map { ref ->
             val file = resolve(ref, agent) ?: throw IllegalArgumentException("Skill unavailable")
@@ -86,11 +90,46 @@ internal class SkillStore(private val home: File) {
             selectedNames += preview.name
             val invocation = if (agent == AgentId.CODEX) "$" + preview.name else "/" + preview.name
             "$invocation — ${file.absolutePath}"
+        } + extras.map { (name, file) ->
+            selectedNames += name
+            val invocation = if (agent == AgentId.CODEX) "$" + name else "/" + name
+            "$invocation — ${file.absolutePath}"
         }
         val instruction = if (agent == AgentId.CLAUDE_CODE) "请使用 Skill 工具调用下列已选择的技能，遵守 Agent 权限检查："
             else "请使用下列已选择的技能，读取对应 SKILL.md 并遵守 Agent 权限检查："
+        val bodies = extras.joinToString("\n\n") { it.second.readText() }
         val input = if (agent == AgentId.CODEX && "skill-creator" in selectedNames && text.startsWith("请用 /skill-creator 帮我创建技能，要求是："))
             text.replaceFirst("/skill-creator", "$" + "skill-creator") else text
-        return instruction + "\n" + selections.joinToString("\n") + "\n\n" + input
+        return buildString {
+            append(instruction).append('\n').append(selections.joinToString("\n"))
+            if (bodies.isNotBlank()) append("\n\n").append(bodies)
+            append("\n\n").append(input)
+        }
     }
+    fun stage(agent: AgentId, name: String, skillFile: File): File? {
+        require(name.matches(Regex("[a-z0-9]+(?:-[a-z0-9]+)*")) && skillFile.isFile && skillFile.name == "SKILL.md")
+        val source = skillFile.parentFile ?: return null
+        val root = roots.single { it.agent == agent && it.writable }
+        val directory = File(home, root.relative)
+        val target = File(directory, name)
+        if (!safe(directory) || !safe(target)) return null
+        if (target.exists() && !File(target, MARKER).isFile) return null
+        target.deleteRecursively()
+        Files.createDirectories(target.toPath())
+        skillFile.copyTo(File(target, "SKILL.md"))
+        val scripts = File(source, "scripts")
+        if (scripts.isDirectory) {
+            val dest = File(target, "scripts")
+            dest.mkdirs()
+            scripts.listFiles()?.filter { it.isFile && !it.name.startsWith(".") }?.forEach { it.copyTo(File(dest, it.name), overwrite = true) }
+        }
+        File(target, MARKER).writeText(name)
+        return File(target, "SKILL.md").takeIf { it.isFile }
+    }
+    fun unstage(agent: AgentId, name: String) {
+        val root = roots.single { it.agent == agent && it.writable }
+        val target = File(home, "${root.relative}/$name")
+        if (safe(target) && File(target, MARKER).isFile) target.deleteRecursively()
+    }
+    private companion object { const val MARKER = ".mobby-ephemeral" }
 }

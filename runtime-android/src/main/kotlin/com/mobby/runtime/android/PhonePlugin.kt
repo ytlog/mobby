@@ -4,28 +4,64 @@ import com.mobby.runtime.api.CapabilityRef
 import com.mobby.runtime.api.ErrorCode
 import com.mobby.runtime.api.PluginSummary
 import com.mobby.runtime.api.RuntimeError
+import com.mobby.runtime.engine.SkillDocument
 import org.json.JSONObject
+import java.io.File
 import java.util.UUID
 
 internal object PhonePlugin {
     const val REF = "plugin:PHONE:ACCESSIBILITY"
+    const val SKILL = "use-current-phone"
     fun accepts(ref: CapabilityRef) = ref.value == REF
     fun summary(available: Boolean) = PluginSummary(
         CapabilityRef(REF), "使用当前手机",
-        "通过系统无障碍服务读取当前屏幕并操作本机应用。仅在你开启系统授权、并把此插件加入本轮草稿后，Agent 才能使用。",
+        "通过无障碍读取并操作当前屏幕",
         available, if (available) null else RuntimeError(ErrorCode.PERMISSION_DENIED)
     )
-    fun instruction(helper: String) = """
-请使用本机无障碍桥接操作当前手机。仅调用下列命令，不要猜测其他接口：
-node $helper snapshot
-node $helper click <屏幕可见文字>
-node $helper type <要输入的文字>
-node $helper tap <0到1的x> <0到1的y>
-node $helper back
-node $helper home
-node $helper recents
-snapshot 返回当前可见界面的精简树；密码框显示为 [secure]。操作前先 snapshot。用户未开启系统无障碍或未选择此插件时不要假装已操作成功。
-""".trimIndent()
+    fun write(root: File, node: String, port: Int, token: String): File {
+        require(node.startsWith("/") && '\u0000' !in node)
+        val skillDir = File(root, "skills/$SKILL")
+        val scripts = File(skillDir, "scripts")
+        scripts.mkdirs()
+        val helper = PhoneCommandServer.helper(scripts, port, token)
+        val skill = File(skillDir, "SKILL.md")
+        val markdown = """
+            ---
+            name: $SKILL
+            description: Operate the current Android phone screen with snapshot, click, type, tap, back, home, and recents.
+            ---
+
+            Use this skill whenever the user wants to read or control the current phone.
+
+            Always snapshot first. Password fields appear as `[secure]`. Do not invent missing controls. If a command fails, report the failure; do not pretend it succeeded.
+
+            Run the bundled helper with this Node binary. It only talks to this device:
+
+            `$node ${helper.absolutePath} snapshot`
+            `$node ${helper.absolutePath} click <visible-text>`
+            `$node ${helper.absolutePath} type <text>`
+            `$node ${helper.absolutePath} tap <x> <y>`
+            `$node ${helper.absolutePath} back`
+            `$node ${helper.absolutePath} home`
+            `$node ${helper.absolutePath} recents`
+
+            `x` and `y` are 0 to 1. Keep queries under 200 characters and typed text under 2000 characters.
+        """.trimIndent() + "\n"
+        require(SkillDocument.preview(markdown).issues.isEmpty())
+        skill.writeText(markdown)
+        File(root, "plugin.json").writeText(
+            """{"${'$'}schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"$SKILL","version":"1.0.0","description":"Operate the current Android phone screen"}"""
+        )
+        File(root, ".codex-plugin").mkdirs()
+        File(root, ".codex-plugin/plugin.json").writeText(
+            """{"name":"$SKILL","version":"1.0.0","description":"Operate the current Android phone screen","skills":"./skills/"}"""
+        )
+        File(root, ".claude-plugin").mkdirs()
+        File(root, ".claude-plugin/plugin.json").writeText(
+            """{"name":"$SKILL","version":"1.0.0","description":"Operate the current Android phone screen"}"""
+        )
+        return skill
+    }
 }
 
 internal fun interface PhoneOperator {

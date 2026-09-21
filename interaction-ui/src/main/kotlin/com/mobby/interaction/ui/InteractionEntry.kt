@@ -19,10 +19,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.*
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -114,14 +117,11 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                         "archived" -> ArchivedPage(state, vm) { route = "settings" }
                         "skills" -> SkillsPage(vm, onBack = { route = "add" }, onConversation = { route = "conversation" })
                         "plugins" -> PluginPage(vm) { route = "add" }
-                        else -> Column(Modifier.fillMaxSize()) {
-                            ConversationToolbar(state.selected?.conversation, vm, onMenu = { keyboard?.hide(); focus.clearFocus(); drawer = true },
-                                onNew = { dialog = "new" }, onMore = { dialog = it })
-                            if (!system.connected || !system.ready) Text(system.message, Modifier.padding(horizontal = 16.dp, vertical = 6.dp), style = MaterialTheme.typography.bodySmall)
+                        else -> Box(Modifier.fillMaxSize()) {
                             when {
-                                state.error != null -> Text(state.error!!, Modifier.padding(24.dp).weight(1f), color = MaterialTheme.colorScheme.error)
-                                state.loading -> Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-                                state.selected == null -> Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                state.error != null -> Text(state.error!!, Modifier.align(Alignment.Center).padding(24.dp), color = MaterialTheme.colorScheme.error)
+                                state.loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
+                                state.selected == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                         EmptyPlaceholder("还没有对话", "新建一个对话，从具体任务开始")
                                         Button(onClick = { dialog = "new" }) { Text("新建对话") }
@@ -129,9 +129,29 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                                 }
                                 else -> {
                                     val detail = state.selected!!
-                                    key(detail.conversation.id) { Timeline(detail, vm, Modifier.weight(1f), read = { title, text -> reading = title to text }, hostActions = hostActions, proposal = vm::openSkillProposal) }
-                                    Composer(detail, state, system, vm, onAdd = { navigate("add") }, onVoice = { keyboard?.hide(); voice = vm.composer.value })
+                                    key(detail.conversation.id) {
+                                        Timeline(
+                                            detail, vm, Modifier.fillMaxSize(),
+                                            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 88.dp, bottom = 148.dp),
+                                            followPadding = PaddingValues(end = 16.dp, bottom = 148.dp),
+                                            read = { title, text -> reading = title to text }, hostActions = hostActions, proposal = vm::openSkillProposal,
+                                        )
+                                    }
                                 }
+                            }
+                            ConversationToolbar(
+                                state.selected?.conversation, vm,
+                                modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth(),
+                                onMenu = { keyboard?.hide(); focus.clearFocus(); drawer = true },
+                                onNew = { dialog = "new" }, onMore = { dialog = it },
+                            )
+                            if (!system.connected || !system.ready) Text(
+                                system.message,
+                                Modifier.align(Alignment.TopCenter).padding(top = 68.dp, start = 20.dp, end = 20.dp),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            if (state.selected != null && state.error == null && !state.loading) {
+                                Composer(state.selected!!, state, system, vm, modifier = Modifier.align(Alignment.BottomCenter), onAdd = { navigate("add") }, onVoice = { keyboard?.hide(); voice = vm.composer.value })
                             }
                         }
                     }
@@ -237,19 +257,23 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
     }
 }
 
-@Composable private fun ConversationToolbar(c: Conversation?, vm: ConversationViewModel, onMenu: () -> Unit, onNew: () -> Unit, onMore: (String) -> Unit) {
+@Composable private fun ConversationToolbar(c: Conversation?, vm: ConversationViewModel, onMenu: () -> Unit, onNew: () -> Unit, onMore: (String) -> Unit, modifier: Modifier = Modifier) {
     var config by remember { mutableStateOf(false) }
     var more by remember { mutableStateOf(false) }
-    Column {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Surface(shape = CircleShape, color = cardColor()) { ActionIcon("打开会话抽屉", onMenu, AppIcons.Menu) }
-            Box(Modifier.weight(1f).padding(horizontal = 4.dp)) {
-                Surface(shape = RoundedCornerShape(26.dp), color = cardColor()) {
+    var chip by remember { mutableStateOf(IntRect.Zero) }
+    Row(modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Surface(shape = CircleShape, color = cardColor(), shadowElevation = floatingElevation(), tonalElevation = 0.dp) { ActionIcon("打开会话抽屉", onMenu, AppIcons.Menu) }
+            Box(Modifier.padding(horizontal = 6.dp).onGloballyPositioned { coordinates ->
+                val origin = coordinates.positionInWindow()
+                chip = IntRect(origin.x.roundToInt(), origin.y.roundToInt(), origin.x.roundToInt() + coordinates.size.width, origin.y.roundToInt() + coordinates.size.height)
+            }) {
+                Surface(shape = RoundedCornerShape(26.dp), color = cardColor(), shadowElevation = floatingElevation(), tonalElevation = 0.dp) {
                     TextButton(onClick = { config = true; vm.enqueue { vm.refresh() } }, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurface)) { Text(c?.config?.agent?.label() ?: "选择 Agent"); Icon(AppIcons.ChevronDown, null, Modifier.size(16.dp)) }
                 }
-                if (c != null) AgentConfigMenu(config, { config = false }, c, vm)
             }
-            Surface(shape = RoundedCornerShape(26.dp), color = cardColor()) {
+            if (c != null) AgentConfigMenu(config, { config = false }, c, vm, chip)
+            Spacer(Modifier.weight(1f))
+            Surface(shape = RoundedCornerShape(26.dp), color = cardColor(), shadowElevation = floatingElevation(), tonalElevation = 0.dp) {
                 Row {
                     ActionIcon("新建对话", onNew, AppIcons.New)
                     Box {
@@ -284,14 +308,13 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                 }
             }
         }
-    }
 }
 
-@Composable private fun Composer(detail: ConversationDetail, state: InteractionState, system: SystemStatus, vm: ConversationViewModel, onAdd: () -> Unit, onVoice: () -> Unit) {
+@Composable private fun Composer(detail: ConversationDetail, state: InteractionState, system: SystemStatus, vm: ConversationViewModel, onAdd: () -> Unit, onVoice: () -> Unit, modifier: Modifier = Modifier) {
     val composer by vm.composer.collectAsStateWithLifecycle()
     val active = detail.turns.lastOrNull { it.occupied }
     val unavailable = detail.conversation.archived || detail.conversation.deleted
-    Column(Modifier.fillMaxWidth().padding(12.dp)) {
+    Column(modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp)) {
         if (unavailable) Text("此对话已归档或删除，请先在设置中恢复", style = MaterialTheme.typography.bodySmall)
         if (state.occupied != null && active == null) Text("${state.occupied!!.conversation.title} 正在执行，本轮草稿可继续编辑", style = MaterialTheme.typography.bodySmall)
         if (system.diagnosticBusy) Text("Shell 诊断正在占用运行环境", style = MaterialTheme.typography.bodySmall)
@@ -310,7 +333,7 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                 TextButton(onClick = { vm.enqueue { vm.actions.discardAttachment(detail.conversation.id, pending.id) } }) { Text("移除待处理附件") }
             }
         }
-        Surface(shape = RoundedCornerShape(28.dp), color = cardColor()) {
+        Surface(shape = RoundedCornerShape(28.dp), color = cardColor(), shadowElevation = floatingElevation(), tonalElevation = 0.dp) {
             Row(Modifier.fillMaxWidth().padding(4.dp), verticalAlignment = Alignment.Bottom) {
                 ActionIcon("添加内容与能力", onAdd, AppIcons.Plus)
                 androidx.compose.foundation.text.BasicTextField(composer.value, vm::edit, Modifier.weight(1f).heightIn(min = 48.dp).padding(vertical = 12.dp),
@@ -327,7 +350,7 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
 }
 
 @OptIn(FlowPreview::class)
-@Composable private fun Timeline(detail: ConversationDetail, vm: ConversationViewModel, modifier: Modifier, read: (String, String) -> Unit, hostActions: InteractionHostActions, proposal: (SkillProposal) -> Unit) {
+@Composable private fun Timeline(detail: ConversationDetail, vm: ConversationViewModel, modifier: Modifier, contentPadding: PaddingValues = PaddingValues(horizontal = 16.dp, vertical = 12.dp), followPadding: PaddingValues = PaddingValues(12.dp), read: (String, String) -> Unit, hostActions: InteractionHostActions, proposal: (SkillProposal) -> Unit) {
     val keys = buildList {
         if (detail.hasEarlier) add("earlier")
         detail.turns.forEach { t ->
@@ -376,12 +399,12 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
         }
     }
     Box(modifier.fillMaxWidth()) {
-        LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = contentPadding, verticalArrangement = Arrangement.spacedBy(16.dp)) {
             if (detail.hasEarlier) item(key = "earlier") {
                 TextButton(onClick = { follow = false; vm.enqueue { vm.actions.loadEarlier(detail.conversation.id) } }, modifier = Modifier.fillMaxWidth()) { Text("加载更早的消息") }
             }
             if (detail.turns.isEmpty()) item(key = "empty") {
-                Column(Modifier.fillParentMaxWidth().padding(top = 80.dp, start = 24.dp, end = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(Modifier.fillParentMaxWidth().padding(top = 32.dp, start = 24.dp, end = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("今天，做点什么？", style = MaterialTheme.typography.headlineMedium, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                     Text("使用 ${detail.conversation.config.agent.label()}，从一个具体任务开始。", Modifier.padding(top = 12.dp).fillMaxWidth(), color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                 }
@@ -421,7 +444,7 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                 }
             }
         }
-        if (!follow && detail.turns.isNotEmpty()) FilledTonalButton(onClick = { follow = true; scope.launch { if (keys.isNotEmpty()) list.animateScrollToItem(keys.lastIndex) } }, modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp), shape = RoundedCornerShape(26.dp)) { Icon(AppIcons.ArrowDown, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("最新消息") }
+        if (!follow && detail.turns.isNotEmpty()) FilledTonalButton(onClick = { follow = true; scope.launch { if (keys.isNotEmpty()) list.animateScrollToItem(keys.lastIndex) } }, modifier = Modifier.align(Alignment.BottomEnd).padding(followPadding), shape = RoundedCornerShape(26.dp)) { Icon(AppIcons.ArrowDown, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("最新消息") }
     }
 }
 

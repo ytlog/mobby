@@ -1,21 +1,32 @@
 package com.mobby.interaction.ui
 
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
 @Composable internal fun ActionIcon(label: String, onClick: () -> Unit, icon: ImageVector, enabled: Boolean = true, filled: Boolean = false) {
@@ -94,6 +105,98 @@ import androidx.compose.ui.unit.dp
     HorizontalDivider(Modifier.padding(start = 16.dp), color = MaterialTheme.colorScheme.outline)
 }
 
+@OptIn(ExperimentalFoundationApi::class)
+@Composable internal fun CatalogTabs(tabs: List<String>, selected: Int, onSelect: (Int) -> Unit) {
+    val scroll = rememberScrollState()
+    Row(
+        Modifier.fillMaxWidth().horizontalScroll(scroll).padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        tabs.forEachIndexed { index, label ->
+            val requester = remember { BringIntoViewRequester() }
+            LaunchedEffect(selected) { if (selected == index) requester.bringIntoView() }
+            Box(Modifier.bringIntoViewRequester(requester)) {
+                CatalogChip(label, selected == index) { onSelect(index) }
+            }
+        }
+    }
+}
+
+@Composable internal fun CatalogChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(20.dp),
+        color = if (selected) cardColor() else Color.Transparent,
+        border = if (selected) BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.28f)) else null,
+        contentColor = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+    ) {
+        Text(label, Modifier.padding(horizontal = 14.dp, vertical = 7.dp), style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+@Composable internal fun catalogSwatch(key: String): Pair<Color, Color> {
+    val palettes = if (darkChrome()) listOf(
+        Color(0xFF80BAFF) to Color(0xFF1A3050),
+        Color(0xFF8BC34A) to Color(0xFF1C2E18),
+        Color(0xFFFFB74D) to Color(0xFF3A2A14),
+        Color(0xFFEF9A9A) to Color(0xFF3A1C1C),
+        Color(0xFFCE93D8) to Color(0xFF2E1A36),
+    ) else listOf(
+        Color(0xFF1E88E5) to Color(0xFFE3F2FD),
+        Color(0xFF43A047) to Color(0xFFE8F5E9),
+        Color(0xFFFB8C00) to Color(0xFFFFF3E0),
+        Color(0xFFE53935) to Color(0xFFFFEBEE),
+        Color(0xFF8E24AA) to Color(0xFFF3E5F5),
+    )
+    return palettes[key.hashCode().and(Int.MAX_VALUE) % palettes.size]
+}
+
+@Composable internal fun CatalogRow(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    iconForeground: Color,
+    iconBackground: Color,
+    action: String,
+    actionEnabled: Boolean,
+    onAction: () -> Unit,
+    onClick: (() -> Unit)? = null,
+) {
+    Surface(shape = RoundedCornerShape(22.dp), color = raisedColor()) {
+        Row(Modifier.fillMaxWidth().padding(end = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.weight(1f).then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier).padding(start = 16.dp, top = 14.dp, bottom = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(Modifier.size(48.dp).background(iconBackground, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
+                    Icon(icon, null, Modifier.size(24.dp), tint = iconForeground)
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
+                    Text(subtitle, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            Spacer(Modifier.width(8.dp))
+            Surface(
+                onClick = onAction,
+                enabled = actionEnabled,
+                shape = RoundedCornerShape(18.dp),
+                color = Color.Transparent,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = if (actionEnabled) 0.28f else 0.12f)),
+            ) {
+                Text(
+                    action,
+                    Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (actionEnabled) 1f else 0.38f),
+                )
+            }
+        }
+    }
+}
+
 @Composable internal fun ChoiceRow(text: String, selected: Boolean, onClick: () -> Unit, enabled: Boolean = true, modifier: Modifier = Modifier) {
     Row(
         modifier.fillMaxWidth().heightIn(min = 52.dp)
@@ -105,4 +208,36 @@ import androidx.compose.ui.unit.dp
         Text(text, Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.38f), style = MaterialTheme.typography.bodyLarge)
         if (selected) Icon(AppIcons.Check, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
     }
+}
+
+@Composable internal fun MenuSection(title: String, content: @Composable () -> Unit) {
+    Text(title, Modifier.padding(start = 20.dp, top = 14.dp, end = 20.dp, bottom = 2.dp), style = MaterialTheme.typography.labelMedium, color = menuMuted())
+    content()
+}
+
+@Composable internal fun MenuOption(text: String, selected: Boolean, enabled: Boolean = true, onClick: () -> Unit) {
+    val color = menuInk().copy(alpha = if (enabled) 1f else 0.38f)
+    Row(
+        Modifier.fillMaxWidth().height(48.dp)
+            .clickable(enabled = enabled, role = Role.RadioButton, onClick = onClick)
+            .semantics(mergeDescendants = true) {}
+            .padding(horizontal = 20.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(text, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, color = color, style = MaterialTheme.typography.bodyLarge, fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal)
+        if (selected) Icon(AppIcons.Check, null, Modifier.size(20.dp), tint = menuTick())
+    }
+}
+
+@Composable internal fun MenuCaption(text: String) {
+    Text(text, Modifier.padding(horizontal = 20.dp, vertical = 6.dp), style = MaterialTheme.typography.bodySmall, color = menuMuted())
+}
+
+@Composable internal fun MenuAction(text: String, enabled: Boolean = true, onClick: () -> Unit) {
+    Text(
+        text,
+        Modifier.fillMaxWidth().clickable(enabled = enabled, onClick = onClick).padding(horizontal = 20.dp, vertical = 12.dp),
+        color = menuInk().copy(alpha = if (enabled) 1f else 0.38f),
+        style = MaterialTheme.typography.bodyLarge,
+    )
 }

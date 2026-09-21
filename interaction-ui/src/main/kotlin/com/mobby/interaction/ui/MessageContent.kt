@@ -53,7 +53,9 @@ internal fun stepKindIcon(kind: String): ImageVector = when (kind.lowercase()) {
     "read", "write", "edit", "editnotebook", "ls", "file_change" -> AppIcons.File
     "bash", "shell", "command_execution" -> AppIcons.Terminal
     "todo_list", "task" -> AppIcons.Skill
-    "mcp_tool_call", "tool" -> AppIcons.Plugin
+    "mcp_tool_call", "tool", "snapshot", "click", "type", "tap", "back", "home", "recents" -> AppIcons.Phone
+    "mcp__phone__snapshot", "mcp__phone__click", "mcp__phone__type", "mcp__phone__tap",
+    "mcp__phone__back", "mcp__phone__home", "mcp__phone__recents" -> AppIcons.Phone
     else -> AppIcons.More
 }
 @Composable internal fun CodeContent(title: String, text: String, read: (String, String) -> Unit) {

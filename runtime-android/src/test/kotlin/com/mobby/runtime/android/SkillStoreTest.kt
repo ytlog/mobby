@@ -62,4 +62,31 @@ class SkillStoreTest {
         assertFalse(store.hasCreator(AgentId.CODEX, setOf(CapabilityRef(PhonePlugin.REF))))
         assertTrue(store.hasCreator(AgentId.CODEX, setOf(creator.ref, CapabilityRef(PhonePlugin.REF))))
     }
+    @Test fun `plugin skill is staged into the agent skill root and inlined for both CLIs`() {
+        val home = temporary.newFolder(); val store = SkillStore(home)
+        val authored = PhonePlugin.write(temporary.newFolder(), "/bin/node", 9, "tok")
+        val staged = store.stage(AgentId.CODEX, PhonePlugin.SKILL, authored)
+        assertEquals(File(home, ".agents/skills/${PhonePlugin.SKILL}/SKILL.md"), staged)
+        assertTrue(File(home, ".agents/skills/${PhonePlugin.SKILL}/scripts/phone.cjs").isFile)
+        assertTrue(store.list(AgentId.CODEX).none { it.name == PhonePlugin.SKILL })
+        val codex = store.prompt(AgentId.CODEX, emptySet(), "open settings", extras = listOf(PhonePlugin.SKILL to staged!!))
+        assertTrue(codex.contains("$" + PhonePlugin.SKILL))
+        assertTrue(codex.contains(staged.absolutePath))
+        assertTrue(codex.contains("snapshot"))
+        store.unstage(AgentId.CODEX, PhonePlugin.SKILL)
+        assertFalse(File(home, ".agents/skills/${PhonePlugin.SKILL}").exists())
+        val claudeFile = store.stage(AgentId.CLAUDE_CODE, PhonePlugin.SKILL, authored)!!
+        val claude = store.prompt(AgentId.CLAUDE_CODE, emptySet(), "open settings", extras = listOf(PhonePlugin.SKILL to claudeFile))
+        assertTrue(claude.contains("/" + PhonePlugin.SKILL))
+        assertTrue(claude.contains("Skill 工具"))
+        assertTrue(claude.contains("/bin/node"))
+        store.unstage(AgentId.CLAUDE_CODE, PhonePlugin.SKILL)
+    }
+    @Test fun `staging does not replace a user skill of the same name`() {
+        val home = temporary.newFolder(); val store = SkillStore(home)
+        store.save(AgentId.CLAUDE_CODE, document(PhonePlugin.SKILL, "keep this user skill"))
+        val authored = PhonePlugin.write(temporary.newFolder(), "/bin/node", 9, "tok")
+        assertNull(store.stage(AgentId.CLAUDE_CODE, PhonePlugin.SKILL, authored))
+        assertEquals("keep this user skill", SkillDocument.preview(File(home, ".claude/skills/${PhonePlugin.SKILL}/SKILL.md").readText()).body)
+    }
 }

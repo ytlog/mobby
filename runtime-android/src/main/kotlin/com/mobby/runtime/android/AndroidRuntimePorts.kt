@@ -62,16 +62,21 @@ internal class AndroidRuntimePorts(
             val workingDirectory = requireNotNull(runtime.workspaces.resolve(request.workspaceRef))
             val prepared = resources.prepare(request.inputParts, request.workspaceRef)
             val skillRefs = request.capabilityRefs.filterNot { PhonePlugin.accepts(it) }.toSet()
-            var prompt = skills.prompt(request.agentId, skillRefs, prepared.prompt)
             var phone: PhoneCommandServer? = null
-            var helperDir: File? = null
+            var bridgeDir: File? = null
+            val extras = mutableListOf<Pair<String, File>>()
+            var stagedPhone = false
             if (request.capabilityRefs.any { PhonePlugin.accepts(it) }) {
                 val token = PhoneCommands.token()
                 phone = PhoneCommandServer(token, PhoneAccessibilityService.operator())
-                helperDir = File(context.filesDir, "phone-bridge/${request.requestId.value}")
-                val helper = PhoneCommandServer.helper(helperDir, phone.port, token)
-                prompt = PhonePlugin.instruction(helper.absolutePath) + "\n\n" + prompt
+                bridgeDir = File(context.filesDir, "phone-bridge/${request.requestId.value}")
+                val node = File(runtime.sdk.vfs.binDir, "node").absolutePath
+                val authored = PhonePlugin.write(bridgeDir, node, phone.port, token)
+                val staged = skills.stage(request.agentId, PhonePlugin.SKILL, authored)
+                stagedPhone = staged != null
+                extras += PhonePlugin.SKILL to (staged ?: authored)
             }
+            var prompt = skills.prompt(request.agentId, skillRefs, prepared.prompt, extras)
             val structured = request.requestedOutput == RequestedOutput.SKILL_PROPOSAL
             if (structured) prompt += "\n\n" + SkillGeneration.instruction
             val input = if (request.agentId != AgentId.CODEX || prepared.images.isEmpty() && !structured) null
@@ -94,7 +99,8 @@ internal class AndroidRuntimePorts(
                 }
             } finally {
                 session?.close(); if (control === session) control = null; input?.close(); phone?.close()
-                helperDir?.deleteRecursively()
+                if (stagedPhone) skills.unstage(request.agentId, PhonePlugin.SKILL)
+                bridgeDir?.deleteRecursively()
             }
         }
         val watcher = launch { stop.filterNotNull().first(); control?.close(); worker.cancel() }

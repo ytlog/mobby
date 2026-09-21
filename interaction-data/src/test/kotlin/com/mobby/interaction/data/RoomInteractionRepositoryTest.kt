@@ -365,6 +365,20 @@ class RoomInteractionRepositoryTest {
         val followUp = (repository.prepareTurn(created, TurnId("creator-followup")) as PrepareTurnResult.Prepared).turn
         assertEquals(setOf("skill:CODEX:BUILTIN:skill-creator:hash"), followUp.draft.capabilities)
     }
+    @Test fun `plugin capability can join a draft for either agent and survives prepare`() = runBlocking {
+        val c = state().selected!!.conversation
+        repository.editDraft(c.id, "use the phone", 13, 13)
+        repository.setSkill(c.id, "plugin:PHONE:ACCESSIBILITY", true)
+        assertEquals(setOf("plugin:PHONE:ACCESSIBILITY"), repository.conversation(c.id).draft.capabilities)
+        val switched = repository.configure(c.id, c.config.copy(agent = DomainAgent.CLAUDE_CODE, gatewayProfile = "CLAUDE_CODE"))
+        assertEquals(setOf("plugin:PHONE:ACCESSIBILITY"), repository.conversation(switched).draft.capabilities)
+        val prepared = (repository.prepareTurn(switched, TurnId("phone-run")) as PrepareTurnResult.Prepared).turn
+        assertEquals(setOf("plugin:PHONE:ACCESSIBILITY"), prepared.draft.capabilities)
+        assertEquals(DomainAgent.CLAUDE_CODE, prepared.config.agent)
+        repository.setSkill(switched, "plugin:PHONE:ACCESSIBILITY", false)
+        assertTrue(repository.conversation(switched).draft.capabilities.isEmpty())
+        assertEquals(setOf("plugin:PHONE:ACCESSIBILITY"), prepared.draft.capabilities)
+    }
     @Test fun `unexpected missing output remains a synchronization error rather than retention success`() = runBlocking {
         val c = state().selected!!.conversation
         repository.editDraft(c.id, "fixture", 7, 7)

@@ -1,5 +1,6 @@
 package com.mobby.runtime.android
 
+import com.mobby.runtime.engine.SkillDocument
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Rule
@@ -8,6 +9,7 @@ import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import java.io.File
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], manifest = Config.NONE)
@@ -37,12 +39,49 @@ class PhoneCommandsTest {
         assertEquals("请提供要输入的文字", failed.getString("error"))
     }
 
-    @Test fun `helper script stays on localhost and embeds the escaped token`() {
-        val file = PhoneCommandServer.helper(temporary.newFolder(), 43123, """tok"en""")
-        val text = file.readText()
-        assertTrue(text.contains("127.0.0.1"))
-        assertTrue(text.contains("43123"))
-        assertTrue(text.contains("""token:"tok\"en""""))
-        assertFalse(text.contains("0.0.0.0"))
+    @Test fun `plugin package is a skill bundle without MCP and helper stays on localhost`() {
+        val root = temporary.newFolder()
+        val skill = PhonePlugin.write(root, "/bin/node", 43123, """tok"en""")
+        val preview = SkillDocument.preview(skill.readText())
+        assertTrue(preview.issues.isEmpty())
+        assertEquals(PhonePlugin.SKILL, preview.name)
+        assertEquals(skill, File(root, "skills/${PhonePlugin.SKILL}/SKILL.md"))
+        assertTrue(skill.readText().contains("/bin/node"))
+        assertTrue(skill.readText().contains("snapshot"))
+        assertFalse(skill.readText().contains("tok"))
+        val helper = File(root, "skills/${PhonePlugin.SKILL}/scripts/phone.cjs").readText()
+        assertTrue(helper.contains("127.0.0.1"))
+        assertTrue(helper.contains("43123"))
+        assertTrue(helper.contains("""TOKEN="tok\"en""""))
+        assertFalse(helper.contains("0.0.0.0"))
+        assertFalse(helper.contains("tools/list"))
+        val portable = JSONObject(File(root, "plugin.json").readText())
+        assertEquals(PhonePlugin.SKILL, portable.getString("name"))
+        assertFalse(portable.has("mcpServers"))
+        val codex = JSONObject(File(root, ".codex-plugin/plugin.json").readText())
+        assertEquals("./skills/", codex.getString("skills"))
+        assertFalse(codex.has("mcpServers"))
+        val claude = JSONObject(File(root, ".claude-plugin/plugin.json").readText())
+        assertEquals(PhonePlugin.SKILL, claude.getString("name"))
+        assertFalse(claude.has("mcpServers"))
+    }
+
+    @Test fun `skill helper snapshot stays on the localhost token`() {
+        val token = "secret-token"
+        val phone = PhoneCommandServer(token) { action, _ ->
+            assertEquals("snapshot", action)
+            "Launcher"
+        }
+        val helper = PhoneCommandServer.helper(temporary.newFolder(), phone.port, token)
+        val proc = ProcessBuilder("node", helper.absolutePath, "snapshot").redirectErrorStream(true).start()
+        try {
+            assertTrue(proc.waitFor(8, java.util.concurrent.TimeUnit.SECONDS))
+            assertEquals(0, proc.exitValue())
+            assertEquals("Launcher\n", proc.inputStream.bufferedReader().readText())
+            assertFalse(helper.readText().contains("0.0.0.0"))
+        } finally {
+            proc.destroyForcibly()
+            phone.close()
+        }
     }
 }

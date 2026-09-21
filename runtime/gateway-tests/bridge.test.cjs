@@ -137,3 +137,17 @@ test('gateway paths normalize native root, version, full and custom paths',()=>{
     assert.equal(endpoint({endpoint:'https://example.com/api/custom',protocol}),'https://example.com/api/custom/'+protocol);
   }
 });
+test('agent extra flags pass through the local bridge and are not written into user config',()=>{
+  const launch=agentLaunch('CODEX',[
+    '--sandbox','danger-full-access','-c','approval_policy="never"','exec','--json','--','use the phone'
+  ],{endpoint:'https://example.com/v1',protocol:'responses',model:'m',key:'fake'},{},{url:'http://127.0.0.1:32123',token:'test-token'});
+  assert.ok(launch.args.indexOf('approval_policy="never"')<launch.args.indexOf('exec'));
+  assert.ok(!launch.args.some(a=>String(a).includes('mcp_servers')||a==='--mcp-config'));
+  assert.equal(launch.args.at(-1),'use the phone');
+  assert.equal(launch.env.MOBBY_GATEWAY_CONFIG,undefined);
+  const claude=agentLaunch('CLAUDE',[
+    '-p','--output-format','stream-json','--verbose','--','use the phone'
+  ],{endpoint:'https://example.com/v1',protocol:'messages',model:'m',key:'fake'},{},{url:'http://127.0.0.1:32123',token:'test-token'});
+  assert.ok(!claude.args.includes('--mcp-config'));
+  assert.equal(claude.args.at(-1),'use the phone');
+});

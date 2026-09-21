@@ -176,7 +176,7 @@ internal class RoomInteractionRepository(
         c.copy(draft = c.draft.copy(revision = c.draft.revision + 1, attachments = refs))
     }
     override suspend fun setSkill(id: ConversationId, ref: String, enabled: Boolean) = mutate(id) { c ->
-        require(!enabled || ref.startsWith("skill:${c.config.agent.name}:"))
+        require(!enabled || ref.startsWith("skill:${c.config.agent.name}:") || ref.startsWith("plugin:"))
         val refs = if (enabled) c.draft.capabilities + ref else c.draft.capabilities - ref
         require((refs + listOfNotNull(c.creator)).size <= 8)
         c.copy(draft = c.draft.copy(revision = c.draft.revision + 1, capabilities = refs))

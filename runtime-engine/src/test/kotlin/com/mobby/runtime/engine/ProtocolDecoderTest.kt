@@ -77,4 +77,20 @@ class ProtocolDecoderTest {
             assertFalse(args.any { "bypass" in it || "skip-permissions" in it || it == "--last" })
         }
     }
+    @Test fun `phone plugin is not attached as MCP flags`() {
+        val request = RunRequest(RequestId("r"), AgentId.CODEX, WorkspaceRef("default"), emptyList(), "model", GatewayProfileRef("g", 0))
+        val args = AgentCommand.arguments(request, "/agent", "use the phone")
+        assertFalse(args.any { "mcp_servers" in it || it == "--mcp-config" || it.startsWith("mcp__") })
+        assertEquals("use the phone", args.last())
+        val claude = AgentCommand.arguments(request.copy(agentId = AgentId.CLAUDE_CODE), "/agent", "use the phone")
+        assertFalse(claude.contains("--mcp-config"))
+        assertFalse(claude.contains("--allowedTools"))
+        assertEquals("use the phone", claude.last())
+    }
+    @Test fun `codex MCP tool calls keep the tool name and result`() {
+        val facts = ProtocolDecoder(AgentId.CODEX).decode(
+            """{"type":"item.completed","item":{"id":"mcp-1","type":"mcp_tool_call","server":"phone","tool":"click","arguments":{"query":"确定"},"result":"已点击：确定","status":"completed"}}"""
+        )
+        assertEquals(AgentFact.Tool("mcp-1", "click", """{"query":"确定"}""", "已点击：确定", ToolOutcome.SUCCEEDED), facts.single())
+    }
 }

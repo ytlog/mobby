@@ -36,19 +36,25 @@ internal class PhoneCommandServer(private val token: String, private val operato
             file.writeText(
                 """
 const net=require('net');
-const action=process.argv[2];
-if(!action){console.error('usage: snapshot|click|type|tap|back|home|recents');process.exit(1)}
-const body={token:${jsString(token)},action};
-if(action==='click')body.query=process.argv.slice(3).join(' ');
-else if(action==='type')body.text=process.argv.slice(3).join(' ');
-else if(action==='tap'){body.x=process.argv[3];body.y=process.argv[4];}
-const socket=net.connect(${port},'127.0.0.1',()=>{socket.end(JSON.stringify(body)+'\n')});
-let data='';socket.on('data',c=>data+=c);socket.on('end',()=>{
+const PORT=$port;
+const TOKEN=${jsString(token)};
+const [action,...rest]=process.argv.slice(2);
+if(!action){console.error('usage: snapshot|click <text>|type <text>|tap <x> <y>|back|home|recents');process.exit(2)}
+const args={};
+if(action==='click')args.query=rest.join(' ');
+else if(action==='type')args.text=rest.join(' ');
+else if(action==='tap'){args.x=rest[0];args.y=rest[1];}
+const body=JSON.stringify(Object.assign({token:TOKEN,action},args));
+const socket=net.connect(PORT,'127.0.0.1',()=>socket.end(body+'\n'));
+let data='';
+socket.on('data',c=>data+=c);
+socket.on('end',()=>{
   let parsed;try{parsed=JSON.parse(data)}catch{console.error(data||'no response');process.exit(1)}
   if(!parsed.ok){console.error(parsed.error||'failed');process.exit(1)}
-  console.log(parsed.result);process.exit(0);
+  process.stdout.write(String(parsed.result||'')+'\n');
 });
-socket.setTimeout(8000,()=>{console.error('phone bridge timeout');process.exit(1)});
+socket.setTimeout(8000,()=>{socket.destroy();console.error('phone bridge timeout');process.exit(1)});
+socket.on('error',e=>{console.error(e.message);process.exit(1)});
 """.trimIndent()
             )
             return file
