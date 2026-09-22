@@ -244,6 +244,7 @@ import kotlinx.coroutines.*
     save: suspend (GatewayEdit) -> OperationResult, refresh: suspend () -> Unit, back: () -> Unit,
     check: suspend (GatewayProfile) -> DataResult<GatewayCheckReport>) {
     var agent by rememberSaveable { mutableStateOf(AgentId.CODEX) }
+    var providerId by remember { mutableStateOf(GatewayProviders.CUSTOM) }
     var endpoint by remember { mutableStateOf("") }
     var model by remember { mutableStateOf("") }
     var protocol by remember { mutableStateOf("RESPONSES") }
@@ -265,6 +266,7 @@ import kotlinx.coroutines.*
     LaunchedEffect(agent) { notice = "" }
     LaunchedEffect(agent, profile) {
         endpoint = profile?.endpoint.orEmpty()
+        providerId = GatewayProviders.match(agent, endpoint)
         model = profile?.model.orEmpty()
         protocol = profile?.protocol ?: if (agent == AgentId.CLAUDE_CODE) "MESSAGES" else "RESPONSES"
         key = ""; keyEdited = false
@@ -279,13 +281,35 @@ import kotlinx.coroutines.*
                 }
             }
             SettingsCaption("${agent.label()} 使用 $nativeLabel，通过本地桥接连接网关。")
+            val providers = GatewayProviders.forAgent(agent)
+            SettingsGroup("服务") {
+                providers.forEachIndexed { index, provider ->
+                    if (index > 0) GroupDivider()
+                    ChoiceRow(provider.label, providerId == provider.id, {
+                        if (providerId != provider.id) {
+                            providerId = provider.id
+                            endpoint = provider.endpoint
+                            notice = ""
+                        }
+                    }, enabled = !busy)
+                }
+                GroupDivider()
+                ChoiceRow("自定义", providerId == GatewayProviders.CUSTOM, {
+                    if (providerId != GatewayProviders.CUSTOM) {
+                        if (GatewayProviders.matches(agent, endpoint)) endpoint = ""
+                        providerId = GatewayProviders.CUSTOM
+                        notice = ""
+                    }
+                }, enabled = !busy)
+            }
+            SettingsCaption("切换服务只更新地址，请确认模型和密钥仍属于该服务。Google Gemini 目前没有 Responses 或 Messages 接口，不能直接选择。")
             if (!protocolSupported) {
                 SettingsCaption("当前保存的协议不适用于此 Agent；暂不提供协议转换。", error = true)
                 SettingsGroup { SettingsAction("改用 $nativeLabel", enabled = !busy) { protocol = nativeProtocol; notice = "" } }
             }
             val stored = profile?.hasCredential == true
             SettingsGroup {
-                SettingsField(endpoint, { endpoint = it; notice = "" }, "网关地址", enabled = !busy)
+                SettingsField(endpoint, { if (providerId == GatewayProviders.CUSTOM) { endpoint = it; notice = "" } }, "网关地址", enabled = !busy && providerId == GatewayProviders.CUSTOM)
                 GroupDivider()
                 SettingsField(model, { model = it; notice = "" }, "模型名称", enabled = !busy)
                 GroupDivider()

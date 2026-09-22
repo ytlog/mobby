@@ -119,4 +119,39 @@ class GatewayFormTest {
         assertNull(saved!!.credential)
     }
 
+    @Test fun `selecting a service fills its address and custom clears that preset`() {
+        var saved: GatewayEdit? = null
+        compose.setContent { MaterialTheme { GatewayForm(listOf(profile), { runBlocking { it() } }, { saved = it; OperationResult.Done }, {}, {}, { DataResult.Failed("unused") }) } }
+        field("模型名称").performScrollTo().performTextReplacement("kept-model")
+        compose.onNodeWithText("OpenAI").performScrollTo().performClick()
+        field("网关地址").assertTextEquals("网关地址", "https://api.openai.com/v1").assertIsNotEnabled()
+        field("模型名称").assertTextContains("kept-model")
+        compose.onNodeWithText("保存当前配置").performScrollTo().performClick()
+        assertEquals("https://api.openai.com/v1", saved!!.endpoint)
+        assertEquals("kept-model", saved!!.model)
+        assertEquals("RESPONSES", saved!!.protocol)
+        compose.onNodeWithText("自定义").performScrollTo().performClick()
+        field("网关地址").assertTextEquals("网关地址", "").assertIsEnabled()
+    }
+
+    @Test fun `saved preset address stays selected and is not rewritten until another service is chosen`() {
+        val saved = profile.copy(endpoint = "https://api.openai.com/v1/")
+        compose.setContent { MaterialTheme { GatewayForm(listOf(saved), {}, { OperationResult.Done }, {}, {}, { DataResult.Failed("unused") }) } }
+        field("网关地址").assertTextEquals("网关地址", "https://api.openai.com/v1/").assertIsNotEnabled()
+        compose.onNodeWithText("OpenRouter").performScrollTo().performClick()
+        field("网关地址").assertTextEquals("网关地址", "https://openrouter.ai/api/v1")
+    }
+
+    @Test fun `claude code lists only messages services`() {
+        compose.setContent { MaterialTheme { GatewayForm(listOf(profile), {}, { OperationResult.Done }, {}, {}, { DataResult.Failed("unused") }) } }
+        compose.onNodeWithText("Claude Code").performScrollTo().performClick()
+        compose.onNodeWithText("Anthropic").assertExists()
+        compose.onNodeWithText("DeepSeek").assertExists()
+        compose.onNodeWithText("OpenRouter").assertExists()
+        compose.onNodeWithText("OpenAI").assertDoesNotExist()
+        compose.onNodeWithText("xAI").assertDoesNotExist()
+        compose.onNodeWithText("Groq").assertDoesNotExist()
+        compose.onNodeWithText("自定义").assertExists()
+    }
+
 }

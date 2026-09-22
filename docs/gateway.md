@@ -1,6 +1,6 @@
 # 网关接入
 
-在「网关设置」中选择 Agent，填写网关地址、模型和 API Key，然后保存。两个 Agent 分别保存；密钥可留空以连接无鉴权网关。保存成功只代表设备配置已保存。
+在「网关设置」中选择 Agent 和服务，或在「自定义」中填写网关地址，再填写模型和 API Key，然后保存。两个 Agent 分别保存；密钥可留空以连接无鉴权网关。保存成功只代表设备配置已保存。
 
 | Agent | 唯一支持的协议 | 上游接口 |
 | --- | --- | --- |
@@ -10,6 +10,21 @@
 按 2026-09-21 用户更新，模型请求统一经过本地 Node 桥接，暂不提供任何协议转换。Chat Completions 不再作为可选协议。旧的 Chat 或 Agent/协议不匹配配置仍保留在加密存储中，但不能执行、检查或原样保存；界面提示后须明确点击“改用 Responses / Messages”并保存，密钥不会因此清空。网关本身也必须支持对应接口。
 
 地址可为基础路径或完整接口路径，例如 `https://host/v1`、`https://host/v1/messages`；无路径时使用 `/v1`。自定义路径会保留，例如 `https://host/api/v2` 会追加原生接口。
+
+## 服务选择
+
+列表只包含当前 Agent 原生协议可以直接请求的服务，最后一项是自定义。选择服务只填入下表基址，不改协议、不替换模型、也不改动已保存密钥。再次打开时，地址与基址一致（忽略末尾斜线以及 `/responses`、`/messages`）就选中该服务；其余地址保持自定义，不会被改写。
+
+| 服务 | Agent | 基址 |
+| --- | --- | --- |
+| OpenRouter | Codex、Claude Code | `https://openrouter.ai/api/v1` |
+| OpenAI | Codex | `https://api.openai.com/v1` |
+| xAI | Codex | `https://api.x.ai/v1` |
+| Groq | Codex | `https://api.groq.com/openai/v1` |
+| Anthropic | Claude Code | `https://api.anthropic.com/v1` |
+| DeepSeek | Claude Code | `https://api.deepseek.com/anthropic/v1` |
+
+Google Gemini 目前提供的是 Chat Completions 和 Interactions，没有 Responses 或 Messages，因此不列入可执行选项。需要 Gemini 时，使用 OpenRouter 上的对应模型，或在自定义中填写已经提供上述原生接口的网关。DeepSeek 的 Messages 基址必须带 `/anthropic/v1`，桥接会在其后追加 `/messages`。
 
 ## 运行方式
 
