@@ -36,6 +36,13 @@ class ExecutionCardTest {
         )
     )
 
+    @Test fun `copy and share stay hidden until the turn ends`() {
+        val reply = empty.copy(messages = listOf(Message("m", "hello")), occupied = true, phase = ExecutionPhase.RUNNING)
+        assertFalse(reply.replyActionsVisible())
+        assertFalse(reply.copy(occupied = false, pending = true).replyActionsVisible())
+        assertTrue(reply.copy(occupied = false, pending = false, phase = ExecutionPhase.SUCCEEDED).replyActionsVisible())
+    }
+
     @Test fun `turns without steps stay off the timeline`() {
         assertFalse(empty.hasVisibleExecution())
         assertFalse(empty.copy(occupied = true, phase = ExecutionPhase.RUNNING).hasVisibleExecution())

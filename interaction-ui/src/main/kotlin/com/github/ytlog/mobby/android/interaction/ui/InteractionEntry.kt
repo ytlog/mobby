@@ -476,6 +476,8 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
 }
 
 @OptIn(FlowPreview::class)
+internal fun Turn.replyActionsVisible() = !occupied && !pending
+
 @Composable private fun Timeline(detail: ConversationDetail, vm: ConversationViewModel, modifier: Modifier, contentPadding: PaddingValues = PaddingValues(horizontal = 16.dp, vertical = 12.dp), followPadding: PaddingValues = PaddingValues(12.dp), read: (String, String) -> Unit, hostActions: InteractionHostActions, proposal: (SkillProposal) -> Unit) {
     val keys = buildList {
         if (detail.hasEarlier) add("earlier")
@@ -552,7 +554,7 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                         is TranscriptEntry.Reply -> item(key = "message:${turn.id.value}:${entry.message.id}") {
                             Column {
                                 ReplyContent(entry.message.text, streaming = turn.occupied && entry.message.id == lastReply, read = read)
-                                if (entry.message.id == lastReply) {
+                                if (entry.message.id == lastReply && turn.replyActionsVisible()) {
                                     val reply = turn.messages.joinToString("\n") { it.text }
                                     Row {
                                         val clipboard = LocalClipboardManager.current
