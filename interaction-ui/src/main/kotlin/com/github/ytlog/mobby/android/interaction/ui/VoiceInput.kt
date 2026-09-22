@@ -33,7 +33,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.clipRect
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -466,7 +465,7 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectVo
 
 @Composable private fun HoldIcon(
     label: String,
-    icon: ImageVector,
+    icon: AppGlyph,
     enabled: Boolean,
     tag: String,
     onTap: () -> Unit,
@@ -482,6 +481,6 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectVo
         },
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, null, Modifier.size(22.dp), tint = if (enabled) LocalContentColor.current else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f))
+        AppIcon(icon, null, Modifier.size(22.dp), tint = if (enabled) LocalContentColor.current else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f))
     }
 }

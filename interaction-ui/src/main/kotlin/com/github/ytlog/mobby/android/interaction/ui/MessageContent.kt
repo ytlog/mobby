@@ -15,7 +15,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -60,7 +59,7 @@ internal fun Turn.executionHeadline(steps: List<Step> = this.steps): String {
         else -> "${phase.label()} · ${count} 个步骤"
     }
 }
-internal fun stepKindIcon(kind: String): ImageVector = when (kind.lowercase()) {
+internal fun stepKindIcon(kind: String): AppGlyph = when (kind.lowercase()) {
     "websearch", "web_search", "grep", "glob" -> AppIcons.Search
     "webfetch" -> AppIcons.Globe
     "read", "write", "edit", "editnotebook", "ls", "file_change" -> AppIcons.File
@@ -109,7 +108,7 @@ internal fun stepKindIcon(kind: String): ImageVector = when (kind.lowercase()) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(turn.executionHeadline(steps), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Icon(if (expanded) AppIcons.ChevronUp else AppIcons.ChevronRight, if (expanded) "已展开" else "已收起", Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                AppIcon(if (expanded) AppIcons.ChevronUp else AppIcons.ChevronRight, if (expanded) "已展开" else "已收起", Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (expanded) {
             val scroll = rememberScrollState()
@@ -135,7 +134,7 @@ internal fun stepKindIcon(kind: String): ImageVector = when (kind.lowercase()) {
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        if (!thinking) Icon(if (open) AppIcons.ChevronDown else AppIcons.ChevronRight, if (open) "已展开" else "已收起", Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (!thinking) AppIcon(if (open) AppIcons.ChevronDown else AppIcons.ChevronRight, if (open) "已展开" else "已收起", Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     if (open && !thinking) {
                         val body = view.detail.ifBlank { "尚无输出" }
@@ -215,7 +214,7 @@ internal fun stepStatusLabel(outcome: String?, phase: ExecutionPhase?): String =
         val value by pulse.animateFloat(0.35f, 1f, infiniteRepeatable(tween(900), RepeatMode.Reverse), label = "step-alpha")
         value
     }
-    Icon(icon, stepStatusLabel(outcome, phase), Modifier.size(18.dp).alpha(alpha), tint = when (outcome) {
+    AppIcon(icon, stepStatusLabel(outcome, phase), Modifier.size(18.dp).alpha(alpha), tint = when (outcome) {
         "FAILED" -> MaterialTheme.colorScheme.error
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     })

@@ -134,42 +134,42 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                         "archived" -> ArchivedPage(state, vm) { route = "settings" }
                         "skills" -> SkillsPage(vm, onBack = { route = "add" }, onConversation = { route = "conversation" })
                         "plugins" -> PluginPage(vm) { route = "add" }
-                        else -> Box(Modifier.fillMaxSize()) {
-                            when {
-                                state.error != null -> Text(state.error!!, Modifier.align(Alignment.Center).padding(24.dp), color = MaterialTheme.colorScheme.error)
-                                state.loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
-                                state.selected == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        EmptyPlaceholder("还没有对话", "新建一个对话，从具体任务开始")
-                                        Button(onClick = { dialog = "new" }) { Text("新建对话") }
-                                    }
-                                }
-                                else -> {
-                                    val detail = state.selected!!
-                                    key(detail.conversation.id) {
-                                        Timeline(
-                                            detail, vm, Modifier.fillMaxSize(),
-                                            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 88.dp, bottom = 148.dp),
-                                            followPadding = PaddingValues(end = 16.dp, bottom = 148.dp),
-                                            read = { title, text -> reading = title to text }, hostActions = hostActions, proposal = vm::openSkillProposal,
-                                        )
-                                    }
-                                }
-                            }
+                        else -> Column(Modifier.fillMaxSize()) {
                             ConversationToolbar(
                                 state.selected?.conversation, vm,
-                                modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth(),
+                                modifier = Modifier.fillMaxWidth().testTag("conversation-toolbar"),
                                 onMenu = { keyboard?.hide(); focus.clearFocus(); drawer = true },
                                 onNew = { dialog = "new" }, onMore = { dialog = it },
                                 onAnchor = { toolbarAnchor = it },
                             )
                             if (!system.connected || !system.ready) Text(
                                 system.message,
-                                Modifier.align(Alignment.TopCenter).padding(top = 68.dp, start = 20.dp, end = 20.dp),
+                                Modifier.padding(horizontal = 20.dp, vertical = 4.dp).align(Alignment.CenterHorizontally),
                                 style = MaterialTheme.typography.bodySmall,
                             )
+                            Box(Modifier.weight(1f).fillMaxWidth().clipToBounds().testTag("conversation-transcript")) {
+                                when {
+                                    state.error != null -> Text(state.error!!, Modifier.align(Alignment.Center).padding(24.dp), color = MaterialTheme.colorScheme.error)
+                                    state.loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
+                                    state.selected == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            EmptyPlaceholder("还没有对话", "新建一个对话，从具体任务开始")
+                                            Button(onClick = { dialog = "new" }) { Text("新建对话") }
+                                        }
+                                    }
+                                    else -> {
+                                        val detail = state.selected!!
+                                        key(detail.conversation.id) {
+                                            Timeline(
+                                                detail, vm, Modifier.fillMaxSize(),
+                                                read = { title, text -> reading = title to text }, hostActions = hostActions, proposal = vm::openSkillProposal,
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                             if (state.selected != null && state.error == null && !state.loading) {
-                                Composer(state.selected!!, state, system, vm, modifier = Modifier.align(Alignment.BottomCenter), onAdd = { navigate("add") })
+                                Composer(state.selected!!, state, system, vm, modifier = Modifier.fillMaxWidth().testTag("conversation-composer"), onAdd = { navigate("add") })
                             }
                         }
                     }
@@ -286,7 +286,7 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                 chip = IntRect(origin.x.roundToInt(), origin.y.roundToInt(), origin.x.roundToInt() + coordinates.size.width, origin.y.roundToInt() + coordinates.size.height)
             }) {
                 Surface(shape = RoundedCornerShape(26.dp), color = cardColor(), shadowElevation = floatingElevation(), tonalElevation = 0.dp) {
-                    TextButton(onClick = { config = true; vm.enqueue { vm.refresh() } }, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurface)) { Text(c?.config?.agent?.label() ?: "选择 Agent"); Icon(AppIcons.ChevronDown, null, Modifier.size(16.dp)) }
+                    TextButton(onClick = { config = true; vm.enqueue { vm.refresh() } }, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurface)) { Text(c?.config?.agent?.label() ?: "选择 Agent") }
                 }
                 if (c != null) AgentConfigMenu(config, { config = false }, c, vm, chip)
             }
@@ -600,7 +600,12 @@ internal fun Turn.replyActionsVisible() = !occupied && !pending
                 if (!turn.replyActionsVisible()) item(key = "activity:${turn.id.value}") { ReplyActivity(turn.phase) }
             }
         }
-        if (!follow && detail.turns.isNotEmpty()) FilledTonalButton(onClick = { follow = true; scope.launch { if (keys.isNotEmpty()) list.animateScrollToItem(keys.lastIndex) } }, modifier = Modifier.align(Alignment.BottomEnd).padding(followPadding), shape = RoundedCornerShape(26.dp)) { Icon(AppIcons.ArrowDown, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("最新消息") }
+        if (!follow && detail.turns.isNotEmpty()) FilledTonalButton(
+            onClick = { follow = true; scope.launch { if (keys.isNotEmpty()) list.animateScrollToItem(keys.lastIndex) } },
+            modifier = Modifier.align(Alignment.BottomEnd).padding(followPadding).size(48.dp),
+            shape = CircleShape,
+            contentPadding = PaddingValues(0.dp),
+        ) { AppIcon(AppIcons.ArrowDown, "最新消息", Modifier.size(22.dp)) }
     }
 }
 
