@@ -478,6 +478,16 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
 @OptIn(FlowPreview::class)
 internal fun Turn.replyActionsVisible() = !occupied && !pending
 
+@Composable internal fun ReplyActivity(phase: ExecutionPhase?) {
+    val reduced = rememberReducedMotion()
+    val label = if (phase == ExecutionPhase.CANCELLING) "正在停止…" else "正在回复…"
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (reduced) CircularProgressIndicator(progress = { 0.75f }, modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+        else CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+        Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
 @Composable private fun Timeline(detail: ConversationDetail, vm: ConversationViewModel, modifier: Modifier, contentPadding: PaddingValues = PaddingValues(horizontal = 16.dp, vertical = 12.dp), followPadding: PaddingValues = PaddingValues(12.dp), read: (String, String) -> Unit, hostActions: InteractionHostActions, proposal: (SkillProposal) -> Unit) {
     val keys = buildList {
         if (detail.hasEarlier) add("earlier")
@@ -493,6 +503,7 @@ internal fun Turn.replyActionsVisible() = !occupied && !pending
             t.skillProposals.forEach { add("artifact:${t.id.value}:${it.ref}") }
             if (t.creatingSkill && !t.occupied && t.skillProposals.isEmpty() && !t.proposalsLoading) add("creator:${t.id.value}")
             if (t.failure != null || t.phase in listOf(ExecutionPhase.CANCELLED, ExecutionPhase.TIMED_OUT, ExecutionPhase.INTERRUPTED, ExecutionPhase.OUTCOME_UNKNOWN, ExecutionPhase.AWAITING_APPROVAL)) add("status:${t.id.value}")
+            if (!t.replyActionsVisible()) add("activity:${t.id.value}")
         }
     }
     val initial = keys.indexOf(detail.conversation.anchor).coerceAtLeast(0)
@@ -586,6 +597,7 @@ internal fun Turn.replyActionsVisible() = !occupied && !pending
                         }
                     }
                 }
+                if (!turn.replyActionsVisible()) item(key = "activity:${turn.id.value}") { ReplyActivity(turn.phase) }
             }
         }
         if (!follow && detail.turns.isNotEmpty()) FilledTonalButton(onClick = { follow = true; scope.launch { if (keys.isNotEmpty()) list.animateScrollToItem(keys.lastIndex) } }, modifier = Modifier.align(Alignment.BottomEnd).padding(followPadding), shape = RoundedCornerShape(26.dp)) { Icon(AppIcons.ArrowDown, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("最新消息") }

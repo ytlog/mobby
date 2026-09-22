@@ -1,6 +1,7 @@
 package com.github.ytlog.mobby.android.interaction.ui
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import com.github.ytlog.mobby.android.interaction.domain.*
@@ -41,6 +42,12 @@ class ExecutionCardTest {
         assertFalse(reply.replyActionsVisible())
         assertFalse(reply.copy(occupied = false, pending = true).replyActionsVisible())
         assertTrue(reply.copy(occupied = false, pending = false, phase = ExecutionPhase.SUCCEEDED).replyActionsVisible())
+        val phase = mutableStateOf(ExecutionPhase.RUNNING)
+        compose.setContent { MaterialTheme { ReplyActivity(phase.value) } }
+        compose.onNodeWithText("正在回复…").assertExists()
+        compose.runOnIdle { phase.value = ExecutionPhase.CANCELLING }
+        compose.onNodeWithText("正在停止…").assertExists()
+        compose.onNodeWithText("正在回复…").assertDoesNotExist()
     }
 
     @Test fun `turns without steps stay off the timeline`() {
