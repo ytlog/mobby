@@ -33,7 +33,10 @@ class DrawerBackTest {
     @Before fun mount() {
         compose.setContent {
             dispatcher = LocalOnBackPressedDispatcherOwner.current!!.onBackPressedDispatcher
-            progressState = rememberDrawerProgress(opened.value) { closes++; opened.value = false }
+            progressState = rememberDrawerMotion(opened.value) { open ->
+                if (!open) closes++
+                opened.value = open
+            }
             val progress by progressState
             fraction = progress
             Box(Modifier.size(200.dp)) {

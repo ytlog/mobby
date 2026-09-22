@@ -7,6 +7,9 @@ import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitHorizontalTouchSlopOrCancellation
+import androidx.compose.foundation.gestures.horizontalDrag
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
@@ -19,6 +22,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.input.pointer.util.addPointerInputChange
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.*
@@ -102,12 +109,18 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                 val fullWidth = maxWidth
                 val availableHeight = maxHeight
                 val drawerWidth = minOf(360.dp, (fullWidth - 56.dp).coerceAtLeast(0.dp))
-                val progress by rememberDrawerProgress(drawer) { drawer = false }
+                val motion = rememberDrawerMotion(drawer) { open ->
+                    if (open) { keyboard?.hide(); focus.clearFocus() }
+                    drawer = open
+                }
+                val progress by motion
                 val pixels = with(LocalDensity.current) { drawerWidth.toPx() }
+                motion.width = pixels
+                val swipe = Modifier.drawerSwipe(motion, with(LocalDensity.current) { DrawerSwipeEdge.toPx() })
                 if (drawer || progress > 0f) ConversationDrawer(state, vm, onSelect = { c -> vm.enqueue { actions.select(c.id) }; drawer = false },
                     onNew = { drawer = false; dialog = "new" }, onSettings = { navigate("settings") }, onProjects = { navigate("projects") }, onClose = { drawer = false },
-                    modifier = Modifier.width(drawerWidth).fillMaxHeight().offset { IntOffset(((progress - 1f) * pixels).roundToInt(), 0) })
-                Surface(Modifier.requiredWidth(fullWidth).fillMaxHeight().offset { IntOffset((pixels * progress).roundToInt(), 0) }
+                    modifier = Modifier.width(drawerWidth).fillMaxHeight().offset { IntOffset(((progress - 1f) * pixels).roundToInt(), 0) }.then(swipe))
+                Surface(Modifier.requiredWidth(fullWidth).fillMaxHeight().offset { IntOffset((pixels * progress).roundToInt(), 0) }.then(swipe)
                     .then(if (drawer) Modifier.clearAndSetSemantics {} else Modifier)) {
                     when (route) {
                         "projects" -> ProjectPage(vm) { route = "conversation" }
@@ -158,7 +171,7 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                         }
                     }
                 }
-                if (drawer) Box(Modifier.offset { IntOffset((pixels * progress).roundToInt(), 0) }.fillMaxSize().clickable { drawer = false })
+                if (drawer) Box(Modifier.offset { IntOffset((pixels * progress).roundToInt(), 0) }.fillMaxSize().then(swipe).clickable { drawer = false })
                 SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
                 if (route == "add") ModalBottomSheet(onDismissRequest = { route = "conversation" }, shape = RoundedCornerShape(28.dp, 28.dp, 0.dp, 0.dp), containerColor = raisedColor()) {
                     val target = state.selected?.conversation
@@ -460,24 +473,93 @@ internal fun capabilityLabel(ref: String) = when {
     BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding().clipToBounds(), content = content)
 }
 
-@Composable internal fun rememberDrawerProgress(open: Boolean, close: () -> Unit): State<Float> {
-    val progress = remember { Animatable(if (open) 1f else 0f) }
-    var predicting by remember { mutableStateOf(false) }
-    var gestureEnd by remember { mutableStateOf(0L) }
-    LaunchedEffect(open, predicting, gestureEnd) {
-        if (!predicting) progress.animateTo(if (open) 1f else 0f, tween(240))
+// Wide enough that a swipe can start inside the app, past the system back gesture inset.
+internal val DrawerSwipeEdge = 96.dp
+private val DrawerFlingThreshold = 125.dp
+
+/** Shared open fraction of the drawer and the conversation it pushes aside. */
+@Stable internal class DrawerMotion internal constructor(open: Boolean) : State<Float> {
+    private val position = Animatable(if (open) 1f else 0f)
+    internal var width = 0f
+    internal var flingThreshold = 0f
+    internal var commit: (Boolean) -> Unit = {}
+    internal var gesturing by mutableStateOf(false)
+        private set
+    internal var gestures by mutableStateOf(0)
+        private set
+    override val value: Float get() = position.value
+
+    internal fun begin() { gesturing = true }
+    // A start and end can occur before a frame observes gesturing=true.
+    internal fun end() { gesturing = false; gestures++ }
+    internal suspend fun follow(fraction: Float) = position.snapTo(fraction.coerceIn(0f, 1f))
+    internal suspend fun animateTo(open: Boolean) = position.animateTo(if (open) 1f else 0f, tween(240))
+    internal suspend fun settle(velocity: Float) {
+        val open = when {
+            velocity >= flingThreshold -> true
+            velocity <= -flingThreshold -> false
+            else -> position.value >= 0.5f
+        }
+        commit(open)
+        animateTo(open)
+    }
+}
+
+@Composable internal fun rememberDrawerMotion(open: Boolean, onChange: (Boolean) -> Unit): DrawerMotion {
+    val motion = remember { DrawerMotion(open) }
+    motion.commit = onChange
+    motion.flingThreshold = with(LocalDensity.current) { DrawerFlingThreshold.toPx() }
+    LaunchedEffect(open, motion.gesturing, motion.gestures) {
+        if (!motion.gesturing) motion.animateTo(open)
     }
     PredictiveBackHandler(open) { events ->
-        predicting = true
-        val start = progress.value
+        motion.begin()
+        val start = motion.value
         try {
-            events.collect { progress.snapTo(start * (1f - it.progress.coerceIn(0f, 1f))) }
-            close()
+            events.collect { motion.follow(start * (1f - it.progress.coerceIn(0f, 1f))) }
+            motion.commit(false)
         } finally {
-            predicting = false
-            // A start and cancel can occur before a frame observes predicting=true.
-            gestureEnd++
+            motion.end()
         }
     }
-    return progress.asState()
+    return motion
+}
+
+/**
+ * Drags the drawer with the finger: rightwards from the left [edge] band opens it, leftwards
+ * closes it. Children keep priority, so scrollable content still wins its own drags.
+ */
+internal fun Modifier.drawerSwipe(motion: DrawerMotion, edge: Float): Modifier = pointerInput(motion, edge) {
+    coroutineScope {
+        while (isActive) {
+            var overSlop = 0f
+            val drag = awaitPointerEventScope {
+                val down = awaitFirstDown(requireUnconsumed = false)
+                val opening = motion.value <= 0f
+                if (opening && down.position.x > edge) return@awaitPointerEventScope null
+                awaitHorizontalTouchSlopOrCancellation(down.id) { change, slop ->
+                    if (if (opening) slop > 0f else slop < 0f) { overSlop = slop; change.consume() }
+                }
+            }
+            if (drag == null || overSlop == 0f || motion.width <= 0f) continue
+            val velocity = VelocityTracker()
+            var travelled = (motion.value * motion.width + overSlop).coerceIn(0f, motion.width)
+            motion.begin()
+            try {
+                launch { motion.follow(travelled / motion.width) }
+                awaitPointerEventScope {
+                    horizontalDrag(drag.id) { change ->
+                        velocity.addPointerInputChange(change)
+                        travelled = (travelled + change.positionChange().x).coerceIn(0f, motion.width)
+                        val fraction = travelled / motion.width
+                        launch { motion.follow(fraction) }
+                        change.consume()
+                    }
+                }
+                motion.settle(velocity.calculateVelocity().x)
+            } finally {
+                motion.end()
+            }
+        }
+    }
 }
