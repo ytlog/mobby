@@ -41,9 +41,9 @@ APK：`app/build/outputs/apk/debug/app-debug.apk`，仅 ARM64，Android 8.0 及�
 
 ## 安装身份与开发数据
 
-项目名和界面品牌为 `mobby`。Android `applicationId` 与应用源码包为 `com.github.ytlog.mobby.android`。交互、运行时和语音模块的包名使用同一前缀，例如 `com.github.ytlog.mobby.android.interaction.ui`。Keystore 别名仍是 `mdoer.gateway`。
+项目名和界面品牌为 `mobby`。Android `applicationId` 与应用源码包为 `com.github.ytlog.mobby.android`。交互、运行时和语音模块的包名使用同一前缀，例如 `com.github.ytlog.mobby.android.interaction.ui`。Keystore 别名是 `mobby.gateway`。
 
-这是新的安装身份。手机上原来的 `com.mdoer.app` 仍是另一个应用，它的配置、密钥、HOME 和工作区不会进入新应用。同一 `applicationId` 的覆盖安装仍保留 SharedPreferences、HOME 和工作区。开发阶段数据库结构变化直接重建对应开发数据库，不维护旧版本迁移。
+更换 `applicationId` 后，此前已安装的应用不会带入配置、密钥、HOME 和工作区。同一 `applicationId` 的覆盖安装仍保留 SharedPreferences、HOME 和工作区。开发阶段数据库结构变化直接重建对应开发数据库，不维护旧版本迁移。
 
 ## 添加文件与照片
 

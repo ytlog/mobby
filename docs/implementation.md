@@ -489,7 +489,7 @@ RuntimeJournal 新增可注入的 EventHistoryPolicy，默认保留 30 天、终
 
 新增“设置 → 运行日志保留”，可编辑 1–3650 天与 1–1024 MiB 的终态事件保留范围。页面明确此预算不包含输出文件或附件，保存仅改变下次任务结束/初始化时使用的策略，不立即删除历史。加载失败可重试，非法范围不能保存，保存失败不会显示成功；未保存编辑（包括清空字段）在页面重建后保留，系统返回回设置页。
 
-通过 Domain/SystemPort、Runtime 管理接口与宿主连接传递设置，应用作用域负责已发起的保存。设备用独立 SharedPreferences 与 Android Keystore AES-GCM 密钥加密保存策略，未更改现有 gateway 存储和 mdoer.gateway 别名。读取损坏密文明确失败，不静默重置默认值。RuntimeJournal 每次清理读取完整的当前策略；共享锁保证成对读取与保存一致。
+通过 Domain/SystemPort、Runtime 管理接口与宿主连接传递设置，应用作用域负责已发起的保存。设备用独立 SharedPreferences 与 Android Keystore AES-GCM 密钥加密保存策略，未更改当时的 gateway 存储和 Keystore 别名。读取损坏密文明确失败，不静默重置默认值。RuntimeJournal 每次清理读取完整的当前策略；共享锁保证成对读取与保存一致。
 
 新增测试覆盖加密保存与重开、范围限制、密文篡改、原网关偏好不变、已保存设置在下一次真实 SQLite 清理中生效、保存本身不触发清理，以及 Compose 的失败反馈与状态恢复。167 项相关测试通过（engine 45、Android 39、domain 12、data 31、UI 40），主包构建、App/termux-core 单测与 lint 通过。覆盖安装成功，原加密网关配置摘要在内存中比较一致。
 
@@ -903,7 +903,7 @@ Android 13 真机先复现：进入“设置与运行环境”，通过显式 AC
 
 ## 安装身份改为 com.github.ytlog.mobby.android（2026-09-22）
 
-Android `applicationId` 与应用源码包现为 `com.github.ytlog.mobby.android`。交互、运行时、语音和 bootstrap 模块的包名改为同一前缀加原有后缀，例如 `com.github.ytlog.mobby.android.runtime.android`。第三方 `com.libtermux` 与 Keystore 别名 `mdoer.gateway` 未改。
+Android `applicationId` 与应用源码包现为 `com.github.ytlog.mobby.android`。交互、运行时、语音和 bootstrap 模块的包名改为同一前缀加原有后缀，例如 `com.github.ytlog.mobby.android.runtime.android`。第三方 `com.libtermux` 未改。开发阶段的 Keystore 别名改为 `mobby.gateway`。
 
-新 applicationId 会作为另一个应用安装。手机上已有的 `com.mdoer.app` 仍保留自己的配置、密钥、HOME 和工作区，不会自动迁入新应用。
+新 applicationId 会作为另一个应用安装。此前已安装的应用仍保留自己的配置、密钥、HOME 和工作区，不会自动迁入新应用。
 

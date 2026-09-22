@@ -51,8 +51,7 @@ data class GatewayConfig(
 /** No plaintext configuration or API key is written to the CLI home or workspace. */
 class GatewayStore(context: Context) {
     private companion object {
-        // Existing ciphertext is tied to this Android Keystore alias; branding must not rotate it.
-        const val KEY_ALIAS = "mdoer.gateway"
+        const val KEY_ALIAS = "mobby.gateway"
         val writeLock = Any()
     }
     private val prefs = context.getSharedPreferences("gateway", Context.MODE_PRIVATE)

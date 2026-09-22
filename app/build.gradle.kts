@@ -4,7 +4,7 @@ android {
     compileSdk = 35
     ndkVersion = "27.2.12479018"
     defaultConfig {
-        // Install identity. Changing it again creates a separate app and does not read com.mdoer.app data.
+        // Install identity. Changing it again creates a separate app and does not read the previous install's data.
         applicationId = "com.github.ytlog.mobby.android"
         minSdk = 26
         targetSdk = 35
