@@ -46,7 +46,7 @@ class ConversationLinkNavigationTest {
         restore.setContent { InteractionEntry(actions, InteractionHostActions({}, { _, _ -> }, {}), request.value) }
         fun settings() {
             compose.onNodeWithContentDescription("打开会话抽屉").performClick()
-            compose.onNodeWithText("设置与运行环境").performClick()
+            compose.onNodeWithContentDescription("设置").performClick()
             compose.onNodeWithText("网关设置").assertExists()
         }
         settings()

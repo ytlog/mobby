@@ -27,11 +27,11 @@ class DrawerGestureTest {
         val context = instrumentation.targetContext
         assumeTrue(Settings.Secure.getInt(context.contentResolver, "navigation_mode", -1) == 2)
         context.startActivity(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        awaitCondition("conversation or drawer visible") { bounds("打开会话抽屉") != null || bounds("关闭会话抽屉") != null }
-        if (bounds("关闭会话抽屉") == null) tap(requireNotNull(bounds("打开会话抽屉")))
-        awaitCondition("drawer open") { bounds("关闭会话抽屉") != null }
+        awaitCondition("conversation or drawer visible") { bounds("打开会话抽屉") != null || bounds("设置") != null }
+        if (bounds("设置") == null) tap(requireNotNull(bounds("打开会话抽屉")))
+        awaitCondition("drawer open") { bounds("设置") != null }
         SystemClock.sleep(300)
-        val original = requireNotNull(bounds("关闭会话抽屉"))
+        val original = requireNotNull(bounds("设置"))
         val screen = context.resources.displayMetrics
         val y = screen.heightPixels / 2f
         val width = screen.widthPixels.toFloat()
@@ -40,16 +40,16 @@ class DrawerGestureTest {
             event(down, MotionEvent.ACTION_DOWN, 1f, y)
             move(down, 1f, width * .28f, y)
             awaitCondition("drawer follows first gesture segment") {
-                bounds("关闭会话抽屉")?.left?.let { it < original.left - 2 } == true
+                bounds("设置")?.left?.let { it < original.left - 2 } == true
             }
-            val first = requireNotNull(bounds("关闭会话抽屉"))
+            val first = requireNotNull(bounds("设置"))
             move(down, width * .28f, width * .44f, y)
             awaitCondition("drawer continues following gesture") {
-                bounds("关闭会话抽屉")?.left?.let { it < first.left - 2 } == true
+                bounds("设置")?.left?.let { it < first.left - 2 } == true
             }
             move(down, width * .44f, 1f, y)
             event(down, MotionEvent.ACTION_UP, 1f, y)
-            awaitCondition("cancel restores drawer position") { bounds("关闭会话抽屉") == original }
+            awaitCondition("cancel restores drawer position") { bounds("设置") == original }
             assertNull("cancel must keep conversation covered", bounds("打开会话抽屉"))
         } finally {
             cancelTouchIfNeeded(down, 1f, y)
@@ -60,9 +60,9 @@ class DrawerGestureTest {
             move(complete, 1f, width * .75f, y)
             event(complete, MotionEvent.ACTION_UP, width * .75f, y)
             awaitCondition("completed back returns to conversation") {
-                bounds("打开会话抽屉") != null && bounds("关闭会话抽屉") == null
+                bounds("打开会话抽屉") != null && bounds("设置") == null
             }
-            assertNull(bounds("关闭会话抽屉"))
+            assertNull(bounds("设置"))
         } finally {
             cancelTouchIfNeeded(complete, width * .75f, y)
         }

@@ -75,14 +75,6 @@ import androidx.compose.ui.unit.dp
     }
 }
 
-@Composable internal fun DrawerRow(title: String, icon: AppGlyph, onClick: () -> Unit) {
-    TextButton(onClick = onClick, modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)) {
-        AppIcon(icon, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurface)
-        Spacer(Modifier.width(12.dp))
-        Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
-    }
-}
-
 @Composable internal fun settingsFieldColors() = OutlinedTextFieldDefaults.colors(
     focusedTextColor = MaterialTheme.colorScheme.onSurface,
     unfocusedTextColor = MaterialTheme.colorScheme.onSurface,

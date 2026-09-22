@@ -22,6 +22,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -34,7 +35,12 @@ import androidx.compose.ui.input.pointer.util.addPointerInputChange
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.*
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
@@ -120,11 +126,13 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                 val pixels = with(LocalDensity.current) { drawerWidth.toPx() }
                 motion.width = pixels
                 val swipe = Modifier.drawerSwipe(motion, with(LocalDensity.current) { DrawerSwipeEdge.toPx() })
-                if (drawer || progress > 0f) ConversationDrawer(state, vm, onSelect = { c -> vm.enqueue { actions.select(c.id) }; drawer = false },
-                    onNew = { drawer = false; dialog = "new" }, onSettings = { navigate("settings") }, onProjects = { navigate("projects") }, onClose = { drawer = false },
-                    modifier = Modifier.width(drawerWidth).fillMaxHeight().offset { IntOffset(((progress - 1f) * pixels).roundToInt(), 0) }.then(swipe))
-                Surface(Modifier.requiredWidth(fullWidth).fillMaxHeight().offset { IntOffset((pixels * progress).roundToInt(), 0) }.then(swipe)
-                    .then(if (drawer) Modifier.clearAndSetSemantics {} else Modifier)) {
+                Surface(
+                    Modifier.requiredWidth(fullWidth).fillMaxHeight().offset { IntOffset((pixels * progress).roundToInt(), 0) }.then(swipe)
+                        .then(if (drawer) Modifier.clearAndSetSemantics {} else Modifier),
+                    color = MaterialTheme.colorScheme.background,
+                    shadowElevation = 0.dp,
+                    tonalElevation = 0.dp,
+                ) {
                     when (route) {
                         "projects" -> ProjectPage(vm) { route = "conversation" }
                         "settings" -> SettingsPage(system, appearance, { value -> vm.enqueue { vm.report(actions.setAppearance(value)) } }, { navigate(it) }, { route = "conversation" }, vm)
@@ -175,6 +183,9 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                     }
                 }
                 if (drawer) Box(Modifier.offset { IntOffset((pixels * progress).roundToInt(), 0) }.fillMaxSize().then(swipe).clickable { drawer = false })
+                if (drawer || progress > 0f) ConversationDrawer(state, vm, onSelect = { c -> vm.enqueue { actions.select(c.id) }; drawer = false },
+                    onNew = { drawer = false; dialog = "new" }, onSettings = { navigate("settings") }, onProjects = { navigate("projects") },
+                    modifier = Modifier.width(drawerWidth).fillMaxHeight().offset { IntOffset(((progress - 1f) * pixels).roundToInt(), 0) }.then(swipe))
                 SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
                 if (route == "add") ModalBottomSheet(onDismissRequest = { route = "conversation" }, shape = RoundedCornerShape(28.dp, 28.dp, 0.dp, 0.dp), containerColor = raisedColor()) {
                     val target = state.selected?.conversation
@@ -240,36 +251,113 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
     }
 }
 
-@Composable private fun ConversationDrawer(state: InteractionState, vm: ConversationViewModel, onSelect: (Conversation) -> Unit, onNew: () -> Unit, onSettings: () -> Unit, onProjects: () -> Unit, onClose: () -> Unit, modifier: Modifier) {
+@Composable private fun ConversationDrawer(state: InteractionState, vm: ConversationViewModel, onSelect: (Conversation) -> Unit, onNew: () -> Unit, onSettings: () -> Unit, onProjects: () -> Unit, modifier: Modifier) {
     var query by rememberSaveable { mutableStateOf("") }
-    Surface(modifier, color = cardColor()) {
-        Column(Modifier.padding(12.dp)) {
+    val control = drawerControlColor()
+    Surface(modifier, color = drawerColor()) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("mobby", Modifier.weight(1f), style = MaterialTheme.typography.headlineSmall)
-                ActionIcon("关闭会话抽屉", onClose, AppIcons.Close)
+                DrawerPill(onNew, control, Modifier.testTag("drawer-new")) {
+                    AppIcon(AppIcons.New, null, Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("新对话", style = MaterialTheme.typography.titleMedium)
+                }
             }
-            DrawerRow("新对话", AppIcons.New, onNew)
-            DrawerRow("项目管理", AppIcons.Folder, onProjects)
             val visible = state.conversations.filter { !it.conversation.archived && !it.conversation.deleted && it.conversation.title.contains(query, true) }
-            LazyColumn(Modifier.weight(1f)) {
-                val groups = visible.groupBy { if (it.conversation.pinned) "置顶" else it.conversation.project?.let { name -> "项目 · $name" } ?: "历史会话" }
-                groups.entries.sortedBy { if (it.key == "置顶") "" else it.key }.forEach { (group, entries) ->
-                    item(key = "group:$group") { Text(group, Modifier.padding(12.dp), style = MaterialTheme.typography.labelMedium) }
-                    items(entries, key = { it.conversation.id.value }) { item ->
-                        Surface(color = if (state.selected?.conversation?.id == item.conversation.id) MaterialTheme.colorScheme.surfaceVariant else Color.Transparent, shape = RoundedCornerShape(14.dp)) {
-                            Column(Modifier.fillMaxWidth().clickable { onSelect(item.conversation) }.padding(12.dp)) {
-                                Text(item.conversation.title, maxLines = 2)
-                                Text("${item.conversation.config.agent.label()} · ${if (item.phase == null) "空对话" else item.phase.label()}", style = MaterialTheme.typography.bodySmall)
-                            }
-                        }
+            val pinned = visible.filter { it.conversation.pinned }
+            val inProject = visible.filter { !it.conversation.pinned && it.conversation.project != null }
+            val history = visible.filter { !it.conversation.pinned && it.conversation.project == null }
+            val projectNames = buildList {
+                val named = state.projects.map { it.name }
+                addAll(named)
+                inProject.mapNotNull { it.conversation.project }.filter { it !in named }.distinct().forEach { add(it) }
+            }.filter { name -> query.isBlank() || name.contains(query, true) || inProject.any { it.conversation.project == name } }
+            LazyColumn(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
+                if (pinned.isNotEmpty()) {
+                    item(key = "section:pinned") { DrawerSection("置顶") }
+                    items(pinned, key = { it.conversation.id.value }) { DrawerConversation(it, state, onSelect) }
+                }
+                if (query.isBlank() || projectNames.isNotEmpty()) {
+                    item(key = "section:projects") { DrawerSection("项目") }
+                    if (query.isBlank()) item(key = "manage-projects") { DrawerEntry("项目管理", onProjects) }
+                    projectNames.forEach { name ->
+                        item(key = "project:$name") { DrawerEntry(name) { state.projects.firstOrNull { it.name == name }?.let(vm::openProject); onProjects() } }
+                        items(inProject.filter { it.conversation.project == name }, key = { it.conversation.id.value }) { DrawerConversation(it, state, onSelect) }
                     }
                 }
-                if (visible.isEmpty()) item { EmptyPlaceholder("没有匹配的会话", "换个关键词，或新建一个对话") }
+                if (history.isNotEmpty() || visible.isEmpty()) {
+                    item(key = "section:history") { DrawerSection("历史记录") }
+                    items(history, key = { it.conversation.id.value }) { DrawerConversation(it, state, onSelect) }
+                    if (visible.isEmpty()) item(key = "empty") { EmptyPlaceholder("没有匹配的会话", "换个关键词，或新建一个对话") }
+                }
             }
-            OutlinedTextField(query, { query = it }, label = { Text("搜索会话") }, singleLine = true, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp),
-                colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant, unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    focusedBorderColor = Color.Transparent, unfocusedBorderColor = Color.Transparent))
-            DrawerRow("设置与运行环境", AppIcons.Settings, onSettings)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                DrawerSearch(query, { query = it }, control, Modifier.weight(1f).testTag("drawer-search"))
+                DrawerCircle("设置", onSettings, control, AppIcons.Settings)
+            }
+        }
+    }
+}
+
+@Composable private fun DrawerSection(title: String) {
+    Text(title, Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 4.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+}
+
+@Composable private fun DrawerEntry(title: String, onClick: () -> Unit) {
+    Box(Modifier.fillMaxWidth().height(DrawerRowHeight).clickable(onClick = onClick), contentAlignment = Alignment.CenterStart) {
+        Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable private fun DrawerConversation(item: ConversationSummary, state: InteractionState, onSelect: (Conversation) -> Unit) {
+    Surface(color = if (state.selected?.conversation?.id == item.conversation.id) MaterialTheme.colorScheme.surfaceVariant else Color.Transparent, shape = RoundedCornerShape(14.dp)) {
+        DrawerEntry(item.conversation.title) { onSelect(item.conversation) }
+    }
+}
+
+@Composable private fun drawerColor(): Color = if (darkChrome()) Color(0xFF1F1F1F) else Color(0xFFF5F5F5)
+
+@Composable private fun drawerControlColor(): Color = if (darkChrome()) Color(0xFF2A2A2A) else Color.White
+
+private val DrawerControlHeight = 36.dp
+private val DrawerRowHeight = 32.dp
+
+@Composable private fun DrawerPill(onClick: () -> Unit, color: Color, modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
+    Row(
+        modifier.height(DrawerControlHeight).clip(CircleShape).background(color).clickable(onClick = onClick).padding(horizontal = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        content = content,
+    )
+}
+
+@Composable private fun DrawerCircle(label: String, onClick: () -> Unit, color: Color, icon: AppGlyph) {
+    Box(Modifier.size(DrawerControlHeight).clip(CircleShape).background(color).clickable(onClick = onClick).semantics { contentDescription = label }, contentAlignment = Alignment.Center) {
+        AppIcon(icon, null, Modifier.size(18.dp))
+    }
+}
+
+@Composable private fun drawerControlElevation() = 0.dp
+
+@Composable private fun DrawerSearch(query: String, onQuery: (String) -> Unit, color: Color, modifier: Modifier = Modifier) {
+    Surface(modifier.height(DrawerControlHeight), shape = CircleShape, color = color, shadowElevation = drawerControlElevation(), tonalElevation = 0.dp) {
+        Row(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+            AppIcon(AppIcons.Search, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.width(8.dp))
+            BasicTextField(
+                value = query,
+                onValueChange = onQuery,
+                modifier = Modifier.weight(1f).semantics { contentDescription = "搜索会话" },
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
+                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                decorationBox = { inner ->
+                    Box {
+                        if (query.isEmpty()) Text("搜索", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge)
+                        inner()
+                    }
+                },
+            )
         }
     }
 }
