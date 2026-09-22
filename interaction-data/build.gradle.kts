@@ -1,6 +1,6 @@
 plugins { id("com.android.library"); kotlin("android"); kotlin("kapt"); kotlin("plugin.serialization") }
 android {
-    namespace = "com.mobby.interaction.data"
+    namespace = "com.github.ytlog.mobby.android.interaction.data"
     compileSdk = 35
     defaultConfig { minSdk = 26 }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }

@@ -12,7 +12,7 @@ const {once}=require('node:events');
 const assert=require('node:assert/strict');
 const {nativeResponse,sendNative}=require('./native-fixture.cjs');
 const adb=process.env.MOBBY_TEST_ADB || 'adb';
-const app='com.mdoer.app';
+const app='com.github.ytlog.mobby.android';
 const mode=process.env.MOBBY_TEST_AGENT || 'CODEX';
 assert.ok(['CODEX','CLAUDE'].includes(mode),'Unknown test Agent');
 const protocol=mode==='CODEX'?'responses':'messages';

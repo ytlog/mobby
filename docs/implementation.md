@@ -599,7 +599,7 @@ UIAutomator 的可见根框会比截图物理尺寸小 90px，初次右侧图标
 
 新增 app 的 DrawerGestureTest 设备测试入口：要求 Android 14+、已解锁及系统手势导航，直接通过 UiAutomation 注入同一触摸序列，分两段检查抽屉屏幕位置变化，反向拖回松手检查原位恢复，再完成边缘返回。完成断言等待会话入口恢复且抽屉关闭入口消失，避免将退出动画误判为失败；只有未结束的触摸才在 finally 取消，清理不覆盖原始断言。低版本或非手势导航会明确跳过，跳过不视为验收通过。
 
-运行入口（仅对选定的验收设备执行）：`adb -s DEVICE_SERIAL shell am instrument -w -r -e class com.mobby.app.DrawerGestureTest com.mdoer.app.test/androidx.test.runner.AndroidJUnitRunner`。先使用现有 SDK 执行 `:app:assembleDebugAndroidTest` 并安装对应测试 APK，不自动创建或下载系统镜像。
+运行入口（仅对选定的验收设备执行）：`adb -s DEVICE_SERIAL shell am instrument -w -r -e class com.github.ytlog.mobby.android.DrawerGestureTest com.github.ytlog.mobby.android.test/androidx.test.runner.AndroidJUnitRunner`。先使用现有 SDK 执行 `:app:assembleDebugAndroidTest` 并安装对应测试 APK，不自动创建或下载系统镜像。
 
 该测试 APK 构建与 app lint 通过。此前隔离 Android 16 镜像的两次运行都在进入测试方法前失败，分别是进程未及时 attach 和启动 ANR；同一环境的多个系统应用也出现启动超时。没有获得手势断言执行通过的结果，不能用这份测试代码替代设备验收。后续镜像下载已按用户要求中止，下载残留、未完成包和本次临时 AVD 均已清理，原有镜像保留；后续不自行下载镜像。实际预测返回的中间帧与取消路径仍待合适现有设备验收。
 
@@ -900,4 +900,10 @@ Android 13 真机先复现：进入“设置与运行环境”，通过显式 AC
 `:runtime-engine:test` 的控制会话与协议解码、`:interaction-domain:test` 的会话规则、`:interaction-ui:testDebugUnitTest` 的执行卡、`:interaction-data:testDebugUnitTest` 的仓库投影均通过。真机上新的一轮手机操作尚未在本轮重新跑完。
 
 文字此前并不是按模型输出往外长。Codex 只在 `item.completed` 收下整段 `agent_message`，Claude 只在完整 `assistant` 消息到达后才显示；界面再用打字机把已经收齐的文字慢慢放出来。现在 Claude 增加 `--include-partial-messages`，`text_delta` 按内容块顺序追加，同一段不在随后的完整消息里再写一遍。Codex 若先发出变长的 `item.updated`，只追加新增后缀。工具记在它开始时的输出序号上，后到的参数和结果不再把它排到后面的文字之后。已经到达的文字立即可见，Markdown 仍大约每秒整理一次，避免每个 token 都重排。同一轮里复制/分享只出现在按输出顺序的最后一条正文下方，中间说明不再单独带按钮；没有正文时不显示。
+
+## 安装身份改为 com.github.ytlog.mobby.android（2026-09-22）
+
+Android `applicationId` 与应用源码包现为 `com.github.ytlog.mobby.android`。交互、运行时、语音和 bootstrap 模块的包名改为同一前缀加原有后缀，例如 `com.github.ytlog.mobby.android.runtime.android`。第三方 `com.libtermux` 与 Keystore 别名 `mdoer.gateway` 未改。
+
+新 applicationId 会作为另一个应用安装。手机上已有的 `com.mdoer.app` 仍保留自己的配置、密钥、HOME 和工作区，不会自动迁入新应用。
 

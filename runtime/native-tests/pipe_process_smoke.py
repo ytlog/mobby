@@ -11,11 +11,11 @@ adb = os.environ.get('MOBBY_TEST_ADB', str(sdk / 'platform-tools/adb'))
 jdk = Path(os.environ.get('JAVA_HOME', '/Applications/Android Studio.app/Contents/jbr/Contents/Home'))
 
 def remote(args, **kwargs):
-    return subprocess.check_output([adb, 'shell', shlex.join(['run-as', 'com.mdoer.app', *args])], **kwargs)
+    return subprocess.check_output([adb, 'shell', shlex.join(['run-as', 'com.github.ytlog.mobby.android', *args])], **kwargs)
 
 home = remote(['pwd'], text=True).strip()
 # Overlay installation changes the APK directory before the app refreshes HOME symlinks.
-apk = subprocess.check_output([adb, 'shell', 'pm', 'path', 'com.mdoer.app'], text=True).strip()
+apk = subprocess.check_output([adb, 'shell', 'pm', 'path', 'com.github.ytlog.mobby.android'], text=True).strip()
 assert apk.startswith('package:') and '\n' not in apk, 'Expected a single installed APK'
 native = str(Path(apk.removeprefix('package:')).parent / 'lib/arm64')
 root = home + '/files/pipe-smoke-' + uuid.uuid4().hex

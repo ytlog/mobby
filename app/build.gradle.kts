@@ -1,11 +1,11 @@
 plugins { id("com.android.application"); kotlin("android") }
 android {
-    namespace = "com.mobby.app"
+    namespace = "com.github.ytlog.mobby.android"
     compileSdk = 35
     ndkVersion = "27.2.12479018"
     defaultConfig {
-        // Stable install identity: changing it would create a separate app and lose access to existing data.
-        applicationId = "com.mdoer.app"
+        // Install identity. Changing it again creates a separate app and does not read com.mdoer.app data.
+        applicationId = "com.github.ytlog.mobby.android"
         minSdk = 26
         targetSdk = 35
         versionCode = 1

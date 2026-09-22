@@ -1,0 +1,90 @@
+package com.github.ytlog.mobby.android.interaction.ui
+
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.test.*
+import androidx.compose.ui.test.junit4.createComposeRule
+import com.github.ytlog.mobby.android.interaction.domain.*
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.*
+import org.junit.*
+import org.junit.Assert.*
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import java.lang.reflect.Proxy
+
+@OptIn(ExperimentalTestApi::class)
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
+class PluginPageTest {
+    @get:Rule val compose = createComposeRule()
+    private val plugin = Plugin("plugin:PHONE:ACCESSIBILITY", "使用当前手机", "通过无障碍读取并操作当前屏幕", false, "请先在系统设置中开启 mobby 的“使用当前手机”无障碍服务")
+    private inline fun <reified T> stub(crossinline body: (String, Array<out Any?>) -> Any?): T =
+        Proxy.newProxyInstance(T::class.java.classLoader, arrayOf(T::class.java)) { _, method, args -> body(method.name, args ?: emptyArray()) } as T
+
+    @Test fun `unavailable plugin cannot join the draft until the catalogue reports ready`() {
+        val conversation = Conversation(ConversationId("c"), NextTurnConfig(AgentId.CODEX, "model", null, "default", "CODEX"))
+        val interaction = MutableStateFlow(InteractionState(loading = false, selected = ConversationDetail(conversation, emptyList())))
+        var available = false
+        val written = mutableListOf<Triple<String, String, Boolean>>()
+        val system = stub<SystemPort> { name, _ -> when (name) {
+            "getStatus" -> flowOf(SystemStatus(true, true))
+            "getDiagnostic" -> flowOf(DiagnosticOutput(null, emptyList()))
+            "agents" -> emptyList<AgentOption>()
+            "gateways" -> emptyList<GatewayProfile>()
+            "plugins" -> DataResult.Loaded(listOf(plugin.copy(available = available, unavailableReason = if (available) null else plugin.unavailableReason)))
+            else -> error(name)
+        } }
+        val repository = stub<InteractionRepository> { name, args -> when {
+            name == "getState" -> interaction
+            name.startsWith("setSkill") -> {
+                written += Triple(args[0].toString(), args[1] as String, args[2] as Boolean)
+                val refs = if (args[2] as Boolean) conversation.draft.capabilities + (args[1] as String) else conversation.draft.capabilities - (args[1] as String)
+                val updated = interaction.value.selected!!.conversation.copy(draft = conversation.draft.copy(capabilities = refs))
+                interaction.value = interaction.value.copy(selected = ConversationDetail(updated, emptyList()))
+                Unit
+            }
+            else -> error(name)
+        } }
+        val vm = ConversationViewModel(InteractionUseCases(repository, stub { name, _ -> error(name) }, system, { "id" }, CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate), stub { name, _ -> error(name) }))
+        compose.setContent { MaterialTheme { PluginPage(vm) {} } }
+        compose.onNodeWithText("使用当前手机").assertIsDisplayed()
+        compose.onNodeWithText("已安装").assertIsDisplayed()
+        compose.onNodeWithText("开启").assertIsDisplayed()
+        compose.onNodeWithText("使用").assertDoesNotExist()
+        compose.onNodeWithText("金融").performClick()
+        compose.waitUntil(5_000) { compose.onAllNodesWithText("这个分类还没有插件").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("已安装").performClick()
+        compose.waitUntil(5_000) { compose.onAllNodesWithText("使用当前手机").fetchSemanticsNodes().isNotEmpty() }
+        compose.runOnIdle {
+            available = true
+            vm.loadPlugins()
+        }
+        compose.waitUntil(5_000) { compose.onAllNodesWithText("使用").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("使用").assertIsEnabled().performClick()
+        compose.waitUntil(5_000) { written.isNotEmpty() }
+        assertEquals(listOf(Triple("c", plugin.ref, true)), written)
+        compose.onNodeWithText("移除").assertIsDisplayed()
+    }
+
+    @Test fun `category tabs filter the catalogue`() {
+        val conversation = Conversation(ConversationId("c"), NextTurnConfig(AgentId.CODEX, "model", null, "default", "CODEX"))
+        val interaction = MutableStateFlow(InteractionState(loading = false, selected = ConversationDetail(conversation, emptyList())))
+        val system = stub<SystemPort> { name, _ -> when (name) {
+            "getStatus" -> flowOf(SystemStatus(true, true))
+            "getDiagnostic" -> flowOf(DiagnosticOutput(null, emptyList()))
+            "agents" -> emptyList<AgentOption>()
+            "gateways" -> emptyList<GatewayProfile>()
+            "plugins" -> DataResult.Loaded(listOf(plugin.copy(available = true, unavailableReason = null)))
+            else -> error(name)
+        } }
+        val repository = stub<InteractionRepository> { name, _ -> if (name == "getState") interaction else error(name) }
+        val vm = ConversationViewModel(InteractionUseCases(repository, stub { name, _ -> error(name) }, system, { "id" }, CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate), stub { name, _ -> error(name) }))
+        compose.setContent { MaterialTheme { PluginPage(vm) {} } }
+        compose.waitUntil(5_000) { compose.onAllNodesWithText("使用当前手机").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("金融").performClick()
+        compose.waitUntil(5_000) { compose.onAllNodesWithText("这个分类还没有插件").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("效率与办公").performClick()
+        compose.waitUntil(5_000) { compose.onAllNodesWithText("使用当前手机").fetchSemanticsNodes().isNotEmpty() }
+    }
+}

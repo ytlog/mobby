@@ -14,7 +14,7 @@ const adb = process.env.MOBBY_TEST_ADB;
 assert.ok(adb, 'Set MOBBY_TEST_ADB to the connected Android device adb');
 const quote = value => "'" + String(value).replaceAll("'", "'\\''") + "'";
 const command = args => new Promise(resolve => execFile(adb, args, {timeout:45000,maxBuffer:2*1024*1024}, (error,stdout,stderr) => resolve({code:error?.code??0,stdout,stderr})).stdin.end());
-const remote = args => command(['shell', ['run-as','com.mdoer.app',...args].map(quote).join(' ')]);
+const remote = args => command(['shell', ['run-as','com.github.ytlog.mobby.android',...args].map(quote).join(' ')]);
 async function checked(args) { const r=await remote(args); assert.equal(r.code,0,r.stderr); return r.stdout.trim(); }
 const contract=readFileSync(resolve(__dirname,'../../runtime-engine/src/main/kotlin/com/mobby/runtime/engine/SkillGeneration.kt'),'utf8');
 const schema=JSON.parse(contract.match(/val schema = """([^]*?)"""/)[1]);

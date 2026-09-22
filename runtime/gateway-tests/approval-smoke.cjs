@@ -16,12 +16,12 @@ async function main() {
   const adb=process.env.MOBBY_TEST_ADB,cli=process.env.MOBBY_TEST_CLAUDE_JS;
   assert.ok(adb || cli,'Set MOBBY_TEST_ADB for device or MOBBY_TEST_CLAUDE_JS for host');
   const quote=value=>"'"+String(value).replaceAll("'","'\\''")+"'";
-  const remote=args=>execFileSync(adb,['shell',['run-as','com.mdoer.app',...args].map(quote).join(' ')],{encoding:'utf8',timeout:10000,stdio:['ignore','pipe','pipe']}).trim();
+  const remote=args=>execFileSync(adb,['shell',['run-as','com.github.ytlog.mobby.android',...args].map(quote).join(' ')],{encoding:'utf8',timeout:10000,stdio:['ignore','pipe','pipe']}).trim();
   const appHome=adb?remote(['pwd']):null,prefix=appHome+'/files/libtermux/usr';
   const native=adb?remote(['readlink',prefix+'/bin/claude']).replace(/\/[^/]+$/,''):null;
   const root=adb?appHome+'/files/approval-smoke-'+require('node:crypto').randomBytes(6).toString('hex'):mkdtempSync(join(tmpdir(),'mobby-approval-'));
   const exists=path=>{if(!adb)return existsSync(path);try{remote(['/system/bin/test','-e',path]);return true;}catch(error){if(error.status===1)return false;throw error;}};
-  const read=path=>adb?execFileSync(adb,['shell',['run-as','com.mdoer.app','cat',path].map(quote).join(' ')],{encoding:'utf8'}):readFileSync(path,'utf8');
+  const read=path=>adb?execFileSync(adb,['shell',['run-as','com.github.ytlog.mobby.android','cat',path].map(quote).join(' ')],{encoding:'utf8'}):readFileSync(path,'utf8');
   const servers=new Set(),reverses=new Set();
   try {
     for(const choice of ['deny','allow','cancel']) {
@@ -48,7 +48,7 @@ async function main() {
         Object.assign(env,{HOME:home,PREFIX:prefix,PATH:prefix+'/bin:/system/bin',TMPDIR:home+'/tmp',SHELL:prefix+'/bin/bash',LD_LIBRARY_PATH:prefix+'/lib:'+native,SSL_CERT_FILE:prefix+'/etc/tls/cert.pem'});
         const command=['env','-i',...Object.entries(env).map(([k,v])=>k+'='+v),prefix+'/bin/node',appHome+'/files/gateway.cjs','CLAUDE',prefix+'/bin/claude',...args];
         const script='echo $$ > '+quote(home+'/process-group')+'; cd '+quote(work)+' && exec '+command.map(quote).join(' ');
-        child=spawn(adb,['shell','-T',['run-as','com.mdoer.app','/system/bin/toybox','setsid','-w','/system/bin/sh','-c',script].map(quote).join(' ')],{detached:true,stdio:['pipe','pipe','pipe']});
+        child=spawn(adb,['shell','-T',['run-as','com.github.ytlog.mobby.android','/system/bin/toybox','setsid','-w','/system/bin/sh','-c',script].map(quote).join(' ')],{detached:true,stdio:['pipe','pipe','pipe']});
       } else child=spawn(process.execPath,[bridge,'CLAUDE',process.execPath,cli,...args],{env,cwd:work,detached:true,stdio:['pipe','pipe','pipe']});
 
       let diagnostics='';child.stderr.on('data',c=>diagnostics=(diagnostics+c).slice(-2000));

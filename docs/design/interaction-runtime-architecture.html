@@ -11,7 +11,7 @@
 <tr><td>RuntimeService 同时管理执行、文本输出、通知，并引用 MainActivity</td><td>执行状态机归 engine；通知与 Service 归 Android 宿主；通知目标由 app 注入</td></tr>
 <tr><td>AgentAdapter 将 CLI 输出转为 text/error；RuntimeState 是控制台显示模型</td><td>公开协议提供结构化执行事实；交互层自行生成 UiState 与中文文案</td></tr>
 <tr><td>RuntimeEnvironment 同时安装环境、读取网关、启动 CLI；runtime/ 是脚本目录</td><td>环境、网关、进程适配留在 runtime-android；脚本目录保留，不冒充 Gradle 模块</td></tr>
-</tbody></table></div><div class="callout"><strong>确定采用：</strong>交互三层 + Runtime 独立子系统 + 纯 Kotlin 契约模块。首期仍在同一应用进程中，通过本地客户端访问执行 Service；独立 Gradle 模块不等于独立进程，不引入不必要的 AIDL/Socket。</div><p>模块迁移不同时升级 Compose、Kotlin、AGP。沿用工程现有版本与 JDK 17；新增 Kotlin/JVM 插件与现有 Kotlin 版本对齐。应用安装身份 <code>com.mdoer.app</code>、Keystore 别名及已有数据路径保持不变。</p></section>
+</tbody></table></div><div class="callout"><strong>确定采用：</strong>交互三层 + Runtime 独立子系统 + 纯 Kotlin 契约模块。首期仍在同一应用进程中，通过本地客户端访问执行 Service；独立 Gradle 模块不等于独立进程，不引入不必要的 AIDL/Socket。</div><p>模块迁移不同时升级 Compose、Kotlin、AGP。沿用工程现有版本与 JDK 17；新增 Kotlin/JVM 插件与现有 Kotlin 版本对齐。应用安装身份为 <code>com.github.ytlog.mobby.android</code>。Keystore 别名仍为 <code>mdoer.gateway</code>。此前的 <code>com.mdoer.app</code> 是另一个应用，数据不会自动迁移。</p></section>
 <section id="layers"><h2>2. 交互采用三层架构</h2><div class="layers"><div class="layer"><strong>L1 · 展示层 — :interaction-ui</strong>Compose Screen / Component → ViewModel → UiState / UiAction / UiEffect<br><small>处理页面、抽屉、展开、输入、焦点、滚动与返回，不执行 CLI。</small></div><div class="layer"><strong>L2 · 业务层 — :interaction-domain</strong>UseCase + 领域模型 + Repository / ExecutionPort 接口<br><small>处理发送、切换、配置、Skill 创建等业务规则；纯 Kotlin，可独立测试。</small></div><div class="layer"><strong>L3 · 数据与适配层 — :interaction-data</strong>Repository 实现 + Room + RuntimeExecutionAdapter<br><small>保存会话与草稿，把领域命令转换为 Runtime 请求，把事件投影成会话数据。</small></div></div><p>“三层”指职责，不是把所有代码强行放进三个模块。运行调用从展示经业务到数据；编译依赖采用依赖倒置：<code>UI → Domain ← Data</code>。Domain 声明端口，Data 实现端口；Domain 不依赖 Data、Android、Compose 或 Runtime 实现。</p><pre>调用方向：Compose → ViewModel → UseCase → ExecutionPort
                                             ↓ 注入的实现
                                     RuntimeExecutionAdapter
@@ -31,7 +31,7 @@
 <tr><td>:runtime-engine / Kotlin JVM</td><td>执行协调、状态机、协议归一化、调度与取消规则</td><td>runtime-api</td></tr>
 <tr><td>:runtime-android / Android library</td><td>RuntimeClient 实现、Service、进程/环境/网关、事件日志、Android 存储</td><td>runtime-api、runtime-engine、termux-core、bootstrap-arm64</td></tr>
 <tr><td>:termux-core / :bootstrap-arm64</td><td>现有 libtermux 核心与内置环境</td><td>保留现有第三方内部依赖</td></tr>
-</tbody></table></div><h3>工程布局</h3><pre>app/                       # 薄宿主；保留现有 applicationId
+</tbody></table></div><h3>工程布局</h3><pre>app/                       # 薄宿主；applicationId com.github.ytlog.mobby.android
 interaction-ui/            # Android library，Compose
 interaction-domain/        # Kotlin JVM
 interaction-data/          # Android library，Room 与执行适配

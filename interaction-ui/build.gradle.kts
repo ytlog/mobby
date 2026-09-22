@@ -1,6 +1,6 @@
 plugins { id("com.android.library"); kotlin("android") }
 android {
-    namespace = "com.mobby.interaction.ui"
+    namespace = "com.github.ytlog.mobby.android.interaction.ui"
     compileSdk = 35
     defaultConfig { minSdk = 26 }
     buildFeatures { compose = true }

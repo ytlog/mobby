@@ -5,7 +5,7 @@ val prepareBootstrap by tasks.registering(Exec::class) {
     commandLine("python3", rootProject.file("runtime/prepare_bootstrap.py"), "--output", layout.buildDirectory.dir("generated/bootstrap").get().asFile, "--ndk", File(android.sdkDirectory, "ndk/27.2.12479018"))
 }
 android {
-    namespace = "com.mobby.bootstrap.arm64"
+    namespace = "com.github.ytlog.mobby.android.bootstrap.arm64"
     compileSdk = 35
     ndkVersion = "27.2.12479018"
     defaultConfig { minSdk = 26 }

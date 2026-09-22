@@ -4,11 +4,11 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" tools:node="remove" />
     <application>
-        <service android:name="com.mobby.runtime.android.RuntimeService" android:exported="false" android:foregroundServiceType="specialUse">
+        <service android:name="com.github.ytlog.mobby.android.runtime.android.RuntimeService" android:exported="false" android:foregroundServiceType="specialUse">
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Runs user-started local terminal and coding-agent processes in the app workspace. Keeps their process groups and output connected while the user switches apps; a visible notification returns to progress and stop controls. Stops when execution and process cleanup finish." />
         </service>
-        <service android:name="com.mobby.runtime.android.PhoneAccessibilityService" android:exported="true" android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE" android:label="使用当前手机">
+        <service android:name="com.github.ytlog.mobby.android.runtime.android.PhoneAccessibilityService" android:exported="true" android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE" android:label="使用当前手机">
             <intent-filter><action android:name="android.accessibilityservice.AccessibilityService" /></intent-filter>
             <meta-data android:name="android.accessibilityservice" android:resource="@xml/phone_accessibility_service" />
         </service>
