@@ -270,8 +270,8 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                 Surface(shape = RoundedCornerShape(26.dp), color = cardColor(), shadowElevation = floatingElevation(), tonalElevation = 0.dp) {
                     TextButton(onClick = { config = true; vm.enqueue { vm.refresh() } }, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurface)) { Text(c?.config?.agent?.label() ?: "选择 Agent"); Icon(AppIcons.ChevronDown, null, Modifier.size(16.dp)) }
                 }
+                if (c != null) AgentConfigMenu(config, { config = false }, c, vm, chip)
             }
-            if (c != null) AgentConfigMenu(config, { config = false }, c, vm, chip)
             Spacer(Modifier.weight(1f))
             Surface(shape = RoundedCornerShape(26.dp), color = cardColor(), shadowElevation = floatingElevation(), tonalElevation = 0.dp) {
                 Row {

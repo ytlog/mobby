@@ -3,26 +3,18 @@ package com.mobby.interaction.ui
 import android.app.Activity
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.graphics.drawable.ColorDrawable
-import android.os.Build
 import android.os.Handler
 import android.os.Looper
-import android.view.Gravity
 import android.view.PixelCopy
 import android.view.View
-import android.view.ViewGroup
-import android.view.WindowManager
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.requiredHeight
-import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ColorScheme
@@ -33,30 +25,33 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
-import androidx.compose.ui.window.DialogWindowProvider
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.window.PopupProperties
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
+import kotlin.math.roundToInt
 
 internal val MobbyDarkScheme: ColorScheme = darkColorScheme(
     background = Color(0xFF121212),
@@ -127,29 +122,42 @@ internal val MobbyLightScheme: ColorScheme = lightColorScheme(
     val density = LocalDensity.current
     val margin = with(density) { 16.dp.roundToPx() }
     val gap = with(density) { 8.dp.roundToPx() }
-    val x = margin
-    val y = if (anchor.bottom > 0) anchor.bottom + gap else margin + with(density) { 56.dp.roundToPx() }
-    val widthPx = (host.resources.displayMetrics.widthPixels - margin * 2).coerceAtLeast(1)
-    val widthDp = with(density) { widthPx.toDp() }
-    val scrim = if (night) Color(0x731C1C1C) else Color(0x80FFFFFF)
-    Dialog(onDismissRequest = onDismissRequest, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
-        val view = LocalView.current
-        SideEffect { applyClearCardWindow(view, x, y, widthPx) }
-        Box(Modifier.width(widthDp).clip(RoundedCornerShape(22.dp))) {
-            Box(Modifier.matchParentSize()) {
-                snapshot?.let { image ->
-                    Image(
-                        image,
-                        contentDescription = null,
-                        modifier = Modifier
-                            .requiredWidth(with(density) { image.width.toDp() })
-                            .requiredHeight(with(density) { image.height.toDp() })
-                            .offset { IntOffset(-x, -y) }
-                            .blur(24.dp),
-                    )
-                }
-                Box(Modifier.fillMaxSize().background(scrim))
+    val windowWidth = host.rootView.width.takeIf { it > 0 } ?: host.resources.displayMetrics.widthPixels
+    val popupWidth = (windowWidth - margin * 2).coerceAtLeast(1)
+    val predictedHeight = with(density) { 560.dp.roundToPx() }
+    val frostTop = if (anchor.bottom > 0) anchor.bottom + gap else margin + with(density) { 56.dp.roundToPx() }
+    var cardHeight by remember { mutableStateOf(predictedHeight) }
+    val frost = remember(snapshot, popupWidth, frostTop, cardHeight) {
+        snapshot?.let { frostRegion(it, margin, frostTop, popupWidth, cardHeight).asImageBitmap() }
+    }
+    val shape = RoundedCornerShape(22.dp)
+    val scrim = if (night) Color(0x99141416) else Color(0xB8FFFFFF)
+    val stroke = if (night) Color.White.copy(alpha = 0.14f) else Color.Black.copy(alpha = 0.08f)
+    val position = remember(margin, gap, frostTop) {
+        object : PopupPositionProvider {
+            override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize): IntOffset {
+                val x = margin.coerceAtMost((windowSize.width - popupContentSize.width).coerceAtLeast(0))
+                val rawY = if (anchorBounds.bottom > 0) anchorBounds.bottom + gap else frostTop
+                val y = rawY.coerceAtMost((windowSize.height - popupContentSize.height - margin).coerceAtLeast(0)).coerceAtLeast(0)
+                return IntOffset(x, y)
             }
+        }
+    }
+    Popup(popupPositionProvider = position, onDismissRequest = onDismissRequest, properties = PopupProperties(focusable = true, clippingEnabled = false)) {
+        Box(
+            Modifier
+                .width(with(density) { popupWidth.toDp() })
+                .shadow(18.dp, shape, clip = false)
+                .clip(shape)
+                .border(0.5.dp, stroke, shape)
+                .onGloballyPositioned { coordinates ->
+                    if (coordinates.size.height > 0 && coordinates.size.height != cardHeight) cardHeight = coordinates.size.height
+                },
+        ) {
+            frost?.let { image ->
+                Image(image, contentDescription = null, modifier = Modifier.matchParentSize(), contentScale = ContentScale.FillBounds)
+            }
+            Box(Modifier.matchParentSize().background(scrim))
             MaterialTheme(
                 colorScheme = MaterialTheme.colorScheme.copy(
                     primary = menuAccent(),
@@ -164,49 +172,87 @@ internal val MobbyLightScheme: ColorScheme = lightColorScheme(
     }
 }
 
-private fun snapshotView(view: View): ImageBitmap? {
+internal fun frostRegion(source: Bitmap, left: Int, top: Int, width: Int, height: Int): Bitmap {
+    val pad = 64
+    val l = (left - pad).coerceAtLeast(0)
+    val t = (top - pad).coerceAtLeast(0)
+    val r = (left + width + pad).coerceAtMost(source.width)
+    val b = (top + height + pad).coerceAtMost(source.height)
+    val cropped = Bitmap.createBitmap(source, l, t, (r - l).coerceAtLeast(1), (b - t).coerceAtLeast(1))
+    val small = Bitmap.createScaledBitmap(cropped, (cropped.width / 8).coerceAtLeast(1), (cropped.height / 8).coerceAtLeast(1), true)
+    repeat(3) { boxBlur(small, 3) }
+    val up = Bitmap.createScaledBitmap(small, cropped.width, cropped.height, true)
+    val ox = (left - l).coerceIn(0, (up.width - 1).coerceAtLeast(0))
+    val oy = (top - t).coerceIn(0, (up.height - 1).coerceAtLeast(0))
+    return Bitmap.createBitmap(
+        up,
+        ox,
+        oy,
+        width.coerceAtMost(up.width - ox).coerceAtLeast(1),
+        height.coerceAtMost(up.height - oy).coerceAtLeast(1),
+    )
+}
+
+private fun boxBlur(bitmap: Bitmap, radius: Int) {
+    if (radius < 1) return
+    val w = bitmap.width
+    val h = bitmap.height
+    val src = IntArray(w * h)
+    val tmp = IntArray(w * h)
+    bitmap.getPixels(src, 0, w, 0, 0, w, h)
+    blurAxis(src, tmp, w, h, radius, true)
+    blurAxis(tmp, src, w, h, radius, false)
+    bitmap.setPixels(src, 0, w, 0, 0, w, h)
+}
+
+private fun blurAxis(src: IntArray, dst: IntArray, w: Int, h: Int, radius: Int, horizontal: Boolean) {
+    val span = radius * 2 + 1
+    if (horizontal) {
+        for (y in 0 until h) {
+            val row = y * w
+            var a = 0; var r = 0; var g = 0; var b = 0
+            fun px(x: Int): Int = src[row + x.coerceIn(0, w - 1)]
+            fun acc(p: Int, sign: Int) { a += sign * (p ushr 24); r += sign * ((p shr 16) and 255); g += sign * ((p shr 8) and 255); b += sign * (p and 255) }
+            for (i in -radius..radius) acc(px(i), 1)
+            for (x in 0 until w) {
+                dst[row + x] = (a / span shl 24) or (r / span shl 16) or (g / span shl 8) or (b / span)
+                acc(px(x + radius + 1), 1)
+                acc(px(x - radius), -1)
+            }
+        }
+    } else {
+        for (x in 0 until w) {
+            var a = 0; var r = 0; var g = 0; var b = 0
+            fun px(y: Int): Int = src[y.coerceIn(0, h - 1) * w + x]
+            fun acc(p: Int, sign: Int) { a += sign * (p ushr 24); r += sign * ((p shr 16) and 255); g += sign * ((p shr 8) and 255); b += sign * (p and 255) }
+            for (i in -radius..radius) acc(px(i), 1)
+            for (y in 0 until h) {
+                dst[y * w + x] = (a / span shl 24) or (r / span shl 16) or (g / span shl 8) or (b / span)
+                acc(px(y + radius + 1), 1)
+                acc(px(y - radius), -1)
+            }
+        }
+    }
+}
+
+private fun snapshotView(view: View): Bitmap? {
     val root = view.rootView
     if (root.width <= 0 || root.height <= 0) return null
     return runCatching {
         val bitmap = Bitmap.createBitmap(root.width, root.height, Bitmap.Config.ARGB_8888)
         root.draw(Canvas(bitmap))
-        bitmap.asImageBitmap()
+        bitmap
     }.getOrNull()
 }
 
-private suspend fun captureWindow(view: View): ImageBitmap? {
+private suspend fun captureWindow(view: View): Bitmap? {
     val window = (view.context as? Activity)?.window ?: return snapshotView(view)
     val root = window.decorView
     if (root.width <= 0 || root.height <= 0) return snapshotView(view)
     return suspendCancellableCoroutine { cont ->
         val bitmap = Bitmap.createBitmap(root.width, root.height, Bitmap.Config.ARGB_8888)
         PixelCopy.request(window, bitmap, { result ->
-            cont.resume(if (result == PixelCopy.SUCCESS) bitmap.asImageBitmap() else snapshotView(view))
+            cont.resume(if (result == PixelCopy.SUCCESS) bitmap else snapshotView(view))
         }, Handler(Looper.getMainLooper()))
-    }
-}
-
-private fun applyClearCardWindow(view: View, x: Int, y: Int, width: Int) {
-    val window = (view.parent as? DialogWindowProvider)?.window ?: return
-    window.setDimAmount(0f)
-    window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-    window.clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
-    if (Build.VERSION.SDK_INT >= 31) window.setBackgroundBlurRadius(0)
-    window.setBackgroundDrawable(ColorDrawable(android.graphics.Color.TRANSPARENT))
-    window.decorView.setBackgroundColor(android.graphics.Color.TRANSPARENT)
-    view.setBackgroundColor(android.graphics.Color.TRANSPARENT)
-    (view.parent as? View)?.let { parent ->
-        parent.setBackgroundColor(android.graphics.Color.TRANSPARENT)
-        (parent as? ViewGroup)?.setPadding(0, 0, 0, 0)
-    }
-    window.setGravity(Gravity.TOP or Gravity.START)
-    window.attributes = window.attributes.apply {
-        this.width = width
-        height = WindowManager.LayoutParams.WRAP_CONTENT
-        gravity = Gravity.TOP or Gravity.START
-        this.x = x
-        this.y = y
-        dimAmount = 0f
-        flags = flags and WindowManager.LayoutParams.FLAG_DIM_BEHIND.inv() and WindowManager.LayoutParams.FLAG_BLUR_BEHIND.inv()
     }
 }
