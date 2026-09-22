@@ -97,6 +97,23 @@ class ExecutionCardTest {
         compose.onNodeWithText("""{"command":"ls"}""").assertDoesNotExist()
     }
 
+    @Test fun `thinking hides routine diagnostics and a failed turn still offers them`() {
+        val log = listOf(Message("d", "cli stderr"))
+        val thinking = Step("think", "thinking", "思考", "", null)
+        val running = empty.copy(phase = ExecutionPhase.RUNNING, occupied = true, steps = listOf(thinking), diagnostics = log)
+        assertFalse(running.diagnosticsActionVisible())
+        val finished = running.copy(occupied = false, phase = ExecutionPhase.SUCCEEDED, steps = listOf(thinking.copy(outcome = "SUCCEEDED")), expandedSteps = setOf("tools:think"))
+        assertFalse(finished.diagnosticsActionVisible())
+        val failed = finished.copy(phase = ExecutionPhase.FAILED, failure = "执行失败")
+        assertTrue(failed.diagnosticsActionVisible())
+        val shown = mutableStateOf(running)
+        compose.setContent { MaterialTheme { ExecutionCard(shown.value, vm()) { _, _ -> } } }
+        compose.onNodeWithText("思考").assertExists()
+        compose.onNodeWithText("查看诊断", substring = true).assertDoesNotExist()
+        compose.runOnIdle { shown.value = failed }
+        compose.onNodeWithText("查看诊断（1）").assertExists()
+    }
+
     @Test fun `thinking stays collapsed and its private text stays off the card`() {
         val running = empty.copy(phase = ExecutionPhase.RUNNING, occupied = true, steps = listOf(
             step.copy(outcome = null),

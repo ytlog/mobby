@@ -38,6 +38,10 @@ internal fun ExecutionPhase?.label(): String = when (this) {
     ExecutionPhase.OUTCOME_UNKNOWN -> "结果待确认"
 }
 internal fun Turn.hasVisibleExecution(): Boolean = steps.isNotEmpty()
+/** Routine CLI logs stay stored. The action appears only when this turn did not finish normally. */
+internal fun Turn.diagnosticsActionVisible(): Boolean = diagnostics.isNotEmpty() && (failure != null || phase in setOf(
+    ExecutionPhase.FAILED, ExecutionPhase.TIMED_OUT, ExecutionPhase.INTERRUPTED, ExecutionPhase.OUTCOME_UNKNOWN,
+))
 internal fun toolGroupKey(steps: List<Step>) = "tools:${steps.first().id}"
 internal fun Turn.toolGroupExpanded(steps: List<Step>): Boolean {
     val busy = occupied && steps.any { it.outcome == null } &&
@@ -147,7 +151,7 @@ internal fun stepKindIcon(kind: String): ImageVector = when (kind.lowercase()) {
                         }
                     }
                 }
-                if (showExtras && turn.diagnostics.isNotEmpty()) TextButton(onClick = { read("运行诊断", turn.diagnostics.joinToString("\n\n") { it.text }) }) { Text("查看诊断（${turn.diagnostics.size}）") }
+                if (showExtras && turn.diagnosticsActionVisible()) TextButton(onClick = { read("运行诊断", turn.diagnostics.joinToString("\n\n") { it.text }) }) { Text("查看诊断（${turn.diagnostics.size}）") }
             }
             }
         }
