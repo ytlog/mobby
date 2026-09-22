@@ -1,134 +1,486 @@
 package com.mobby.interaction.ui
 
-import android.Manifest
 import android.content.Context
-import android.content.Intent
-import android.content.pm.PackageManager
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
-import android.os.Bundle
-import android.speech.RecognitionListener
-import android.speech.RecognizerIntent
-import android.speech.SpeechRecognizer
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
+import com.mobby.speech.SpeechEngine
+import com.mobby.speech.SpeechEngines
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import kotlin.coroutines.cancellation.CancellationException
+import kotlin.math.abs
+import kotlin.math.sin
+import kotlinx.coroutines.withTimeoutOrNull
 
-/** One user-started capture. Closing, backgrounding and focus loss invalidate late callbacks. */
-private class VoiceCapture(context: Context) {
+internal val VoiceCancelDistance = 72.dp
+internal const val VoiceSpectrumBars = 96
+
+/** Download or load of the on-device model. A null [fraction] means the size is not known yet. */
+internal class VoiceModelTransfer(val read: Long, val total: Long, val loading: Boolean = false) {
+    val fraction: Float?
+        get() = when {
+            total <= 0L -> null
+            loading -> 1f
+            else -> (read.toFloat() / total.toFloat()).coerceIn(0f, 1f)
+        }
+
+    val label: String
+        get() = when {
+            loading -> "正在加载语音模型"
+            total > 0L || read > 0L -> "正在下载语音模型"
+            else -> "正在准备语音模型"
+        }
+
+    val percent: String?
+        get() = fraction?.let { "${(it * 100).toInt().coerceIn(0, 100)}%" }
+
+    val size: String?
+        get() = when {
+            total > 0L -> "${voiceSizeLabel(read.coerceAtMost(total))} / ${voiceSizeLabel(total)}"
+            read > 0L -> voiceSizeLabel(read)
+            else -> null
+        }
+}
+
+internal fun voiceSizeLabel(bytes: Long): String {
+    val tenths = (bytes.coerceAtLeast(0L) * 10 + 524_288) / 1_048_576
+    val whole = tenths / 10
+    val fraction = tenths % 10
+    return if (whole >= 100) "$whole MB" else "$whole.$fraction MB"
+}
+
+internal fun rmsToLevel(rmsdB: Float): Float {
+    if (rmsdB.isNaN()) return 0f
+    return ((rmsdB + 2f) / 12f).coerceIn(0f, 1f)
+}
+
+/** Bar heights for the hold-to-talk spectrum. Louder input raises the band; time only flutters it. */
+internal fun spectrumBars(level: Float, time: Float, count: Int = VoiceSpectrumBars): FloatArray {
+    val energy = level.coerceIn(0f, 1f)
+    return FloatArray(count) { index ->
+        val x = if (count <= 1) 0.5f else index / (count - 1f)
+        val envelope = (1f - abs(x * 2f - 1f) * 0.45f).coerceIn(0.4f, 1f)
+        val wave = sin(index * 0.73f + time * (7.5f + (index % 5) * 1.4f))
+        val flutter = 0.45f + 0.55f * ((wave + 1f) / 2f)
+        val idle = 0.05f + 0.07f * flutter * envelope
+        (idle + 0.88f * energy * envelope * flutter).coerceIn(0f, 1f)
+    }
+}
+
+/** One capture. The speech engine and its model are created only from [start], so composing the composer does not load native code. */
+internal class VoiceCapture(context: Context) {
     var phase by mutableStateOf("idle")
-    var transcript by mutableStateOf("")
+    var level by mutableFloatStateOf(0f)
     var error by mutableStateOf<String?>(null)
-    val available = SpeechRecognizer.isRecognitionAvailable(context)
+    var transfer by mutableStateOf<VoiceModelTransfer?>(null)
+    var onTranscript: (String) -> Unit = {}
     private val app = context.applicationContext
     private val audio = app.getSystemService(AudioManager::class.java)
-    private var recognizer: SpeechRecognizer? = null
+    private var engine: SpeechEngine? = null
     private var generation = 0
+    private var listening = false
     private val focus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE)
         .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
         .setOnAudioFocusChangeListener { if (it < 0) cancel("音频被其他应用占用，录音已停止") }.build()
-    fun cancel(reason: String? = null) {
-        generation++
-        recognizer?.cancel(); recognizer?.destroy(); recognizer = null
-        audio.abandonAudioFocusRequest(focus)
-        if (phase == "recording" || phase == "transcribing") { phase = "idle"; error = reason }
-    }
-    fun start() {
-        cancel()
-        if (!available) { error = "设备没有可用的语音识别服务，请使用文字输入"; return }
-        if (audio.requestAudioFocus(focus) != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) { error = "无法获取音频焦点，请稍后重试"; return }
+
+    fun start(): Boolean {
+        val speech = engine ?: SpeechEngines.create(app).also { engine = it }
+        speech.stop(false)
+        error = null
+        level = 0f
         val token = ++generation
-        try {
-            val service = SpeechRecognizer.createSpeechRecognizer(app)
-            recognizer = service
-            service.setRecognitionListener(object : RecognitionListener {
-                override fun onReadyForSpeech(params: Bundle?) = Unit
-                override fun onBeginningOfSpeech() = Unit
-                override fun onRmsChanged(rmsdB: Float) = Unit
-                override fun onBufferReceived(buffer: ByteArray?) = Unit
-                override fun onEvent(eventType: Int, params: Bundle?) = Unit
-                override fun onPartialResults(partialResults: Bundle?) = Unit
-                override fun onEndOfSpeech() { if (token == generation) phase = "transcribing" }
-                override fun onError(code: Int) {
-                    if (token != generation) return
-                    cancel()
-                    error = when (code) {
-                        SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "麦克风权限未授予，请使用文字输入或重试授权"
-                        SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "未识别到文字，请重新录音"
-                        SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "语音服务连接失败，请检查网络后重试"
-                        else -> "转写失败（$code），请重试或返回文字输入"
-                    }
-                }
-                override fun onResults(results: Bundle?) {
-                    if (token != generation) return
-                    val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
-                    cancel()
-                    if (text.isBlank()) error = "未识别到文字，请重新录音"
-                    else { transcript = text; phase = "editing"; error = null }
-                }
-            })
-            phase = "recording"; error = null
-            service.startListening(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM).putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false))
-        } catch (_: Exception) { cancel(); phase = "idle"; error = "无法启动语音识别，请使用文字输入" }
+        listening = true
+        if (speech.ready) {
+            transfer = null
+            return beginListening(token)
+        }
+        phase = "preparing"
+        if (transfer == null) transfer = VoiceModelTransfer(0, 0)
+        speech.prepare(
+            onProgress = { read, total ->
+                if (token != generation || phase == "recording" || phase == "transcribing") return@prepare
+                transfer = VoiceModelTransfer(read, total)
+            },
+            onLoading = {
+                if (token != generation || phase == "recording" || phase == "transcribing") return@prepare
+                val current = transfer
+                transfer = VoiceModelTransfer(current?.read ?: 0, current?.total ?: 0, loading = true)
+            },
+            onReady = {
+                if (token != generation) return@prepare
+                val resume = listening && phase == "preparing"
+                transfer = null
+                if (resume) beginListening(token)
+            },
+            onError = { message ->
+                if (token != generation) return@prepare
+                transfer = null
+                fail(message)
+            },
+        )
+        return phase == "preparing" || phase == "recording"
     }
-    fun finish() { if (phase == "recording") { phase = "transcribing"; recognizer?.stopListening() } }
+
+    fun finish() {
+        if (phase == "preparing") {
+            listening = false
+            phase = "idle"
+            level = 0f
+            return
+        }
+        if (phase != "recording") return
+        phase = "transcribing"
+        level = 0f
+        engine?.stop(true)
+    }
+
+    fun cancel(reason: String? = null) {
+        val active = phase == "recording" || phase == "transcribing"
+        generation++
+        listening = false
+        engine?.stop(false)
+        abandonFocus()
+        phase = "idle"
+        level = 0f
+        transfer = null
+        if (active && reason != null) error = reason
+    }
+
+    fun release() {
+        cancel()
+        engine?.close()
+        engine = null
+    }
+
+    private fun beginListening(token: Int): Boolean {
+        if (token != generation || !listening) return false
+        if (audio.requestAudioFocus(focus) != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+            fail("无法获取音频焦点，请稍后重试")
+            return false
+        }
+        phase = "recording"
+        transfer = null
+        engine?.listen(
+            onLevel = { if (token == generation && phase == "recording") level = it },
+            onFinal = { text ->
+                if (token != generation) return@listen
+                abandonFocus()
+                phase = "idle"
+                level = 0f
+                transfer = null
+                listening = false
+                generation++
+                if (text.isBlank()) error = "未识别到文字，请重新录音" else onTranscript(text)
+            },
+            onError = { message ->
+                if (token != generation) return@listen
+                fail(message)
+            },
+        )
+        return phase == "recording"
+    }
+
+    private fun fail(message: String) {
+        generation++
+        listening = false
+        abandonFocus()
+        phase = "idle"
+        level = 0f
+        transfer = null
+        error = message
+    }
+
+    private fun abandonFocus() {
+        audio.abandonAudioFocusRequest(focus)
+    }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable internal fun VoiceInputSheet(onDismiss: () -> Unit, insert: (String) -> Boolean) {
-    val context = LocalContext.current
+@Composable internal fun rememberVoiceCapture(): VoiceCapture {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val capture = remember { VoiceCapture(context) }
-    var alive by remember { mutableStateOf(true) }
-    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (alive) { if (granted && lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) capture.start()
-            else capture.error = "麦克风权限未授予或页面已离开，草稿保持不变" }
-    }
     DisposableEffect(lifecycle, capture) {
-        alive = true
-        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_STOP) capture.cancel("应用进入后台，录音已停止") }
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) capture.cancel("应用进入后台，录音已停止")
+        }
         lifecycle.addObserver(observer)
-        onDispose { alive = false; lifecycle.removeObserver(observer); capture.cancel() }
+        onDispose {
+            lifecycle.removeObserver(observer)
+            capture.release()
+        }
     }
-    VoiceInputPanel(capture.phase, capture.transcript, capture.error, capture.available,
-        onTranscript = { capture.transcript = it }, onFinish = capture::finish,
-        onInsert = { if (insert(capture.transcript)) onDismiss() else capture.error = "原草稿已改变，未插入文字；请复制转写内容后返回" },
-        onStart = {
-            if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) capture.start()
-            else permission.launch(Manifest.permission.RECORD_AUDIO)
-        }, onDismiss = onDismiss)
+    return capture
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable internal fun VoiceInputPanel(phase: String, transcript: String, error: String?, available: Boolean,
-    onTranscript: (String) -> Unit, onFinish: () -> Unit, onInsert: () -> Unit, onStart: () -> Unit, onDismiss: () -> Unit) {
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = raisedColor()) {
-        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("语音输入", style = MaterialTheme.typography.titleLarge)
-            Text("使用设备的语音识别服务。转写后可校对，放入输入框后由你发送。", style = MaterialTheme.typography.bodySmall)
-            error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-            when (phase) {
-                "recording" -> { Text("正在录音…"); Button(onClick = onFinish) { Text("结束录音") } }
-                "transcribing" -> { Text("正在转写…"); LinearProgressIndicator(Modifier.fillMaxWidth()) }
-                "editing" -> {
-                    OutlinedTextField(transcript, onTranscript, Modifier.fillMaxWidth(), label = { Text("编辑校对") }, maxLines = 5)
-                    Button(onClick = onInsert, enabled = transcript.isNotBlank()) { Text("放入输入框") }
+@Composable internal fun Modifier.voiceHold(
+    enabled: Boolean,
+    onTap: () -> Unit,
+    onHoldStart: () -> Unit,
+    onHoldMove: (Boolean) -> Unit,
+    onHoldEnd: (Boolean) -> Unit,
+): Modifier {
+    val tap = rememberUpdatedState(onTap)
+    val start = rememberUpdatedState(onHoldStart)
+    val move = rememberUpdatedState(onHoldMove)
+    val end = rememberUpdatedState(onHoldEnd)
+    val slop = with(LocalDensity.current) { VoiceCancelDistance.toPx() }
+    return pointerInput(enabled, slop) {
+        if (!enabled) return@pointerInput
+        detectVoiceHold(slop, { tap.value() }, { start.value() }, { move.value(it) }, { end.value(it) })
+    }
+}
+
+private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectVoiceHold(
+    cancelSlop: Float,
+    onTap: () -> Unit,
+    onHoldStart: () -> Unit,
+    onHoldMove: (Boolean) -> Unit,
+    onHoldEnd: (Boolean) -> Unit,
+) {
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false)
+        val holding = booleanArrayOf(false)
+        var cancelArmed = false
+        try {
+            val released = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) { waitForUpOrCancellation() }
+            if (released != null) {
+                onTap()
+                return@awaitEachGesture
+            }
+            val stillDown = currentEvent.changes.any { it.id == down.id && it.pressed }
+            if (!stillDown) return@awaitEachGesture
+            holding[0] = true
+            onHoldStart()
+            while (true) {
+                val event = awaitPointerEvent()
+                val change = event.changes.firstOrNull { it.id == down.id }
+                if (change == null || !change.pressed) {
+                    onHoldEnd(cancelArmed)
+                    holding[0] = false
+                    return@awaitEachGesture
+                }
+                val armed = change.position.y - down.position.y <= -cancelSlop
+                if (armed != cancelArmed) {
+                    cancelArmed = armed
+                    onHoldMove(cancelArmed)
+                }
+                change.consume()
+            }
+        } catch (cancelled: CancellationException) {
+            if (holding[0]) onHoldEnd(true)
+            throw cancelled
+        }
+    }
+}
+
+@Composable internal fun VoiceModelProgress(transfer: VoiceModelTransfer, modifier: Modifier = Modifier) {
+    val fraction = transfer.fraction
+    val animated by animateFloatAsState(
+        targetValue = fraction ?: 0f,
+        animationSpec = tween(240, easing = FastOutSlowInEasing),
+        label = "voice-model-progress",
+    )
+    val night = darkChrome()
+    val primary = MaterialTheme.colorScheme.primary
+    val track = if (night) primary.copy(alpha = 0.20f) else Color(0xFFE4EEFF)
+    val reduced = rememberReducedMotion()
+    val slide = if (fraction != null || reduced) 0f else {
+        val pulse = rememberInfiniteTransition(label = "voice-model-progress")
+        val value by pulse.animateFloat(0f, 1f, infiniteRepeatable(tween(1_400, easing = LinearEasing)), label = "voice-model-progress-slide")
+        value
+    }
+    Column(modifier) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(transfer.label, Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodySmall)
+            transfer.size?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall) }
+            transfer.percent?.let {
+                Text(it, Modifier.padding(start = 10.dp), color = primary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Medium)
+            }
+        }
+        Spacer(Modifier.height(7.dp))
+        Canvas(
+            Modifier.fillMaxWidth().height(3.dp).semantics {
+                contentDescription = "语音模型下载进度"
+                progressBarRangeInfo = if (fraction != null) ProgressBarRangeInfo(fraction, 0f..1f) else ProgressBarRangeInfo.Indeterminate
+            },
+        ) {
+            val radius = CornerRadius(size.height / 2f, size.height / 2f)
+            drawRoundRect(track, cornerRadius = radius)
+            when {
+                fraction != null -> {
+                    val width = size.width * animated
+                    if (width > 0f) drawRoundRect(primary, size = Size(width.coerceAtLeast(size.height), size.height), cornerRadius = radius)
+                }
+                reduced -> drawRoundRect(primary.copy(alpha = 0.45f), size = Size(size.width * 0.36f, size.height), cornerRadius = radius)
+                else -> clipRect {
+                    val band = size.width * 0.28f
+                    val start = (size.width + band) * slide - band
+                    drawRoundRect(primary, topLeft = Offset(start, 0f), size = Size(band, size.height), cornerRadius = radius)
                 }
             }
-            if (phase == "idle" || phase == "editing") Button(onClick = onStart, enabled = available) { Text(if (phase == "editing") "重新录音" else "开始录音") }
-            if (!available) Text("设备没有可用的语音识别服务，请使用文字输入")
-            TextButton(onClick = onDismiss) { Text("取消，保留原草稿") }
         }
+    }
+}
+
+@Composable internal fun VoiceRecordingOverlay(cancelArmed: Boolean, level: Float, modifier: Modifier = Modifier) {
+    val night = darkChrome()
+    val wash = when {
+        cancelArmed && night -> Color(0xFF3A2226)
+        cancelArmed -> Color(0xFFFFE4E6)
+        night -> Color(0xFF1A2A44)
+        else -> Color(0xFFD9E8FF)
+    }
+    val hint = if (cancelArmed) "松开取消" else "松手发送，上滑取消"
+    Box(
+        modifier.fillMaxWidth().heightIn(min = 168.dp).background(Brush.verticalGradient(listOf(Color.Transparent, wash))),
+        contentAlignment = Alignment.BottomCenter,
+    ) {
+        Column(Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, bottom = 22.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(hint, color = if (cancelArmed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+            Spacer(Modifier.height(16.dp))
+            VoiceSpectrum(level, cancelArmed, Modifier.fillMaxWidth())
+        }
+    }
+}
+
+@Composable internal fun VoiceSpectrum(level: Float, cancelArmed: Boolean, modifier: Modifier = Modifier) {
+    val reduced = rememberReducedMotion()
+    val time = if (reduced) 0f else {
+        val pulse = rememberInfiniteTransition(label = "voice-spectrum")
+        val value by pulse.animateFloat(0f, 64f, infiniteRepeatable(tween(64_000, easing = LinearEasing), RepeatMode.Reverse), label = "voice-spectrum-time")
+        value
+    }
+    val bars = spectrumBars(level, time)
+    val color = if (cancelArmed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+    Canvas(modifier.height(32.dp).semantics { contentDescription = "录音频谱" }) {
+        val count = bars.size
+        val gap = 1.5.dp.toPx()
+        val width = ((size.width - gap * (count - 1)) / count).coerceAtLeast(1.dp.toPx())
+        val minH = 2.dp.toPx()
+        bars.forEachIndexed { index, value ->
+            val height = minH + (size.height - minH) * value
+            val x = index * (width + gap) + width / 2f
+            drawLine(color, Offset(x, (size.height - height) / 2f), Offset(x, (size.height + height) / 2f), width, StrokeCap.Round)
+        }
+    }
+}
+
+@Composable internal fun VoiceComposerBar(
+    voiceMode: Boolean,
+    recording: Boolean,
+    cancelArmed: Boolean,
+    level: Float,
+    enabled: Boolean,
+    micAvailable: Boolean,
+    stop: Boolean,
+    stopEnabled: Boolean,
+    sendEnabled: Boolean,
+    onAdd: () -> Unit,
+    onStop: () -> Unit,
+    onSend: () -> Unit,
+    onEnterVoice: () -> Unit,
+    onExitVoice: () -> Unit,
+    onHoldTap: () -> Unit,
+    onHoldStart: () -> Unit,
+    onHoldMove: (Boolean) -> Unit,
+    onHoldEnd: (Boolean) -> Unit,
+    textField: @Composable RowScope.() -> Unit,
+) {
+    val hold = voiceMode && micAvailable && !stop
+    Box(Modifier.fillMaxWidth()) {
+        if (recording) VoiceRecordingOverlay(cancelArmed, level, Modifier.align(Alignment.BottomCenter))
+        Surface(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp).alpha(if (recording) 0f else 1f).align(Alignment.BottomCenter)
+                .then(if (recording) Modifier.clearAndSetSemantics {} else Modifier),
+            shape = RoundedCornerShape(28.dp),
+            color = cardColor(),
+            shadowElevation = floatingElevation(),
+            tonalElevation = 0.dp,
+        ) {
+            Row(Modifier.fillMaxWidth().padding(4.dp), verticalAlignment = Alignment.Bottom) {
+                ActionIcon("添加内容与能力", onAdd, AppIcons.Plus, enabled = enabled && !recording)
+                if (hold) {
+                    Box(
+                        Modifier.weight(1f).heightIn(min = 48.dp).testTag("hold-to-speak").voiceHold(enabled, onHoldTap, onHoldStart, onHoldMove, onHoldEnd),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text("按住说话", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                    }
+                    ActionIcon("键盘输入", onExitVoice, AppIcons.Keyboard, enabled = enabled)
+                } else {
+                    textField()
+                    when {
+                        stop -> ActionIcon("停止当前任务", onStop, AppIcons.Stop, enabled = stopEnabled, filled = true)
+                        micAvailable -> HoldIcon("语音输入", AppIcons.Mic, enabled, "voice-mic", onEnterVoice, onHoldStart, onHoldMove, onHoldEnd)
+                        else -> ActionIcon("发送任务", onSend, AppIcons.Send, enabled = sendEnabled, filled = true)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable private fun HoldIcon(
+    label: String,
+    icon: ImageVector,
+    enabled: Boolean,
+    tag: String,
+    onTap: () -> Unit,
+    onHoldStart: () -> Unit,
+    onHoldMove: (Boolean) -> Unit,
+    onHoldEnd: (Boolean) -> Unit,
+) {
+    Box(
+        Modifier.size(48.dp).testTag(tag).voiceHold(enabled, onTap, onHoldStart, onHoldMove, onHoldEnd).semantics {
+            role = Role.Button
+            contentDescription = label
+            if (enabled) onClick(label) { onTap(); true }
+        },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, null, Modifier.size(22.dp), tint = if (enabled) LocalContentColor.current else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f))
     }
 }

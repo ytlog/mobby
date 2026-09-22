@@ -12,4 +12,4 @@ project(":bootstrap-arm64").buildFileName = "mobby.gradle.kts"
 
 include(":runtime-api", ":interaction-domain")
 include(":runtime-engine", ":runtime-android")
-include(":interaction-data", ":interaction-ui")
+include(":interaction-data", ":interaction-ui", ":speech")

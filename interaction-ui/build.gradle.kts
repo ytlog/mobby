@@ -19,6 +19,7 @@ dependencies {
     implementation("org.commonmark:commonmark-ext-autolink:0.30.0")
     implementation("org.commonmark:commonmark-ext-task-list-items:0.30.0")
     implementation(project(":interaction-domain"))
+    implementation(project(":speech"))
     implementation(platform("androidx.compose:compose-bom:2024.04.01"))
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.compose.material3:material3")

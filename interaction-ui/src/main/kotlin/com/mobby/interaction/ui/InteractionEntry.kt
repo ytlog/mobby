@@ -1,5 +1,7 @@
 package com.mobby.interaction.ui
 
+import android.Manifest
+import android.content.pm.PackageManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -21,6 +23,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
@@ -76,7 +81,6 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
     LaunchedEffect(skillProposalSaved?.operation) {
         skillProposalSaved?.let { route = "skills"; vm.consumeSkillProposalSaved(it.operation) }
     }
-    var voice by remember { mutableStateOf<ComposerState?>(null) }
     var reading by remember { mutableStateOf<Pair<String, String>?>(null) }
     val snackbar = remember { SnackbarHostState() }
     val keyboard = LocalSoftwareKeyboardController.current
@@ -89,7 +93,6 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
             drawer = false
             dialog = null
             reading = null
-            voice = null
             route = "conversation"
             consumedNavigation = conversationNavigation
         }
@@ -166,7 +169,7 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                                 style = MaterialTheme.typography.bodySmall,
                             )
                             if (state.selected != null && state.error == null && !state.loading) {
-                                Composer(state.selected!!, state, system, vm, modifier = Modifier.align(Alignment.BottomCenter), onAdd = { navigate("add") }, onVoice = { keyboard?.hide(); voice = vm.composer.value })
+                                Composer(state.selected!!, state, system, vm, modifier = Modifier.align(Alignment.BottomCenter), onAdd = { navigate("add") })
                             }
                         }
                     }
@@ -199,7 +202,6 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                     }
                 }
                 skillProposal?.let { editor -> SkillProposalDialog(editor.proposal, vm, sourceAvailable = state.selected?.turns?.any { turn -> turn.skillProposals.any { it.ref == editor.proposal.ref } } == true, onDismiss = vm::dismissSkillProposal) }
-                voice?.let { original -> VoiceInputSheet(onDismiss = { voice = null }, insert = { text -> vm.insertVoice(original, text) }) }
                 reading?.let { (title, text) ->
                     ModalBottomSheet(onDismissRequest = { reading = null }, containerColor = raisedColor()) {
                         Column(Modifier.fillMaxWidth().heightIn(max = (availableHeight - 48.dp).coerceAtLeast(120.dp))) {
@@ -326,42 +328,150 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
         }
 }
 
-@Composable private fun Composer(detail: ConversationDetail, state: InteractionState, system: SystemStatus, vm: ConversationViewModel, onAdd: () -> Unit, onVoice: () -> Unit, modifier: Modifier = Modifier) {
+@Composable private fun Composer(detail: ConversationDetail, state: InteractionState, system: SystemStatus, vm: ConversationViewModel, onAdd: () -> Unit, modifier: Modifier = Modifier) {
     val composer by vm.composer.collectAsStateWithLifecycle()
     val active = detail.turns.lastOrNull { it.occupied }
     val unavailable = detail.conversation.archived || detail.conversation.deleted
-    Column(modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp)) {
-        if (unavailable) Text("此对话已归档或删除，请先在设置中恢复", style = MaterialTheme.typography.bodySmall)
-        if (state.occupied != null && active == null) Text("${state.occupied!!.conversation.title} 正在执行，本轮草稿可继续编辑", style = MaterialTheme.typography.bodySmall)
-        if (system.diagnosticBusy) Text("Shell 诊断正在占用运行环境", style = MaterialTheme.typography.bodySmall)
-        if (detail.conversation.creator != null) Text("Skill Creator 已绑定此创建会话", style = MaterialTheme.typography.labelSmall)
-        if (detail.conversation.draft.capabilities.any { it != detail.conversation.creator }) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            detail.conversation.draft.capabilities.filter { it != detail.conversation.creator }.forEach { ref -> InputChip(selected = true,
-                onClick = { vm.enqueue { vm.actions.removeSkill(detail.conversation.id, ref) } }, label = { Text("${capabilityLabel(ref)} ×") }) }
+    val context = LocalContext.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    val focus = LocalFocusManager.current
+    val haptic = LocalHapticFeedback.current
+    val focusRequester = remember { FocusRequester() }
+    val capture = rememberVoiceCapture()
+    val snapshot = remember { mutableStateOf<ComposerState?>(null) }
+    var voiceMode by rememberSaveable(detail.conversation.id.value) { mutableStateOf(false) }
+    var holding by remember { mutableStateOf(false) }
+    var cancelArmed by remember { mutableStateOf(false) }
+    var hint by remember(detail.conversation.id.value) { mutableStateOf<String?>(null) }
+    var openKeyboard by remember { mutableStateOf(false) }
+    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        val allowed = granted || context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        if (!allowed) capture.error = "麦克风权限未授予，请使用文字输入或重试授权"
+        else if (capture.error == "麦克风权限未授予，请使用文字输入或重试授权") capture.error = null
+    }
+    SideEffect {
+        capture.onTranscript = transcript@{ text ->
+            val original = snapshot.value ?: return@transcript
+            snapshot.value = null
+            val problem = vm.sendVoice(original, text)
+            if (problem != null) capture.error = problem else voiceMode = false
         }
-        Column(Modifier.heightIn(max = 160.dp).verticalScroll(rememberScrollState())) {
-            AttachmentList(detail.conversation.draft.attachments, detail.conversation.config.workspace, vm) { ref -> vm.enqueue { vm.actions.removeAttachment(detail.conversation.id, ref) } }
+    }
+    DisposableEffect(detail.conversation.id) {
+        onDispose {
+            holding = false
+            cancelArmed = false
+            snapshot.value = null
+            capture.cancel()
         }
-        detail.conversation.draft.pendingAttachment?.let { pending ->
-            Text(pending.error ?: "正在导入附件，完成后可发送…", style = MaterialTheme.typography.bodySmall)
-            if (pending.error != null) Row {
-                TextButton(onClick = { vm.importAttachment(detail.conversation.id, pending.workspace, pending.location) }) { Text("重试") }
-                TextButton(onClick = { vm.enqueue { vm.actions.discardAttachment(detail.conversation.id, pending.id) } }) { Text("移除待处理附件") }
+    }
+    LaunchedEffect(capture.phase) {
+        if (holding && capture.phase == "idle") {
+            holding = false
+            cancelArmed = false
+            snapshot.value = null
+        }
+    }
+    LaunchedEffect(openKeyboard, voiceMode) {
+        if (openKeyboard && !voiceMode) {
+            withFrameNanos { }
+            focusRequester.requestFocus()
+            keyboard?.show()
+            openKeyboard = false
+        }
+    }
+    fun beginHold() {
+        if (unavailable) return
+        hint = null
+        capture.error = null
+        cancelArmed = false
+        if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            permission.launch(Manifest.permission.RECORD_AUDIO)
+            return
+        }
+        snapshot.value = vm.composer.value
+        if (capture.start()) {
+            holding = true
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            keyboard?.hide()
+            focus.clearFocus()
+        } else snapshot.value = null
+    }
+    val stop = active?.execution != null
+    val micAvailable = !stop && composer.value.text.isEmpty() && detail.conversation.draft.attachments.isEmpty()
+    LaunchedEffect(detail.conversation.id) { capture.error = null }
+    LaunchedEffect(micAvailable, stop) { if (!micAvailable || stop) voiceMode = false }
+    Column(modifier.fillMaxWidth()) {
+        Column(Modifier.padding(start = 12.dp, end = 12.dp, top = 10.dp)) {
+            if (unavailable) Text("此对话已归档或删除，请先在设置中恢复", style = MaterialTheme.typography.bodySmall)
+            if (state.occupied != null && active == null) Text("${state.occupied!!.conversation.title} 正在执行，本轮草稿可继续编辑", style = MaterialTheme.typography.bodySmall)
+            if (system.diagnosticBusy) Text("Shell 诊断正在占用运行环境", style = MaterialTheme.typography.bodySmall)
+            if (detail.conversation.creator != null) Text("Skill Creator 已绑定此创建会话", style = MaterialTheme.typography.labelSmall)
+            if (detail.conversation.draft.capabilities.any { it != detail.conversation.creator }) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                detail.conversation.draft.capabilities.filter { it != detail.conversation.creator }.forEach { ref -> InputChip(selected = true,
+                    onClick = { vm.enqueue { vm.actions.removeSkill(detail.conversation.id, ref) } }, label = { Text("${capabilityLabel(ref)} ×") }) }
             }
-        }
-        Surface(shape = RoundedCornerShape(28.dp), color = cardColor(), shadowElevation = floatingElevation(), tonalElevation = 0.dp) {
-            Row(Modifier.fillMaxWidth().padding(4.dp), verticalAlignment = Alignment.Bottom) {
-                ActionIcon("添加内容与能力", onAdd, AppIcons.Plus)
-                androidx.compose.foundation.text.BasicTextField(composer.value, vm::edit, Modifier.weight(1f).heightIn(min = 48.dp).padding(vertical = 12.dp),
-                    enabled = !unavailable, maxLines = 5, textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
-                    decorationBox = { inner -> Box { if (composer.value.text.isEmpty()) Text("描述任务，或添加上下文", color = MaterialTheme.colorScheme.onSurfaceVariant); inner() } })
-                if (active?.execution != null) ActionIcon("停止当前任务", { vm.stop(active.execution!!) }, AppIcons.Stop, active.phase != ExecutionPhase.CANCELLING, filled = true)
-                else if (composer.value.text.isEmpty() && detail.conversation.draft.attachments.isEmpty()) ActionIcon("语音输入", onVoice, AppIcons.Mic, !unavailable)
-                else ActionIcon("发送任务", vm::send, AppIcons.Send,
-                    !unavailable && system.ready && system.connected && !system.diagnosticBusy && state.occupied == null && detail.conversation.draft.pendingAttachment == null && (composer.value.text.isNotBlank() || detail.conversation.draft.attachments.isNotEmpty()), filled = true)
+            Column(Modifier.heightIn(max = 160.dp).verticalScroll(rememberScrollState())) {
+                AttachmentList(detail.conversation.draft.attachments, detail.conversation.config.workspace, vm) { ref -> vm.enqueue { vm.actions.removeAttachment(detail.conversation.id, ref) } }
             }
+            detail.conversation.draft.pendingAttachment?.let { pending ->
+                Text(pending.error ?: "正在导入附件，完成后可发送…", style = MaterialTheme.typography.bodySmall)
+                if (pending.error != null) Row {
+                    TextButton(onClick = { vm.importAttachment(detail.conversation.id, pending.workspace, pending.location) }) { Text("重试") }
+                    TextButton(onClick = { vm.enqueue { vm.actions.discardAttachment(detail.conversation.id, pending.id) } }) { Text("移除待处理附件") }
+                }
+            }
+            capture.transfer?.let { VoiceModelProgress(it, Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 8.dp)) }
+            val notice = capture.error ?: hint
+            if (notice != null) Text(notice, color = if (capture.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            if (capture.phase == "transcribing" && !holding) Text("正在转写…", style = MaterialTheme.typography.bodySmall)
         }
-        if (active?.pending == true) TextButton(onClick = { vm.enqueue { vm.actions.reconcile(detail.conversation.id) } }) { Text("查询待确认请求") }
+        VoiceComposerBar(
+            voiceMode = voiceMode,
+            recording = holding && capture.phase == "recording",
+            cancelArmed = cancelArmed,
+            level = capture.level,
+            enabled = !unavailable,
+            micAvailable = micAvailable,
+            stop = stop,
+            stopEnabled = active?.phase != ExecutionPhase.CANCELLING,
+            sendEnabled = !unavailable && system.ready && system.connected && !system.diagnosticBusy && state.occupied == null && detail.conversation.draft.pendingAttachment == null && (composer.value.text.isNotBlank() || detail.conversation.draft.attachments.isNotEmpty()),
+            onAdd = onAdd,
+            onStop = { active?.execution?.let(vm::stop) },
+            onSend = vm::send,
+            onEnterVoice = {
+                hint = null
+                capture.error = null
+                voiceMode = true
+                keyboard?.hide()
+                focus.clearFocus()
+            },
+            onExitVoice = { hint = null; voiceMode = false; openKeyboard = true },
+            onHoldTap = { hint = "请按住说话" },
+            onHoldStart = ::beginHold,
+            onHoldMove = { cancelArmed = it },
+            onHoldEnd = { cancelled ->
+                val activeHold = holding
+                holding = false
+                cancelArmed = false
+                if (activeHold) {
+                    if (cancelled) {
+                        snapshot.value = null
+                        capture.cancel()
+                    } else capture.finish()
+                }
+            },
+            textField = {
+                androidx.compose.foundation.text.BasicTextField(
+                    composer.value, vm::edit,
+                    Modifier.weight(1f).heightIn(min = 48.dp).padding(vertical = 12.dp).focusRequester(focusRequester),
+                    enabled = !unavailable, maxLines = 5,
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
+                    decorationBox = { inner -> Box { if (composer.value.text.isEmpty()) Text("描述任务，或添加上下文", color = MaterialTheme.colorScheme.onSurfaceVariant); inner() } },
+                )
+            },
+        )
+        if (active?.pending == true) TextButton(onClick = { vm.enqueue { vm.actions.reconcile(detail.conversation.id) } }, modifier = Modifier.padding(horizontal = 12.dp)) { Text("查询待确认请求") }
     }
 }
 

@@ -316,6 +316,13 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
         edit(updated.value)
         return true
     }
+    /** Writes the transcript over the original selection, then sends. A changed draft is left untouched. */
+    fun sendVoice(original: ComposerState, text: String): String? {
+        if (text.isBlank()) return "未识别到文字，请重新录音"
+        if (!insertVoice(original, text)) return "原草稿已改变，未发送语音"
+        send()
+        return null
+    }
     fun enqueue(action: suspend () -> Unit) { queue.trySend(action) }
     fun send() {
         val id = composer.value.conversation ?: return

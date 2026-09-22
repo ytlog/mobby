@@ -40,3 +40,9 @@
 ## Markdown 解析
 
 回复使用 `org.commonmark:commonmark:0.30.0` 及同版本 tables、strikethrough、autolink、task-list-items 扩展（BSD-2-Clause）；上游与许可证：[commonmark-java](https://github.com/commonmark/commonmark-java)。自动链接的传递依赖为 `org.nibor.autolink:autolink:0.12.0`（MIT），上游：[autolink-java](https://github.com/robinst/autolink-java)。由 Gradle 获取依赖，不提交缓存。Compose 自行渲染解析结果，不执行 HTML。
+
+## 语音识别
+
+应用内识别使用 Maven 依赖 `com.alphacephei:vosk-android:0.3.47`（Apache-2.0）及其传递依赖 `net.java.dev.jna:jna:5.13.0`（Apache-2.0）。上游：[vosk-api](https://github.com/alphacep/vosk-api)。依赖由 Gradle 获取，不把 AAR 或本地库提交进仓库。
+
+中文小模型 `vosk-model-small-cn-0.22`（Apache-2.0）不放入安装包。用户第一次按住说话时从 https://alphacephei.com/vosk/models/vosk-model-small-cn-0.22.zip 下载到应用私有目录，并用 SHA-256 `3af8b0e7e0f835ae9d414ce5df580237a3cfb08d586c9fbbb0f7ff29ad5b14ba` 校验。模型文件不提交进仓库。
