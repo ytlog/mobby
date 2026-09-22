@@ -36,6 +36,11 @@ internal object RunProjection {
         return next.copy(lastSequence = event.sequence, revision = current.revision + 1)
     }
     fun occupied(snapshot: RunSnapshot) = !snapshot.phase.terminal || snapshot.phase == RunPhase.OUTCOME_UNKNOWN && snapshot.terminalEvidence?.terminationConfirmed != true
-    fun verifiedPhase(snapshot: RunSnapshot): RunPhase = if (snapshot.phase == RunPhase.SUCCEEDED &&
-        (snapshot.terminalEvidence?.protocolSucceeded != true || snapshot.terminalEvidence?.exitCode != 0 || snapshot.terminalEvidence?.terminationConfirmed != true)) RunPhase.OUTCOME_UNKNOWN else snapshot.phase
+    fun verifiedPhase(snapshot: RunSnapshot): RunPhase {
+        val evidence = snapshot.terminalEvidence
+        val exitedCleanly = evidence?.exitCode == 0
+        val retained = evidence?.exitCode == null && evidence?.terminationConfirmed == true
+        val confirmed = evidence?.protocolSucceeded == true && evidence.terminationConfirmed && (exitedCleanly || retained)
+        return if (snapshot.phase == RunPhase.SUCCEEDED && !confirmed) RunPhase.OUTCOME_UNKNOWN else snapshot.phase
+    }
 }

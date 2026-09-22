@@ -147,7 +147,7 @@ enum class RunPhase(val terminal: Boolean = false) {
     ACCEPTED, STARTING, RUNNING, AWAITING_APPROVAL, CANCELLING,
     SUCCEEDED(true), FAILED(true), CANCELLED(true), TIMED_OUT(true), INTERRUPTED(true), OUTCOME_UNKNOWN(true)
 }
-/** A successful protocol message alone is insufficient: process exit must also be confirmed. */
+/** A successful protocol message alone is insufficient. The turn is confirmed by a zero exit, or by an explicit confirmation while the process stays open for the next turn. */
 @Serializable
 data class TerminalEvidence(val protocolSucceeded: Boolean?, val exitCode: Int?, val error: RuntimeError? = null, val terminationConfirmed: Boolean = exitCode != null)
 @Serializable

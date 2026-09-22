@@ -51,6 +51,9 @@ class RunProjectionTest {
     @Test fun `success without evidence is never projected as success`() {
         assertEquals(RunPhase.OUTCOME_UNKNOWN, RunProjection.verifiedPhase(initial.copy(phase = RunPhase.SUCCEEDED)))
         assertEquals(RunPhase.SUCCEEDED, RunProjection.verifiedPhase(initial.copy(phase = RunPhase.SUCCEEDED, terminalEvidence = TerminalEvidence(true, 0))))
+        assertEquals(RunPhase.SUCCEEDED, RunProjection.verifiedPhase(initial.copy(phase = RunPhase.SUCCEEDED, terminalEvidence = TerminalEvidence(true, null, terminationConfirmed = true))))
+        assertEquals(RunPhase.OUTCOME_UNKNOWN, RunProjection.verifiedPhase(initial.copy(phase = RunPhase.SUCCEEDED, terminalEvidence = TerminalEvidence(true, null))))
+        assertEquals(RunPhase.OUTCOME_UNKNOWN, RunProjection.verifiedPhase(initial.copy(phase = RunPhase.SUCCEEDED, terminalEvidence = TerminalEvidence(true, 1))))
         assertTrue(RunProjection.occupied(initial.copy(phase = RunPhase.OUTCOME_UNKNOWN)))
     }
 }
