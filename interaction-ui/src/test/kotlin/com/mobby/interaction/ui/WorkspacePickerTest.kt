@@ -129,6 +129,16 @@ class WorkspacePickerTest {
         Assert.assertEquals(1, creations)
     }
 
+    @Test fun `switching agent keeps the conversation and explains separate sessions`() {
+        val vm = vm()
+        val conversation = Conversation(ConversationId("c"), NextTurnConfig(AgentId.CODEX, "model", null, "default", "CODEX"), hasTurns = true, session = "codex-session")
+        compose.setContent { MaterialTheme { AgentConfigMenu(true, {}, conversation, vm) } }
+        compose.onNodeWithText("新建并使用此配置").assertDoesNotExist()
+        compose.onNodeWithText("应用").assertExists()
+        compose.onNodeWithText("Claude Code").performScrollTo().performClick()
+        compose.onNodeWithText("仍在当前对话中继续", substring = true).assertExists()
+        compose.onNodeWithText("应用").assertExists()
+    }
     @Test fun `project default save survives recreation without duplicate requests`() {
         val vm = vm()
         projectReply = CompletableDeferred()

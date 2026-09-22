@@ -295,11 +295,42 @@ class RoomInteractionRepositoryTest {
         val turn = (repository.prepareTurn(c.id, TurnId("pending")) as PrepareTurnResult.Prepared).turn
         repository.recordSubmission(turn, Submission.Rejected(Failure.BUSY))
         val new = repository.configure(c.id, c.config.copy(agent = DomainAgent.CLAUDE_CODE, gatewayProfile = "CLAUDE"))
-        assertNotEquals(c.id, new)
+        assertEquals(c.id, new)
         val created = db.dao().conversation(new.value)!!.domain()
         assertEquals("draft A", created.draft.text)
         assertNull(created.session)
+        assertEquals(1, repository.history(c.id).turns.size)
         assertEquals("draft B", db.dao().conversation(second.value)!!.domain().draft.text)
+    }
+    @Test fun `follow-up reuses the engine session and switching agents restores each one`() = runBlocking {
+        val c = state().selected!!.conversation
+        repository.editDraft(c.id, "remember this", 13, 13)
+        val first = (repository.prepareTurn(c.id, TurnId("codex-turn")) as PrepareTurnResult.Prepared).turn
+        assertNull(first.session)
+        publish(first, "codex-session")
+        repository.recordSubmission(first, Submission.Accepted(ExecutionId("codex-turn")))
+        val resumed = state { it.selected?.conversation?.session == "codex-session" && it.selected?.turns?.singleOrNull()?.occupied == false }
+        assertFalse(resumed.selected!!.turns.single().occupied)
+        repository.editDraft(c.id, "same engine", 11, 11)
+        val second = (repository.prepareTurn(c.id, TurnId("codex-again")) as PrepareTurnResult.Prepared).turn
+        assertEquals("codex-session", second.session)
+        repository.recordSubmission(second, Submission.Rejected(Failure.BUSY))
+        val switched = repository.configure(c.id, c.config.copy(agent = DomainAgent.CLAUDE_CODE, gatewayProfile = "CLAUDE"))
+        assertEquals(c.id, switched)
+        repository.editDraft(switched, "other engine", 12, 12)
+        val claude = (repository.prepareTurn(switched, TurnId("claude-turn")) as PrepareTurnResult.Prepared).turn
+        assertNull(claude.session)
+        assertEquals(DomainAgent.CLAUDE_CODE, claude.config.agent)
+        publish(claude, "claude-session")
+        repository.recordSubmission(claude, Submission.Accepted(ExecutionId("claude-turn")))
+        state { it.selected?.conversation?.session == "claude-session" }
+        val back = repository.configure(switched, c.config)
+        assertEquals(c.id, back)
+        assertEquals("codex-session", repository.conversation(back).session)
+        repository.editDraft(back, "back again", 10, 10)
+        val restored = (repository.prepareTurn(back, TurnId("codex-restored")) as PrepareTurnResult.Prepared).turn
+        assertEquals("codex-session", restored.session)
+        assertEquals("remember this", repository.history(c.id).turns.first().userText)
     }
     @Test fun `active conversation cannot be archived or deleted and expansion is persistent`() = runBlocking {
         val c = state().selected!!.conversation
@@ -561,6 +592,11 @@ class RoomInteractionRepositoryTest {
         runtime.permissionResult = CommandResult.Rejected(RuntimeError(ErrorCode.STALE_APPROVAL))
         assertEquals(OperationResult.Failed("此确认请求已失效"), adapter.resolvePermission(decision.copy(commandId = "deny", allow = false)))
         assertEquals(ApprovalChoice.DENY, runtime.decisions.last().choice)
+    }
+    private fun publish(turn: TurnExecution, session: String) {
+        runtime.admit(turn)
+        runtime.snapshots[turn.turnId.value] = runtime.snapshots.getValue(turn.turnId.value).copy(
+            phase = RunPhase.SUCCEEDED, sessionRef = SessionRef(session), terminalEvidence = TerminalEvidence(true, 0))
     }
     private class TestRuntime : RuntimeClient {
         override val connection = MutableStateFlow(ConnectionState.CONNECTED)

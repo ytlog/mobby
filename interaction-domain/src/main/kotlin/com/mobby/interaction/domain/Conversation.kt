@@ -20,7 +20,8 @@ data class Conversation(
     val hasTurns: Boolean = false, val session: String? = null,
     val title: String = "新对话", val pinned: Boolean = false, val project: String? = null,
     val archived: Boolean = false, val deleted: Boolean = false,
-    val anchor: String? = null, val anchorOffset: Int = 0, val updatedAt: Long = 0, val creator: String? = null
+    val anchor: String? = null, val anchorOffset: Int = 0, val updatedAt: Long = 0, val creator: String? = null,
+    val sessions: Map<AgentId, String> = emptyMap()
 )
 data class TurnExecution(val turnId: TurnId, val conversationId: ConversationId, val draft: Draft, val config: NextTurnConfig, val session: String?, val creatingSkill: Boolean = false)
 enum class Failure { PENDING_ATTACHMENT, INPUT_TOO_LARGE, BUSY, INVALID_CONFIG, UNSUPPORTED_CAPABILITY, UNAVAILABLE, EMPTY_DRAFT, PENDING_SUBMISSION }
@@ -79,21 +80,25 @@ object ConversationRules {
     fun afterSubmission(current: Draft, submittedRevision: Long, result: Submission): Draft =
         if (result is Submission.Accepted && current.revision == submittedRevision) Draft(revision = current.revision + 1) else current
 
-    fun applyConfig(current: Conversation, config: NextTurnConfig, newId: ConversationId): Conversation {
+    /** Record one engine's CLI session. The active session changes only when that engine is currently selected. */
+    fun rememberSession(current: Conversation, agent: AgentId, id: String): Conversation {
+        if (!id.matches(Regex("[A-Za-z0-9-]{1,100}"))) return current
+        val sessions = current.sessions + (agent to id)
+        return current.copy(sessions = sessions, session = if (current.config.agent == agent) id else current.session)
+    }
+
+    fun applyConfig(current: Conversation, config: NextTurnConfig): Conversation {
         require(config.workspace == current.config.workspace || current.draft.attachments.isEmpty() && current.draft.pendingAttachment == null) { "Remove draft attachments before changing workspace" }
         require(!current.hasTurns || config.workspace == current.config.workspace) { "Existing workspace must be preserved" }
-        return if (current.hasTurns && config.agent != current.config.agent) {
-            require(newId != current.id)
-            Conversation(newId, config, Draft(text = current.draft.text), project = current.project)
-        } else {
-            val sameAgent = current.config.agent == config.agent
-            val kept = if (sameAgent) current.draft.capabilities else current.draft.capabilities.filter { it.startsWith("plugin:") }.toSet()
-            current.copy(config = config,
-                draft = if (kept != current.draft.capabilities)
-                    current.draft.copy(revision = current.draft.revision + 1, capabilities = kept) else current.draft,
-                session = if (sameAgent) current.session else null,
-                creator = if (sameAgent) current.creator else null)
-        }
+        val sameAgent = current.config.agent == config.agent
+        val kept = if (sameAgent) current.draft.capabilities else current.draft.capabilities.filter { it.startsWith("plugin:") }.toSet()
+        val sessions = if (current.session == null) current.sessions else current.sessions + (current.config.agent to current.session)
+        return current.copy(config = config,
+            draft = if (kept != current.draft.capabilities)
+                current.draft.copy(revision = current.draft.revision + 1, capabilities = kept) else current.draft,
+            session = if (sameAgent) current.session else sessions[config.agent],
+            sessions = sessions,
+            creator = if (sameAgent) current.creator else null)
     }
 
     fun createSkillConversation(current: Conversation, newId: ConversationId, creator: String?): Conversation? {

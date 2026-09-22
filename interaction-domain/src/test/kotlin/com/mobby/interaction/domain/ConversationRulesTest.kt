@@ -20,50 +20,59 @@ class ConversationRulesTest {
         assertEquals(draft, ConversationRules.afterSubmission(draft, 6, accepted))
         assertEquals(Draft(revision = 8), ConversationRules.afterSubmission(draft, 7, accepted))
     }
-    @Test fun `cross agent creates conversation with text only and leaves original intact`() {
-        val switched = ConversationRules.applyConfig(original, config.copy(agent = AgentId.CLAUDE_CODE), ConversationId("new"))
-        assertEquals("new", switched.id.value)
+    @Test fun `agent switch stays in the conversation and parks each engine session`() {
+        val switched = ConversationRules.applyConfig(original, config.copy(agent = AgentId.CLAUDE_CODE))
+        assertEquals(original.id, switched.id)
         assertEquals(original.project, switched.project)
         assertEquals(original.config.workspace, switched.config.workspace)
         assertEquals("draft", switched.draft.text)
-        assertTrue(switched.draft.attachments.isEmpty())
+        assertEquals(listOf("file"), switched.draft.attachments)
         assertTrue(switched.draft.capabilities.isEmpty())
+        assertTrue(switched.hasTurns)
         assertNull(switched.session)
-        assertFalse(switched.hasTurns)
-        assertEquals(listOf("file"), original.draft.attachments)
+        assertEquals(mapOf(AgentId.CODEX to "session"), switched.sessions)
         assertEquals("session", original.session)
+        val claude = switched.copy(session = "claude-session")
+        val back = ConversationRules.applyConfig(claude, config)
+        assertEquals("session", back.session)
+        assertEquals(mapOf(AgentId.CODEX to "session", AgentId.CLAUDE_CODE to "claude-session"), back.sessions)
+        val parked = ConversationRules.rememberSession(switched, AgentId.CODEX, "later-codex")
+        assertNull(parked.session)
+        assertEquals("later-codex", parked.sessions[AgentId.CODEX])
+        assertEquals(original, ConversationRules.rememberSession(original, AgentId.CODEX, "not a session"))
     }
     @Test fun `empty conversation agent switch keeps content but clears agent bound skills`() {
         val empty = original.copy(hasTurns = false, session = null, creator = "skill")
-        val changed = ConversationRules.applyConfig(empty, config.copy(agent = AgentId.CLAUDE_CODE), ConversationId("unused"))
+        val changed = ConversationRules.applyConfig(empty, config.copy(agent = AgentId.CLAUDE_CODE))
         assertEquals(empty.id, changed.id)
         assertEquals(empty.draft.copy(revision = empty.draft.revision + 1, capabilities = emptySet()), changed.draft)
         assertEquals(empty.project, changed.project)
         assertNull(changed.creator)
         assertEquals(setOf("skill"), empty.draft.capabilities)
         val withPlugin = empty.copy(draft = empty.draft.copy(capabilities = setOf("skill", "plugin:PHONE:ACCESSIBILITY")))
-        val kept = ConversationRules.applyConfig(withPlugin, config.copy(agent = AgentId.CLAUDE_CODE), ConversationId("unused"))
+        val kept = ConversationRules.applyConfig(withPlugin, config.copy(agent = AgentId.CLAUDE_CODE))
         assertEquals(setOf("plugin:PHONE:ACCESSIBILITY"), kept.draft.capabilities)
         assertEquals(withPlugin.draft.revision + 1, kept.draft.revision)
         val pluginOnly = empty.copy(draft = empty.draft.copy(capabilities = setOf("plugin:PHONE:ACCESSIBILITY")))
-        val unchanged = ConversationRules.applyConfig(pluginOnly, config.copy(agent = AgentId.CLAUDE_CODE), ConversationId("unused"))
+        val unchanged = ConversationRules.applyConfig(pluginOnly, config.copy(agent = AgentId.CLAUDE_CODE))
         assertEquals(pluginOnly.draft, unchanged.draft)
-        val next = ConversationRules.applyConfig(original, config.copy(model = "next"), ConversationId("unused"))
+        val next = ConversationRules.applyConfig(original, config.copy(model = "next"))
         assertEquals(original.id, next.id)
         assertEquals(original.session, next.session)
+        assertEquals(mapOf(AgentId.CODEX to "session"), next.sessions)
     }
     @Test fun `workspace can change before first turn but cannot move existing history`() {
         val changedConfig = config.copy(workspace = "other-workspace")
-        val changed = ConversationRules.applyConfig(original.copy(hasTurns = false, draft = original.draft.copy(attachments = emptyList())), changedConfig, ConversationId("unused"))
+        val changed = ConversationRules.applyConfig(original.copy(hasTurns = false, draft = original.draft.copy(attachments = emptyList())), changedConfig)
         assertEquals("other-workspace", changed.config.workspace)
         assertThrows(IllegalArgumentException::class.java) {
-            ConversationRules.applyConfig(original, changedConfig, ConversationId("unused"))
+            ConversationRules.applyConfig(original, changedConfig)
         }
     }
     @Test fun `workspace change cannot strand imported or pending attachments`() {
         for (draft in listOf(original.draft, Draft(pendingAttachment = PendingAttachment("p", config.workspace, "content://file")))) {
             assertThrows(IllegalArgumentException::class.java) {
-                ConversationRules.applyConfig(original.copy(hasTurns = false, draft = draft), config.copy(workspace = "next"), ConversationId("unused"))
+                ConversationRules.applyConfig(original.copy(hasTurns = false, draft = draft), config.copy(workspace = "next"))
             }
         }
     }

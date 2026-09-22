@@ -111,6 +111,8 @@ import kotlinx.coroutines.*
                 MenuAction("刷新工作区") { vm.loadWorkspaces() }
             }
             MenuCaption("变更只影响下一轮，当前执行保持原配置。")
+            if (agent != c.config.agent && c.hasTurns)
+                MenuCaption("仍在当前对话中继续。Codex 与 Claude Code 的会话不能互相沿用：各自第一次运行时创建，之后在本对话里复用。回到原来的 Agent 会恢复它自己的会话。")
             if (agent != c.config.agent && c.draft.capabilities.any { !it.startsWith("plugin:") })
                 MenuCaption("所选技能与 Agent 绑定，切换后请重新选择。插件选择会保留。")
         }
@@ -124,7 +126,7 @@ import kotlinx.coroutines.*
             shape = RoundedCornerShape(22.dp),
             colors = ButtonDefaults.buttonColors(containerColor = menuAccent(), contentColor = Color.White),
             elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp, pressedElevation = 0.dp, focusedElevation = 0.dp, hoveredElevation = 0.dp),
-        ) { Text(if (c.hasTurns && c.config.agent != agent) "新建并使用此配置" else "应用", fontWeight = FontWeight.SemiBold) }
+        ) { Text("应用", fontWeight = FontWeight.SemiBold) }
     }
 }
 @Composable internal fun ConfigDialog(vm: ConversationViewModel, c: Conversation?, onDismiss: () -> Unit, onApply: (NextTurnConfig, String?) -> Unit, anchor: IntRect = IntRect.Zero) {

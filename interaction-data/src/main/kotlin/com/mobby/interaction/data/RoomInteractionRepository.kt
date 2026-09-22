@@ -222,7 +222,7 @@ internal class RoomInteractionRepository(
     }
     override suspend fun configure(id: ConversationId, config: NextTurnConfig): ConversationId = db.withTransaction {
         val old = requireNotNull(dao.conversation(id.value)).domain()
-        val changed = ConversationRules.applyConfig(old, config, ConversationId(this.id())).copy(updatedAt = now())
+        val changed = ConversationRules.applyConfig(old, config).copy(updatedAt = now())
         dao.save(changed.row()); dao.select(SelectionRow(conversationId = changed.id.value)); changed.id
     }
     override suspend fun prepareTurn(conversationId: ConversationId, turnId: TurnId): PrepareTurnResult = db.withTransaction {
@@ -352,10 +352,13 @@ internal class RoomInteractionRepository(
             dao.save(row.copy(snapshot = storageJson.encodeToString(snapshot), occupied = RunProjection.occupied(snapshot), error = null))
             if (snapshot.phase.terminal && !RunProjection.occupied(snapshot)) outputCache.compact()
             val c = dao.conversation(row.conversationId)?.domain() ?: return@withTransaction
-            // Older run replays must not replace a newer CLI session.
-            if (dao.conversationTurns(c.id.value).lastOrNull { it.runId != null }?.id == row.id && snapshot.sessionRef != null && c.config.agent.name == snapshot.acceptedConfig.agentId.name) {
-                dao.save(c.copy(session = snapshot.sessionRef?.value).row())
+            val sessionId = snapshot.sessionRef?.value ?: return@withTransaction
+            val agent = snapshot.acceptedConfig.agentId.name
+            // A delayed replay may update only that engine's session, and only if it is still the latest run for that engine.
+            val latest = dao.conversationTurns(c.id.value).lastOrNull { turn ->
+                turn.runId != null && runCatching { storageJson.decodeFromString<StoredConversation>(turn.frozen).agent }.getOrNull() == agent
             }
+            if (latest?.id == row.id) dao.save(ConversationRules.rememberSession(c, DomainAgent.valueOf(agent), sessionId).row())
         }
     }
     private fun TurnRow.domain(content: Map<String, ChunkRow>): Turn {
