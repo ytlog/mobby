@@ -67,7 +67,7 @@
 ├─ 执行卡 → 步骤原地展开
 │  └─ 网页结果 / 放大代码 → 底部阅读面板
 └─ 输入区
-   ├─ 加号 → 拍照 / 照片 / 本地文件 / 插件 / 技能 / 联网搜索
+   ├─ 加号 → 拍照 / 照片 / 本地文件 / 插件 / 技能
    │  ├─ 插件页 → 查看 / 使用
    │  └─ 技能页 → 添加 → 与moddy对话创建 / 导入技能文件 / 手动创建
    ├─ 语音 → 按住说话 → 松手发送 / 上滑取消
@@ -130,8 +130,8 @@
 <h2 id="section-4">4. 输入与底部面板</h2>
 <p>输入区固定在底部：左侧加号，中间多行文本，右侧按状态显示语音、发送或停止。输入超过 5 行后内部滚动，回车用于换行，中文组词确认不发送。收到服务接收确认后才清空已提交草稿；发送失败保留原文。</p>
 <h3>加号面板</h3>
-<p>点击加号保存草稿与选择区，收起输入法，从底部展开面板。顶部为拖动条，上排三个等宽入口“拍照 / 照片 / 本地文件”，下方为“插件 / 技能 / 联网搜索”。联网搜索右侧显示当前偏好，默认自动。面板自然高度、设可用高度上限，超出后滚动；关闭恢复输入草稿与原阅读位置。</p>
-<p>拍照和照片进入系统采集/选择流程，本地文件使用系统文件选择器。选择后预览名称、大小、状态和移除按钮；处理中暂不可发送，失败提供重试或移除。图片、文件和联网搜索仅在当前 Agent 与网关有实际支持路径时开放；不支持时说明原因，不静默丢弃内容。</p>
+<p>点击加号保存草稿与选择区，收起输入法，从底部展开面板。顶部为拖动条，上排三个等宽入口“拍照 / 照片 / 本地文件”，下方为“插件 / 技能”。面板自然高度、设可用高度上限，超出后滚动；关闭恢复输入草稿与原阅读位置。</p>
+<p>拍照和照片进入系统采集/选择流程，本地文件使用系统文件选择器。选择后预览名称、大小、状态和移除按钮；处理中暂不可发送，失败提供重试或移除。图片和文件仅在当前 Agent 与网关有实际支持路径时开放；不支持时说明原因，不静默丢弃内容。</p>
 <h3>语音</h3>
 <p>点击麦克风把输入区换成「按住说话」，右侧图标变为键盘，再点键盘回到文字并打开输入法。长按麦克风或「按住说话」开始录音。应用自带识别引擎，模型不在安装包内，只在第一次按住说话时下载。下载时输入区上方显示细进度条、已下载大小和百分比；加载时进度条保持满格。松手不会发送，进度条会留到下载结束。真正开始录音后，底部显示「松手发送，上滑取消」和随音量起伏的频谱；上滑后松手则改为「松开取消」。松手把转写写入原草稿选区并发送，上滑取消则不发送。进入后台、失去音频焦点或切换会话会停止采集。权限拒绝、下载失败、转写失败或原草稿已变化时不发送，文字输入仍然可用。轻点「按住说话」不会开始录音。</p>
 <h3>草稿与配置</h3>
@@ -266,7 +266,7 @@ case 'delete-preview':return '<p>删除对话需要确认；不删除工作区�
 case 'rename':return `<label>对话标题<input id="rename-input" maxlength="80" value="${esc(c.title)}"></label><button class="filled" id="save-title">保存标题</button>`;
 case 'project':return '<p>项目关联一个本机工作区，用于组织对话。删除分组不删除目录。</p><label>项目名称<input id="project-name" maxlength="40" placeholder="例如：我的应用"></label><small>原型仅创建分组；正式版本需验证目录和读写权限。</small><button class="filled" id="create-project">创建示例项目</button>';
 case 'archived':return chats.filter(x=>x.archived).map(x=>`<button class="menu-row" data-restore="${x.id}">${esc(x.title)} · 恢复</button>`).join('')||'<p>暂无归档对话。</p>';
-case 'attach':return `<button class="sheet-handle" id="attach-handle" aria-label="收起添加面板"><span aria-hidden="true"></span></button><div class="attachment-grid"><button class="attachment-tile" data-panel="camera">${icon('camera')}<span>拍照</span></button><button class="attachment-tile" data-panel="photos">${icon('photo')}<span>照片</span></button><button class="attachment-tile" data-panel="files">${icon('upload')}<span>本地文件</span></button></div><button class="capability-row" data-panel="plugins">${icon('plug')}<span class="capability-text"><strong>插件</strong><small>接入 App 和数据，扩展任务能力</small></span>${icon('right')}</button><button class="capability-row" data-panel="skills">${icon('skill')}<span class="capability-text"><strong>技能</strong><small>复用专业能力，处理特定任务</small></span>${icon('right')}</button><button class="capability-row" data-panel="web">${icon('globe')}<span class="capability-text"><strong>联网搜索</strong></span><span class="capability-value">${esc(c.searchMode||'自动')}</span>${icon('right')}</button><p class="attachment-disclaimer">交互演示 · 不调用相机、文件或外部服务</p>`;
+case 'attach':return `<button class="sheet-handle" id="attach-handle" aria-label="收起添加面板"><span aria-hidden="true"></span></button><div class="attachment-grid"><button class="attachment-tile" data-panel="camera">${icon('camera')}<span>拍照</span></button><button class="attachment-tile" data-panel="photos">${icon('photo')}<span>照片</span></button><button class="attachment-tile" data-panel="files">${icon('upload')}<span>本地文件</span></button></div><button class="capability-row" data-panel="plugins">${icon('plug')}<span class="capability-text"><strong>插件</strong><small>接入 App 和数据，扩展任务能力</small></span>${icon('right')}</button><button class="capability-row" data-panel="skills">${icon('skill')}<span class="capability-text"><strong>技能</strong><small>复用专业能力，处理特定任务</small></span>${icon('right')}</button><p class="attachment-disclaimer">交互演示 · 不调用相机、文件或外部服务</p>`;
 case 'camera':return '<button class="sheet-back" data-panel="attach">← 返回添加面板</button><p>拍照后预览，确认才加入本轮输入。</p><small>当前为布局原型，未调用相机；真实版本需具备图像协议能力，并在使用时处理相机授权。取消拍照不改变草稿。</small>';
 case 'photos':return '<button class="sheet-back" data-panel="attach">← 返回添加面板</button><p>从系统照片选择器选择图片，确认后显示可移除的缩略图。</p><small>本原型不读取相册。真实版本按已验证的图片能力开放入口，不申请整个相册权限。</small>';
 case 'files':return '<button class="sheet-back" data-panel="attach">← 返回添加面板</button><p>选择本地文件，处理完成后加入草稿。</p><button class="menu-row" id="sample-file">添加示例代码片段</button><small>演示不会读取真实文件；正式版本使用系统文件选择器并校验格式和大小。</small>';

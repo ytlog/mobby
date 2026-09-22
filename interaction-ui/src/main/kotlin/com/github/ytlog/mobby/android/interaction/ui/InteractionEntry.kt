@@ -208,7 +208,6 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                         Text("文本 32 KiB、图片 2 MiB，每轮最多 4 个；PDF 暂不可用。", Modifier.padding(horizontal = 8.dp, vertical = 4.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         CapabilityRow("插件", "接入本机能力，扩展任务范围", AppIcons.Plugin) { route = "plugins" }
                         CapabilityRow("技能", "复用专业能力，处理特定任务", AppIcons.Skill) { route = "skills" }
-                        CapabilityRow("联网搜索", "由 Agent 当前可用工具决定", AppIcons.Globe, value = "自动", enabled = false) {}
                         Spacer(Modifier.height(16.dp))
                     }
                 }
