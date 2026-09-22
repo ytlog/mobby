@@ -32,21 +32,6 @@ import kotlinx.coroutines.*
     AlertDialog(onDismissRequest = dismiss, containerColor = raisedColor(), shape = RoundedCornerShape(24.dp), title = { Text(title) }, text = { OutlinedTextField(value, { value = it }, singleLine = true) },
         confirmButton = { TextButton(onClick = { save(value) }) { Text("保存") } }, dismissButton = { TextButton(onClick = dismiss) { Text("取消") } })
 }
-@Composable private fun ConfigurationFields(agent: AgentId, model: String, reasoning: String?, options: List<AgentOption>,
-    setAgent: (AgentId) -> Unit, setModel: (String) -> Unit, setReasoning: (String?) -> Unit) {
-    Text("Agent", style = MaterialTheme.typography.labelLarge)
-    AgentId.values().forEach { value -> ChoiceRow(value.label(), agent == value, { setAgent(value) }) }
-    val option = options.firstOrNull { it.agent == agent }
-    Text("下一轮模型", style = MaterialTheme.typography.labelLarge)
-    if (option?.models.isNullOrEmpty()) Text("尚未配置模型，请前往网关设置。", style = MaterialTheme.typography.bodySmall)
-    option?.models?.keys?.forEach { name -> ChoiceRow(name, model == name, { setModel(name) }) }
-    val levels = option?.models?.get(model).orEmpty()
-    if (levels.isNotEmpty()) {
-        Text("思考程度", style = MaterialTheme.typography.labelLarge)
-        ChoiceRow("默认", reasoning == null, { setReasoning(null) })
-        levels.forEach { level -> ChoiceRow(level, reasoning == level, { setReasoning(level) }) }
-    } else Text("思考程度：当前能力接口未开放调整", style = MaterialTheme.typography.bodySmall)
-}
 @Composable internal fun WorkspacePicker(vm: ConversationViewModel, selected: String, owner: String, enabled: Boolean = true, select: (String) -> Unit) {
     val workspaces by vm.workspaces.collectAsStateWithLifecycle()
     val error by vm.workspaceError.collectAsStateWithLifecycle()
@@ -142,7 +127,7 @@ import kotlinx.coroutines.*
         ) { Text(if (c.hasTurns && c.config.agent != agent) "新建并使用此配置" else "应用", fontWeight = FontWeight.SemiBold) }
     }
 }
-@Composable internal fun ConfigDialog(vm: ConversationViewModel, c: Conversation?, onDismiss: () -> Unit, onApply: (NextTurnConfig, String?) -> Unit) {
+@Composable internal fun ConfigDialog(vm: ConversationViewModel, c: Conversation?, onDismiss: () -> Unit, onApply: (NextTurnConfig, String?) -> Unit, anchor: IntRect = IntRect.Zero) {
     val state by vm.state.collectAsStateWithLifecycle()
     var project by rememberSaveable { mutableStateOf(c?.project) }
     val agents by vm.agents.collectAsStateWithLifecycle()
@@ -153,16 +138,65 @@ import kotlinx.coroutines.*
     var workspace by rememberSaveable { mutableStateOf(state.projects.firstOrNull { it.name == project }?.defaultWorkspace ?: c?.config?.workspace ?: "default") }
     val workspaceOwner = rememberSaveable { java.util.UUID.randomUUID().toString() }
     val workspaces by vm.workspaces.collectAsStateWithLifecycle()
+    val error by vm.workspaceError.collectAsStateWithLifecycle()
     val creating by vm.workspaceCreating.collectAsStateWithLifecycle()
-    LaunchedEffect(Unit) { vm.enqueue { vm.refresh() } }
-    AlertDialog(onDismissRequest = onDismiss, containerColor = raisedColor(), shape = RoundedCornerShape(24.dp), title = { Text("新建对话") }, text = {
-        Column(Modifier.verticalScroll(rememberScrollState())) {
-            ProjectChoices(state.projects, project, !creating) { selected -> project = selected?.name; workspace = selected?.defaultWorkspace ?: c?.config?.workspace ?: "default" }
-            ConfigurationFields(agent, model, reasoning, agents, { agent = it; model = profiles.firstOrNull { p -> p.agent == it }?.model.orEmpty(); reasoning = null }, { model = it; reasoning = null }, { reasoning = it })
-            WorkspacePicker(vm, workspace, workspaceOwner) { workspace = it }
+    val created by vm.workspaceCreated.collectAsStateWithLifecycle()
+    var adding by rememberSaveable { mutableStateOf(false) }
+    var name by rememberSaveable { mutableStateOf("") }
+    val option = agents.firstOrNull { it.agent == agent }
+    val levels = option?.models?.get(model).orEmpty()
+    val canCreate = !creating && workspaces.any { it.ref == workspace } && (project == null || state.projects.any { it.name == project })
+    LaunchedEffect(Unit) { vm.enqueue { vm.refresh() }; vm.loadWorkspaces() }
+    LaunchedEffect(created) { created?.takeIf { it.owner == workspaceOwner }?.let { workspace = it.workspace.ref; adding = false; name = ""; vm.consumeWorkspaceCreated(it) } }
+    FrostedMenu(true, onDismiss, anchor) {
+        Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()).padding(bottom = 12.dp)) {
+            Text("新建对话", Modifier.padding(start = 20.dp, top = 18.dp, end = 20.dp, bottom = 4.dp), style = MaterialTheme.typography.titleMedium, color = menuInk(), fontWeight = FontWeight.Medium)
+            MenuSection("项目") {
+                MenuOption("无项目", project == null, enabled = !creating) { project = null; workspace = c?.config?.workspace ?: "default" }
+                state.projects.forEach { item -> MenuOption(item.name, project == item.name, enabled = !creating) { project = item.name; workspace = item.defaultWorkspace } }
+                if (state.projects.isEmpty()) MenuCaption("可在会话抽屉的项目管理中新建项目。")
+            }
+            MenuSection("Agent") {
+                AgentId.values().forEach { value -> MenuOption(value.label(), agent == value) { agent = value; model = profiles.firstOrNull { p -> p.agent == value }?.model.orEmpty(); reasoning = null } }
+            }
+            MenuSection("模型") {
+                if (option?.models.isNullOrEmpty()) MenuCaption("尚未配置模型，请前往网关设置。")
+                option?.models?.keys?.forEach { item -> MenuOption(item, model == item) { model = item; reasoning = null } }
+            }
+            MenuSection("思考程度") {
+                if (levels.isEmpty()) MenuCaption("当前模型未开放调整")
+                else {
+                    MenuOption("默认", reasoning == null) { reasoning = null }
+                    levels.forEach { level -> MenuOption(level, reasoning == level) { reasoning = level } }
+                }
+            }
+            HorizontalDivider(Modifier.padding(horizontal = 20.dp, vertical = 8.dp), color = menuInk().copy(alpha = 0.08f))
+            MenuSection("工作区") {
+                workspaces.forEach { item -> MenuOption(item.name, workspace == item.ref, enabled = !creating) { workspace = item.ref } }
+                if (workspaces.none { it.ref == workspace }) MenuCaption("当前工作区尚不可用，请刷新或选择其他工作区")
+                MenuAction("新建工作区", !creating) { adding = !adding }
+                if (adding) {
+                    OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth().padding(horizontal = 20.dp), label = { Text("工作区名称") }, singleLine = true, enabled = !creating)
+                    MenuCaption("在应用本机目录中创建独立文件夹。")
+                    MenuAction("创建工作区", !creating && name.isNotBlank() && name.length <= 80) { vm.createWorkspace(name, workspaceOwner) }
+                }
+                if (creating) LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 20.dp))
+                error?.let { MenuCaption(it) }
+                MenuAction("刷新工作区") { vm.loadWorkspaces() }
+            }
         }
-    }, confirmButton = { TextButton(enabled = !creating && workspaces.any { it.ref == workspace } && (project == null || state.projects.any { it.name == project }), onClick = { val p = profiles.firstOrNull { it.agent == agent }; onApply(NextTurnConfig(agent, model.ifBlank { p?.model.orEmpty() }, reasoning, workspace, p?.id ?: if (agent == AgentId.CODEX) "CODEX" else "CLAUDE", p?.version ?: 0), project) }) { Text("创建") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } })
+        Button(
+            onClick = {
+                val p = profiles.firstOrNull { it.agent == agent }
+                onApply(NextTurnConfig(agent, model.ifBlank { p?.model.orEmpty() }, reasoning, workspace, p?.id ?: if (agent == AgentId.CODEX) "CODEX" else "CLAUDE", p?.version ?: 0), project)
+            },
+            enabled = canCreate,
+            modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 20.dp).heightIn(min = 48.dp),
+            shape = RoundedCornerShape(22.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = menuAccent(), contentColor = Color.White, disabledContainerColor = menuAccent().copy(alpha = 0.38f), disabledContentColor = Color.White.copy(alpha = 0.7f)),
+            elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp, pressedElevation = 0.dp, focusedElevation = 0.dp, hoveredElevation = 0.dp),
+        ) { Text("创建", fontWeight = FontWeight.SemiBold) }
+    }
 }
 @Composable internal fun PageHeader(title: String, back: () -> Unit, trailing: @Composable () -> Unit = {}) {
     Box(Modifier.fillMaxWidth().heightIn(min = 56.dp)) {

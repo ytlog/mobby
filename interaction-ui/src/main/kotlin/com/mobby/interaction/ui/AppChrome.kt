@@ -233,11 +233,16 @@ import androidx.compose.ui.unit.dp
     Text(text, Modifier.padding(horizontal = 20.dp, vertical = 6.dp), style = MaterialTheme.typography.bodySmall, color = menuMuted())
 }
 
-@Composable internal fun MenuAction(text: String, enabled: Boolean = true, onClick: () -> Unit) {
-    Text(
-        text,
-        Modifier.fillMaxWidth().clickable(enabled = enabled, onClick = onClick).padding(horizontal = 20.dp, vertical = 12.dp),
-        color = menuInk().copy(alpha = if (enabled) 1f else 0.38f),
-        style = MaterialTheme.typography.bodyLarge,
-    )
+@Composable internal fun MenuAction(text: String, enabled: Boolean = true, danger: Boolean = false, icon: ImageVector? = null, onClick: () -> Unit) {
+    val color = if (danger) MaterialTheme.colorScheme.error else menuInk().copy(alpha = if (enabled) 1f else 0.38f)
+    Row(
+        Modifier.fillMaxWidth().height(48.dp).clickable(enabled = enabled, onClick = onClick).padding(horizontal = 20.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (icon != null) {
+            Icon(icon, null, Modifier.size(20.dp), tint = color)
+            Spacer(Modifier.width(12.dp))
+        }
+        Text(text, color = color, style = MaterialTheme.typography.bodyLarge)
+    }
 }

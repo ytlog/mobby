@@ -63,6 +63,7 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
     var drawer by rememberSaveable { mutableStateOf(false) }
     val appearance by actions.appearance.collectAsStateWithLifecycle()
     var dialog by rememberSaveable { mutableStateOf<String?>(null) }
+    var toolbarAnchor by remember { mutableStateOf(IntRect.Zero) }
     val skillProposal by vm.skillProposal.collectAsStateWithLifecycle()
     val skillProposalSaved by vm.skillProposalSaved.collectAsStateWithLifecycle()
     LaunchedEffect(skillProposalSaved?.operation) {
@@ -144,6 +145,7 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                                 modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth(),
                                 onMenu = { keyboard?.hide(); focus.clearFocus(); drawer = true },
                                 onNew = { dialog = "new" }, onMore = { dialog = it },
+                                onAnchor = { toolbarAnchor = it },
                             )
                             if (!system.connected || !system.ready) Text(
                                 system.message,
@@ -201,7 +203,7 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                     }
                 }
                 val c = state.selected?.conversation
-                if (dialog == "new") ConfigDialog(vm, c, onDismiss = { dialog = null }, onApply = { config, project -> vm.enqueue { actions.create(config, project) }; route = "conversation"; dialog = null })
+                if (dialog == "new") ConfigDialog(vm, c, onDismiss = { dialog = null }, onApply = { config, project -> vm.enqueue { actions.create(config, project) }; route = "conversation"; dialog = null }, anchor = toolbarAnchor)
                 if (c != null) when (dialog) {
                     "rename" -> TextEditDialog("重命名", c.title, { dialog = null }) { value -> vm.enqueue { vm.report(actions.rename(c.id, value)) }; dialog = null }
                     "project" -> ProjectGroupDialog(c, state.projects, { dialog = null }) { project -> vm.enqueue { actions.project(c.id, project) }; dialog = null }
@@ -257,10 +259,11 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
     }
 }
 
-@Composable private fun ConversationToolbar(c: Conversation?, vm: ConversationViewModel, onMenu: () -> Unit, onNew: () -> Unit, onMore: (String) -> Unit, modifier: Modifier = Modifier) {
+@Composable private fun ConversationToolbar(c: Conversation?, vm: ConversationViewModel, onMenu: () -> Unit, onNew: () -> Unit, onMore: (String) -> Unit, onAnchor: (IntRect) -> Unit = {}, modifier: Modifier = Modifier) {
     var config by remember { mutableStateOf(false) }
     var more by remember { mutableStateOf(false) }
     var chip by remember { mutableStateOf(IntRect.Zero) }
+    var actions by remember { mutableStateOf(IntRect.Zero) }
     Row(modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Surface(shape = CircleShape, color = cardColor(), shadowElevation = floatingElevation(), tonalElevation = 0.dp) { ActionIcon("打开会话抽屉", onMenu, AppIcons.Menu) }
             Box(Modifier.padding(horizontal = 6.dp).onGloballyPositioned { coordinates ->
@@ -273,35 +276,35 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                 if (c != null) AgentConfigMenu(config, { config = false }, c, vm, chip)
             }
             Spacer(Modifier.weight(1f))
-            Surface(shape = RoundedCornerShape(26.dp), color = cardColor(), shadowElevation = floatingElevation(), tonalElevation = 0.dp) {
-                Row {
-                    ActionIcon("新建对话", onNew, AppIcons.New)
-                    Box {
+            Box(Modifier.onGloballyPositioned { coordinates ->
+                val origin = coordinates.positionInWindow()
+                val rect = IntRect(origin.x.roundToInt(), origin.y.roundToInt(), origin.x.roundToInt() + coordinates.size.width, origin.y.roundToInt() + coordinates.size.height)
+                actions = rect
+                onAnchor(rect)
+            }) {
+                Surface(shape = RoundedCornerShape(26.dp), color = cardColor(), shadowElevation = floatingElevation(), tonalElevation = 0.dp) {
+                    Row {
+                        ActionIcon("新建对话", onNew, AppIcons.New)
                         ActionIcon("更多会话操作", { more = true }, AppIcons.More, c != null)
-                        RaisedDropdownMenu(more, { more = false }) {
-                            if (c != null) {
-                                Text(c.title, Modifier.padding(horizontal = 16.dp, vertical = 10.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                listOf(
-                                    Triple("share", "分享", AppIcons.Share),
-                                    Triple("pin", if (c.pinned) "取消置顶" else "置顶", AppIcons.Pin),
-                                    Triple("project", "添加到项目", AppIcons.Folder),
-                                    Triple("attachments", "对话附件", AppIcons.File),
-                                    Triple("find", "在聊天中查找", AppIcons.Search),
-                                    Triple("shortcut", "添加到主屏幕", AppIcons.New),
-                                    Triple("rename", "重命名", AppIcons.Edit),
-                                    Triple("archive", "归档", AppIcons.Folder),
-                                    Triple("delete", "删除", AppIcons.Trash),
-                                ).forEach { (action, label, icon) ->
-                                    val danger = action == "delete"
-                                    DropdownMenuItem(
-                                        text = { Text(label, color = if (danger) MaterialTheme.colorScheme.error else Color.Unspecified) },
-                                        leadingIcon = { Icon(icon, null, Modifier.size(20.dp), tint = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface) },
-                                        onClick = {
-                                            more = false
-                                            when (action) { "pin" -> vm.enqueue { vm.actions.pin(c.id) }; "archive" -> vm.enqueue { vm.report(vm.actions.archive(c.id, true)) }; else -> onMore(action) }
-                                        }
-                                    )
-                                }
+                    }
+                }
+                if (c != null) FrostedMenu(more, { more = false }, actions) {
+                    Column(Modifier.padding(bottom = 12.dp)) {
+                        MenuCaption(c.title)
+                        listOf(
+                            Triple("share", "分享", AppIcons.Share),
+                            Triple("pin", if (c.pinned) "取消置顶" else "置顶", AppIcons.Pin),
+                            Triple("project", "添加到项目", AppIcons.Folder),
+                            Triple("attachments", "对话附件", AppIcons.File),
+                            Triple("find", "在聊天中查找", AppIcons.Search),
+                            Triple("shortcut", "添加到主屏幕", AppIcons.New),
+                            Triple("rename", "重命名", AppIcons.Edit),
+                            Triple("archive", "归档", AppIcons.Folder),
+                            Triple("delete", "删除", AppIcons.Trash),
+                        ).forEach { (action, label, icon) ->
+                            MenuAction(label, danger = action == "delete", icon = icon) {
+                                more = false
+                                when (action) { "pin" -> vm.enqueue { vm.actions.pin(c.id) }; "archive" -> vm.enqueue { vm.report(vm.actions.archive(c.id, true)) }; else -> onMore(action) }
                             }
                         }
                     }

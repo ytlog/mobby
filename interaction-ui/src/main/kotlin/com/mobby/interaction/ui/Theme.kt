@@ -3,10 +3,12 @@ package com.mobby.interaction.ui
 import android.app.Activity
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.drawable.ColorDrawable
 import android.os.Handler
 import android.os.Looper
 import android.view.PixelCopy
 import android.view.View
+import android.view.ViewGroup
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -18,13 +20,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ColorScheme
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -32,7 +34,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.luminance
@@ -106,13 +107,6 @@ internal val MobbyLightScheme: ColorScheme = lightColorScheme(
     }
 }
 
-@Composable internal fun RaisedDropdownMenu(expanded: Boolean, onDismissRequest: () -> Unit, modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
-    val raised = raisedColor()
-    MaterialTheme(colorScheme = MaterialTheme.colorScheme.copy(surface = raised), shapes = MaterialTheme.shapes.copy(extraSmall = RoundedCornerShape(20.dp))) {
-        DropdownMenu(expanded = expanded, onDismissRequest = onDismissRequest, modifier = modifier, content = content)
-    }
-}
-
 @Composable internal fun FrostedMenu(expanded: Boolean, onDismissRequest: () -> Unit, anchor: IntRect = IntRect.Zero, content: @Composable ColumnScope.() -> Unit) {
     if (!expanded) return
     val host = LocalView.current
@@ -131,23 +125,28 @@ internal val MobbyLightScheme: ColorScheme = lightColorScheme(
         snapshot?.let { frostRegion(it, margin, frostTop, popupWidth, cardHeight).asImageBitmap() }
     }
     val shape = RoundedCornerShape(22.dp)
-    val scrim = if (night) Color(0x99141416) else Color(0xB8FFFFFF)
-    val stroke = if (night) Color.White.copy(alpha = 0.14f) else Color.Black.copy(alpha = 0.08f)
-    val position = remember(margin, gap, frostTop) {
+    val scrim = if (night) Color(0x99141416) else Color(0xCCF5F5F7)
+    val stroke = if (night) Color.White.copy(alpha = 0.14f) else Color.Black.copy(alpha = 0.06f)
+    val position = remember(margin, gap, frostTop, anchor) {
         object : PopupPositionProvider {
             override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize): IntOffset {
                 val x = margin.coerceAtMost((windowSize.width - popupContentSize.width).coerceAtLeast(0))
-                val rawY = if (anchorBounds.bottom > 0) anchorBounds.bottom + gap else frostTop
+                val rawY = when {
+                    anchor.bottom > 0 -> anchor.bottom + gap
+                    anchorBounds.bottom > 0 -> anchorBounds.bottom + gap
+                    else -> frostTop
+                }
                 val y = rawY.coerceAtMost((windowSize.height - popupContentSize.height - margin).coerceAtLeast(0)).coerceAtLeast(0)
                 return IntOffset(x, y)
             }
         }
     }
     Popup(popupPositionProvider = position, onDismissRequest = onDismissRequest, properties = PopupProperties(focusable = true, clippingEnabled = false)) {
+        val popupView = LocalView.current
+        SideEffect { clearPopupChrome(popupView) }
         Box(
             Modifier
                 .width(with(density) { popupWidth.toDp() })
-                .shadow(18.dp, shape, clip = false)
                 .clip(shape)
                 .border(0.5.dp, stroke, shape)
                 .onGloballyPositioned { coordinates ->
@@ -155,7 +154,7 @@ internal val MobbyLightScheme: ColorScheme = lightColorScheme(
                 },
         ) {
             frost?.let { image ->
-                Image(image, contentDescription = null, modifier = Modifier.matchParentSize(), contentScale = ContentScale.FillBounds)
+                Image(image, contentDescription = null, modifier = Modifier.matchParentSize(), contentScale = ContentScale.Crop)
             }
             Box(Modifier.matchParentSize().background(scrim))
             MaterialTheme(
@@ -255,4 +254,15 @@ private suspend fun captureWindow(view: View): Bitmap? {
             cont.resume(if (result == PixelCopy.SUCCESS) bitmap else snapshotView(view))
         }, Handler(Looper.getMainLooper()))
     }
+}
+
+private fun clearPopupChrome(view: View) {
+    val transparent = ColorDrawable(android.graphics.Color.TRANSPARENT)
+    view.background = transparent
+    view.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+    val parent = view.parent as? ViewGroup ?: return
+    parent.background = transparent
+    parent.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+    parent.clipChildren = false
+    parent.clipToPadding = false
 }
