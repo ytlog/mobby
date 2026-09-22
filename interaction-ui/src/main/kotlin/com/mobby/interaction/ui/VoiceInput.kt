@@ -97,16 +97,17 @@ internal fun rmsToLevel(rmsdB: Float): Float {
     return ((rmsdB + 2f) / 12f).coerceIn(0f, 1f)
 }
 
-/** Bar heights for the hold-to-talk spectrum. Louder input raises the band; time only flutters it. */
+/** Bar heights for the hold-to-talk spectrum. Speech drives the middle from the floor to the top; both edges stay short. */
 internal fun spectrumBars(level: Float, time: Float, count: Int = VoiceSpectrumBars): FloatArray {
-    val energy = level.coerceIn(0f, 1f)
+    val boosted = kotlin.math.sqrt(level.coerceIn(0f, 1f)).coerceIn(0f, 1f).let { (it * 1.35f).coerceAtMost(1f) }
     return FloatArray(count) { index ->
         val x = if (count <= 1) 0.5f else index / (count - 1f)
-        val envelope = (1f - abs(x * 2f - 1f) * 0.45f).coerceIn(0.4f, 1f)
-        val wave = sin(index * 0.73f + time * (7.5f + (index % 5) * 1.4f))
-        val flutter = 0.45f + 0.55f * ((wave + 1f) / 2f)
-        val idle = 0.05f + 0.07f * flutter * envelope
-        (idle + 0.88f * energy * envelope * flutter).coerceIn(0f, 1f)
+        val shaped = (1f - abs(x * 2f - 1f)).coerceIn(0f, 1f)
+        val envelope = shaped * shaped
+        val wave = sin(index * 0.42f + time * (7.5f + (index % 5) * 1.4f))
+        val flutter = (wave + 1f) / 2f
+        val travel = (0.08f + 0.92f * boosted) * envelope
+        (0.02f + travel * flutter).coerceIn(0f, 1f)
     }
 }
 
@@ -378,7 +379,7 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectVo
         modifier.fillMaxWidth().heightIn(min = 168.dp).background(Brush.verticalGradient(listOf(Color.Transparent, wash))),
         contentAlignment = Alignment.BottomCenter,
     ) {
-        Column(Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, bottom = 22.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, bottom = 88.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(hint, color = if (cancelArmed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
             Spacer(Modifier.height(16.dp))
             VoiceSpectrum(level, cancelArmed, Modifier.fillMaxWidth())
@@ -395,7 +396,7 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectVo
     }
     val bars = spectrumBars(level, time)
     val color = if (cancelArmed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-    Canvas(modifier.height(32.dp).semantics { contentDescription = "录音频谱" }) {
+    Canvas(modifier.height(96.dp).semantics { contentDescription = "录音频谱" }) {
         val count = bars.size
         val gap = 1.5.dp.toPx()
         val width = ((size.width - gap * (count - 1)) / count).coerceAtLeast(1.dp.toPx())

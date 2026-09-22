@@ -22,8 +22,15 @@ class VoiceInputLogicTest {
         assertEquals(VoiceSpectrumBars, quiet.size)
         assertTrue(quiet.all { it in 0f..1f })
         assertTrue(loud.all { it in 0f..1f })
-        assertTrue(loud.average() > quiet.average() + 0.25)
+        assertTrue(loud.average() > quiet.average() + 0.08)
         assertFalse(loud.contentEquals(spectrumBars(0.9f, 3.4f)))
+        val moving = spectrumBars(0.6f, 2f)
+        assertTrue(moving.maxOrNull()!! - moving.minOrNull()!! > 0.5f)
+        val center = moving.slice(moving.size / 2 - 12 until moving.size / 2 + 12)
+        assertTrue(center.maxOrNull()!! - center.minOrNull()!! > 0.7f)
+        val middle = loud.slice(loud.size / 2 - 8 until loud.size / 2 + 8).average()
+        val sides = (loud.take(8) + loud.takeLast(8)).average()
+        assertTrue(middle > sides * 2.5)
     }
 
     @Test fun `model transfer reports percent size and a full bar while loading`() {
