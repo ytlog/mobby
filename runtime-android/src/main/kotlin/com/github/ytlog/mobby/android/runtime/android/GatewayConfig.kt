@@ -18,6 +18,13 @@ enum class GatewayProtocol(val label: String) {
     CHAT("Chat Completions"), RESPONSES("Responses"), MESSAGES("Messages")
 }
 
+/** OpenCode's built-in OpenAI provider speaks Responses, the same wire format as Codex. */
+internal fun AgentMode.gatewayProtocol(): GatewayProtocol = when (this) {
+    AgentMode.CLAUDE -> GatewayProtocol.MESSAGES
+    AgentMode.CODEX, AgentMode.OPEN_CODE -> GatewayProtocol.RESPONSES
+    AgentMode.SHELL -> error("Shell has no model protocol")
+}
+
 data class GatewayConfig(
     val endpoint: String = "", val model: String = "", val key: String = "",
     val protocol: GatewayProtocol = GatewayProtocol.RESPONSES
@@ -32,7 +39,7 @@ data class GatewayConfig(
     }
     fun validateFor(mode: AgentMode) {
         validate()
-        require(protocol == if (mode == AgentMode.CODEX) GatewayProtocol.RESPONSES else GatewayProtocol.MESSAGES) {
+        require(protocol == mode.gatewayProtocol()) {
             "网关协议必须与 Agent 原生协议一致；暂不提供转换"
         }
     }
@@ -66,8 +73,7 @@ class GatewayStore(context: Context) {
     fun version(mode: AgentMode): Long = prefs.getLong("${mode.name}.version", 0)
     fun load(mode: AgentMode, version: Long = version(mode)): GatewayConfig {
         val storageKey = if (version == version(mode)) mode.name else "${mode.name}:$version"
-        val encoded = prefs.getString(storageKey, null) ?: return GatewayConfig(protocol =
-            if (mode == AgentMode.CLAUDE) GatewayProtocol.MESSAGES else GatewayProtocol.RESPONSES)
+        val encoded = prefs.getString(storageKey, null) ?: return GatewayConfig(protocol = mode.gatewayProtocol())
         val bytes = Base64.decode(encoded, Base64.NO_WRAP)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.DECRYPT_MODE, encryptionKey(), GCMParameterSpec(128, bytes.copyOfRange(0, 12)))

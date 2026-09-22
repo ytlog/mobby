@@ -68,7 +68,16 @@ data class SkillSummary(val ref: CapabilityRef, val agent: AgentId, val name: St
 data class SkillPreview(val name: String, val description: String, val body: String, val markdown: String,
     val issues: List<SkillIssue>)
 data class ManualSkillRequest(val agent: AgentId, val name: String, val description: String, val body: String)
-data class PluginSummary(val ref: CapabilityRef, val name: String, val description: String, val available: Boolean, val error: RuntimeError? = null)
+enum class PluginAccessKind { NONE, RUNTIME, ACCESSIBILITY, DOCUMENT_TREE }
+data class PluginGrantSummary(
+    val ref: CapabilityRef, val label: String, val available: Boolean,
+    val permissions: List<String> = emptyList(), val reason: String? = null,
+)
+data class PluginSummary(
+    val ref: CapabilityRef, val name: String, val description: String, val category: String,
+    val available: Boolean, val access: PluginAccessKind, val permissions: List<String> = emptyList(),
+    val grant: PluginGrantSummary? = null, val reason: String? = null,
+)
 
 /** Transient bytes only; persisted requests contain the returned controlled reference. */
 class ImportResourceRequest(val workspaceRef: WorkspaceRef, val name: String, val bytes: ByteArray) {

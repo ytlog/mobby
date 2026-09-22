@@ -1,6 +1,6 @@
 # 设备插件方案
 
-本文是设备能力插件的目标方案。当前安装包仍只有「使用当前手机」。按本文落地时，旧实现整段替换，不保留 `plugin:PHONE:ACCESSIBILITY`、`PhonePlugin`、`phone.cjs`，也不把旧引用映射成新引用。开发阶段草稿里无法识别的插件引用直接丢弃，不写数据库升级脚本。
+本文是设备能力插件的实施方案。`:device-plugins` 已替换「使用当前手机」。不保留 `plugin:PHONE:ACCESSIBILITY`、`PhonePlugin`、`phone.cjs`，也不把旧引用映射成新引用。开发阶段草稿里无法识别的插件引用直接丢弃，不写数据库升级脚本。各插件的真实设备操作尚未逐项验收。
 
 ## 1. 目标
 
@@ -61,7 +61,7 @@ CLI 中的 Node 不能调用 Android API。模型阅读技能文件，用 Bash �
 1. 草稿只保留目录中的 `plugin:device:` 引用。
 2. 能力集合变化时重启 CLI，同时重建桥接、令牌和技能目录。
 3. 为每个已加入的插件生成 `skills/mobby-<id>/SKILL.md` 和同一份参数化脚本。
-4. 脚本装入当前 Agent 的技能根目录，Codex 为 `~/.agents/skills`，Claude Code 为 `~/.claude/skills`。目录内写入临时标记。提示只给出调用名和 `SKILL.md` 路径：Codex 使用 `$mobby-<id>`，Claude Code 使用 `/mobby-<id>`。
+4. 脚本装入当前 Agent 的技能根目录，Codex 为 `~/.agents/skills`，Claude Code 为 `~/.claude/skills`，OpenCode 为 `~/.config/opencode/skills`。目录内写入临时标记。提示只给出调用名和 `SKILL.md` 路径：Codex 使用 `$mobby-<id>`，Claude Code 与 OpenCode 使用 `/mobby-<id>`。
 5. 模型执行 Node 脚本。脚本向 `127.0.0.1` 的本轮端口发送一行 JSON，然后关闭连接。
 6. 应用进程核对令牌、插件、动作和参数，并在执行前再次检查系统权限。
 7. 文本直接返回。照片、录音和文档写入本轮收件箱，只返回 CLI 可见的路径。

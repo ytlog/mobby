@@ -1,6 +1,7 @@
 package com.github.ytlog.mobby.android.runtime.android
 
 import com.github.ytlog.mobby.android.runtime.engine.AgentMode
+import com.github.ytlog.mobby.android.runtime.engine.program
 
 import android.content.Context
 import android.os.Build
@@ -18,6 +19,8 @@ class RuntimeEnvironment(private val context: Context) {
     lateinit var sdk: LibTermux
         private set
     var dependenciesReady: Boolean = false
+        private set
+    var opencodeReady: Boolean = false
         private set
     internal val workspaces get() = WorkspaceStore.forContext(context)
     val workspace get() = File(sdk.vfs.homeDir, "workspace")
@@ -58,11 +61,15 @@ class RuntimeEnvironment(private val context: Context) {
         check(probe.isSuccess && probe.stdout.startsWith("MOBBY_RUNTIME_OK")) { "Bash 启动失败 (${probe.exitCode}): ${probe.stderr}" }
         output("Bash ${probe.stdout.lineSequence().drop(1).firstOrNull().orEmpty()}")
         dependenciesReady = true
-        for (name in listOf("git", "node", "npm", "claude", "codex")) {
+        opencodeReady = false
+        for (name in listOf("git", "node", "npm", "claude", "codex", "opencode")) {
             output("正在验证 $name…")
             val result = sdk.executor.execute("$name --version", workspace)
             if (result.isSuccess && result.stdout.isNotBlank()) {
+                if (name == "opencode") opencodeReady = true
                 output("✓ $name：${result.stdout.lineSequence().first()}")
+            } else if (name == "opencode") {
+                output("✗ opencode 未能启动（退出码 ${result.exitCode}）：${result.stderr.ifBlank { result.stdout }}。Claude Code 与 Codex 仍可使用。")
             } else {
                 dependenciesReady = false
                 output("✗ $name 安装校验失败（退出码 ${result.exitCode}）：${result.stderr.ifBlank { result.stdout }}")
@@ -136,7 +143,7 @@ class RuntimeEnvironment(private val context: Context) {
 
     fun executable(mode: AgentMode): String {
         if (mode == AgentMode.SHELL) return sdk.executor.resolveBinary("bash").absolutePath
-        val name = if (mode == AgentMode.CLAUDE) "claude" else "codex"
+        val name = mode.program()
         val locations = listOf(File(sdk.vfs.binDir, name), File(sdk.vfs.homeDir, ".local/bin/$name"))
         return locations.firstOrNull { it.exists() }?.absolutePath
             ?: error("$name 尚未安装。请先在本运行环境安装 CLI 并完成认证。")

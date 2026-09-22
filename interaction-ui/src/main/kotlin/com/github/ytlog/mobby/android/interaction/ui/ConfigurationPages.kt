@@ -2,6 +2,9 @@ package com.github.ytlog.mobby.android.interaction.ui
 
 import android.content.Intent
 import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import com.github.ytlog.mobby.android.device.DeviceStorage
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -112,14 +115,14 @@ import kotlinx.coroutines.*
             }
             MenuCaption("变更只影响下一轮，当前执行保持原配置。")
             if (agent != c.config.agent && c.hasTurns)
-                MenuCaption("仍在当前对话中继续。Codex 与 Claude Code 的会话不能互相沿用：各自第一次运行时创建，之后在本对话里复用。回到原来的 Agent 会恢复它自己的会话。")
+                MenuCaption("仍在当前对话中继续。Codex、Claude Code 与 OpenCode 的会话不能互相沿用：各自第一次运行时创建，之后在本对话里复用。回到原来的 Agent 会恢复它自己的会话。")
             if (agent != c.config.agent && c.draft.capabilities.any { !it.startsWith("plugin:") })
                 MenuCaption("所选技能与 Agent 绑定，切换后请重新选择。插件选择会保留。")
         }
         Button(
             onClick = {
                 val p = profiles.firstOrNull { it.agent == agent }
-                vm.enqueue { vm.actions.configure(c.id, NextTurnConfig(agent, model, reasoning, workspace, p?.id ?: if (agent == AgentId.CODEX) "CODEX" else "CLAUDE", p?.version ?: 0)) }
+                vm.enqueue { vm.actions.configure(c.id, NextTurnConfig(agent, model, reasoning, workspace, p?.id ?: agent.gatewayProfileId(), p?.version ?: 0)) }
                 dismiss()
             },
             modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 20.dp).heightIn(min = 48.dp),
@@ -190,7 +193,7 @@ import kotlinx.coroutines.*
         Button(
             onClick = {
                 val p = profiles.firstOrNull { it.agent == agent }
-                onApply(NextTurnConfig(agent, model.ifBlank { p?.model.orEmpty() }, reasoning, workspace, p?.id ?: if (agent == AgentId.CODEX) "CODEX" else "CLAUDE", p?.version ?: 0), project)
+                onApply(NextTurnConfig(agent, model.ifBlank { p?.model.orEmpty() }, reasoning, workspace, p?.id ?: agent.gatewayProfileId(), p?.version ?: 0), project)
             },
             enabled = canCreate,
             modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 20.dp).heightIn(min = 48.dp),
@@ -408,12 +411,7 @@ import kotlinx.coroutines.*
         }
     }
 }
-private val pluginCatalogTabs = listOf("已安装", "精选", "金融", "效率与办公", "创意与设计")
-private fun pluginInTab(plugin: Plugin, tab: String) = when (tab) {
-    "已安装", "精选" -> true
-    "效率与办公" -> plugin.ref == "plugin:PHONE:ACCESSIBILITY"
-    else -> false
-}
+private val pluginCatalogTabs = listOf("手机", "沟通", "文件")
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable internal fun PluginPage(vm: ConversationViewModel, onBack: () -> Unit) {
@@ -426,6 +424,24 @@ private fun pluginInTab(plugin: Plugin, tab: String) = when (tab) {
     val scope = rememberCoroutineScope()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val context = LocalContext.current
+    var rationale by remember { mutableStateOf<Pair<String, List<String>>?>(null) }
+    val permissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { vm.loadPlugins() }
+    val tree = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) runCatching { DeviceStorage.persist(context, uri) }
+        vm.loadPlugins()
+    }
+    fun requestAccess(plugin: Plugin, grant: Boolean = false) {
+        val target = if (grant) plugin.grant else null
+        when {
+            grant && target == null -> Unit
+            !grant && plugin.access == PluginAccess.ACCESSIBILITY -> context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            !grant && plugin.access == PluginAccess.DOCUMENT_TREE -> tree.launch(null)
+            else -> {
+                val needed = if (grant) target?.permissions.orEmpty() else plugin.permissions
+                if (needed.isNotEmpty()) rationale = plugin.description to needed
+            }
+        }
+    }
     DisposableEffect(lifecycle) {
         val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_RESUME) vm.loadPlugins() }
         lifecycle.addObserver(observer)
@@ -433,43 +449,58 @@ private fun pluginInTab(plugin: Plugin, tab: String) = when (tab) {
     }
     Column(Modifier.fillMaxSize()) {
         PageHeader("插件", onBack)
+        rationale?.let { (explanation, needed) ->
+            AlertDialog(onDismissRequest = { rationale = null }, containerColor = raisedColor(), shape = RoundedCornerShape(24.dp), title = { Text("允许此插件使用手机能力") }, text = { Text(explanation) },
+                confirmButton = { TextButton(onClick = { val request = needed; rationale = null; permissions.launch(request.toTypedArray()) }) { Text("继续") } },
+                dismissButton = { TextButton(onClick = { rationale = null }) { Text("取消") } })
+        }
         CatalogTabs(pluginCatalogTabs, pagerState.currentPage) { scope.launch { pagerState.animateScrollToPage(it) } }
         error?.let { Text(it, Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.error); TextButton(onClick = vm::loadPlugins) { Text("重试") } }
         if (loading) LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 16.dp))
         HorizontalPager(state = pagerState, modifier = Modifier.weight(1f).fillMaxWidth(), key = { pluginCatalogTabs[it] }) { page ->
             val tab = pluginCatalogTabs[page]
-            val visible = catalogue.filter { pluginInTab(it, tab) }
+            val visible = catalogue.filter { it.category == tab }
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 if (visible.isEmpty() && !loading && error == null) item {
                     EmptyPlaceholder(
                         if (catalogue.isEmpty()) "当前没有可调用的插件" else "这个分类还没有插件",
-                        if (catalogue.isEmpty()) "应用提供的插件就绪后会显示在这里" else "已提供的插件在「已安装」中",
+                        if (catalogue.isEmpty()) "应用提供的插件就绪后会显示在这里" else "其他分类里有已提供的插件",
                     )
                 }
                 items(visible, key = { it.ref }) { plugin ->
                     val chosen = conversation?.draft?.capabilities?.contains(plugin.ref) == true
-                    val phone = plugin.ref == "plugin:PHONE:ACCESSIBILITY"
-                    val swatch = if (phone) {
-                        if (darkChrome()) Color(0xFF80BAFF) to Color(0xFF1A3050)
-                        else Color(0xFF2F80FF) to Color(0xFFE8F1FF)
-                    } else catalogSwatch(plugin.ref)
-                    CatalogRow(
-                        title = plugin.name,
-                        subtitle = plugin.description,
-                        icon = if (phone) AppIcons.Phone else AppIcons.Plugin,
-                        iconForeground = swatch.first,
-                        iconBackground = swatch.second,
-                        action = when {
-                            !plugin.available -> "开启"
-                            chosen -> "移除"
-                            else -> "使用"
-                        },
-                        actionEnabled = !plugin.available || conversation != null,
-                        onAction = {
-                            if (!plugin.available && phone) context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                            else if (conversation != null) vm.enqueue { vm.report(vm.actions.setPlugin(conversation.id, plugin, !chosen)) }
-                        },
-                    )
+                    val grant = plugin.grant
+                    val grantChosen = grant != null && conversation?.draft?.capabilities?.contains(grant.ref) == true
+                    val swatch = catalogSwatch(plugin.ref)
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        CatalogRow(
+                            title = plugin.name,
+                            subtitle = plugin.description,
+                            icon = if (plugin.access == PluginAccess.ACCESSIBILITY) AppIcons.Phone else AppIcons.Plugin,
+                            iconForeground = swatch.first,
+                            iconBackground = swatch.second,
+                            action = when {
+                                !plugin.available -> "开启"
+                                chosen -> "移除"
+                                else -> "使用"
+                            },
+                            actionEnabled = !plugin.available || conversation != null,
+                            onAction = {
+                                if (!plugin.available) requestAccess(plugin)
+                                else if (conversation != null) vm.enqueue { vm.report(vm.actions.setPlugin(conversation.id, plugin, !chosen)) }
+                            },
+                        )
+                        plugin.grant?.let { grant ->
+                            if (chosen || !grant.available) TextButton(onClick = {
+                                if (!grant.available) requestAccess(plugin, grant = true)
+                                else if (conversation != null) vm.enqueue { vm.report(vm.actions.setPluginGrant(conversation.id, plugin, !grantChosen)) }
+                            }, enabled = grant.available || grant.permissions.isNotEmpty()) { Text(when {
+                                !grant.available -> "开启${grant.label}"
+                                grantChosen -> "关闭${grant.label}"
+                                else -> "允许${grant.label}"
+                            }) }
+                        }
+                    }
                 }
             }
         }

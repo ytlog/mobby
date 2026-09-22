@@ -1,5 +1,6 @@
 package com.github.ytlog.mobby.android.runtime.android
 
+import com.github.ytlog.mobby.android.device.DeviceSkillPack
 import com.github.ytlog.mobby.android.runtime.api.*
 import com.github.ytlog.mobby.android.runtime.engine.SkillDocument
 import org.junit.*
@@ -57,36 +58,44 @@ class SkillStoreTest {
         val home = temporary.newFolder(); val store = SkillStore(home)
         val creator = store.save(AgentId.CODEX, document("skill-creator"))
         assertThrows(IllegalArgumentException::class.java) {
-            store.prompt(AgentId.CODEX, setOf(CapabilityRef(PhonePlugin.REF)), "request")
+            store.prompt(AgentId.CODEX, setOf(CapabilityRef("plugin:device:screen")), "request")
         }
-        assertFalse(store.hasCreator(AgentId.CODEX, setOf(CapabilityRef(PhonePlugin.REF))))
-        assertTrue(store.hasCreator(AgentId.CODEX, setOf(creator.ref, CapabilityRef(PhonePlugin.REF))))
+        assertFalse(store.hasCreator(AgentId.CODEX, setOf(CapabilityRef("plugin:device:screen"))))
+        assertTrue(store.hasCreator(AgentId.CODEX, setOf(creator.ref, CapabilityRef("plugin:device:screen"))))
     }
-    @Test fun `plugin skill is staged into the agent skill root and inlined for both CLIs`() {
+    @Test fun `plugin skill is staged into the agent skill root and referenced by path`() {
         val home = temporary.newFolder(); val store = SkillStore(home)
-        val authored = PhonePlugin.write(temporary.newFolder(), "/bin/node", 9, "tok")
-        val staged = store.stage(AgentId.CODEX, PhonePlugin.SKILL, authored)
-        assertEquals(File(home, ".agents/skills/${PhonePlugin.SKILL}/SKILL.md"), staged)
-        assertTrue(File(home, ".agents/skills/${PhonePlugin.SKILL}/scripts/phone.cjs").isFile)
-        assertTrue(store.list(AgentId.CODEX).none { it.name == PhonePlugin.SKILL })
-        val codex = store.prompt(AgentId.CODEX, emptySet(), "open settings", extras = listOf(PhonePlugin.SKILL to staged!!))
-        assertTrue(codex.contains("$" + PhonePlugin.SKILL))
+        val authored = DeviceSkillPack.write(temporary.newFolder(), "/bin/node", 9, "tok", setOf("plugin:device:screen")).single()
+        val staged = store.stage(AgentId.CODEX, "mobby-screen", authored)
+        assertEquals(File(home, ".agents/skills/mobby-screen/SKILL.md"), staged)
+        assertTrue(File(home, ".agents/skills/mobby-screen/scripts/device.cjs").isFile)
+        assertTrue(store.list(AgentId.CODEX).none { it.name == "mobby-screen" })
+        val codex = store.prompt(AgentId.CODEX, emptySet(), "open settings", extras = listOf("mobby-screen" to staged!!))
+        assertTrue(codex.contains("$" + "mobby-screen"))
         assertTrue(codex.contains(staged.absolutePath))
-        assertTrue(codex.contains("snapshot"))
-        store.unstage(AgentId.CODEX, PhonePlugin.SKILL)
-        assertFalse(File(home, ".agents/skills/${PhonePlugin.SKILL}").exists())
-        val claudeFile = store.stage(AgentId.CLAUDE_CODE, PhonePlugin.SKILL, authored)!!
-        val claude = store.prompt(AgentId.CLAUDE_CODE, emptySet(), "open settings", extras = listOf(PhonePlugin.SKILL to claudeFile))
-        assertTrue(claude.contains("/" + PhonePlugin.SKILL))
+        assertFalse(codex.contains("snapshot"))
+        assertTrue(staged.readText().contains("snapshot"))
+        store.unstage(AgentId.CODEX, "mobby-screen")
+        assertFalse(File(home, ".agents/skills/mobby-screen").exists())
+        val claudeFile = store.stage(AgentId.CLAUDE_CODE, "mobby-screen", authored)!!
+        val claude = store.prompt(AgentId.CLAUDE_CODE, emptySet(), "open settings", extras = listOf("mobby-screen" to claudeFile))
+        assertTrue(claude.contains("/mobby-screen"))
         assertTrue(claude.contains("Skill 工具"))
-        assertTrue(claude.contains("/bin/node"))
-        store.unstage(AgentId.CLAUDE_CODE, PhonePlugin.SKILL)
+        assertFalse(claude.contains("/bin/node"))
+        store.unstage(AgentId.CLAUDE_CODE, "mobby-screen")
+        val openCodeFile = store.stage(AgentId.OPEN_CODE, "mobby-screen", authored)!!
+        assertEquals(File(home, ".config/opencode/skills/mobby-screen/SKILL.md"), openCodeFile)
+        val openCode = store.prompt(AgentId.OPEN_CODE, emptySet(), "open settings", extras = listOf("mobby-screen" to openCodeFile))
+        assertTrue(openCode.contains("/mobby-screen"))
+        assertTrue(openCode.contains("skill 工具"))
+        store.unstage(AgentId.OPEN_CODE, "mobby-screen")
     }
     @Test fun `staging does not replace a user skill of the same name`() {
         val home = temporary.newFolder(); val store = SkillStore(home)
-        store.save(AgentId.CLAUDE_CODE, document(PhonePlugin.SKILL, "keep this user skill"))
-        val authored = PhonePlugin.write(temporary.newFolder(), "/bin/node", 9, "tok")
-        assertNull(store.stage(AgentId.CLAUDE_CODE, PhonePlugin.SKILL, authored))
-        assertEquals("keep this user skill", SkillDocument.preview(File(home, ".claude/skills/${PhonePlugin.SKILL}/SKILL.md").readText()).body)
+        store.save(AgentId.CLAUDE_CODE, document("mobby-screen", "keep this user skill"))
+        val authored = DeviceSkillPack.write(temporary.newFolder(), "/bin/node", 9, "tok", setOf("plugin:device:screen")).single()
+        assertNull(store.stage(AgentId.CLAUDE_CODE, "mobby-screen", authored))
+        assertTrue(store.blocked(AgentId.CLAUDE_CODE, "mobby-screen"))
+        assertEquals("keep this user skill", SkillDocument.preview(File(home, ".claude/skills/mobby-screen/SKILL.md").readText()).body)
     }
 }

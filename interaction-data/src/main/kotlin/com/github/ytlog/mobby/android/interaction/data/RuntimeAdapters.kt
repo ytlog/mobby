@@ -155,7 +155,11 @@ internal class RuntimeSystemAdapter(private val context: android.content.Context
         is AdminResult.Failed -> DataResult.Failed(if (result.error.code == ErrorCode.INVALID_CONFIG) "工作区名称无效或已存在，请使用不同的名称（最多 80 字）" else result.error.message())
     }
     override suspend fun skills(agent: DomainAgent) = admin.listSkills(RuntimeAgent.valueOf(agent.name)).result { list -> list.map { it.domain() } }
-    override suspend fun plugins() = admin.listPlugins().result { list -> list.map { Plugin(it.ref.value, it.name, it.description, it.available, if (it.available) null else "请先在系统设置中开启 mobby 的“使用当前手机”无障碍服务") } }
+    override suspend fun plugins() = admin.listPlugins().result { list -> list.map { item ->
+        Plugin(item.ref.value, item.name, item.description, item.available, item.reason, item.category,
+            PluginAccess.valueOf(item.access.name), item.permissions,
+            item.grant?.let { PluginGrant(it.ref.value, it.label, it.available, it.reason, it.permissions) })
+    } }
     override suspend fun readSkill(ref: String) = admin.readSkill(CapabilityRef(ref)).result { it.domain() }
     override suspend fun previewSkill(markdown: String) = admin.previewSkill(markdown).result { it.domain() }
     override suspend fun previewManualSkill(agent: DomainAgent, name: String, description: String, body: String) = admin.previewManualSkill(ManualSkillRequest(RuntimeAgent.valueOf(agent.name), name, description, body)).result { it.domain() }

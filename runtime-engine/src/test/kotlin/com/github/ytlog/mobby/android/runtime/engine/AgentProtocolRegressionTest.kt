@@ -11,8 +11,10 @@ class AgentProtocolRegressionTest {
         for (agent in AgentId.values()) {
             val request = RunRequest(RequestId("r"), agent, WorkspaceRef("default"), emptyList(), "model", GatewayProfileRef("g", 0))
             val args = AgentCommand.arguments(request, "/test/agent", prompt)
-            if (agent == AgentId.CLAUDE_CODE) { assertEquals(prompt, args.last()); assertEquals("--", args[args.lastIndex - 1]) }
-            else { assertFalse(args.contains(prompt)); assertTrue(args.contains("app-server")) }
+            when (agent) {
+                AgentId.CLAUDE_CODE, AgentId.OPEN_CODE -> { assertEquals(prompt, args.last()); assertEquals("--", args[args.lastIndex - 1]) }
+                AgentId.CODEX -> { assertFalse(args.contains(prompt)); assertTrue(args.contains("app-server")) }
+            }
             assertFalse(args.windowed(2).contains(listOf("-c", prompt)))
         }
     }

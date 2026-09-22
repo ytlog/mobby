@@ -39,6 +39,7 @@ class ConversationRulesTest {
         val parked = ConversationRules.rememberSession(switched, AgentId.CODEX, "later-codex")
         assertNull(parked.session)
         assertEquals("later-codex", parked.sessions[AgentId.CODEX])
+        assertEquals("ses_Ab12", ConversationRules.rememberSession(original, AgentId.OPEN_CODE, "ses_Ab12").sessions[AgentId.OPEN_CODE])
         assertEquals(original, ConversationRules.rememberSession(original, AgentId.CODEX, "not a session"))
     }
     @Test fun `empty conversation agent switch keeps content but clears agent bound skills`() {
@@ -49,11 +50,11 @@ class ConversationRulesTest {
         assertEquals(empty.project, changed.project)
         assertNull(changed.creator)
         assertEquals(setOf("skill"), empty.draft.capabilities)
-        val withPlugin = empty.copy(draft = empty.draft.copy(capabilities = setOf("skill", "plugin:PHONE:ACCESSIBILITY")))
+        val withPlugin = empty.copy(draft = empty.draft.copy(capabilities = setOf("skill", "plugin:device:screen", "plugin:PHONE:ACCESSIBILITY")))
         val kept = ConversationRules.applyConfig(withPlugin, config.copy(agent = AgentId.CLAUDE_CODE))
-        assertEquals(setOf("plugin:PHONE:ACCESSIBILITY"), kept.draft.capabilities)
+        assertEquals(setOf("plugin:device:screen"), kept.draft.capabilities)
         assertEquals(withPlugin.draft.revision + 1, kept.draft.revision)
-        val pluginOnly = empty.copy(draft = empty.draft.copy(capabilities = setOf("plugin:PHONE:ACCESSIBILITY")))
+        val pluginOnly = empty.copy(draft = empty.draft.copy(capabilities = setOf("plugin:device:screen")))
         val unchanged = ConversationRules.applyConfig(pluginOnly, config.copy(agent = AgentId.CLAUDE_CODE))
         assertEquals(pluginOnly.draft, unchanged.draft)
         val next = ConversationRules.applyConfig(original, config.copy(model = "next"))

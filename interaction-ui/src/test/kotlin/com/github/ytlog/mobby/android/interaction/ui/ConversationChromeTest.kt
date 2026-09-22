@@ -119,7 +119,7 @@ class ConversationChromeTest {
         return ConversationDetail(
             Conversation(
                 ConversationId("c"),
-                NextTurnConfig(agent, "model", null, "default", if (agent == AgentId.CODEX) "CODEX" else "CLAUDE"),
+                NextTurnConfig(agent, "model", null, "default", agent.gatewayProfileId()),
                 anchor = "user:t1",
             ),
             turns,

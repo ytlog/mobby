@@ -99,14 +99,57 @@ def add_agents(root, files, links, ndk):
                         raise ValueError('Expected ELF Codex program: ' + source_name)
                     files[target] = payload
                     links.pop(target, None)
+    opencode_files = {
+        'opencode': 'lib/opencode/opencode',
+        'ld-musl-aarch64.so.1': 'lib/opencode/ld-musl-aarch64.so.1',
+        'libc.musl-aarch64.so.1': 'lib/opencode/libc.musl-aarch64.so.1',
+        'libgcc_s.so.1': 'lib/opencode/libgcc_s.so.1',
+        'libstdc++.so.6': 'lib/opencode/libstdc++.so.6',
+        'libstdc++.so.6.0.33': 'lib/opencode/libstdc++.so.6.0.33',
+    }
+    for bundle in lock.get('bundles', []):
+        source = checked_download(bundle, cache)
+        found = set()
+        with tarfile.open(source, 'r:gz') as archive:
+            for member in archive:
+                name = safe_name(member.name)
+                if name not in opencode_files:
+                    raise ValueError('Unexpected OpenCode runtime file: ' + name)
+                target = opencode_files[name]
+                if member.issym() or member.islnk():
+                    links[target] = member.linkname
+                    found.add(name)
+                    continue
+                if not member.isfile():
+                    raise ValueError('Expected regular OpenCode runtime file: ' + name)
+                payload = archive.extractfile(member).read()
+                if not payload.startswith(b'\x7fELF'):
+                    raise ValueError('Expected ELF OpenCode runtime file: ' + name)
+                target = opencode_files[name]
+                files[target] = payload
+                links.pop(target, None)
+                found.add(name)
+        missing = set(opencode_files) - found
+        if missing:
+            raise ValueError('Missing OpenCode runtime file: ' + ', '.join(sorted(missing)))
     if not ndk:
         raise ValueError('NDK path required to build Android CLI launchers')
     host = 'darwin-x86_64' if platform.system() == 'Darwin' else 'linux-x86_64'
     compiler = pathlib.Path(ndk) / 'toolchains/llvm/prebuilt' / host / 'bin/aarch64-linux-android26-clang'
     launcher = cache / 'agent-launcher'
-    subprocess.run([str(compiler), '-O2', '-fPIE', '-pie', '-Wl,-z,max-page-size=16384', '-Wl,-z,common-page-size=16384', str(root / 'agent_launcher.c'), '-o', str(launcher)], check=True)
+    flags = ['-O2', '-fPIE', '-pie', '-Wl,-z,max-page-size=16384', '-Wl,-z,common-page-size=16384']
+    subprocess.run([str(compiler), *flags, str(root / 'agent_launcher.c'), '-o', str(launcher)], check=True)
     for name in ('npm', 'npx', 'claude'):
         files['bin/' + name] = launcher.read_bytes()
         links.pop('bin/' + name, None)
+    if lock.get('bundles'):
+        opencode_launcher = cache / 'opencode-launcher'
+        subprocess.run([str(compiler), *flags, str(root / 'opencode_launcher.c'), '-o', str(opencode_launcher)], check=True)
+        files['bin/opencode'] = opencode_launcher.read_bytes()
+        links.pop('bin/opencode', None)
     files['share/mobby/agents.lock.json'] = lock_path.read_bytes()
-    return hashlib.sha256(lock_path.read_bytes() + (root / 'agent_launcher.c').read_bytes()).hexdigest()
+    identity = lock_path.read_bytes() + (root / 'agent_launcher.c').read_bytes()
+    opencode_source = root / 'opencode_launcher.c'
+    if opencode_source.exists():
+        identity += opencode_source.read_bytes()
+    return hashlib.sha256(identity).hexdigest()

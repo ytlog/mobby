@@ -20,7 +20,7 @@ internal val storageJson = Json { ignoreUnknownKeys = true; encodeDefaults = tru
     val sessions: Map<String, String> = emptyMap()
 ) {
     fun domain() = Conversation(ConversationId(id), NextTurnConfig(AgentId.valueOf(agent), model, reasoning, workspace, gatewayProfile, gatewayVersion),
-        Draft(draftRevision, text, selectionStart, selectionEnd, attachments, capabilities, pendingAttachment?.domain()), hasTurns, session, title, pinned, project, archived, deleted, anchor, anchorOffset, updatedAt, creator,
+        Draft(draftRevision, text, selectionStart, selectionEnd, attachments, capabilities.filter { !it.startsWith("plugin:") || it.startsWith("plugin:device:") }.toSet(), pendingAttachment?.domain()), hasTurns, session, title, pinned, project, archived, deleted, anchor, anchorOffset, updatedAt, creator,
         sessions = sessions.mapNotNull { (key, value) -> runCatching { AgentId.valueOf(key) to value }.getOrNull() }.toMap())
     companion object {
         fun from(c: Conversation) = StoredConversation(c.id.value, c.config.agent.name, c.config.model, c.config.reasoning, c.config.workspace,

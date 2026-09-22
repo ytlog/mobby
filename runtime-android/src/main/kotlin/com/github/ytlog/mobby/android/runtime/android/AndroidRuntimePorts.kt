@@ -3,6 +3,9 @@ package com.github.ytlog.mobby.android.runtime.android
 import android.content.Context
 import com.libtermux.executor.OutputLine
 import com.github.ytlog.mobby.android.runtime.api.*
+import com.github.ytlog.mobby.android.device.DeviceCatalog
+import com.github.ytlog.mobby.android.device.DeviceHost
+import com.github.ytlog.mobby.android.device.DeviceSession
 import com.github.ytlog.mobby.android.runtime.engine.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -32,13 +35,17 @@ internal class AndroidRuntimePorts(
     private val skills get() = SkillStore(runtime.sdk.vfs.homeDir)
     private val resources get() = ResourceStore(File(context.filesDir, "input-resources"))
     private val gateways = GatewayStore(context)
-    private fun mode(agent: AgentId) = if (agent == AgentId.CODEX) AgentMode.CODEX else AgentMode.CLAUDE
+    private fun mode(agent: AgentId) = agent.launchMode()
     override suspend fun capabilities(): CapabilityResult = withContext(Dispatchers.IO) {
         CapabilityResult.Available(RuntimeCapabilities("mobby-local-1", AgentId.values().map { agent ->
             val config = runCatching { gateways.load(mode(agent)).also { it.validateFor(mode(agent)) } }.getOrNull()
             AgentCapability(agent, if (config == null) emptyList() else listOf(ModelCapability(config.model, emptySet())),
-                unavailableReason = if (state.value.phase != EnvironmentPhase.READY) RuntimeError(ErrorCode.NOT_READY, true)
-                    else if (config == null) RuntimeError(ErrorCode.INVALID_CONFIG) else null,
+                unavailableReason = when {
+                    state.value.phase != EnvironmentPhase.READY -> RuntimeError(ErrorCode.NOT_READY, true)
+                    agent == AgentId.OPEN_CODE && !runtime.opencodeReady -> RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY)
+                    config == null -> RuntimeError(ErrorCode.INVALID_CONFIG)
+                    else -> null
+                },
                 supportsResume = true, supportsApproval = agent == AgentId.CLAUDE_CODE, supportsResources = true, supportsImages = config != null, skillCapabilities = skills.list(agent).filter { it.available }.map { it.ref }.toSet())
         }))
     }
@@ -47,10 +54,14 @@ internal class AndroidRuntimePorts(
         if (runtime.workspaces.resolve(request.workspaceRef) == null) return@withContext RuntimeError(ErrorCode.PERMISSION_DENIED)
         if (request.reasoningLevel != null)
             return@withContext RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY)
-        if (request.capabilityRefs.size > 8 || request.capabilityRefs.any { !PhonePlugin.accepts(it) && skills.resolve(it, request.agentId) == null })
+        val deviceRefs = request.capabilityRefs.map { it.value }.filter { it.startsWith("plugin:") }.toSet()
+        if (deviceRefs.any { !DeviceCatalog.isKnown(it) } || DeviceCatalog.missingParent(deviceRefs) ||
+            request.capabilityRefs.any { !it.value.startsWith("plugin:") && skills.resolve(it, request.agentId) == null })
             return@withContext RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY)
-        if (request.capabilityRefs.any { PhonePlugin.accepts(it) } && !PhoneAccessibilityService.connected())
+        if (deviceRefs.any { !DeviceHost.granted(context, it) })
             return@withContext RuntimeError(ErrorCode.PERMISSION_DENIED)
+        if (DeviceCatalog.selected(deviceRefs).any { skills.blocked(request.agentId, it.skillName) })
+            return@withContext RuntimeError(ErrorCode.INVALID_CONFIG)
         if (request.requestedOutput == RequestedOutput.SKILL_PROPOSAL && !skills.hasCreator(request.agentId, request.capabilityRefs))
             return@withContext RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY)
         if (request.inputParts.filterIsInstance<InputPart.Resource>().any { runCatching { resources.summary(it.ref, request.workspaceRef) }.isFailure })
@@ -59,8 +70,9 @@ internal class AndroidRuntimePorts(
         catch (_: ResourceStore.InputTooLarge) { return@withContext RuntimeError(ErrorCode.INPUT_TOO_LARGE) }
         catch (_: Exception) { return@withContext RuntimeError(ErrorCode.INVALID_CONFIG) }
         val mode = mode(request.agentId)
+        if (request.agentId == AgentId.OPEN_CODE && !runtime.opencodeReady) return@withContext RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY)
         if (request.gatewayProfileRef.id != mode.name) return@withContext RuntimeError(ErrorCode.INVALID_CONFIG)
-        if (request.sessionRef?.value?.matches(Regex("[A-Za-z0-9-]{1,100}")) == false) return@withContext RuntimeError(ErrorCode.INVALID_CONFIG)
+        if (request.sessionRef?.value?.matches(AgentSessionId) == false) return@withContext RuntimeError(ErrorCode.INVALID_CONFIG)
         val valid = runCatching {
             runtime.executable(mode)
             gateways.load(mode, request.gatewayProfileRef.version).also {
@@ -96,7 +108,7 @@ internal class AndroidRuntimePorts(
     }
     private fun assemble(request: RunRequest, extras: List<Pair<String, File>>): PreparedTurn {
         val prepared = resources.prepare(request.inputParts, request.workspaceRef)
-        val skillRefs = request.capabilityRefs.filterNot { PhonePlugin.accepts(it) }.toSet()
+        val skillRefs = request.capabilityRefs.filterNot { DeviceCatalog.isKnown(it.value) }.toSet()
         var prompt = skills.prompt(request.agentId, skillRefs, prepared.prompt, extras)
         val structured = request.requestedOutput == RequestedOutput.SKILL_PROPOSAL
         if (structured) prompt += "\n\n" + SkillGeneration.instruction
@@ -109,31 +121,41 @@ internal class AndroidRuntimePorts(
     }
     private suspend fun start(request: RunRequest, config: GatewayConfig, stop: StateFlow<StopCause?>, output: suspend (String, Boolean) -> Unit): ProcessResult {
         val workingDirectory = requireNotNull(runtime.workspaces.resolve(request.workspaceRef))
-        var phone: PhoneCommandServer? = null
+        var session: DeviceSession? = null
         var bridgeDir: File? = null
+        var inbox: File? = null
         val extras = mutableListOf<Pair<String, File>>()
-        var stagedPhone = false
+        val staged = mutableListOf<String>()
         var bridgeReleased = false
         val bridgeGate = Any()
         fun releaseBridge() = synchronized(bridgeGate) {
             if (bridgeReleased) return@synchronized
             bridgeReleased = true
-            phone?.close()
-            if (stagedPhone) skills.unstage(request.agentId, PhonePlugin.SKILL)
+            session?.close()
+            staged.forEach { skills.unstage(request.agentId, it) }
             bridgeDir?.deleteRecursively()
+            inbox?.deleteRecursively()
         }
         var prepared: PreparedTurn? = null
         var launched = false
         try {
-            if (request.capabilityRefs.any { PhonePlugin.accepts(it) }) {
-                val token = PhoneCommands.token()
-                phone = PhoneCommandServer(token, PhoneAccessibilityService.operator())
-                bridgeDir = File(context.filesDir, "phone-bridge/${request.requestId.value}")
+            val deviceRefs = request.capabilityRefs.map { it.value }.filter { DeviceCatalog.isKnown(it) }.toSet()
+            if (deviceRefs.isNotEmpty()) {
+                bridgeDir = File(context.filesDir, "device-bridge/${request.requestId.value}")
+                inbox = File(runtime.sdk.vfs.homeDir, "mobby-plugin-inbox/${request.requestId.value}")
+                inbox!!.mkdirs()
                 val node = File(runtime.sdk.vfs.binDir, "node").absolutePath
-                val authored = PhonePlugin.write(bridgeDir, node, phone.port, token)
-                val staged = skills.stage(request.agentId, PhonePlugin.SKILL, authored)
-                stagedPhone = staged != null
-                extras += PhonePlugin.SKILL to (staged ?: authored)
+                session = DeviceHost.start(context, bridgeDir!!, inbox!!, workingDirectory, node, deviceRefs)
+                for (skill in session!!.skills) {
+                    val name = skill.parentFile.name
+                    val installed = skills.stage(request.agentId, name, skill)
+                    if (installed == null) {
+                        releaseBridge()
+                        return ProcessResult(null, false, ErrorCode.INVALID_CONFIG)
+                    }
+                    staged += name
+                    extras += name to installed
+                }
             }
             val ready = assemble(request, extras)
             prepared = ready
@@ -214,14 +236,14 @@ private class LiveAgent(
             when (line) {
                 is OutputLine.Stdout -> {
                     session.onStdout(line.text, autoAllow = true).forEach { output(it, false) }
-                    if (session.takeTurnEnded()) return finish(retain = stop.value == null, force = false)
+                    if (session.takeTurnEnded()) return finish(retain = stop.value == null && session.sessionId() != null, force = false, acceptProtocolExit = session.abandonAfterTurn())
                 }
                 is OutputLine.Stderr -> output(line.text, true)
                 is OutputLine.Exit -> return finish(retain = false, force = false)
             }
         }
     }
-    private suspend fun finish(retain: Boolean, force: Boolean): ProcessResult {
+    private suspend fun finish(retain: Boolean, force: Boolean, acceptProtocolExit: Boolean = false): ProcessResult {
         val id = session.sessionId()
         if (retain && alive && job.isActive && id != null) {
             binding = LiveSessionBinding(anchor.agentId, anchor.workspaceRef, anchor.modelId, anchor.gatewayProfileRef, anchor.capabilityRefs, anchor.requestedOutput, id)
@@ -229,8 +251,11 @@ private class LiveAgent(
         }
         shutdown(force = force || !alive)
         if (job.isActive) withTimeoutOrNull(5_000) { job.join() }
-        if (job.isActive) { job.cancel(); job.join() }
+        // OpenCode can emit step_finish reason=stop and then stay alive. Stopping it is still a finished turn.
+        val cancelled = job.isActive
+        if (cancelled) { job.cancel(); job.join() }
         val code = if (::exit.isInitialized) exit.get() else null
-        return ProcessResult(code, code != null || started, retained = false)
+        val reported = if (acceptProtocolExit && cancelled) 0 else code
+        return ProcessResult(reported, reported != null || started || cancelled, retained = false)
     }
 }

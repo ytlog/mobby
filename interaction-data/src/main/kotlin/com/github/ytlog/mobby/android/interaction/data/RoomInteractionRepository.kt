@@ -176,9 +176,9 @@ internal class RoomInteractionRepository(
         c.copy(draft = c.draft.copy(revision = c.draft.revision + 1, attachments = refs))
     }
     override suspend fun setSkill(id: ConversationId, ref: String, enabled: Boolean) = mutate(id) { c ->
-        require(!enabled || ref.startsWith("skill:${c.config.agent.name}:") || ref.startsWith("plugin:"))
+        require(!enabled || ref.startsWith("skill:${c.config.agent.name}:") || ref.startsWith("plugin:device:"))
         val refs = if (enabled) c.draft.capabilities + ref else c.draft.capabilities - ref
-        require((refs + listOfNotNull(c.creator)).size <= 8)
+        require((refs + listOfNotNull(c.creator)).size <= 24)
         c.copy(draft = c.draft.copy(revision = c.draft.revision + 1, capabilities = refs))
     }
     override suspend fun createSkillConversation(id: ConversationId, creator: String): ConversationId = db.withTransaction {
@@ -252,7 +252,7 @@ internal class RoomInteractionRepository(
                     Failure.PENDING_ATTACHMENT -> "请求未接纳：请完成或移除待处理附件"
                     Failure.INPUT_TOO_LARGE -> "请求未接纳：文字与附件合计超出输入上限，请缩短文字或移除附件；草稿已保留"
                     Failure.BUSY -> "请求未接纳：已有任务占用运行环境；草稿已保留"
-                    Failure.INVALID_CONFIG -> "请求未接纳：请检查网关、模型或权限；草稿已保留"
+                    Failure.INVALID_CONFIG -> "请求未接纳：请检查网关、模型、权限，或是否已有同名 mobby- 技能；草稿已保留"
                     Failure.UNSUPPORTED_CAPABILITY -> "请求未接纳：当前能力不可用；草稿已保留"
                     else -> "请求未接纳，草稿已保留，可检查连接后重试"
                 }))

@@ -88,7 +88,7 @@ async function createBridge(config) {
   return {url:`http://127.0.0.1:${server.address().port}`, token, close:() => { for (const c of controllers) c.abort(); server.closeAllConnections(); server.close(); }};
 }
 function agentLaunch(mode, args, config, environment, bridge) {
-  const protocol = mode === 'CODEX' ? 'responses' : mode === 'CLAUDE' ? 'messages' : null;
+  const protocol = mode === 'CLAUDE' ? 'messages' : mode === 'CODEX' || mode === 'OPEN_CODE' ? 'responses' : null;
   if (!protocol || config.protocol !== protocol) throw Error('网关协议必须与 Agent 原生协议一致；暂不提供转换');
   if (!bridge?.url || !bridge?.token) throw Error('必须使用本地桥接');
   const base = bridge.url, token = bridge.token;
@@ -109,6 +109,20 @@ function agentLaunch(mode, args, config, environment, bridge) {
       'model_providers.mobby.requires_openai_auth=false', 'model_providers.mobby.supports_websockets=false'
     ];
     agentArgs.unshift(...options.flatMap(value => ['-c', value]));
+  } else if (mode === 'OPEN_CODE') {
+    // Built-in openai provider always calls Responses. The inline config points only at the local bridge.
+    env.OPENAI_API_KEY = token;
+    Object.assign(env, {
+      OPENCODE_DISABLE_AUTOUPDATE:'1', OPENCODE_DISABLE_MODELS_FETCH:'1', OPENCODE_DISABLE_LSP_DOWNLOAD:'1',
+      OPENCODE_DISABLE_DEFAULT_PLUGINS:'1', OPENCODE_DISABLE_CLAUDE_CODE_SKILLS:'1',
+      OPENCODE_CONFIG_CONTENT:JSON.stringify({
+        model:'openai/' + config.model,
+        provider:{openai:{
+          options:{baseURL:base + '/v1', apiKey:'{env:OPENAI_API_KEY}'},
+          models:{[config.model]:{name:config.model}}
+        }}
+      })
+    });
   } else throw Error('不支持的 Agent');
   return {args:agentArgs, env};
 }

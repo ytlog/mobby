@@ -1,8 +1,9 @@
-package com.github.ytlog.mobby.android.runtime.android
+package com.github.ytlog.mobby.android.device
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.graphics.Path
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.accessibility.AccessibilityNodeInfo
@@ -10,7 +11,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
-class PhoneAccessibilityService : AccessibilityService() {
+class ScreenAccessService : AccessibilityService() {
     override fun onServiceConnected() { instance = this }
     override fun onAccessibilityEvent(event: android.view.accessibility.AccessibilityEvent?) = Unit
     override fun onInterrupt() = Unit
@@ -56,7 +57,7 @@ class PhoneAccessibilityService : AccessibilityService() {
     }
 
     private fun click(query: String): String {
-        if (query.isBlank()) throw IllegalArgumentException("请提供要点击的可见文字")
+        if (query.isBlank() || query.length > 200) throw IllegalArgumentException("请提供不超过 200 字的可见文字")
         val root = rootInActiveWindow ?: throw IllegalStateException("当前没有可点击的窗口")
         val match = find(root, query)
         val clicked = match != null && match.performAction(AccessibilityNodeInfo.ACTION_CLICK)
@@ -65,11 +66,11 @@ class PhoneAccessibilityService : AccessibilityService() {
     }
 
     private fun type(text: String): String {
-        if (text.isBlank()) throw IllegalArgumentException("请提供要输入的文字")
+        if (text.isBlank() || text.length > 2000) throw IllegalArgumentException("请提供不超过 2000 字的输入")
         val root = rootInActiveWindow ?: throw IllegalStateException("当前没有可输入的窗口")
         val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: findEditable(root)
-        val args = android.os.Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text) }
-        val ok = focused != null && focused.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+        val bundle = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text) }
+        val ok = focused != null && focused.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, bundle)
         root.recycle(); focused?.recycle()
         return if (ok) "已输入 ${text.length} 个字符" else "未找到可输入的焦点"
     }
@@ -135,11 +136,7 @@ class PhoneAccessibilityService : AccessibilityService() {
     }
 
     companion object {
-        @Volatile internal var instance: PhoneAccessibilityService? = null
+        @Volatile internal var instance: ScreenAccessService? = null
         fun connected() = instance != null
-        internal fun operator() = PhoneOperator { action, args ->
-            val service = instance ?: error("系统无障碍未开启。请在系统设置中打开 mobby 的“使用当前手机”。")
-            service.operate(action, args)
-        }
     }
 }

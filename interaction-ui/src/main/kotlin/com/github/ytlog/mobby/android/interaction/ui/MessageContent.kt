@@ -22,7 +22,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.github.ytlog.mobby.android.interaction.domain.*
 
-internal fun AgentId.label() = if (this == AgentId.CODEX) "Codex" else "Claude Code"
+internal fun AgentId.label() = when (this) {
+    AgentId.CODEX -> "Codex"
+    AgentId.CLAUDE_CODE -> "Claude Code"
+    AgentId.OPEN_CODE -> "OpenCode"
+}
 internal fun ExecutionPhase?.label(): String = when (this) {
     null -> "等待接纳"
     ExecutionPhase.ACCEPTED -> "准备执行"

@@ -36,7 +36,63 @@ class ProtocolDecoder(private val agent: AgentId, private val requestedOutput: R
         val value = runCatching { Json.parseToJsonElement(line) as? JsonObject }.getOrNull()
             ?: return if (controlRequest) listOf(AgentFact.Diagnostic("invalid-approval", "无法解析 CLI 审批请求，已停止授权流程"), AgentFact.InvalidApproval)
                 else listOf(AgentFact.Diagnostic("invalid-json", line))
-        return if (agent == AgentId.CODEX) codex(value, line) else claude(value, line)
+        return when (agent) {
+            AgentId.CODEX -> codex(value, line)
+            AgentId.CLAUDE_CODE -> claude(value, line)
+            AgentId.OPEN_CODE -> opencode(value, line)
+        }
+    }
+    private fun opencode(value: JsonObject, line: String): List<AgentFact> = buildList {
+        value.text("sessionID")?.takeIf { AgentSessionId.matches(it) }?.let { add(AgentFact.Session(it)) }
+        when (value.text("type")) {
+            "step_start" -> Unit
+            "text" -> {
+                val part = value["part"] as? JsonObject
+                if (part == null) { add(AgentFact.Diagnostic("invalid-text", line)); return@buildList }
+                val text = part.text("text").orEmpty()
+                val id = part.text("id") ?: "text-${fallbackId++}"
+                if (text.isEmpty()) return@buildList
+                if (requestedOutput == RequestedOutput.SKILL_PROPOSAL) {
+                    skillResult = SkillGeneration.parse(text)
+                    add(AgentFact.Text(id, skillResult?.message ?: text))
+                } else add(AgentFact.Text(id, text))
+            }
+            "reasoning" -> {
+                val id = (value["part"] as? JsonObject)?.text("id") ?: "thinking-${fallbackId++}"
+                add(AgentFact.Tool(id, "thinking", "思考", outcome = ToolOutcome.SUCCEEDED))
+            }
+            "tool_use" -> {
+                val part = value["part"] as? JsonObject
+                if (part == null) { add(AgentFact.Diagnostic("invalid-tool", line)); return@buildList }
+                val state = part["state"] as? JsonObject
+                val id = part.text("id") ?: part.text("callID") ?: "tool-${fallbackId++}"
+                val kind = part.text("tool") ?: "tool"
+                val summary = state?.get("input")?.let { input -> if (input is JsonPrimitive) input.content else input.toString() }.orEmpty().ifBlank { kind }
+                val output = when (val raw = state?.get("output") ?: state?.get("error")) {
+                    null -> null
+                    is JsonPrimitive -> raw.contentOrNull
+                    else -> raw.toString()
+                }
+                val outcome = when (state?.text("status")) {
+                    "completed" -> ToolOutcome.SUCCEEDED
+                    "error" -> ToolOutcome.FAILED
+                    else -> null
+                }
+                add(AgentFact.Tool(id, kind, summary, output, outcome))
+            }
+            "step_finish" -> {
+                val reason = (value["part"] as? JsonObject)?.text("reason")
+                when (reason) {
+                    "stop" -> if (requestedOutput == RequestedOutput.SKILL_PROPOSAL) addAll(finishSkill(skillResult)) else add(AgentFact.Completed(true))
+                    "error" -> add(AgentFact.Completed(false, ErrorCode.PROTOCOL_ERROR))
+                }
+            }
+            "error" -> {
+                add(AgentFact.Diagnostic("error", value["error"]?.toString() ?: "OpenCode error"))
+                add(AgentFact.Completed(false, ErrorCode.PROTOCOL_ERROR))
+            }
+            else -> add(AgentFact.Diagnostic(value.text("type") ?: "unknown", line))
+        }
     }
     private fun codex(value: JsonObject, line: String): List<AgentFact> {
         return when (value.text("type")) {
@@ -257,13 +313,13 @@ class ProtocolDecoder(private val agent: AgentId, private val requestedOutput: R
 object AgentCommand {
     fun arguments(request: RunRequest, executable: String, prompt: String, imagePaths: List<String> = emptyList(), streamInput: Boolean = false, approvals: Boolean = false, schemaPath: String? = null): List<String> {
         require(imagePaths.all { it.startsWith("/") && '\u0000' !in it })
-        require(request.agentId == AgentId.CODEX || imagePaths.isEmpty())
+        require(request.agentId == AgentId.CODEX || request.agentId == AgentId.OPEN_CODE || imagePaths.isEmpty())
         require(request.agentId == AgentId.CLAUDE_CODE || !streamInput)
         require(!approvals || request.agentId == AgentId.CLAUDE_CODE && streamInput)
         val structured = request.requestedOutput == RequestedOutput.SKILL_PROPOSAL
         require(schemaPath == null || structured && request.agentId == AgentId.CODEX && schemaPath.startsWith("/") && '\u0000' !in schemaPath)
         val session = request.sessionRef?.value
-        require(session == null || session.matches(Regex("[A-Za-z0-9-]{1,100}")))
+        require(session == null || AgentSessionId.matches(session))
         return when (request.agentId) {
             AgentId.CODEX -> buildList {
                 // Phone Codex 0.155.1 exec accepts one prompt and exits. A live app-server
@@ -281,6 +337,15 @@ object AgentCommand {
                 if (streamInput) addAll(listOf("--input-format", "stream-json"))
                 else { add("--"); add(prompt) }
                 if (approvals) addAll(listOf("--permission-prompt-tool", "stdio"))
+            }
+            AgentId.OPEN_CODE -> buildList {
+                // One prompt per process. The next message cold-starts with --session.
+                add(executable); add("run"); add("--format"); add("json"); add("--pure"); add("--auto")
+                request.reasoningLevel?.let { add("--variant"); add(it) }
+                if (session != null) addAll(listOf("--session", session))
+                imagePaths.forEach { addAll(listOf("--file", it)) }
+                add("-m"); add("openai/${request.modelId}")
+                add("--"); add(prompt)
             }
         }
     }

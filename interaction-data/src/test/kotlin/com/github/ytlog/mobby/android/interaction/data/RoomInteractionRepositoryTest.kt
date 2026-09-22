@@ -399,16 +399,26 @@ class RoomInteractionRepositoryTest {
     @Test fun `plugin capability can join a draft for either agent and survives prepare`() = runBlocking {
         val c = state().selected!!.conversation
         repository.editDraft(c.id, "use the phone", 13, 13)
-        repository.setSkill(c.id, "plugin:PHONE:ACCESSIBILITY", true)
-        assertEquals(setOf("plugin:PHONE:ACCESSIBILITY"), repository.conversation(c.id).draft.capabilities)
+        repository.setSkill(c.id, "plugin:device:screen", true)
+        assertEquals(setOf("plugin:device:screen"), repository.conversation(c.id).draft.capabilities)
         val switched = repository.configure(c.id, c.config.copy(agent = DomainAgent.CLAUDE_CODE, gatewayProfile = "CLAUDE_CODE"))
-        assertEquals(setOf("plugin:PHONE:ACCESSIBILITY"), repository.conversation(switched).draft.capabilities)
+        assertEquals(setOf("plugin:device:screen"), repository.conversation(switched).draft.capabilities)
         val prepared = (repository.prepareTurn(switched, TurnId("phone-run")) as PrepareTurnResult.Prepared).turn
-        assertEquals(setOf("plugin:PHONE:ACCESSIBILITY"), prepared.draft.capabilities)
+        assertEquals(setOf("plugin:device:screen"), prepared.draft.capabilities)
         assertEquals(DomainAgent.CLAUDE_CODE, prepared.config.agent)
-        repository.setSkill(switched, "plugin:PHONE:ACCESSIBILITY", false)
+        repository.setSkill(switched, "plugin:device:screen", false)
         assertTrue(repository.conversation(switched).draft.capabilities.isEmpty())
-        assertEquals(setOf("plugin:PHONE:ACCESSIBILITY"), prepared.draft.capabilities)
+        assertEquals(setOf("plugin:device:screen"), prepared.draft.capabilities)
+        var rejected = false
+        try {
+            repository.setSkill(c.id, "plugin:PHONE:ACCESSIBILITY", true)
+        } catch (error: IllegalArgumentException) {
+            rejected = true
+        }
+        assertTrue(rejected)
+        val stored = StoredConversation("id", "CODEX", "model", null, "workspace", "CODEX", 0,
+            capabilities = setOf("plugin:PHONE:ACCESSIBILITY", "plugin:device:screen", "skill:CODEX:USER:review:hash"))
+        assertEquals(setOf("plugin:device:screen", "skill:CODEX:USER:review:hash"), stored.domain().draft.capabilities)
     }
     @Test fun `unexpected missing output remains a synchronization error rather than retention success`() = runBlocking {
         val c = state().selected!!.conversation

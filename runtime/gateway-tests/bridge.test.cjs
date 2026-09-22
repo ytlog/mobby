@@ -11,21 +11,32 @@ async function mock(handler) {
 }
 test('unsupported gateway protocol is refused before any Agent launches',async()=>{
   await assert.rejects(async()=>{const bridge=await createBridge({endpoint:'https://example.invalid',protocol:'chat',model:'m',key:''});bridge.close();},/协议/);
-  for(const mode of ['CODEX','CLAUDE']) {
-    assert.throws(()=>agentLaunch(mode,[],{protocol:mode==='CODEX'?'messages':'responses'}, {}, {url:'http://127.0.0.1:3000',token:'local'}),/协议/);
+  for(const mode of ['CODEX','CLAUDE','OPEN_CODE']) {
+    const wrong=mode==='CLAUDE'?'responses':'messages';
+    assert.throws(()=>agentLaunch(mode,[],{protocol:wrong,model:'m',key:''}, {}, {url:'http://127.0.0.1:3000',token:'local'}),/协议/);
   }
 });
 test('all Agent/protocol combinations use only the authenticated local bridge',()=>{
   const {agentLaunch}=require('../../runtime-android/src/main/assets/gateway/bridge.cjs');
   const bridge={url:'http://127.0.0.1:32123',token:'local-only-token'};
-  for(const mode of ['CLAUDE','CODEX']) for(const protocol of [mode==='CLAUDE'?'messages':'responses']) {
-    const config={endpoint:'https://gateway.example/v1',protocol,model:'m',key:'upstream-secret'};
+  for(const mode of ['CLAUDE','CODEX','OPEN_CODE']) for(const protocol of [mode==='CLAUDE'?'messages':'responses']) {
+    const config={endpoint:'https://gateway.example/v1',protocol,model:'vendor/model',key:'upstream-secret'};
     const launch=agentLaunch(mode,['exec'],config,{MOBBY_GATEWAY_CONFIG:JSON.stringify(config)},bridge);
     assert.ok(!JSON.stringify(launch).includes('upstream-secret'));
     assert.ok(!JSON.stringify(launch).includes('gateway.example'));
     if(mode==='CLAUDE') {assert.equal(launch.env.ANTHROPIC_BASE_URL,bridge.url);assert.equal(launch.env.ANTHROPIC_AUTH_TOKEN,bridge.token);}
-    else {assert.ok(launch.args.includes('model_providers.mobby.base_url="'+bridge.url+'/v1"'));assert.equal(launch.env.MOBBY_GATEWAY_TOKEN,bridge.token);
+    else if(mode==='CODEX') {assert.ok(launch.args.includes('model_providers.mobby.base_url="'+bridge.url+'/v1"'));assert.equal(launch.env.MOBBY_GATEWAY_TOKEN,bridge.token);
       assert.equal(launch.args.some(a=>a.includes('model_auto_compact_token_limit')),protocol!=='responses');}
+    else {
+      assert.equal(launch.env.OPENAI_API_KEY,bridge.token);
+      assert.deepEqual(launch.args,['exec']);
+      const inline=JSON.parse(launch.env.OPENCODE_CONFIG_CONTENT);
+      assert.equal(inline.model,'openai/vendor/model');
+      assert.equal(inline.provider.openai.options.baseURL,bridge.url+'/v1');
+      assert.equal(inline.provider.openai.options.apiKey,'{env:OPENAI_API_KEY}');
+      assert.ok(inline.provider.openai.models['vendor/model']);
+      assert.equal(launch.env.OPENCODE_DISABLE_MODELS_FETCH,'1');
+    }
     assert.throws(()=>agentLaunch(mode,[],config,{}),/本地桥接/);
   }
 });

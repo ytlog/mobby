@@ -609,8 +609,23 @@ internal fun Turn.replyActionsVisible() = !occupied && !pending
     }
 }
 
-internal fun capabilityLabel(ref: String) = when {
-    ref.startsWith("plugin:PHONE") -> "使用当前手机"
+internal fun capabilityLabel(ref: String) = when (ref.removePrefix("plugin:device:")) {
+    "screen" -> "屏幕"
+    "sms" -> "短信"
+    "sms:send" -> "发送短信"
+    "contacts" -> "通讯录"
+    "contacts:write" -> "修改通讯录"
+    "calendar" -> "日历"
+    "calendar:write" -> "修改日历"
+    "media" -> "相册"
+    "storage" -> "存储"
+    "camera" -> "相机"
+    "microphone" -> "麦克风"
+    "location" -> "位置"
+    "sensors" -> "传感器"
+    "clipboard" -> "剪贴板"
+    "clipboard:write" -> "写入剪贴板"
+    "office" -> "Office 文档"
     else -> ref.split(':').getOrNull(3) ?: "技能"
 }
 

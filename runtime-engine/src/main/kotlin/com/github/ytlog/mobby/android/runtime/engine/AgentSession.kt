@@ -47,6 +47,12 @@ interface AgentSession : Closeable {
     fun offer(requestId: RequestId, approvalId: String, choice: ApprovalChoice): Boolean
     fun takeTurnEnded(): Boolean
     fun release()
+
+    /**
+     * The process cannot take another turn on this stdin.
+     * After a terminal event the host stops it; a later message starts a new process with the saved session.
+     */
+    fun abandonAfterTurn(): Boolean = false
 }
 
 data class AgentConnection(val session: AgentSession, val arguments: List<String>)
@@ -58,10 +64,12 @@ object AgentSessions {
         val session: AgentSession = when (request.agentId) {
             AgentId.CLAUDE_CODE -> ClaudeControlSession()
             AgentId.CODEX -> CodexAppServerSession(cwd, request.modelId, request.sessionRef?.value)
+            AgentId.OPEN_CODE -> OpenCodeRunSession()
         }
         session.submit(turn)
         val arguments = AgentCommand.arguments(
             request, executable, turn.prompt,
+            imagePaths = if (request.agentId == AgentId.OPEN_CODE) turn.images.map { it.path } else emptyList(),
             streamInput = request.agentId == AgentId.CLAUDE_CODE,
             approvals = request.agentId == AgentId.CLAUDE_CODE,
         )

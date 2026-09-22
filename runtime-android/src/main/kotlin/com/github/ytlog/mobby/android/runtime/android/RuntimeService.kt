@@ -158,7 +158,7 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
         try { AdminResult.Success(skills().list(agent)) } catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.RESOURCE_MISSING)) }
     }
     override suspend fun listPlugins(): AdminResult<List<PluginSummary>> =
-        AdminResult.Success(listOf(PhonePlugin.summary(PhoneAccessibilityService.connected())))
+        AdminResult.Success(com.github.ytlog.mobby.android.device.DeviceHost.summaries(this))
     override suspend fun readSkill(ref: CapabilityRef): AdminResult<SkillPreview> = withContext(Dispatchers.IO) {
         try { skills().preview(ref)?.let { AdminResult.Success(it) } ?: AdminResult.Failed(RuntimeError(ErrorCode.RESOURCE_MISSING)) }
         catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.INVALID_CONFIG)) }
@@ -188,7 +188,12 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
     override suspend fun validateGateway(profile: GatewayProfileRef): AdminResult<GatewayCheck> {
         val config = try {
             withContext(Dispatchers.IO) {
-                val mode = when (profile.id) { "CODEX" -> AgentMode.CODEX; "CLAUDE" -> AgentMode.CLAUDE; else -> error("invalid profile") }
+                val mode = when (profile.id) {
+                    "CODEX" -> AgentMode.CODEX
+                    "CLAUDE" -> AgentMode.CLAUDE
+                    "OPEN_CODE" -> AgentMode.OPEN_CODE
+                    else -> error("invalid profile")
+                }
                 val (version, saved) = GatewayStore(this@RuntimeService).snapshot(mode)
                 require(version == profile.version)
                 saved.validateFor(mode)
@@ -201,20 +206,20 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
         catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.PROTOCOL_ERROR, true)) }
     }
     override suspend fun listGatewayProfiles(): AdminResult<List<GatewayProfileSummary>> = withContext(Dispatchers.IO) {
-        try { AdminResult.Success(listOf(AgentMode.CODEX, AgentMode.CLAUDE).map { summary(it) }) }
+        try { AdminResult.Success(AgentMode.values().filter { it != AgentMode.SHELL }.map { summary(it) }) }
         catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.INVALID_CONFIG)) }
     }
     private fun summary(mode: AgentMode): GatewayProfileSummary {
         val store = GatewayStore(this)
         val (version, config) = store.snapshot(mode)
         return GatewayProfileSummary(GatewayProfileRef(mode.name, version),
-            if (mode == AgentMode.CODEX) AgentId.CODEX else AgentId.CLAUDE_CODE,
+            mode.productAgent(),
             config.endpoint, config.model, com.github.ytlog.mobby.android.runtime.api.GatewayProtocol.valueOf(config.protocol.name), config.key.isNotEmpty())
     }
     override suspend fun saveGatewayProfile(request: SaveGatewayRequest): AdminResult<GatewayProfileSummary> = withContext(Dispatchers.IO) {
         val chars = request.credential?.consume()
         try {
-            val mode = if (request.agent == AgentId.CODEX) AgentMode.CODEX else AgentMode.CLAUDE
+            val mode = request.agent.launchMode()
             val store = GatewayStore(this@RuntimeService)
             val old = store.load(mode)
             store.save(mode, GatewayConfig(request.endpoint, request.model, chars?.concatToString() ?: old.key, GatewayProtocol.valueOf(request.protocol.name)))
@@ -238,7 +243,7 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
                 var started = false
                 var error: ErrorCode? = null
                 try {
-                    val secrets = listOf(AgentMode.CODEX, AgentMode.CLAUDE).mapNotNull { runCatching { GatewayStore(this@RuntimeService).load(it).key }.getOrNull() }.filter { it.isNotEmpty() }
+                    val secrets = AgentMode.values().filter { it != AgentMode.SHELL }.mapNotNull { runCatching { GatewayStore(this@RuntimeService).load(it).key }.getOrNull() }.filter { it.isNotEmpty() }
                     runtime.runShell(command,
                         onStarted = { started = true; registry.started(it) }, onTerminated = { exit = it; registry.terminated(it) }).collect { line ->
                         val text = when (line) {

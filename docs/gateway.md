@@ -1,10 +1,11 @@
 # 网关接入
 
-在「网关设置」中选择 Agent 和服务，或在「自定义」中填写网关地址，再填写模型和 API Key，然后保存。两个 Agent 分别保存；密钥可留空以连接无鉴权网关。保存成功只代表设备配置已保存。
+在「网关设置」中选择 Agent 和服务，或在「自定义」中填写网关地址，再填写模型和 API Key，然后保存。Claude Code、Codex、OpenCode 分别保存；密钥可留空以连接无鉴权网关。保存成功只代表设备配置已保存。
 
 | Agent | 唯一支持的协议 | 上游接口 |
 | --- | --- | --- |
 | Codex | Responses | `/responses` |
+| OpenCode | Responses | `/responses` |
 | Claude Code | Messages | `/messages` |
 
 按 2026-09-21 用户更新，模型请求统一经过本地 Node 桥接，暂不提供任何协议转换。Chat Completions 不再作为可选协议。旧的 Chat 或 Agent/协议不匹配配置仍保留在加密存储中，但不能执行、检查或原样保存；界面提示后须明确点击“改用 Responses / Messages”并保存，密钥不会因此清空。网关本身也必须支持对应接口。
@@ -17,10 +18,10 @@
 
 | 服务 | Agent | 基址 |
 | --- | --- | --- |
-| OpenRouter | Codex、Claude Code | `https://openrouter.ai/api/v1` |
-| OpenAI | Codex | `https://api.openai.com/v1` |
-| xAI | Codex | `https://api.x.ai/v1` |
-| Groq | Codex | `https://api.groq.com/openai/v1` |
+| OpenRouter | Codex、OpenCode、Claude Code | `https://openrouter.ai/api/v1` |
+| OpenAI | Codex、OpenCode | `https://api.openai.com/v1` |
+| xAI | Codex、OpenCode | `https://api.x.ai/v1` |
+| Groq | Codex、OpenCode | `https://api.groq.com/openai/v1` |
 | Anthropic | Claude Code | `https://api.anthropic.com/v1` |
 | DeepSeek | Claude Code | `https://api.deepseek.com/anthropic/v1` |
 
@@ -53,7 +54,9 @@ API Key 和保存配置使用 Android Keystore AES-GCM 加密。桥接不主动�
 
 ## Claude 审批
 
-Claude 使用双向 stream-json 控制通道。手机上的执行边界是应用 UID/SELinux 沙箱，因此格式正确的 `can_use_tool` 由应用立即按原始参数允许一次，不再显示确认卡。这样「使用当前手机」的连续点击、输入和返回可以继续跑完。允许不添加持久规则，也不改用 bypass 参数。格式错误、取消、过期和重复请求仍然不能授权。模型在回复里询问确认不等于这条协议。Codex 使用 `danger-full-access` 与 `approval_policy=never`，同样不再询问。
+Claude 使用双向 stream-json 控制通道。手机上的执行边界是应用 UID/SELinux 沙箱，因此格式正确的 `can_use_tool` 由应用立即按原始参数允许一次，不再显示确认卡。这样屏幕插件的连续点击、输入和返回可以继续跑完。允许不添加持久规则，也不改用 bypass 参数。格式错误、取消、过期和重复请求仍然不能授权。模型在回复里询问确认不等于这条协议。Codex 使用 `danger-full-access` 与 `approval_policy=never`，同样不再询问。OpenCode 对当前这一次运行使用 `--auto`，不写持久权限规则，也不使用 `dangerously-skip-permissions`。
+
+OpenCode 的内置 `openai` provider 固定走 Responses。桥接把 `OPENAI_API_KEY` 设为本地令牌，并用 `OPENCODE_CONFIG_CONTENT` 把 `baseURL` 指到本地桥接的 `/v1`；上游地址和密钥不会交给 CLI。设备门槛 `android-codex-network.cjs` 仍只覆盖 Codex 与 Claude Code，不能当作 OpenCode 的手机验收。
 
 ## 验证命令
 

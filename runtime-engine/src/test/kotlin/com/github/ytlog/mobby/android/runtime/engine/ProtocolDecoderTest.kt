@@ -118,13 +118,23 @@ class ProtocolDecoderTest {
         for (agent in AgentId.values()) {
             val request = RunRequest(RequestId("r"), agent, WorkspaceRef("default"), emptyList(), "model", GatewayProfileRef("g", 0), sessionRef = SessionRef("session-123"))
             val args = AgentCommand.arguments(request, "agent", "--flag; $(command)\ntext", streamInput = agent == AgentId.CLAUDE_CODE, approvals = agent == AgentId.CLAUDE_CODE)
-            if (agent == AgentId.CLAUDE_CODE) {
-                assertFalse(args.contains("--flag; $(command)\ntext"))
-                assertTrue(args.windowed(2).contains(listOf("--resume", "session-123")))
-            } else {
-                assertFalse(args.contains("--flag; $(command)\ntext"))
-                assertFalse(args.contains("session-123"))
-                assertTrue(args.contains("app-server"))
+            when (agent) {
+                AgentId.CLAUDE_CODE -> {
+                    assertFalse(args.contains("--flag; $(command)\ntext"))
+                    assertTrue(args.windowed(2).contains(listOf("--resume", "session-123")))
+                }
+                AgentId.CODEX -> {
+                    assertFalse(args.contains("--flag; $(command)\ntext"))
+                    assertFalse(args.contains("session-123"))
+                    assertTrue(args.contains("app-server"))
+                }
+                AgentId.OPEN_CODE -> {
+                    assertEquals("--flag; $(command)\ntext", args.last())
+                    assertTrue(args.windowed(2).contains(listOf("--session", "session-123")))
+                    assertTrue(args.windowed(2).contains(listOf("--format", "json")))
+                    assertTrue(args.contains("--auto"))
+                    assertFalse(args.any { "dangerously-skip-permissions" in it })
+                }
             }
             assertFalse(args.any { "bypass" in it || "skip-permissions" in it || it == "--last" })
         }
@@ -145,5 +155,30 @@ class ProtocolDecoderTest {
             """{"type":"item.completed","item":{"id":"mcp-1","type":"mcp_tool_call","server":"phone","tool":"click","arguments":{"query":"确定"},"result":"已点击：确定","status":"completed"}}"""
         )
         assertEquals(AgentFact.Tool("mcp-1", "click", """{"query":"确定"}""", "已点击：确定", ToolOutcome.SUCCEEDED), facts.single())
+    }
+    @Test fun `opencode json events keep the session, hide reasoning, and finish on stop`() {
+        val decoder = ProtocolDecoder(AgentId.OPEN_CODE)
+        val text = decoder.decode("""{"type":"text","sessionID":"ses_Ab12","part":{"id":"p1","type":"text","text":"你好"}}""")
+        assertEquals(listOf(AgentFact.Session("ses_Ab12"), AgentFact.Text("p1", "你好")), text)
+        val thinking = decoder.decode("""{"type":"reasoning","sessionID":"ses_Ab12","part":{"id":"r","type":"reasoning","text":"private"}}""")
+        assertEquals(listOf(AgentFact.Session("ses_Ab12"), AgentFact.Tool("r", "thinking", "思考", outcome = ToolOutcome.SUCCEEDED)), thinking)
+        assertFalse(thinking.toString().contains("private"))
+        val tool = decoder.decode("""{"type":"tool_use","sessionID":"ses_Ab12","part":{"id":"t","type":"tool","tool":"bash","state":{"status":"completed","input":{"cmd":"ls"},"output":"file"}}}""")
+        assertEquals(AgentFact.Tool("t", "bash", """{"cmd":"ls"}""", "file", ToolOutcome.SUCCEEDED), tool.filterIsInstance<AgentFact.Tool>().single())
+        assertTrue(decoder.decode("""{"type":"step_finish","sessionID":"ses_Ab12","part":{"type":"step-finish","reason":"tool-calls"}}""").none { it is AgentFact.Completed })
+        assertTrue(decoder.decode("""{"type":"step_finish","sessionID":"ses_Ab12","part":{"type":"step-finish","reason":"stop"}}""").filterIsInstance<AgentFact.Completed>().single().success)
+        assertFalse(decoder.decode("""{"type":"error","sessionID":"ses_Ab12","error":{"name":"Provider"}}""").filterIsInstance<AgentFact.Completed>().single().success)
+    }
+    @Test fun `opencode resumes by session and attaches image files without skipping permissions`() {
+        val image = "/private/shot.png"
+        val args = AgentCommand.arguments(
+            RunRequest(RequestId("r"), AgentId.OPEN_CODE, WorkspaceRef("default"), emptyList(), "vendor/model", GatewayProfileRef("OPEN_CODE", 1), sessionRef = SessionRef("ses_Ab12")),
+            "/agent", "look", listOf(image))
+        assertEquals("look", args.last())
+        assertTrue(args.windowed(2).contains(listOf("--session", "ses_Ab12")))
+        assertTrue(args.windowed(2).contains(listOf("--file", image)))
+        assertTrue(args.windowed(2).contains(listOf("-m", "openai/vendor/model")))
+        assertTrue(args.contains("--auto"))
+        assertFalse(args.any { "skip-permissions" in it || "bypass" in it })
     }
 }

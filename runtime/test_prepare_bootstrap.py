@@ -111,5 +111,51 @@ class CodexPayloadTest(unittest.TestCase):
             with patch('agent_bundle.subprocess.run'), self.assertRaisesRegex(ValueError, 'Missing required Codex program: codex-resources/bwrap'):
                 add_agents(root, {}, {}, '/unused-fixture-ndk')
 
+    def test_opencode_runtime_is_installed_beside_its_android_launcher(self):
+        import io
+        import tarfile
+        from unittest.mock import patch
+        from agent_bundle import add_agents
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cache = root / 'cache'; cache.mkdir()
+            source = cache / 'opencode-termux.tar.gz'
+            names = ['opencode', 'ld-musl-aarch64.so.1', 'libc.musl-aarch64.so.1', 'libgcc_s.so.1', 'libstdc++.so.6', 'libstdc++.so.6.0.33']
+            payloads = {name: b'\x7fELF' + name.encode() for name in names}
+            with tarfile.open(source, 'w:gz') as archive:
+                for name, data in payloads.items():
+                    member = tarfile.TarInfo(name)
+                    if name == 'libstdc++.so.6':
+                        member.type = tarfile.SYMTYPE
+                        member.linkname = 'libstdc++.so.6.0.33'
+                        archive.addfile(member)
+                        continue
+                    member.size = len(data)
+                    archive.addfile(member, io.BytesIO(data))
+            (root / 'agents.lock.json').write_text(json.dumps({'packages': [], 'npm': [], 'bundles': [{
+                'name': 'opencode-termux', 'url': 'https://example.invalid/opencode-termux.tar.gz',
+                'sha256': hashlib.sha256(source.read_bytes()).hexdigest()}]}))
+            (root / 'agent_launcher.c').write_text('fixture')
+            (cache / 'agent-launcher').write_bytes(b'\x7fELFnode-launcher')
+            (cache / 'opencode-launcher').write_bytes(b'\x7fELFopencode-launcher')
+            files, links = {}, {}
+            with patch('agent_bundle.subprocess.run'):
+                add_agents(root, files, links, '/unused-fixture-ndk')
+            self.assertEqual(files['lib/opencode/opencode'], payloads['opencode'])
+            self.assertEqual(files['lib/opencode/libstdc++.so.6.0.33'], payloads['libstdc++.so.6.0.33'])
+            self.assertEqual(links['lib/opencode/libstdc++.so.6'], 'libstdc++.so.6.0.33')
+            self.assertNotIn('lib/opencode/libstdc++.so.6', files)
+            self.assertEqual(files['lib/opencode/ld-musl-aarch64.so.1'], payloads['ld-musl-aarch64.so.1'])
+            self.assertEqual(files['bin/opencode'], b'\x7fELFopencode-launcher')
+            with tarfile.open(source, 'w:gz') as archive:
+                member = tarfile.TarInfo('opencode')
+                member.size = len(payloads['opencode'])
+                archive.addfile(member, io.BytesIO(payloads['opencode']))
+            lock = json.loads((root / 'agents.lock.json').read_text())
+            lock['bundles'][0]['sha256'] = hashlib.sha256(source.read_bytes()).hexdigest()
+            (root / 'agents.lock.json').write_text(json.dumps(lock))
+            with patch('agent_bundle.subprocess.run'), self.assertRaisesRegex(ValueError, 'Missing OpenCode runtime file'):
+                add_agents(root, {}, {}, '/unused-fixture-ndk')
+
 if __name__ == '__main__':
     unittest.main()

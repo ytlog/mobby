@@ -11,7 +11,7 @@ import org.junit.Test
 import java.lang.reflect.Proxy
 
 class PluginUseCasesTest {
-    private val plugin = Plugin("plugin:PHONE:ACCESSIBILITY", "使用当前手机", "读取并操作当前屏幕", true, null)
+    private val plugin = Plugin("plugin:device:screen", "屏幕", "读取并操作当前屏幕", true, null, "手机", PluginAccess.ACCESSIBILITY)
     private inline fun <reified T> stub(crossinline body: (String) -> Any?): T =
         Proxy.newProxyInstance(T::class.java.classLoader, arrayOf(T::class.java)) { _, method, _ -> body(method.name) } as T
 

@@ -31,6 +31,7 @@
 - Codex：官方 npm `@openai/codex` 0.155.1-linux-arm64 的静态 musl CLI。源码与许可证：https://github.com/openai/codex/tree/rust-v0.155.1
 - Codex 配套的 bubblewrap 从同一固定 npm 包提取，安装为 `bin/bwrap` 供官方沙箱启动器发现；未修改二进制或关闭隔离。许可证见 [bubblewrap/COPYING](bubblewrap/COPYING)，对应源码为上述 Codex 固定标签内的 `codex-rs/vendor/bubblewrap`。
 - 两个 npm 包均按锁文件中的 npm SHA-512 integrity 校验。当前仅集成命令行任务所需文件，不包含 Codex 语音组件。
+- OpenCode：社区包 [C04-wq/opencode-termux](https://github.com/C04-wq/opencode-termux) `v1.18.32-0`（MIT）中的 `opencode-termux-aarch64.tar.gz`。它包含官方 OpenCode 1.18.32 的 ARM64 musl 程序，以及 musl 加载器、libgcc 与 libstdc++。官方程序本身不是 Android 可直接执行的 PIE，因此由本仓库的 `runtime/opencode_launcher.c` 交给随包的静态 musl 加载器启动。未修改这些二进制。
 - `runtime/agent_launcher.c` 为 npm / npx / Claude Code 提供 Android 原生入口，参数直接传入 Node.js。
 
 ## 技能元信息解析

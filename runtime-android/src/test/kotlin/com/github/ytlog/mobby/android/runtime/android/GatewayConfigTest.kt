@@ -22,11 +22,12 @@ class GatewayConfigTest {
     @Test fun protocolMustMatchAgentWithoutRewritingLegacyConfig() {
         val legacy = GatewayConfig("https://example.com/v1", "model", "fake", GatewayProtocol.CHAT)
         assertEquals(legacy, GatewayConfig.parse(legacy.json()))
-        for (mode in listOf(com.github.ytlog.mobby.android.runtime.engine.AgentMode.CODEX, com.github.ytlog.mobby.android.runtime.engine.AgentMode.CLAUDE)) {
+        for (mode in listOf(com.github.ytlog.mobby.android.runtime.engine.AgentMode.CODEX, com.github.ytlog.mobby.android.runtime.engine.AgentMode.CLAUDE, com.github.ytlog.mobby.android.runtime.engine.AgentMode.OPEN_CODE)) {
             assertThrows(IllegalArgumentException::class.java) { legacy.validateFor(mode) }
-            val native = legacy.copy(protocol = if (mode == com.github.ytlog.mobby.android.runtime.engine.AgentMode.CODEX) GatewayProtocol.RESPONSES else GatewayProtocol.MESSAGES)
+            val native = legacy.copy(protocol = mode.gatewayProtocol())
             native.validateFor(mode)
-            assertThrows(IllegalArgumentException::class.java) { native.validateFor(if (mode == com.github.ytlog.mobby.android.runtime.engine.AgentMode.CODEX) com.github.ytlog.mobby.android.runtime.engine.AgentMode.CLAUDE else com.github.ytlog.mobby.android.runtime.engine.AgentMode.CODEX) }
+            val other = if (mode == com.github.ytlog.mobby.android.runtime.engine.AgentMode.CLAUDE) com.github.ytlog.mobby.android.runtime.engine.AgentMode.OPEN_CODE else com.github.ytlog.mobby.android.runtime.engine.AgentMode.CLAUDE
+            assertThrows(IllegalArgumentException::class.java) { native.validateFor(other) }
         }
     }
 

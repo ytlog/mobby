@@ -87,7 +87,13 @@ data class Attachment(val ref: String, val name: String, val sizeBytes: Int, val
 class AttachmentPreview(val bytes: ByteArray)
 data class EventHistoryLimits(val days: Int = 30, val mib: Int = 32, val outputDays: Int = 30, val outputMiB: Int = 256, val attachmentMiB: Int = 512)
 data class WorkspaceOption(val ref: String, val name: String)
-data class Plugin(val ref: String, val name: String, val description: String, val available: Boolean, val unavailableReason: String?)
+enum class PluginAccess { NONE, RUNTIME, ACCESSIBILITY, DOCUMENT_TREE }
+data class PluginGrant(val ref: String, val label: String, val available: Boolean, val unavailableReason: String?, val permissions: List<String> = emptyList())
+data class Plugin(
+    val ref: String, val name: String, val description: String, val available: Boolean, val unavailableReason: String?,
+    val category: String = "手机", val access: PluginAccess = PluginAccess.NONE,
+    val permissions: List<String> = emptyList(), val grant: PluginGrant? = null,
+)
 interface SystemPort {
     suspend fun workspaces(): DataResult<List<WorkspaceOption>> = DataResult.Failed("当前执行端不支持工作区选择")
     suspend fun createWorkspace(name: String): DataResult<WorkspaceOption> = DataResult.Failed("当前执行端不支持创建工作区")
@@ -214,9 +220,24 @@ class InteractionUseCases(
             val current = (system.plugins() as? DataResult.Loaded)?.value
                 ?: return OperationResult.Failed("插件目录不可用，请重试")
             if (current.none { it.ref == plugin.ref && it.available })
-                return OperationResult.Failed(plugin.unavailableReason ?: "请先在系统设置中开启“使用当前手机”无障碍服务")
+                return OperationResult.Failed(plugin.unavailableReason ?: "请先授权后再使用")
         }
         repository.setSkill(id, plugin.ref, enabled)
+        if (!enabled) plugin.grant?.let { repository.setSkill(id, it.ref, false) }
+        return OperationResult.Done
+    }
+    suspend fun setPluginGrant(id: ConversationId, plugin: Plugin, enabled: Boolean): OperationResult {
+        val grant = plugin.grant ?: return OperationResult.Failed("这个插件没有单独的写入开关")
+        if (enabled) {
+            val current = (system.plugins() as? DataResult.Loaded)?.value
+                ?: return OperationResult.Failed("插件目录不可用，请重试")
+            val live = current.firstOrNull { it.ref == plugin.ref } ?: return OperationResult.Failed("插件目录不可用，请重试")
+            val liveGrant = live.grant ?: return OperationResult.Failed("这个插件没有单独的写入开关")
+            if (!live.available) return OperationResult.Failed(live.unavailableReason ?: "请先授权后再使用")
+            if (!liveGrant.available) return OperationResult.Failed(liveGrant.unavailableReason ?: "请先授权后再使用")
+            if (plugin.ref !in repository.conversation(id).draft.capabilities) return OperationResult.Failed("请先使用${plugin.name}")
+            repository.setSkill(id, liveGrant.ref, true)
+        } else repository.setSkill(id, grant.ref, false)
         return OperationResult.Done
     }
     suspend fun removeSkill(id: ConversationId, ref: String) = repository.setSkill(id, ref, false)

@@ -13,6 +13,7 @@ internal class SkillStore(private val home: File) {
     private data class Root(val agent: AgentId, val relative: String, val source: SkillSource, val writable: Boolean)
     private val roots = listOf(Root(AgentId.CODEX, ".agents/skills", SkillSource.USER, true),
         Root(AgentId.CLAUDE_CODE, ".claude/skills", SkillSource.USER, true),
+        Root(AgentId.OPEN_CODE, ".config/opencode/skills", SkillSource.USER, true),
         Root(AgentId.CODEX, ".codex/skills/.system", SkillSource.BUILTIN, false))
     private fun safe(file: File): Boolean {
         val base = home.absoluteFile.toPath().normalize()
@@ -95,16 +96,22 @@ internal class SkillStore(private val home: File) {
             val invocation = if (agent == AgentId.CODEX) "$" + name else "/" + name
             "$invocation — ${file.absolutePath}"
         }
-        val instruction = if (agent == AgentId.CLAUDE_CODE) "请使用 Skill 工具调用下列已选择的技能，遵守 Agent 权限检查："
-            else "请使用下列已选择的技能，读取对应 SKILL.md 并遵守 Agent 权限检查："
-        val bodies = extras.joinToString("\n\n") { it.second.readText() }
+        val instruction = when (agent) {
+            AgentId.CLAUDE_CODE -> "请使用 Skill 工具调用下列已选择的技能，遵守 Agent 权限检查："
+            AgentId.OPEN_CODE -> "请使用 skill 工具加载下列已选择的技能，遵守 Agent 权限检查："
+            AgentId.CODEX -> "请使用下列已选择的技能，读取对应 SKILL.md 并遵守 Agent 权限检查："
+        }
         val input = if (agent == AgentId.CODEX && "skill-creator" in selectedNames && text.startsWith("请用 /skill-creator 帮我创建技能，要求是："))
             text.replaceFirst("/skill-creator", "$" + "skill-creator") else text
         return buildString {
             append(instruction).append('\n').append(selections.joinToString("\n"))
-            if (bodies.isNotBlank()) append("\n\n").append(bodies)
             append("\n\n").append(input)
         }
+    }
+    fun blocked(agent: AgentId, name: String): Boolean {
+        val root = roots.single { it.agent == agent && it.writable }
+        val target = File(home, "${root.relative}/$name")
+        return target.exists() && !File(target, MARKER).isFile
     }
     fun stage(agent: AgentId, name: String, skillFile: File): File? {
         require(name.matches(Regex("[a-z0-9]+(?:-[a-z0-9]+)*")) && skillFile.isFile && skillFile.name == "SKILL.md")

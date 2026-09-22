@@ -8,10 +8,11 @@ ALLOWED = {
     "app": {"interaction-ui", "interaction-domain", "interaction-data", "runtime-api", "runtime-android"},
     "runtime-api": set(),
     "runtime-engine": {"runtime-api"},
-    "runtime-android": {"runtime-api", "runtime-engine", "termux-core", "bootstrap-arm64"},
+    "runtime-android": {"runtime-api", "runtime-engine", "termux-core", "bootstrap-arm64", "device-plugins"},
+    "device-plugins": {"runtime-api"},
     "interaction-domain": set(),
     "interaction-data": {"interaction-domain", "runtime-api"},
-    "interaction-ui": {"interaction-domain"},
+    "interaction-ui": {"interaction-domain", "speech", "device-plugins"},
 }
 
 

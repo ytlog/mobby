@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="screen_accessibility_description">在你开启并把“屏幕”插件加入对话后，允许 mobby 读取当前屏幕的无障碍树，并代为点击、输入或返回。不会在未选择该插件时操作手机。</string>
+</resources>

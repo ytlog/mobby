@@ -2,7 +2,7 @@
 
 ## 当前实现
 
-- Compose 持久会话页：Claude Code、Codex；Shell 保留在设置的诊断页。实现阶段及剩余功能见本文末尾。
+- Compose 持久会话页：Claude Code、Codex、OpenCode；Shell 保留在设置的诊断页。实现阶段及剩余功能见本文末尾。
 - ViewModel + StateFlow，运行服务持有任务；SDK 参数数组执行、双管道读取、进程组取消和超时。
 - libtermux-android core / bootstrap-arm64，固定上游提交 `3a7e2ae63c4824fac384769c9afb8bc579458da9`。
 - 自动安装：APK 携带经过摘要校验的基础依赖和 CLI，首次启动自动部署，随后逐项执行 `--version` 并初始化 Git 工作区。
@@ -20,6 +20,7 @@
 | npm | 11.19.1 | Termux 官方仓库 |
 | Claude Code | 2.1.112 | Anthropic 官方 npm JavaScript 版本 |
 | Codex | 0.155.1 | OpenAI 官方 npm ARM64 musl CLI |
+| OpenCode | 1.18.32-0 | C04-wq/opencode-termux，内含官方 1.18.32 musl 程序与 musl 加载器 |
 
 精确 URL、版本和校验值在 `runtime/agents.lock.json`。Claude Code 使用可由 Android Node.js 执行的固定 JavaScript 版本，不是最新原生安装器。未纳入其他平台的可选音频、图像原生插件；Codex 未集成语音组件。
 
@@ -906,4 +907,20 @@ Android 13 真机先复现：进入“设置与运行环境”，通过显式 AC
 Android `applicationId` 与应用源码包现为 `com.github.ytlog.mobby.android`。交互、运行时、语音和 bootstrap 模块的包名改为同一前缀加原有后缀，例如 `com.github.ytlog.mobby.android.runtime.android`。第三方 `com.libtermux` 未改。开发阶段的 Keystore 别名改为 `mobby.gateway`。
 
 新 applicationId 会作为另一个应用安装。此前已安装的应用仍保留自己的配置、密钥、HOME 和工作区，不会自动迁入新应用。
+
+## 增加 OpenCode（2026-09-23）
+
+会话里可以再选 OpenCode 1.18.32。模型请求仍走本地 Node 桥接，协议固定为 Responses，与 Codex 使用同一组网关服务；不提供协议转换。每一轮执行 `opencode run --format json --pure --auto`，提示词在 `--` 之后，图片用 `--file` 传入绝对路径。`step_finish` 的 `reason=stop` 才算这一轮成功；`error` 算失败；`tool-calls` 与 `unknown` 不结束本轮。该 CLI 一轮只收一条提示并可能在结束后挂住，因此不保留进程，下一轮用 `--session` 冷启动。会话 id 允许下划线，例如 `ses_Ab12`。技能写入 `~/.config/opencode/skills`，提示使用 `/name` 和 skill 工具。推理原文不进入时间线。
+
+官方 npm 的 ARM64 musl 程序是 ET_EXEC，Android 不能直接执行。锁文件改为校验 C04-wq/opencode-termux `v1.18.32-0` 的 `opencode-termux-aarch64.tar.gz`（SHA-256 `7300ab26c8eb0c5f24081792478ba76b05c365ece8638c171a24d6fe80109abe`）。`runtime/opencode_launcher.c` 是 PIE 入口：清掉 `LD_PRELOAD`，把 `PREFIX/lib/opencode` 加到 `LD_LIBRARY_PATH` 前面，再由随包的静态 `ld-musl-aarch64.so.1` 加载真正的 `opencode`。`--version` 失败只关闭 OpenCode 能力，不把整个运行环境标成未就绪。尚未在手机上跑通 `opencode --version` 或真实网关任务。
+
+## 设备插件替换「使用当前手机」（2026-09-23）
+
+设备能力集中到模块 `:device-plugins`，旧的 `plugin:PHONE:ACCESSIBILITY`、`PhonePlugin` 和 `phone.cjs` 已删除，旧引用不映射。草稿里不是 `plugin:device:` 的插件引用在读出时丢弃。引用上限改为 24，且必须带上父引用才能启用发送短信、修改通讯录、修改日历或写入剪贴板。
+
+目录分为手机、沟通、文件。屏幕、短信、通讯录、日历、相册、存储、相机、麦克风、位置、传感器、剪贴板、Office 共用 `plugin:device:<能力>`、技能名 `mobby-<能力>` 和一条 `127.0.0.1` JSON 命令通道。本轮技能文件只列出已启用的动作；提示只给调用名和 SKILL.md 路径。用户已有同名非临时技能时，这一轮以配置无效失败，不覆盖文件，也不把技能正文写进提示。加入草稿就是这一轮的授权，不再弹出第二次确认。系统权限仍是整个应用 UID，隔离靠本轮动作白名单、调用前复查权限，以及路径只允许工作区、本轮收件箱或该插件已持久化的目录树。
+
+OpenCode 运行包里的 `libstdc++.so.6` 是指向 `libstdc++.so.6.0.33` 的符号链接。准备 bootstrap 时改为记录这条链接，不再要求它本身是普通 ELF 文件。
+
+`:device-plugins:testDebugUnitTest`、`:interaction-domain:test`、`:interaction-ui:testDebugUnitTest`、`:runtime-android:testDebugUnitTest` 和 `python3 -m unittest discover -s runtime -p 'test_*.py'` 通过。`:interaction-data:testDebugUnitTest` 中插件草稿引用回归通过；全套在本机并行负载下偶发 10 秒状态等待超时，单独重跑对应用例可以通过，尚未当作插件逻辑缺陷。没有在手机上逐项验收无障碍、短信、相机、麦克风或存储授权。模拟与单元测试不能代替这些验收。
 

@@ -1,0 +1,15 @@
+plugins { id("com.android.library"); kotlin("android") }
+android {
+    namespace = "com.github.ytlog.mobby.android.device"
+    compileSdk = 35
+    defaultConfig { minSdk = 26 }
+    compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
+    kotlinOptions { jvmTarget = "17" }
+    testOptions { unitTests.isIncludeAndroidResources = true }
+}
+dependencies {
+    implementation(project(":runtime-api"))
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
+}

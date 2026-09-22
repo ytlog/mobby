@@ -5,7 +5,14 @@ import kotlinx.coroutines.flow.Flow
 @JvmInline value class ConversationId(val value: String)
 @JvmInline value class TurnId(val value: String)
 @JvmInline value class ExecutionId(val value: String)
-enum class AgentId { CODEX, CLAUDE_CODE }
+enum class AgentId { CODEX, CLAUDE_CODE, OPEN_CODE }
+
+/** Stored gateway profile id. It matches the runtime launcher name, not the enum name of Claude Code. */
+fun AgentId.gatewayProfileId(): String = when (this) {
+    AgentId.CODEX -> "CODEX"
+    AgentId.CLAUDE_CODE -> "CLAUDE"
+    AgentId.OPEN_CODE -> "OPEN_CODE"
+}
 data class NextTurnConfig(val agent: AgentId, val model: String, val reasoning: String?, val workspace: String, val gatewayProfile: String, val gatewayVersion: Long = 0)
 data class PendingAttachment(val id: String, val workspace: String, val location: String, val error: String? = null)
 data class Draft(
@@ -82,7 +89,7 @@ object ConversationRules {
 
     /** Record one engine's CLI session. The active session changes only when that engine is currently selected. */
     fun rememberSession(current: Conversation, agent: AgentId, id: String): Conversation {
-        if (!id.matches(Regex("[A-Za-z0-9-]{1,100}"))) return current
+        if (!id.matches(Regex("[A-Za-z0-9_-]{1,100}"))) return current
         val sessions = current.sessions + (agent to id)
         return current.copy(sessions = sessions, session = if (current.config.agent == agent) id else current.session)
     }
@@ -91,7 +98,7 @@ object ConversationRules {
         require(config.workspace == current.config.workspace || current.draft.attachments.isEmpty() && current.draft.pendingAttachment == null) { "Remove draft attachments before changing workspace" }
         require(!current.hasTurns || config.workspace == current.config.workspace) { "Existing workspace must be preserved" }
         val sameAgent = current.config.agent == config.agent
-        val kept = if (sameAgent) current.draft.capabilities else current.draft.capabilities.filter { it.startsWith("plugin:") }.toSet()
+        val kept = if (sameAgent) current.draft.capabilities else current.draft.capabilities.filter { it.startsWith("plugin:device:") }.toSet()
         val sessions = if (current.session == null) current.sessions else current.sessions + (current.config.agent to current.session)
         return current.copy(config = config,
             draft = if (kept != current.draft.capabilities)
