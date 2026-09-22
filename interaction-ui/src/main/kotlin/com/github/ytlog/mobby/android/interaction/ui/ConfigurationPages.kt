@@ -218,14 +218,9 @@ import kotlinx.coroutines.*
                 GroupDivider()
                 SettingsItem("Shell 诊断", { navigate("diagnostic") })
             }
-            Text(system.message, Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            SettingsCaption(system.message)
             SettingsGroup {
-                TextButton(
-                    onClick = { vm.enqueue { vm.report(vm.actions.initialize()) } },
-                    modifier = Modifier.fillMaxWidth(),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
-                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),
-                ) { Text("重新检查运行环境", Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodyLarge) }
+                SettingsAction("重新检查运行环境") { vm.enqueue { vm.report(vm.actions.initialize()) } }
             }
             SettingsGroup("外观") {
                 listOf(Appearance.SYSTEM to "跟随系统", Appearance.DARK to "深色", Appearance.LIGHT to "浅色").forEachIndexed { index, (key, label) ->
@@ -276,62 +271,73 @@ import kotlinx.coroutines.*
     }
     Column(Modifier.fillMaxSize()) {
         PageHeader("网关设置", back)
-        Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             SettingsGroup {
                 AgentId.values().forEachIndexed { index, value ->
                     if (index > 0) GroupDivider()
                     ChoiceRow(value.label(), agent == value, { agent = value }, enabled = !busy)
                 }
             }
-            Text("${agent.label()} 使用 $nativeLabel，通过本地桥接连接网关。")
+            SettingsCaption("${agent.label()} 使用 $nativeLabel，通过本地桥接连接网关。")
             if (!protocolSupported) {
-                Text("当前保存的协议不适用于此 Agent；暂不提供协议转换。", color = MaterialTheme.colorScheme.error)
-                TextButton(enabled = !busy, onClick = { protocol = nativeProtocol; notice = "" }) { Text("改用 $nativeLabel") }
+                SettingsCaption("当前保存的协议不适用于此 Agent；暂不提供协议转换。", error = true)
+                SettingsGroup { SettingsAction("改用 $nativeLabel", enabled = !busy) { protocol = nativeProtocol; notice = "" } }
             }
-
-            OutlinedTextField(endpoint, { endpoint = it; notice = "" }, Modifier.fillMaxWidth(), enabled = !busy, label = { Text("网关地址") }, singleLine = true)
-            OutlinedTextField(model, { model = it; notice = "" }, Modifier.fillMaxWidth(), enabled = !busy, label = { Text("模型名称") }, singleLine = true)
             val stored = profile?.hasCredential == true
-            OutlinedTextField(key, { key = it; keyEdited = true; notice = "" }, Modifier.fillMaxWidth(), enabled = !busy, label = { Text(if (stored && !keyEdited) "已保存密钥，输入可替换" else "API Key（无鉴权可留空）") }, visualTransformation = PasswordVisualTransformation(), singleLine = true)
-            if (stored) TextButton(enabled = !busy, onClick = { key = ""; keyEdited = true; notice = "" }) { Text("移除已保存密钥") }
-            Text("凭据加密保存在设备；保存成功不代表连通性验证通过。", style = MaterialTheme.typography.bodySmall)
-            if (endpoint.trim().startsWith("http://", ignoreCase = true)) Text("HTTP 会明文传输密钥和内容，仅用于可信网络；建议使用 HTTPS。", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-            Button(enabled = !busy && protocolSupported, onClick = {
-                val edit = GatewayEdit(agent, endpoint.trim(), model.trim(), protocol, if (keyEdited) key.toCharArray() else null)
-                saving = true; notice = ""
-                submit {
-                    try {
-                        when (val result = save(edit)) {
-                            OperationResult.Done -> { notice = "配置已保存，尚未测试连接"; key = ""; keyEdited = false; refresh() }
-                            is OperationResult.Failed -> notice = result.message
-                        }
-                    } finally { edit.credential?.fill('\u0000'); saving = false }
+            SettingsGroup {
+                SettingsField(endpoint, { endpoint = it; notice = "" }, "网关地址", enabled = !busy)
+                GroupDivider()
+                SettingsField(model, { model = it; notice = "" }, "模型名称", enabled = !busy)
+                GroupDivider()
+                SettingsField(key, { key = it; keyEdited = true; notice = "" }, if (stored && !keyEdited) "已保存密钥，输入可替换" else "API Key（无鉴权可留空）", enabled = !busy, visualTransformation = PasswordVisualTransformation())
+                if (stored) {
+                    GroupDivider()
+                    SettingsAction("移除已保存密钥", enabled = !busy) { key = ""; keyEdited = true; notice = "" }
                 }
-            }) { Text("保存当前配置") }
-            if (notice.isNotBlank()) Text(notice)
-            Text("测试连接会用已保存配置发送一个小型模型请求，可能产生少量费用；不验证 CLI、工具或会话恢复。", style = MaterialTheme.typography.bodySmall)
+            }
+            SettingsCaption("凭据加密保存在设备；保存成功不代表连通性验证通过。")
+            if (endpoint.trim().startsWith("http://", ignoreCase = true)) SettingsCaption("HTTP 会明文传输密钥和内容，仅用于可信网络；建议使用 HTTPS。", error = true)
+            SettingsGroup {
+                SettingsAction("保存当前配置", enabled = !busy && protocolSupported) {
+                    val edit = GatewayEdit(agent, endpoint.trim(), model.trim(), protocol, if (keyEdited) key.toCharArray() else null)
+                    saving = true; notice = ""
+                    submit {
+                        try {
+                            when (val result = save(edit)) {
+                                OperationResult.Done -> { notice = "配置已保存，尚未测试连接"; key = ""; keyEdited = false; refresh() }
+                                is OperationResult.Failed -> notice = result.message
+                            }
+                        } finally { edit.credential?.fill('\u0000'); saving = false }
+                    }
+                }
+            }
+            if (notice.isNotBlank()) SettingsCaption(notice, error = notice.contains("失败") || notice.contains("不正确") || notice.contains("无效") || notice.contains("未确认"))
+            SettingsCaption("测试连接会用已保存配置发送一个小型模型请求，可能产生少量费用；不验证 CLI、工具或会话恢复。")
             val matchesSaved = protocolSupported && profile != null && profile.endpoint.isNotBlank() && profile.model.isNotBlank() && !keyEdited &&
                 endpoint.trim() == profile.endpoint && model.trim() == profile.model && protocol == profile.protocol
-            OutlinedButton(enabled = !busy && matchesSaved, onClick = {
-                val target = profile ?: return@OutlinedButton
-                checking = true; cancelling = false; connectionNotice = "正在检查已保存配置…"
-                checkJob = checkScope.launch {
-                    try {
-                        connectionNotice = when (val result = withTimeout(30_000) { check(target) }) {
-                            is DataResult.Loaded -> result.value.message
-                            is DataResult.Failed -> result.message
-                        }
-                    } catch (_: TimeoutCancellationException) { connectionNotice = "检查超时，未判定成功" }
-                    catch (e: CancellationException) { connectionNotice = "检查已取消，未判定成功"; throw e }
-                    catch (_: Exception) { connectionNotice = "连接检查未完成，请稍后重试" }
-                    finally { checking = false; cancelling = false; checkJob = null }
+            SettingsGroup {
+                SettingsAction("测试已保存连接", enabled = !busy && matchesSaved) {
+                    val target = profile ?: return@SettingsAction
+                    checking = true; cancelling = false; connectionNotice = "正在检查已保存配置…"
+                    checkJob = checkScope.launch {
+                        try {
+                            connectionNotice = when (val result = withTimeout(30_000) { check(target) }) {
+                                is DataResult.Loaded -> result.value.message
+                                is DataResult.Failed -> result.message
+                            }
+                        } catch (_: TimeoutCancellationException) { connectionNotice = "检查超时，未判定成功" }
+                        catch (e: CancellationException) { connectionNotice = "检查已取消，未判定成功"; throw e }
+                        catch (_: Exception) { connectionNotice = "连接检查未完成，请稍后重试" }
+                        finally { checking = false; cancelling = false; checkJob = null }
+                    }
                 }
-            }) { Text("测试已保存连接") }
-            if (checking) TextButton(enabled = !cancelling, onClick = {
-                cancelling = true; connectionNotice = "正在取消检查…"; checkJob?.cancel()
-            }) { Text("取消检查") }
-            if (!matchesSaved && !busy) Text("请先保存当前修改，再测试连接。", style = MaterialTheme.typography.bodySmall)
-            if (connectionNotice.isNotBlank()) Text(connectionNotice)
+                if (checking) {
+                    GroupDivider()
+                    SettingsAction("取消检查", enabled = !cancelling) { cancelling = true; connectionNotice = "正在取消检查…"; checkJob?.cancel() }
+                }
+            }
+            if (!matchesSaved && !busy) SettingsCaption("请先保存当前修改，再测试连接。")
+            if (connectionNotice.isNotBlank()) SettingsCaption(connectionNotice, error = connectionNotice.contains("失败") || connectionNotice.contains("超时") || connectionNotice.contains("取消") || connectionNotice.contains("未判定") || connectionNotice.contains("未完成"))
         }
     }
 }
@@ -340,28 +346,39 @@ import kotlinx.coroutines.*
     var command by remember { mutableStateOf("") }
     Column(Modifier.fillMaxSize()) {
         PageHeader("Shell 诊断", back)
-        Text("状态：${state.phase.label()}", Modifier.padding(16.dp))
-        LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp)) {
-            if (state.lines.isEmpty()) item { EmptyPlaceholder("还没有输出", "输入命令后点执行") }
-            items(state.lines.size) { index -> androidx.compose.foundation.text.selection.SelectionContainer { Text(state.lines[index], fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, style = MaterialTheme.typography.bodySmall) } }
-        }
-        OutlinedTextField(command, { command = it }, Modifier.fillMaxWidth().padding(12.dp), label = { Text("输入 Shell 命令") }, maxLines = 5)
-        Row(Modifier.padding(12.dp)) {
-            Button(onClick = { val captured = command; vm.enqueue { vm.report(vm.actions.shell(captured)) } }, enabled = command.isNotBlank()) { Text("执行") }
-            TextButton(onClick = { vm.enqueue { vm.report(vm.actions.stopShell()) } }) { Text("停止") }
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp).weight(1f), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            SettingsCaption("状态：${state.phase.label()}")
+            Surface(Modifier.weight(1f).fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = cardColor()) {
+                LazyColumn(Modifier.fillMaxSize().padding(16.dp)) {
+                    if (state.lines.isEmpty()) item { EmptyPlaceholder("还没有输出", "输入命令后点执行") }
+                    items(state.lines.size) { index -> androidx.compose.foundation.text.selection.SelectionContainer { Text(state.lines[index], fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodySmall) } }
+                }
+            }
+            SettingsGroup { SettingsField(command, { command = it }, "输入 Shell 命令", singleLine = false, maxLines = 5) }
+            SettingsGroup {
+                SettingsAction("执行", enabled = command.isNotBlank()) { val captured = command; vm.enqueue { vm.report(vm.actions.shell(captured)) } }
+                GroupDivider()
+                SettingsAction("停止") { vm.enqueue { vm.report(vm.actions.stopShell()) } }
+            }
         }
     }
 }
 @Composable internal fun ArchivedPage(state: InteractionState, vm: ConversationViewModel, back: () -> Unit) {
-    Column {
+    val rows = state.conversations.filter { it.conversation.archived || it.conversation.deleted }
+    Column(Modifier.fillMaxSize()) {
         PageHeader("已归档与最近删除", back)
-        LazyColumn {
-            val rows = state.conversations.filter { it.conversation.archived || it.conversation.deleted }
+        LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             if (rows.isEmpty()) item { EmptyPlaceholder("暂无归档或已删除对话", "归档或删除的会话会出现在这里") }
-            items(rows, key = { it.conversation.id.value }) { row ->
-                Row(Modifier.fillMaxWidth().padding(12.dp)) {
-                    Text(row.conversation.title, Modifier.weight(1f))
-                    TextButton(onClick = { vm.enqueue { vm.report(if (row.conversation.deleted) vm.actions.delete(row.conversation.id, false) else vm.actions.archive(row.conversation.id, false)) } }) { Text("恢复") }
+            else item {
+                SettingsGroup {
+                    rows.forEachIndexed { index, row ->
+                        if (index > 0) GroupDivider()
+                        Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(row.conversation.title, Modifier.weight(1f), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodyLarge)
+                            TextButton(onClick = { vm.enqueue { vm.report(if (row.conversation.deleted) vm.actions.delete(row.conversation.id, false) else vm.actions.archive(row.conversation.id, false)) } },
+                                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurface)) { Text("恢复", style = MaterialTheme.typography.bodyLarge) }
+                        }
+                    }
                 }
             }
         }

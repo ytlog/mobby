@@ -26,6 +26,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
@@ -81,6 +82,52 @@ import androidx.compose.ui.unit.dp
         Spacer(Modifier.width(12.dp))
         Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
     }
+}
+
+@Composable internal fun settingsFieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedTextColor = MaterialTheme.colorScheme.onSurface,
+    unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+    disabledTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+    focusedContainerColor = Color.Transparent,
+    unfocusedContainerColor = Color.Transparent,
+    disabledContainerColor = Color.Transparent,
+    focusedBorderColor = Color.Transparent,
+    unfocusedBorderColor = Color.Transparent,
+    disabledBorderColor = Color.Transparent,
+    focusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+    unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+    disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f),
+    cursorColor = MaterialTheme.colorScheme.primary,
+    errorCursorColor = MaterialTheme.colorScheme.error,
+)
+
+@Composable internal fun SettingsField(
+    value: String, onValueChange: (String) -> Unit, label: String, enabled: Boolean = true,
+    singleLine: Boolean = true, maxLines: Int = if (singleLine) 1 else Int.MAX_VALUE,
+    visualTransformation: VisualTransformation = VisualTransformation.None,
+) {
+    OutlinedTextField(
+        value, onValueChange, Modifier.fillMaxWidth(), enabled = enabled,
+        textStyle = MaterialTheme.typography.bodyLarge, label = { Text(label) },
+        visualTransformation = visualTransformation, singleLine = singleLine, maxLines = maxLines,
+        shape = RoundedCornerShape(0.dp), colors = settingsFieldColors(),
+    )
+}
+
+@Composable internal fun SettingsCaption(text: String, error: Boolean = false) {
+    Text(text, Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.bodySmall,
+        color = if (error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+}
+
+@Composable internal fun SettingsAction(text: String, enabled: Boolean = true, onClick: () -> Unit) {
+    TextButton(
+        onClick = onClick, enabled = enabled, modifier = Modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
+        colors = ButtonDefaults.textButtonColors(
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+        ),
+    ) { Text(text, Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodyLarge) }
 }
 
 @Composable internal fun SettingsItem(title: String, onClick: () -> Unit, detail: String? = null) {
