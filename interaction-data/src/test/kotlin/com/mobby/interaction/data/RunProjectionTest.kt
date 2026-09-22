@@ -39,6 +39,15 @@ class RunProjectionTest {
         assertEquals(RunPhase.RUNNING, complete.phase)
         assertTrue(complete.pendingApprovals.isEmpty())
     }
+    @Test fun `a tool keeps the order of its first output slot when the summary arrives later`() {
+        val started = RunProjection.apply(initial, event(2, RuntimeEvent.ToolStarted("t", "snapshot", "snapshot", 4)))!!
+        val described = RunProjection.apply(started, event(3, RuntimeEvent.ToolStarted("t", "snapshot", """{"cmd":"shot"}""", 4)))!!
+        assertEquals(4, described.steps.single().order)
+        assertEquals("""{"cmd":"shot"}""", described.steps.single().summary)
+        val output = RunProjection.apply(described, event(4, RuntimeEvent.ToolOutput("t", OutputSegment("tool:t", 9, ResourceRef("r/9")))))!!
+        assertEquals(4, output.steps.single().order)
+        assertEquals(1, output.steps.single().output.size)
+    }
     @Test fun `success without evidence is never projected as success`() {
         assertEquals(RunPhase.OUTCOME_UNKNOWN, RunProjection.verifiedPhase(initial.copy(phase = RunPhase.SUCCEEDED)))
         assertEquals(RunPhase.SUCCEEDED, RunProjection.verifiedPhase(initial.copy(phase = RunPhase.SUCCEEDED, terminalEvidence = TerminalEvidence(true, 0))))

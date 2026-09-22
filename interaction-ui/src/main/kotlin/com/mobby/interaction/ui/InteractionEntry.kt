@@ -481,9 +481,13 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
         if (detail.hasEarlier) add("earlier")
         detail.turns.forEach { t ->
             add("user:${t.id.value}")
-            if (t.hasVisibleExecution()) add("run:${t.id.value}")
+            t.transcript().forEach { entry ->
+                when (entry) {
+                    is TranscriptEntry.Reply -> add("message:${t.id.value}:${entry.message.id}")
+                    is TranscriptEntry.ToolRun -> add("tools:${t.id.value}:${entry.steps.first().id}")
+                }
+            }
             t.permissions.forEach { add("permission:${t.id.value}:${it.id}:${it.revision}") }
-            t.messages.forEach { add("message:${t.id.value}:${it.id}") }
             t.skillProposals.forEach { add("artifact:${t.id.value}:${it.ref}") }
             if (t.creatingSkill && !t.occupied && t.skillProposals.isEmpty() && !t.proposalsLoading) add("creator:${t.id.value}")
             if (t.failure != null || t.phase in listOf(ExecutionPhase.CANCELLED, ExecutionPhase.TIMED_OUT, ExecutionPhase.INTERRUPTED, ExecutionPhase.OUTCOME_UNKNOWN, ExecutionPhase.AWAITING_APPROVAL)) add("status:${t.id.value}")
@@ -536,20 +540,32 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                 }
             }
             detail.turns.forEach { turn ->
+                val entries = turn.transcript()
+                val lastReply = entries.filterIsInstance<TranscriptEntry.Reply>().lastOrNull()?.message?.id
+                val lastTools = entries.filterIsInstance<TranscriptEntry.ToolRun>().lastOrNull()?.steps?.firstOrNull()?.id
                 item(key = "user:${turn.id.value}") { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { Surface(shape = RoundedCornerShape(21.dp, 21.dp, 6.dp, 21.dp), color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.widthIn(max = 360.dp)) { Column(Modifier.padding(16.dp)) { androidx.compose.foundation.text.selection.SelectionContainer { Text(turn.userText) }; AttachmentList(turn.attachments, detail.conversation.config.workspace, vm) } } } }
-                if (turn.hasVisibleExecution()) item(key = "run:${turn.id.value}") { ExecutionCard(turn, vm, read) }
-                turn.permissions.forEach { permission -> item(key = "permission:${turn.id.value}:${permission.id}:${permission.revision}") {
-                    PermissionCard(turn, permission, detail.conversation.config.agent, vm)
-                } }
-                turn.messages.forEach { message -> item(key = "message:${turn.id.value}:${message.id}") {
-                    Column {
-                        ReplyContent(message.text, streaming = turn.occupied && message.id == turn.messages.lastOrNull()?.id, read = read)
-                        Row {
-                            val clipboard = LocalClipboardManager.current
-                            ActionIcon("复制回复", { clipboard.setText(AnnotatedString(message.text)) }, AppIcons.Copy)
-                            ActionIcon("分享回复", { hostActions.share(message.text) }, AppIcons.Share)
+                entries.forEach { entry ->
+                    when (entry) {
+                        is TranscriptEntry.ToolRun -> item(key = "tools:${turn.id.value}:${entry.steps.first().id}") {
+                            ExecutionCard(turn, vm, entry.steps, showExtras = entry.steps.first().id == lastTools, read)
+                        }
+                        is TranscriptEntry.Reply -> item(key = "message:${turn.id.value}:${entry.message.id}") {
+                            Column {
+                                ReplyContent(entry.message.text, streaming = turn.occupied && entry.message.id == lastReply, read = read)
+                                if (entry.message.id == lastReply) {
+                                    val reply = turn.messages.joinToString("\n") { it.text }
+                                    Row {
+                                        val clipboard = LocalClipboardManager.current
+                                        ActionIcon("复制回复", { clipboard.setText(AnnotatedString(reply)) }, AppIcons.Copy)
+                                        ActionIcon("分享回复", { hostActions.share(reply) }, AppIcons.Share)
+                                    }
+                                }
+                            }
                         }
                     }
+                }
+                turn.permissions.forEach { permission -> item(key = "permission:${turn.id.value}:${permission.id}:${permission.revision}") {
+                    PermissionCard(turn, permission, detail.conversation.config.agent, vm)
                 } }
                 turn.skillProposals.forEach { candidate -> item(key = "artifact:${turn.id.value}:${candidate.ref}") {
                     OutlinedCard(onClick = { proposal(candidate) }, shape = RoundedCornerShape(16.dp), colors = CardDefaults.outlinedCardColors(containerColor = raisedColor()), border = BorderStroke(0.dp, Color.Transparent)) { Column(Modifier.fillMaxWidth().padding(16.dp)) {

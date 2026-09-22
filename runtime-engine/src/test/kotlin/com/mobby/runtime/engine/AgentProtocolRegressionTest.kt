@@ -30,8 +30,10 @@ class AgentProtocolRegressionTest {
         }
     }
     @Test fun claudeContentSupportsMultipleTextBlocks() {
-        assertEquals("one\ntwo", ProtocolDecoder(AgentId.CLAUDE_CODE).decode(
-            """{"type":"assistant","message":{"content":[{"type":"text","text":"one"},{"type":"tool_use"},{"type":"text","text":"two"}]}}""").filterIsInstance<AgentFact.Text>().single().text)
+        val facts = ProtocolDecoder(AgentId.CLAUDE_CODE).decode(
+            """{"type":"assistant","message":{"content":[{"type":"text","text":"one"},{"type":"tool_use"},{"type":"text","text":"two"}]}}""")
+        assertEquals(listOf("one", "two"), facts.filterIsInstance<AgentFact.Text>().map { it.text })
+        assertEquals(1, facts.filterIsInstance<AgentFact.Tool>().size)
     }
     @Test fun imageArgumentsUseNativeProtocolAndKeepResumeWithoutShellParsing() {
         for (session in listOf(null, SessionRef("session-1"))) {

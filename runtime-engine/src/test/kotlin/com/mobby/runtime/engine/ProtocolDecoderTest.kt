@@ -17,10 +17,31 @@ class ProtocolDecoderTest {
             assertFalse(args.contains("--ignore-rules"))
         }
     }
+    @Test fun `claude partial text is appended in output order and the later snapshot does not repeat it`() {
+        val decoder = ProtocolDecoder(AgentId.CLAUDE_CODE)
+        assertTrue(decoder.decode("""{"type":"stream_event","event":{"type":"message_start","message":{"id":"m"}}}""").isEmpty())
+        assertEquals(listOf(AgentFact.Text("m", "先")), decoder.decode("""{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"先"}}}"""))
+        assertEquals(listOf(AgentFact.Text("m", "截图")), decoder.decode("""{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"截图"}}}"""))
+        assertTrue(decoder.decode("""{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"thinking_delta","thinking":"private"}}}""").isEmpty())
+        assertEquals(listOf(AgentFact.Tool("t1", "snapshot", "snapshot")), decoder.decode("""{"type":"stream_event","event":{"type":"content_block_start","index":2,"content_block":{"type":"tool_use","id":"t1","name":"snapshot","input":{}}}}"""))
+        assertEquals(listOf(AgentFact.Text("m#3", "再看")), decoder.decode("""{"type":"stream_event","event":{"type":"content_block_delta","index":3,"delta":{"type":"text_delta","text":"再看"}}}"""))
+        assertEquals(listOf(AgentFact.Tool("t1", "snapshot", """{"cmd":"shot"}""")), decoder.decode("""{"type":"assistant","message":{"id":"m","content":[{"type":"text","text":"先截图"},{"type":"thinking","thinking":"private"},{"type":"tool_use","id":"t1","name":"snapshot","input":{"cmd":"shot"}},{"type":"text","text":"再看"}]}}"""))
+        assertEquals(listOf(AgentFact.Completed(true)), decoder.decode("""{"type":"result","subtype":"success","is_error":false,"result":"先截图\n再看"}"""))
+    }
+    @Test fun `codex message text streams as a suffix and completion does not repeat it`() {
+        val decoder = ProtocolDecoder(AgentId.CODEX)
+        assertEquals(listOf(AgentFact.Text("m", "你")), decoder.decode("""{"type":"item.updated","item":{"id":"m","type":"agent_message","text":"你"}}"""))
+        assertEquals(listOf(AgentFact.Text("m", "好")), decoder.decode("""{"type":"item.updated","item":{"id":"m","type":"agent_message","text":"你好"}}"""))
+        assertTrue(decoder.decode("""{"type":"item.completed","item":{"id":"m","type":"agent_message","text":"你好"}}""").isEmpty())
+    }
+    @Test fun `claude text stays in block order around tools and thinking stays hidden`() {
+        val facts = ProtocolDecoder(AgentId.CLAUDE_CODE).decode("""{"type":"assistant","message":{"id":"m","content":[{"type":"thinking","thinking":"private"},{"type":"text","text":"先截图"},{"type":"tool_use","id":"t1","name":"snapshot","input":{}},{"type":"text","text":"再看结果"}]}}""")
+        assertEquals(listOf(AgentFact.Text("m#1", "先截图"), AgentFact.Tool("t1", "snapshot", "{}"), AgentFact.Text("m#3", "再看结果")), facts)
+    }
     @Test fun `claude result does not repeat assistant and private thinking stays hidden`() {
         val decoder = ProtocolDecoder(AgentId.CLAUDE_CODE)
         val assistant = decoder.decode("""{"type":"assistant","session_id":"session","message":{"id":"m","content":[{"type":"thinking","thinking":"private"},{"type":"text","text":"answer"}]}}""")
-        assertEquals(listOf(AgentFact.Session("session"), AgentFact.Text("m", "answer")), assistant)
+        assertEquals(listOf(AgentFact.Session("session"), AgentFact.Text("m#1", "answer")), assistant)
         assertEquals(listOf(AgentFact.Completed(true)), decoder.decode("""{"type":"result","subtype":"success","is_error":false,"result":"answer"}"""))
     }
     @Test fun `permission denial is not success and missing terminal evidence is not success`() {
@@ -63,6 +84,7 @@ class ProtocolDecoderTest {
         val args = AgentCommand.arguments(request, "agent", "private prompt", streamInput = true, approvals = true)
         assertTrue(args.windowed(2).contains(listOf("--permission-prompt-tool", "stdio")))
         assertTrue(args.windowed(2).contains(listOf("--input-format", "stream-json")))
+        assertTrue(args.contains("--include-partial-messages"))
         assertFalse(args.contains("private prompt"))
         assertFalse(args.any { "bypass" in it || "skip-permissions" in it })
         assertThrows(IllegalArgumentException::class.java) { AgentCommand.arguments(request.copy(agentId = AgentId.CODEX), "agent", "x", approvals = true) }

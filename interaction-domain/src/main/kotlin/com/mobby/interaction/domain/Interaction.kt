@@ -4,8 +4,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
 
-data class Message(val id: String, val text: String)
-data class Step(val id: String, val kind: String, val summary: String, val output: String, val outcome: String?)
+data class Message(val id: String, val text: String, val order: Long = Long.MAX_VALUE)
+data class Step(val id: String, val kind: String, val summary: String, val output: String, val outcome: String?, val order: Long = Long.MAX_VALUE)
 data class SkillProposal(val ref: String, val markdown: String, val agent: AgentId)
 data class Turn(
     val id: TurnId, val userText: String, val execution: ExecutionId?, val phase: ExecutionPhase?,
@@ -15,7 +15,35 @@ data class Turn(
     val expanded: Boolean? = null, val expandedSteps: Set<String> = emptySet(),
     val skillProposals: List<SkillProposal> = emptyList(), val creatingSkill: Boolean = false, val proposalsLoading: Boolean = false, val attachments: List<String> = emptyList(),
     val permissions: List<PermissionRequest> = emptyList()
-)
+) {
+    /** Replies stay where they were produced. Adjacent tool calls form one run and collapse after they finish. */
+    fun transcript(): List<TranscriptEntry> {
+        val ordered = (messages.map { it.order to TranscriptPiece.Reply(it) } + steps.map { it.order to TranscriptPiece.Tool(it) })
+            .sortedWith(compareBy<Pair<Long, TranscriptPiece>>({ it.first }, { if (it.second is TranscriptPiece.Reply) 0 else 1 }))
+        val result = mutableListOf<TranscriptEntry>()
+        val run = mutableListOf<Step>()
+        fun flush() {
+            if (run.isNotEmpty()) {
+                result += TranscriptEntry.ToolRun(run.toList())
+                run.clear()
+            }
+        }
+        for ((_, piece) in ordered) when (piece) {
+            is TranscriptPiece.Reply -> { flush(); result += TranscriptEntry.Reply(piece.message) }
+            is TranscriptPiece.Tool -> run += piece.step
+        }
+        flush()
+        return result
+    }
+}
+private sealed interface TranscriptPiece {
+    data class Reply(val message: Message) : TranscriptPiece
+    data class Tool(val step: Step) : TranscriptPiece
+}
+sealed interface TranscriptEntry {
+    data class Reply(val message: Message) : TranscriptEntry
+    data class ToolRun(val steps: List<Step>) : TranscriptEntry
+}
 data class ConversationSummary(val conversation: Conversation, val phase: ExecutionPhase? = null, val occupied: Boolean = false)
 data class ConversationDetail(val conversation: Conversation, val turns: List<Turn>, val hasEarlier: Boolean = false)
 data class Project(val name: String, val defaultWorkspace: String)

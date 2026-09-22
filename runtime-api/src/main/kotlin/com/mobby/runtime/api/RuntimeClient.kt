@@ -156,7 +156,7 @@ data class PendingApproval(val approvalId: String, val revision: Long, val actio
 data class OutputSegment(val messageId: String, val chunkIndex: Long, val ref: ResourceRef)
 @Serializable
 data class ToolSnapshot(val stepId: String, val toolKind: String, val summary: String,
-    val outcome: ToolOutcome? = null, val output: List<OutputSegment> = emptyList())
+    val outcome: ToolOutcome? = null, val output: List<OutputSegment> = emptyList(), val order: Long = -1)
 @Serializable
 data class RunSnapshot(
     val runId: RunId, val phase: RunPhase, val revision: Long, val lastSequence: Long,
@@ -190,7 +190,7 @@ sealed interface RuntimeEvent {
     @Serializable
     data class ProgressSummary(val text: String) : RuntimeEvent
     @Serializable
-    data class ToolStarted(val stepId: String, val toolKind: String, val summary: String) : RuntimeEvent
+    data class ToolStarted(val stepId: String, val toolKind: String, val summary: String, val order: Long = -1) : RuntimeEvent
     @Serializable
     data class ToolOutput(val stepId: String, val segment: OutputSegment) : RuntimeEvent
     @Serializable

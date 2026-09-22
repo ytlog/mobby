@@ -45,7 +45,8 @@ class ExecutionCardTest {
 
     @Test fun `completed headline uses the step count and running stays compact`() {
         assertEquals("已完成 2 个步骤", empty.copy(steps = listOf(step, step.copy(id = "s2"))).executionHeadline())
-        assertEquals("执行中", empty.copy(phase = ExecutionPhase.RUNNING, occupied = true, steps = listOf(step)).executionHeadline())
+        assertEquals("执行中", empty.copy(phase = ExecutionPhase.RUNNING, occupied = true, steps = listOf(step.copy(outcome = null))).executionHeadline())
+        assertEquals("已完成 1 个步骤", empty.copy(phase = ExecutionPhase.RUNNING, occupied = true, steps = listOf(step)).executionHeadline())
         assertEquals("失败 · 1 个步骤", empty.copy(phase = ExecutionPhase.FAILED, steps = listOf(step)).executionHeadline())
     }
 
@@ -57,6 +58,14 @@ class ExecutionCardTest {
         compose.onNodeWithContentDescription("已收起").assertDoesNotExist()
     }
 
+    @Test fun `unfinished tools stay open and a finished run starts collapsed`() {
+        val running = empty.copy(phase = ExecutionPhase.RUNNING, occupied = true, steps = listOf(step.copy(outcome = null)))
+        assertTrue(running.toolGroupExpanded(running.steps))
+        assertFalse(empty.copy(steps = listOf(step)).toolGroupExpanded(listOf(step)))
+        compose.setContent { MaterialTheme { ExecutionCard(running, vm()) { _, _ -> } } }
+        compose.onNodeWithText("运行 ls").assertExists()
+    }
+
     @Test fun `a finished step card shows a compact completed header`() {
         compose.setContent { MaterialTheme { ExecutionCard(empty.copy(steps = listOf(step), expanded = false), vm()) { _, _ -> } } }
         compose.onNodeWithText("已完成 1 个步骤").assertExists()
@@ -66,7 +75,7 @@ class ExecutionCardTest {
     }
 
     @Test fun `expanded steps list the readable tool title not the raw json`() {
-        val open = empty.copy(steps = listOf(step), expanded = true)
+        val open = empty.copy(steps = listOf(step), expandedSteps = setOf("tools:s1"))
         compose.setContent { MaterialTheme { ExecutionCard(open, vm()) { _, _ -> } } }
         compose.onNodeWithText("已完成 1 个步骤").assertExists()
         compose.onNodeWithText("运行 ls").assertExists()

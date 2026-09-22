@@ -570,6 +570,32 @@ class RoomInteractionRepositoryTest {
         assertTrue(repository.saveSkillProposal(proposal, "third edit") is DataResult.Failed)
         assertEquals(listOf("user edit"), importedProposals)
     }
+    @Test fun `projected replies keep chunk order and adjacent tools form one run`() = runBlocking {
+        val c = state().selected!!.conversation
+        repository.editDraft(c.id, "phone", 5, 5)
+        val turn = (repository.prepareTurn(c.id, TurnId("ordered")) as PrepareTurnResult.Prepared).turn
+        runtime.admit(turn)
+        val first = ResourceRef("ordered/first")
+        val second = ResourceRef("ordered/second")
+        val shot = ResourceRef("ordered/shot")
+        val tap = ResourceRef("ordered/tap")
+        runtime.artifactBodies[first] = "先看屏幕".toByteArray()
+        runtime.artifactBodies[second] = "再打开商店".toByteArray()
+        runtime.artifactBodies[shot] = "screen".toByteArray()
+        runtime.artifactBodies[tap] = "clicked".toByteArray()
+        runtime.snapshots[turn.turnId.value] = runtime.snapshots.getValue(turn.turnId.value).copy(phase = RunPhase.RUNNING,
+            outputSegments = listOf(OutputSegment("first", 0, first), OutputSegment("second", 3, second)),
+            steps = listOf(
+                ToolSnapshot("s1", "snapshot", "snapshot", ToolOutcome.SUCCEEDED, listOf(OutputSegment("tool:s1", 1, shot))),
+                ToolSnapshot("s2", "click", "click", ToolOutcome.SUCCEEDED, listOf(OutputSegment("tool:s2", 2, tap))),
+                ToolSnapshot("s3", "recents", "recents")))
+        repository.recordSubmission(turn, Submission.Accepted(ExecutionId(turn.turnId.value)))
+        val projected = state { it.selected?.turns?.singleOrNull()?.steps?.size == 3 }.selected!!.turns.single().transcript()
+        assertEquals("先看屏幕", (projected[0] as TranscriptEntry.Reply).message.text)
+        assertEquals(listOf("s1", "s2"), (projected[1] as TranscriptEntry.ToolRun).steps.map { it.id })
+        assertEquals("再打开商店", (projected[2] as TranscriptEntry.Reply).message.text)
+        assertEquals(listOf("s3"), (projected[3] as TranscriptEntry.ToolRun).steps.map { it.id })
+    }
     @Test fun `permission projection survives database reopen and adapter preserves decision identity`() = runBlocking {
         val c = state().selected!!.conversation
         repository.editDraft(c.id, "write", 5, 5)

@@ -38,12 +38,20 @@ internal fun ExecutionPhase?.label(): String = when (this) {
     ExecutionPhase.OUTCOME_UNKNOWN -> "结果待确认"
 }
 internal fun Turn.hasVisibleExecution(): Boolean = steps.isNotEmpty()
-internal fun Turn.executionHeadline(): String {
+internal fun toolGroupKey(steps: List<Step>) = "tools:${steps.first().id}"
+internal fun Turn.toolGroupExpanded(steps: List<Step>): Boolean {
+    val busy = occupied && steps.any { it.outcome == null } &&
+        phase in setOf(null, ExecutionPhase.ACCEPTED, ExecutionPhase.RUNNING, ExecutionPhase.AWAITING_APPROVAL, ExecutionPhase.CANCELLING)
+    return busy || toolGroupKey(steps) in expandedSteps
+}
+internal fun Turn.executionHeadline(steps: List<Step> = this.steps): String {
     val count = steps.size
-    return when (phase) {
-        ExecutionPhase.SUCCEEDED -> "已完成 ${count} 个步骤"
-        ExecutionPhase.ACCEPTED, ExecutionPhase.RUNNING, null -> if (occupied) "执行中" else phase.label()
-        ExecutionPhase.CANCELLING -> "停止中"
+    val busy = occupied && steps.any { it.outcome == null } &&
+        phase in setOf(null, ExecutionPhase.ACCEPTED, ExecutionPhase.RUNNING, ExecutionPhase.AWAITING_APPROVAL)
+    return when {
+        phase == ExecutionPhase.CANCELLING -> "停止中"
+        busy -> "执行中"
+        phase == ExecutionPhase.SUCCEEDED || phase == ExecutionPhase.RUNNING || phase == ExecutionPhase.ACCEPTED || phase == null -> "已完成 ${count} 个步骤"
         else -> "${phase.label()} · ${count} 个步骤"
     }
 }
@@ -77,9 +85,9 @@ internal fun stepKindIcon(kind: String): ImageVector = when (kind.lowercase()) {
         }
     }
 }
-@Composable internal fun ExecutionCard(turn: Turn, vm: ConversationViewModel, read: (String, String) -> Unit) {
-    if (!turn.hasVisibleExecution()) return
-    val expanded = ExecutionExpansion(turn.expanded).expanded(turn.phase ?: ExecutionPhase.ACCEPTED)
+@Composable internal fun ExecutionCard(turn: Turn, vm: ConversationViewModel, steps: List<Step> = turn.steps, showExtras: Boolean = true, read: (String, String) -> Unit) {
+    if (steps.isEmpty()) return
+    val expanded = turn.toolGroupExpanded(steps)
     val running = turn.occupied && turn.phase in setOf(ExecutionPhase.ACCEPTED, ExecutionPhase.RUNNING, ExecutionPhase.AWAITING_APPROVAL, ExecutionPhase.CANCELLING)
     Surface(
         Modifier.fillMaxWidth(),
@@ -90,16 +98,16 @@ internal fun stepKindIcon(kind: String): ImageVector = when (kind.lowercase()) {
     ) {
         Column {
             Row(
-                Modifier.fillMaxWidth().clickable { vm.enqueue { vm.actions.expansion(turn.id, !expanded) } }
+                Modifier.fillMaxWidth().clickable { vm.enqueue { vm.actions.stepExpansion(turn.id, toolGroupKey(steps), !expanded) } }
                     .heightIn(min = 44.dp).padding(start = 14.dp, end = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(turn.executionHeadline(), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(turn.executionHeadline(steps), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Icon(if (expanded) AppIcons.ChevronUp else AppIcons.ChevronRight, if (expanded) "已展开" else "已收起", Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (expanded) Column(Modifier.padding(start = 2.dp, end = 8.dp, bottom = 8.dp)) {
-                turn.progress?.let { Text(it, Modifier.padding(horizontal = 12.dp, vertical = 2.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                turn.steps.forEach { step ->
+                if (showExtras) turn.progress?.let { Text(it, Modifier.padding(horizontal = 12.dp, vertical = 2.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                steps.forEach { step ->
                     val open = step.id in turn.expandedSteps
                     val view = remember(step.kind, step.summary, step.output) { ToolPresentation.step(step.kind, step.summary, step.output) }
                     Row(Modifier.fillMaxWidth().clickable { vm.enqueue {
@@ -131,7 +139,7 @@ internal fun stepKindIcon(kind: String): ImageVector = when (kind.lowercase()) {
                         }
                     }
                 }
-                if (turn.diagnostics.isNotEmpty()) TextButton(onClick = { read("运行诊断", turn.diagnostics.joinToString("\n\n") { it.text }) }) { Text("查看诊断（${turn.diagnostics.size}）") }
+                if (showExtras && turn.diagnostics.isNotEmpty()) TextButton(onClick = { read("运行诊断", turn.diagnostics.joinToString("\n\n") { it.text }) }) { Text("查看诊断（${turn.diagnostics.size}）") }
             }
         }
     }

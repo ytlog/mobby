@@ -891,3 +891,13 @@ Android 13 真机先复现：进入“设置与运行环境”，通过显式 AC
 
 对话中途更换 Agent 不再另开对话。Codex 与 Claude Code 的 session 不能互相恢复，所以各自的 id 分开保存：切走时留下当前 Agent 的 session，切到尚未运行过的 Agent 时下一轮新建，再切回来则恢复原来的 session。界面历史、附件和项目都留在原对话；技能选择仍按 Agent 清除。配置菜单说明另一边的上下文不会跟着过去。已有记录里的 `session` 仍表示当前 Agent 的活动会话；下一次保存会同时写入按 Agent 区分的 `sessions`。
 
+## 沙箱内自动通过确认，并按时间线折叠相邻工具（2026-09-22）
+
+真机上 Claude Code 使用「使用当前手机」时，每次点击、返回或打开最近任务都会停在「需要你的授权」。应用本身已经跑在 Android UID/SELinux 沙箱里，逐次确认会让连续操作无法进行。按用户要求，格式正确的 `can_use_tool` 现在由应用立即按原始参数允许一次，不再显示确认卡。Codex 继续使用 `danger-full-access` 与 `approval_policy=never`，本来就不会询问。不写持久规则，也不改用 bypass 参数。格式错误、取消和重复请求仍然不能授权。
+
+同一轮里的回复和工具不再分成「全部步骤在前、全部正文在后」。正文留在产生它的位置；中间没有正文的连续工具调用合成一组，组内步骤都结束后默认收成「已完成 N 个步骤」，点开可再看。还在执行的那一组保持展开。思考内容仍然不进入时间线，也不并进工具组。
+
+`:runtime-engine:test` 的控制会话与协议解码、`:interaction-domain:test` 的会话规则、`:interaction-ui:testDebugUnitTest` 的执行卡、`:interaction-data:testDebugUnitTest` 的仓库投影均通过。真机上新的一轮手机操作尚未在本轮重新跑完。
+
+文字此前并不是按模型输出往外长。Codex 只在 `item.completed` 收下整段 `agent_message`，Claude 只在完整 `assistant` 消息到达后才显示；界面再用打字机把已经收齐的文字慢慢放出来。现在 Claude 增加 `--include-partial-messages`，`text_delta` 按内容块顺序追加，同一段不在随后的完整消息里再写一遍。Codex 若先发出变长的 `item.updated`，只追加新增后缀。工具记在它开始时的输出序号上，后到的参数和结果不再把它排到后面的文字之后。已经到达的文字立即可见，Markdown 仍大约每秒整理一次，避免每个 token 都重排。同一轮里复制/分享只出现在按输出顺序的最后一条正文下方，中间说明不再单独带按钮；没有正文时不显示。
+

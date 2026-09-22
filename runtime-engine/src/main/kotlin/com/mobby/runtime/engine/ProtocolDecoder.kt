@@ -20,6 +20,11 @@ class ProtocolDecoder(private val agent: AgentId, private val requestedOutput: R
     private val structuredTools = mutableSetOf<String>()
     private var lastAssistant = ""
     private var fallbackId = 0
+    private var streamMessageId: String? = null
+    private val streamedText = mutableSetOf<String>()
+    private val streamedParts = sortedMapOf<Int, StringBuilder>()
+    private val startedTools = mutableSetOf<String>()
+    private val codexText = mutableMapOf<String, String>()
     fun decode(line: String): List<AgentFact> {
         val controlRequest = agent == AgentId.CLAUDE_CODE && Regex("""^\s*\{\s*"type"\s*:\s*"control_request"""").containsMatchIn(line)
         if (controlRequest && line.endsWith(" [line truncated]"))
@@ -44,13 +49,31 @@ class ProtocolDecoder(private val agent: AgentId, private val requestedOutput: R
             val completed = value.text("type") == "item.completed"
             when (type) {
                 "reasoning" -> emptyList()
-                "agent_message" -> if (completed) {
+                "agent_message" -> {
                     val text = item.text("text").orEmpty()
                     if (requestedOutput == RequestedOutput.SKILL_PROPOSAL) {
-                        skillResult = SkillGeneration.parse(text)
-                        listOf(AgentFact.Text(id, skillResult?.message ?: text))
-                    } else listOf(AgentFact.Text(id, text))
-                } else emptyList()
+                        if (!completed) emptyList() else {
+                            skillResult = SkillGeneration.parse(text)
+                            listOf(AgentFact.Text(id, skillResult?.message ?: text))
+                        }
+                    } else {
+                        val previous = codexText[id].orEmpty()
+                        val delta = when {
+                            text.isEmpty() -> ""
+                            previous.isEmpty() -> text
+                            text.startsWith(previous) -> text.removePrefix(previous)
+                            previous.startsWith(text) -> ""
+                            else -> text
+                        }
+                        codexText[id] = when {
+                            text.isEmpty() -> previous
+                            previous.isEmpty() || text.startsWith(previous) -> text
+                            previous.startsWith(text) -> previous
+                            else -> previous + text
+                        }
+                        if (delta.isEmpty()) emptyList() else listOf(AgentFact.Text(id, delta))
+                    }
+                }
                 "command_execution", "file_change", "mcp_tool_call", "web_search", "todo_list" -> {
                     val outcome = if (!completed) null else if (item.text("status") == "failed" ||
                         (item["exit_code"] as? JsonPrimitive)?.intOrNull?.let { it != 0 } == true) ToolOutcome.FAILED else ToolOutcome.SUCCEEDED
@@ -85,29 +108,45 @@ class ProtocolDecoder(private val agent: AgentId, private val requestedOutput: R
                 }
             }
             "system" -> if (value.text("subtype") != "init") add(AgentFact.Diagnostic(value.text("subtype") ?: "system", line))
+            "stream_event" -> addAll(streamEvent(value))
             "assistant", "user" -> {
                 val message = value["message"] as? JsonObject
-                val id = message?.text("id") ?: "message-${fallbackId++}"
+                val id = message?.text("id") ?: streamMessageId ?: "message-${fallbackId++}"
+                streamMessageId = id
                 val blocks = message?.get("content") as? JsonArray ?: return@buildList
-                val text = blocks.mapNotNull { (it as? JsonObject)?.takeIf { block -> block.text("type") == "text" }?.text("text") }.joinToString("\n")
-                if (text.isNotEmpty() && value.text("type") == "assistant") { add(AgentFact.Text(id, text)); lastAssistant = text }
-                for (block in blocks.filterIsInstance<JsonObject>()) {
+                val texts = mutableListOf<String>()
+                for (index in blocks.indices) {
+                    val block = blocks[index] as? JsonObject ?: continue
                     if (requestedOutput == RequestedOutput.SKILL_PROPOSAL) {
                         if (block.text("type") == "tool_use" && block.text("name") == "StructuredOutput") {
                             block.text("id")?.let { structuredTools.add(it) }; continue
                         }
                         if (block.text("type") == "tool_result" && block.text("tool_use_id") in structuredTools) continue
                     }
+                    val textId = if (index == 0) id else "$id#$index"
                     when (block.text("type")) {
-                    "tool_use" -> add(AgentFact.Tool(block.text("id") ?: "tool-${fallbackId++}", block.text("name") ?: "tool", block["input"]?.toString().orEmpty()))
+                    "text" -> {
+                        val text = block.text("text").orEmpty()
+                        if (text.isNotEmpty() && value.text("type") == "assistant") {
+                            texts += text
+                            streamedParts[index] = StringBuilder(text)
+                            if (textId !in streamedText) add(AgentFact.Text(textId, text))
+                        }
+                    }
+                    "tool_use" -> {
+                        val toolId = block.text("id") ?: "tool-${fallbackId++}"
+                        val summary = block["input"]?.toString().orEmpty()
+                        if (startedTools.add(toolId) || summary.isNotBlank()) add(AgentFact.Tool(toolId, block.text("name") ?: "tool", summary))
+                    }
                     "tool_result" -> add(AgentFact.Tool(block.text("tool_use_id") ?: "tool-${fallbackId++}", "tool", "",
                         block["content"]?.let { content -> if (content is JsonPrimitive) content.content else content.toString() },
                         if ((block["is_error"] as? JsonPrimitive)?.booleanOrNull == true) ToolOutcome.FAILED else ToolOutcome.SUCCEEDED))
                     "image" -> add(AgentFact.Diagnostic("image", "图片输入（内容不写入诊断日志）"))
-                    "thinking", "redacted_thinking", "text" -> Unit
+                    "thinking", "redacted_thinking" -> Unit
                     else -> add(AgentFact.Diagnostic(block.text("type") ?: "unknown-content", block.toString()))
                     }
                 }
+                if (texts.isNotEmpty()) lastAssistant = streamedParts.values.joinToString("\n") { it.toString() }
             }
             "result" -> {
                 val result = value.text("result").orEmpty()
@@ -123,6 +162,37 @@ class ProtocolDecoder(private val agent: AgentId, private val requestedOutput: R
                 } else add(AgentFact.Completed(success, if (denied) ErrorCode.PERMISSION_DENIED else if (!success) ErrorCode.PROTOCOL_ERROR else null))
             }
             else -> add(AgentFact.Diagnostic(value.text("type") ?: "unknown", line))
+        }
+    }
+    private fun streamEvent(value: JsonObject): List<AgentFact> {
+        val event = value["event"] as? JsonObject ?: return emptyList()
+        return when (event.text("type")) {
+            "message_start" -> {
+                streamMessageId = (event["message"] as? JsonObject)?.text("id") ?: streamMessageId
+                emptyList()
+            }
+            "content_block_start" -> {
+                val block = event["content_block"] as? JsonObject ?: return emptyList()
+                if (block.text("type") != "tool_use") return emptyList()
+                val toolId = block.text("id") ?: return emptyList()
+                if (!startedTools.add(toolId)) return emptyList()
+                val name = block.text("name") ?: "tool"
+                listOf(AgentFact.Tool(toolId, name, name))
+            }
+            "content_block_delta" -> {
+                val delta = event["delta"] as? JsonObject ?: return emptyList()
+                if (delta.text("type") != "text_delta") return emptyList()
+                val text = delta.text("text").orEmpty()
+                if (text.isEmpty()) return emptyList()
+                val index = (event["index"] as? JsonPrimitive)?.intOrNull ?: 0
+                val messageId = streamMessageId ?: "message-$fallbackId".also { streamMessageId = it }
+                val id = if (index == 0) messageId else "$messageId#$index"
+                streamedText += id
+                streamedParts.getOrPut(index) { StringBuilder() }.append(text)
+                lastAssistant = streamedParts.values.joinToString("\n") { it.toString() }
+                listOf(AgentFact.Text(id, text))
+            }
+            else -> emptyList()
         }
     }
     private fun finishSkill(result: SkillGeneration.Result?): List<AgentFact> = if (result == null)
@@ -159,7 +229,7 @@ object AgentCommand {
                 add("--"); add(prompt)
             }
             AgentId.CLAUDE_CODE -> buildList {
-                addAll(listOf(executable, "-p", "--output-format", "stream-json", "--verbose"))
+                addAll(listOf(executable, "-p", "--output-format", "stream-json", "--include-partial-messages", "--verbose"))
                 if (structured) addAll(listOf("--json-schema", SkillGeneration.schema))
                 request.reasoningLevel?.let { addAll(listOf("--effort", it)) }
                 if (session != null) addAll(listOf("--resume", session))

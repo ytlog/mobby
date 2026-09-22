@@ -373,11 +373,16 @@ internal class RoomInteractionRepository(
                 previousExpired = row.expired
             }
         }
-        fun List<OutputSegment>.messages() = sortedBy { it.chunkIndex }.groupBy { it.messageId }.map { (id, parts) -> Message(id, parts.render()) }
+        fun List<OutputSegment>.messages() = sortedBy { it.chunkIndex }.groupBy { it.messageId }.map { (id, parts) -> Message(id, parts.render(), parts.minOf { it.chunkIndex }) }
+        val pendingOrder = ((snapshot?.outputSegments.orEmpty() + snapshot?.steps.orEmpty().flatMap { it.output }).maxOfOrNull { it.chunkIndex } ?: -1L) + 1
+        var nextOrder = pendingOrder
         return Turn(TurnId(id), userText, runId?.let(::ExecutionId), snapshot?.let { RunProjection.verifiedPhase(it).domain() },
             snapshot?.outputSegments?.filterNot { it.messageId.startsWith("diagnostic:") }?.messages().orEmpty() +
                 if (snapshot?.artifacts?.any { content[it.value]?.expired == true } == true) listOf(Message("retained-artifact-notice", "技能草稿已按保留策略清理")) else emptyList(),
-            snapshot?.steps?.map { Step(it.stepId, it.toolKind, it.summary, it.output.render("\n"), it.outcome?.name) }.orEmpty(),
+            snapshot?.steps?.map { step ->
+                val order = if (step.order >= 0) step.order else step.output.minOfOrNull { it.chunkIndex } ?: nextOrder++
+                Step(step.stepId, step.toolKind, step.summary, step.output.render("\n"), step.outcome?.name, order)
+            }.orEmpty(),
             snapshot?.outputSegments?.filter { it.messageId.startsWith("diagnostic:") }?.messages().orEmpty(),
             if (error == OutputCache.VERIFICATION_WARNING) listOfNotNull(snapshot?.terminalEvidence?.error?.message(), error).joinToString("\n")
             else error ?: snapshot?.terminalEvidence?.error?.message(), snapshot?.progressSummary, pending, occupied, expanded, storageJson.decodeFromString(expandedSteps),

@@ -92,7 +92,7 @@ internal class AndroidRuntimePorts(
                     onTerminated = { code -> exit = code; registry.terminated(code) }, input = session?.input
                 ).collect { line ->
                     when (line) {
-                        is OutputLine.Stdout -> if (session?.onStdout(line.text) != false) output(sanitize(line.text, config), false)
+                        is OutputLine.Stdout -> if (session?.onStdout(line.text, autoAllow = true) != false) output(sanitize(line.text, config), false)
                         is OutputLine.Stderr -> output(sanitize(line.text, config), true)
                         is OutputLine.Exit -> exit = line.code
                     }

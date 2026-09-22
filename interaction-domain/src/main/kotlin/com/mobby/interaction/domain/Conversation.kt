@@ -109,9 +109,3 @@ object ConversationRules {
         ), project = current.project, creator = creator)
     }
 }
-
-/** Manual expansion is independent of execution; errors/approvals render outside the card. */
-data class ExecutionExpansion(val manual: Boolean? = null) {
-    fun expanded(phase: ExecutionPhase, readingDetails: Boolean = false): Boolean =
-        manual ?: (phase != ExecutionPhase.SUCCEEDED || readingDetails)
-}

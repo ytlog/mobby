@@ -237,8 +237,14 @@ class RunCoordinator(
                     val existing = old.steps.firstOrNull { it.stepId == fact.id }
                     if (existing == null) {
                         if (old.steps.size >= 512) return@withLock
-                        val tool = ToolSnapshot(fact.id, fact.kind, fact.summary.take(2048))
-                        append(old, RuntimeEvent.ToolStarted(fact.id, fact.kind, fact.summary.take(2048)), old.copy(steps = old.steps + tool))
+                        val order = chunk++
+                        val summary = fact.summary.take(2048)
+                        val tool = ToolSnapshot(fact.id, fact.kind, summary, order = order)
+                        append(old, RuntimeEvent.ToolStarted(fact.id, fact.kind, summary, order), old.copy(steps = old.steps + tool))
+                    } else if (fact.summary.length > existing.summary.length) {
+                        val summary = fact.summary.take(2048)
+                        val tool = existing.copy(summary = summary, toolKind = fact.kind)
+                        append(old, RuntimeEvent.ToolStarted(fact.id, fact.kind, summary, existing.order), old.copy(steps = old.steps.map { if (it.stepId == fact.id) tool else it }))
                     }
                     if (fact.output != null) segment("tool:${fact.id}", fact.output)?.let { part ->
                         val state = journal.snapshot(id)!!

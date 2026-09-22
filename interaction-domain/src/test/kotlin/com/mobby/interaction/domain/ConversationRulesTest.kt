@@ -89,13 +89,29 @@ class ConversationRulesTest {
         assertTrue(skill.draft.attachments.isEmpty())
         assertEquals("draft", original.draft.text)
     }
-    @Test fun `manual expansion and active reading override success collapse`() {
-        for (phase in ExecutionPhase.values()) {
-            assertTrue(ExecutionExpansion(true).expanded(phase))
-            assertFalse(ExecutionExpansion(false).expanded(phase))
-            assertEquals(phase != ExecutionPhase.SUCCEEDED, ExecutionExpansion().expanded(phase))
-        }
-        assertTrue(ExecutionExpansion().expanded(ExecutionPhase.SUCCEEDED, readingDetails = true))
+    @Test fun `adjacent tool calls group between replies and thinking is not a step`() {
+        val turn = Turn(TurnId("t"), "打开应用商店", null, ExecutionPhase.RUNNING, occupied = true,
+            messages = listOf(Message("a", "先看屏幕", 0), Message("b", "再打开商店", 3)),
+            steps = listOf(
+                Step("s1", "snapshot", "snapshot", "ok", "SUCCEEDED", 1),
+                Step("s2", "click", "click", "ok", "SUCCEEDED", 2),
+                Step("s3", "recents", "recents", "", null, 4)))
+        val entries = turn.transcript()
+        assertEquals("先看屏幕", (entries[0] as TranscriptEntry.Reply).message.text)
+        assertEquals(listOf("s1", "s2"), (entries[1] as TranscriptEntry.ToolRun).steps.map { it.id })
+        assertEquals("再打开商店", (entries[2] as TranscriptEntry.Reply).message.text)
+        assertEquals(listOf("s3"), (entries[3] as TranscriptEntry.ToolRun).steps.map { it.id })
+        assertEquals(4, entries.size)
+    }
+    @Test fun `last reply in the turn is the only place for reply actions`() {
+        val turn = Turn(TurnId("t"), "任务", null, ExecutionPhase.SUCCEEDED,
+            messages = listOf(Message("a", "中间说明", 0), Message("b", "最终回复", 2)),
+            steps = listOf(Step("s1", "bash", "ls", "ok", "SUCCEEDED", 1)))
+        val replies = turn.transcript().filterIsInstance<TranscriptEntry.Reply>()
+        assertEquals(listOf("a", "b"), replies.map { it.message.id })
+        assertEquals("b", replies.last().message.id)
+        assertEquals("中间说明\n最终回复", turn.messages.joinToString("\n") { it.text })
+        assertTrue(turn.copy(messages = emptyList()).transcript().none { it is TranscriptEntry.Reply })
     }
     @Test fun `submit freezes config and preserves text typed while waiting`() = runTest {
         val repository = MemoryRepository(original)

@@ -22,8 +22,10 @@ class ClaudeControlSession(private val requestId: RequestId, private val userMes
             putJsonObject("request") { put("subtype", "initialize"); put("hooks", JsonNull) }
         })
     }
-    /** False consumes a transport-only event; true forwards the line to the runtime decoder. */
-    @Synchronized fun onStdout(line: String): Boolean {
+    /** False consumes a transport-only event; true forwards the line to the runtime decoder.
+     *  autoAllow answers a well-formed can_use_tool with the original input. The Android app
+     *  sandbox is the execution boundary, so phone actions must not wait on a confirmation card. */
+    @Synchronized fun onStdout(line: String, autoAllow: Boolean = false): Boolean {
         check(!finished) { "CLI output after terminal result" }
         val value = runCatching { Json.parseToJsonElement(line) as? JsonObject }.getOrNull()
             ?: return true // Decoder rejects malformed/truncated approvals; no parameters can be authorized here.
@@ -45,6 +47,7 @@ class ClaudeControlSession(private val requestId: RequestId, private val userMes
                 check(fact.id !in seen && seen.size < 512 && pending.size < 16) { "Reused or excessive CLI permission requests" }
                 pending[fact.id] = request
                 seen += fact.id
+                if (autoAllow && offer(requestId, fact.id, ApprovalChoice.ALLOW_ONCE)) return false
             }
             "result" -> {
                 check(initialized && pending.isEmpty()) { "CLI completed with unresolved permissions" }

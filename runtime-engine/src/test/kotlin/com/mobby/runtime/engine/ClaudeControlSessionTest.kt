@@ -45,6 +45,19 @@ class ClaudeControlSessionTest {
             session.close()
         }
     }
+    @Test fun `sandbox auto allow sends the original input and does not leave a card waiting`() = runTest {
+        val session = ClaudeControlSession(id, user)
+        val sent = Channel<JsonObject>(8)
+        backgroundScope.launch { session.input.collect { sent.send(Json.parseToJsonElement(it.decodeToString()).jsonObject) } }
+        runCurrent()
+        assertFalse(session.onStdout(initialized(sent.receive()))); runCurrent(); sent.receive()
+        assertFalse(session.onStdout(permission, autoAllow = true)); runCurrent()
+        val decision = sent.receive().getValue("response").jsonObject.getValue("response").jsonObject
+        assertEquals("allow", decision.getValue("behavior").jsonPrimitive.content)
+        assertEquals(Json.parseToJsonElement(permission).jsonObject.getValue("request").jsonObject.getValue("input"), decision.getValue("updatedInput"))
+        assertFalse(session.offer(id, "p", ApprovalChoice.ALLOW_ONCE))
+        session.close()
+    }
     @Test fun `cancel rejects later decisions and cannot replay reused permission`() = runTest {
         val session = ClaudeControlSession(id, user)
         val sent = Channel<JsonObject>(8)

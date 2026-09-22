@@ -15,7 +15,12 @@ internal object RunProjection {
             is RuntimeEvent.ProgressSummary -> current.copy(progressSummary = payload.text)
             is RuntimeEvent.AssistantDelta -> current.copy(outputSegments = current.outputSegments + payload.segment)
             is RuntimeEvent.AssistantCompleted -> current
-            is RuntimeEvent.ToolStarted -> current.copy(steps = current.steps.filterNot { it.stepId == payload.stepId } + ToolSnapshot(payload.stepId, payload.toolKind, payload.summary))
+            is RuntimeEvent.ToolStarted -> {
+                val previous = current.steps.firstOrNull { it.stepId == payload.stepId }
+                val order = if (payload.order >= 0) payload.order else previous?.order ?: -1
+                val tool = ToolSnapshot(payload.stepId, payload.toolKind, payload.summary, previous?.outcome, previous?.output ?: emptyList(), order)
+                current.copy(steps = current.steps.filterNot { it.stepId == payload.stepId } + tool)
+            }
             is RuntimeEvent.ToolOutput -> current.copy(steps = current.steps.map { if (it.stepId == payload.stepId) it.copy(output = it.output + payload.segment) else it })
             is RuntimeEvent.ToolFinished -> current.copy(steps = current.steps.map { if (it.stepId == payload.stepId) it.copy(outcome = payload.outcome) else it })
             is RuntimeEvent.ApprovalRequired -> current.copy(phase = RunPhase.AWAITING_APPROVAL, pendingApprovals = current.pendingApprovals.filterNot { it.approvalId == payload.approval.approvalId } + payload.approval)
