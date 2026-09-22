@@ -20,7 +20,7 @@ object PipeProcess {
 
     fun stream(args: List<String>, directory: File, environment: Map<String, String>, timeoutMs: Long,
         onStarted: (Int) -> Unit = {}, onTerminated: (Int?) -> Unit = {},
-        input: Flow<ByteArray>? = null): Flow<OutputLine> = channelFlow {
+        input: Flow<ByteArray>? = null, unbounded: Boolean = false): Flow<OutputLine> = channelFlow {
         require(args.isNotEmpty() && args.none { '\u0000' in it })
         val child = spawn(args.toTypedArray(), environment.map { "${it.key}=${it.value}" }.toTypedArray(), directory.absolutePath, input != null)
             ?: error("Unable to create runtime process")
@@ -49,7 +49,7 @@ object PipeProcess {
         var exitCode: Int? = null
         try {
             onStarted(pid)
-            withTimeout(timeoutMs) {
+            suspend fun watch() {
                 var exit: Int
                 while (true) {
                     failure.get()?.let { throw it }
@@ -65,6 +65,7 @@ object PipeProcess {
                 failure.get()?.let { throw it }
                 send(OutputLine.Exit(exit))
             }
+            if (unbounded) watch() else withTimeout(timeoutMs) { watch() }
         } finally {
             withContext(NonCancellable + Dispatchers.IO) {
                 writer?.cancel()

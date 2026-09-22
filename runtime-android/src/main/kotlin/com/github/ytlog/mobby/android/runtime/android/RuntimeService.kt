@@ -19,6 +19,7 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
     override val environment = mutableEnvironment.asStateFlow()
     private lateinit var runtime: RuntimeEnvironment
     private lateinit var registry: ProcessRegistry
+    private lateinit var ports: AndroidRuntimePorts
     private lateinit var coordinator: RunCoordinator
     private lateinit var journal: RuntimeJournal
     private lateinit var outputStore: OutputStore
@@ -53,17 +54,23 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
         runtime = RuntimeEnvironment(this)
         registry = ProcessRegistry(this)
         journal = RuntimeJournal(this, policyProvider = EventHistorySettingsStore(this)::policy)
-        val ports = AndroidRuntimePorts(this, runtime, environment, registry)
+        ports = AndroidRuntimePorts(this, runtime, environment, registry, scope)
         outputStore = OutputStore(this, journal::outputExpired, EventHistorySettingsStore(this)::outputPolicy)
         coordinator = RunCoordinator(scope, ports, ports, journal, outputStore)
         getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel("runtime", "任务运行", NotificationManager.IMPORTANCE_LOW))
-        scope.launch { coordinator.active.collect { if (it == null) submission.withLock {
-            if (coordinator.active.value == null) {
-                endForeground()
-                if (recovered && environment.value.phase == EnvironmentPhase.READY) {
-                    try { outputStore.compact(journal) }
-                    catch (e: CancellationException) { throw e }
-                    catch (_: Exception) { mutableEnvironment.value = EnvironmentSnapshot(EnvironmentPhase.FAILED, "输出清理未完成，请重新检查运行环境", RuntimeError(ErrorCode.STORAGE_FULL, true)) }
+        scope.launch { combine(coordinator.active, ports.live) { _, _ -> Unit }.collect { submission.withLock {
+            val running = coordinator.active.value != null
+            val holding = ports.live.value
+            when {
+                running -> withContext(Dispatchers.Main) { showForeground("可返回应用查看进度或停止任务") }
+                holding -> withContext(Dispatchers.Main) { showForeground("会话仍在运行，返回应用可继续") }
+                else -> {
+                    endForeground()
+                    if (recovered && environment.value.phase == EnvironmentPhase.READY) {
+                        try { outputStore.compact(journal) }
+                        catch (e: CancellationException) { throw e }
+                        catch (_: Exception) { mutableEnvironment.value = EnvironmentSnapshot(EnvironmentPhase.FAILED, "输出清理未完成，请重新检查运行环境", RuntimeError(ErrorCode.STORAGE_FULL, true)) }
+                    }
                 }
             }
         } } }
@@ -275,12 +282,12 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
         shell?.cancel()
         return CommandResult.Accepted
     }
-    private fun beginForeground() {
+    private fun beginForeground() = showForeground("可返回应用查看进度或停止任务")
+    private fun showForeground(text: String) {
         check(environment.value.phase == EnvironmentPhase.READY)
-        if (notificationStarted) return
         startService(Intent(this, RuntimeService::class.java))
         val notification = Notification.Builder(this, "runtime").setSmallIcon(android.R.drawable.stat_notify_sync)
-            .setContentTitle("mobby 正在执行任务").setContentText("可返回应用查看进度或停止任务")
+            .setContentTitle("mobby 正在执行任务").setContentText(text)
             .setContentIntent(RuntimeHost.notificationIntent?.invoke()).setOngoing(true).build()
         if (android.os.Build.VERSION.SDK_INT >= 34) startForeground(1, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         else if (android.os.Build.VERSION.SDK_INT >= 29) startForeground(1, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_NONE)
@@ -292,6 +299,7 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
         if (notificationStarted) { stopForeground(STOP_FOREGROUND_REMOVE); notificationStarted = false; stopSelf() }
     }
     internal open suspend fun stopForHost(cause: StopCause) {
+        if (::ports.isInitialized) ports.shutdownLive()
         if (coordinator.active.value == shellId) requestShellStop(cause)
         else coordinator.active.value?.let { coordinator.requestStop(it, cause) }
         withTimeoutOrNull(3_000) { coordinator.active.first { it == null } }

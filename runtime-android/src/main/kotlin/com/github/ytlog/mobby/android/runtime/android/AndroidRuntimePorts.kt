@@ -6,14 +6,29 @@ import com.github.ytlog.mobby.android.runtime.api.*
 import com.github.ytlog.mobby.android.runtime.engine.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.json.Json
 import java.io.File
+import java.util.Base64
+import java.util.concurrent.atomic.AtomicReference
 
 internal class AndroidRuntimePorts(
     private val context: Context, private val runtime: RuntimeEnvironment,
-    private val state: StateFlow<EnvironmentSnapshot>, private val registry: ProcessRegistry
+    private val state: StateFlow<EnvironmentSnapshot>, private val registry: ProcessRegistry,
+    private val scope: CoroutineScope,
 ) : EnvironmentPort, ProcessPort {
-    @Volatile private var control: ClaudeControlSession? = null
+    private val gate = Mutex()
+    private var held: LiveAgent? = null
+    private val liveState = MutableStateFlow(false)
+    val live: StateFlow<Boolean> = liveState.asStateFlow()
+    @Volatile private var control: AgentSession? = null
     override fun offerApproval(requestId: RequestId, approvalId: String, choice: ApprovalChoice) = control?.offer(requestId, approvalId, choice) == true
+    suspend fun shutdownLive() {
+        val current = gate.withLock { held.also { held = null } }
+        current?.shutdown(force = true)
+        liveState.value = false
+    }
     private val skills get() = SkillStore(runtime.sdk.vfs.homeDir)
     private val resources get() = ResourceStore(File(context.filesDir, "input-resources"))
     private val gateways = GatewayStore(context)
@@ -54,18 +69,62 @@ internal class AndroidRuntimePorts(
         }.isSuccess
         if (valid) null else RuntimeError(ErrorCode.INVALID_CONFIG)
     }
-    override suspend fun execute(request: RunRequest, stop: StateFlow<StopCause?>, output: suspend (String, Boolean) -> Unit): ProcessResult = supervisorScope {
+    override suspend fun execute(request: RunRequest, stop: StateFlow<StopCause?>, output: suspend (String, Boolean) -> Unit): ProcessResult {
         val config = withContext(Dispatchers.IO) { gateways.load(mode(request.agentId), request.gatewayProfileRef.version).also { it.validateFor(mode(request.agentId)) } }
-        var started = false
-        var exit: Int? = null
-        val worker = async(Dispatchers.IO) {
-            val workingDirectory = requireNotNull(runtime.workspaces.resolve(request.workspaceRef))
-            val prepared = resources.prepare(request.inputParts, request.workspaceRef)
-            val skillRefs = request.capabilityRefs.filterNot { PhonePlugin.accepts(it) }.toSet()
-            var phone: PhoneCommandServer? = null
-            var bridgeDir: File? = null
-            val extras = mutableListOf<Pair<String, File>>()
-            var stagedPhone = false
+        val reusable = gate.withLock { held?.takeIf { it.accepts(request) } }
+        val watcher = scope.launch { stop.filterNotNull().first(); gate.withLock { held }?.shutdown(force = true) }
+        var files: AgentInputFiles? = null
+        return try {
+            if (reusable != null) {
+                val prepared = assemble(request, reusable.extras)
+                files = prepared.files
+                reusable.run(prepared.turn, stop, submit = true) { line, error -> output(sanitize(line, config), error) }
+            } else {
+                shutdownLive()
+                start(request, config, stop) { line, error -> output(sanitize(line, config), error) }
+            }
+        } catch (_: TimeoutCancellationException) {
+            ProcessResult(null, false, ErrorCode.TIMEOUT)
+        } catch (e: CancellationException) {
+            if (!currentCoroutineContext().isActive) throw e
+            held?.shutdown(force = true)
+            ProcessResult(null, false, if (stop.value == null) ErrorCode.INTERRUPTED else null)
+        } catch (_: Exception) {
+            held?.shutdown(force = true)
+            ProcessResult(null, false, ErrorCode.PROTOCOL_ERROR)
+        } finally { watcher.cancel(); files?.close() }
+    }
+    private fun assemble(request: RunRequest, extras: List<Pair<String, File>>): PreparedTurn {
+        val prepared = resources.prepare(request.inputParts, request.workspaceRef)
+        val skillRefs = request.capabilityRefs.filterNot { PhonePlugin.accepts(it) }.toSet()
+        var prompt = skills.prompt(request.agentId, skillRefs, prepared.prompt, extras)
+        val structured = request.requestedOutput == RequestedOutput.SKILL_PROPOSAL
+        if (structured) prompt += "\n\n" + SkillGeneration.instruction
+        val files = if (prepared.images.isEmpty()) null else AgentInputFiles.create(File(context.filesDir, "agent-inputs"), prepared.images)
+        val images = prepared.images.mapIndexed { index, image ->
+            TurnImage(image.mediaType, files?.imagePaths?.get(index) ?: "/", Base64.getEncoder().encodeToString(image.bytes))
+        }
+        val schema = if (structured) Json.parseToJsonElement(SkillGeneration.schema) else null
+        return PreparedTurn(AgentTurn(request.requestId, prompt, images, schema), files)
+    }
+    private suspend fun start(request: RunRequest, config: GatewayConfig, stop: StateFlow<StopCause?>, output: suspend (String, Boolean) -> Unit): ProcessResult {
+        val workingDirectory = requireNotNull(runtime.workspaces.resolve(request.workspaceRef))
+        var phone: PhoneCommandServer? = null
+        var bridgeDir: File? = null
+        val extras = mutableListOf<Pair<String, File>>()
+        var stagedPhone = false
+        var bridgeReleased = false
+        val bridgeGate = Any()
+        fun releaseBridge() = synchronized(bridgeGate) {
+            if (bridgeReleased) return@synchronized
+            bridgeReleased = true
+            phone?.close()
+            if (stagedPhone) skills.unstage(request.agentId, PhonePlugin.SKILL)
+            bridgeDir?.deleteRecursively()
+        }
+        var prepared: PreparedTurn? = null
+        var launched = false
+        try {
             if (request.capabilityRefs.any { PhonePlugin.accepts(it) }) {
                 val token = PhoneCommands.token()
                 phone = PhoneCommandServer(token, PhoneAccessibilityService.operator())
@@ -76,45 +135,46 @@ internal class AndroidRuntimePorts(
                 stagedPhone = staged != null
                 extras += PhonePlugin.SKILL to (staged ?: authored)
             }
-            var prompt = skills.prompt(request.agentId, skillRefs, prepared.prompt, extras)
-            val structured = request.requestedOutput == RequestedOutput.SKILL_PROPOSAL
-            if (structured) prompt += "\n\n" + SkillGeneration.instruction
-            val input = if (request.agentId != AgentId.CODEX || prepared.images.isEmpty() && !structured) null
-                else AgentInputFiles.create(File(context.filesDir, "agent-inputs"), prepared.images, if (structured) SkillGeneration.schema else null)
-            val session = if (request.agentId == AgentId.CLAUDE_CODE) ClaudeControlSession(request.requestId, AgentInputFiles.claudeMessage(prompt, prepared.images)) else null
-            control = session
-            try {
-                val args = AgentCommand.arguments(request, runtime.executable(mode(request.agentId)), prompt, input?.imagePaths.orEmpty(), session != null, approvals = session != null, schemaPath = input?.schemaPath)
-                runtime.sdk.executor.executeArgsStreaming(listOf(File(runtime.sdk.vfs.binDir, "node").absolutePath,
-                    File(context.filesDir, "gateway.cjs").absolutePath, mode(request.agentId).name) + args,
-                    workingDirectory, mapOf("MOBBY_GATEWAY_CONFIG" to config.json()),
-                    onStarted = { pid -> started = true; registry.started(pid) },
-                    onTerminated = { code -> exit = code; registry.terminated(code) }, input = session?.input
-                ).collect { line ->
-                    when (line) {
-                        is OutputLine.Stdout -> if (session?.onStdout(line.text, autoAllow = true) != false) output(sanitize(line.text, config), false)
-                        is OutputLine.Stderr -> output(sanitize(line.text, config), true)
-                        is OutputLine.Exit -> exit = line.code
+            val ready = assemble(request, extras)
+            prepared = ready
+            val connection = AgentSessions.connect(request, runtime.executable(mode(request.agentId)), workingDirectory.absolutePath, ready.turn)
+            val agent = LiveAgent(request, connection.session, extras)
+            control = connection.session
+            val exit = AtomicReference<Int?>(null)
+            agent.job = scope.launch(Dispatchers.IO) {
+                try {
+                    runtime.sdk.executor.executeArgsStreaming(listOf(File(runtime.sdk.vfs.binDir, "node").absolutePath,
+                        File(context.filesDir, "gateway.cjs").absolutePath, mode(request.agentId).name) + connection.arguments,
+                        workingDirectory, mapOf("MOBBY_GATEWAY_CONFIG" to config.json()),
+                        onStarted = { pid -> agent.started = true; liveState.value = true; registry.started(pid) },
+                        onTerminated = { code -> exit.set(code); registry.terminated(code) },
+                        input = connection.session.input, timeoutMs = 0,
+                    ).collect { agent.inbox.send(it) }
+                } finally {
+                    withContext(NonCancellable) {
+                        agent.alive = false
+                        agent.inbox.close()
+                        connection.session.close()
+                        if (control === connection.session) control = null
+                        releaseBridge()
+                        gate.withLock {
+                            if (held === agent) held = null
+                            if (held == null) liveState.value = false
+                        }
                     }
                 }
-            } finally {
-                session?.close(); if (control === session) control = null; input?.close(); phone?.close()
-                if (stagedPhone) skills.unstage(request.agentId, PhonePlugin.SKILL)
-                bridgeDir?.deleteRecursively()
             }
+            launched = true
+            agent.exit = exit
+            gate.withLock { held = agent }
+            return try { agent.run(ready.turn, stop, submit = false, output) } finally { ready.files?.close() }
+        } catch (e: Exception) {
+            if (!launched) {
+                releaseBridge()
+                prepared?.files?.close()
+            }
+            throw e
         }
-        val watcher = launch { stop.filterNotNull().first(); control?.close(); worker.cancel() }
-        try {
-            worker.await()
-            ProcessResult(exit, !started || exit != null)
-        } catch (_: TimeoutCancellationException) {
-            ProcessResult(exit, !started || exit != null, ErrorCode.TIMEOUT)
-        } catch (e: CancellationException) {
-            if (!currentCoroutineContext().isActive) throw e
-            ProcessResult(exit, !started || exit != null, if (stop.value == null) ErrorCode.INTERRUPTED else null)
-        } catch (_: Exception) {
-            ProcessResult(exit, !started || exit != null, ErrorCode.PROTOCOL_ERROR)
-        } finally { watcher.cancel() }
     }
     private fun sanitize(text: String, config: GatewayConfig): String {
         var value = text
@@ -124,5 +184,53 @@ internal class AndroidRuntimePorts(
             value = value.replace(escaped, "[redacted]")
         }
         return value.replace(Regex("(?i)(Bearer\\s+)[A-Za-z0-9._~+/-]+=*"), "$1[redacted]")
+    }
+}
+
+private class PreparedTurn(val turn: AgentTurn, val files: AgentInputFiles?)
+
+private class LiveAgent(
+    request: RunRequest,
+    val session: AgentSession,
+    val extras: List<Pair<String, File>>,
+) {
+    val inbox = kotlinx.coroutines.channels.Channel<OutputLine>(kotlinx.coroutines.channels.Channel.UNLIMITED)
+    lateinit var job: Job
+    lateinit var exit: AtomicReference<Int?>
+    @Volatile var alive = true
+    @Volatile var started = false
+    private var binding: LiveSessionBinding? = null
+    private val anchor = request
+    fun accepts(request: RunRequest) = alive && ::job.isInitialized && job.isActive && binding?.accepts(request) == true
+    fun shutdown(force: Boolean) {
+        if (!::job.isInitialized) return
+        if (force) job.cancel() else session.release()
+    }
+    suspend fun run(turn: AgentTurn, stop: StateFlow<StopCause?>, submit: Boolean, output: suspend (String, Boolean) -> Unit): ProcessResult {
+        if (submit) session.submit(turn)
+        while (true) {
+            if (stop.value != null) return finish(retain = false, force = true)
+            val line = inbox.receiveCatching().getOrNull() ?: return finish(retain = false, force = false)
+            when (line) {
+                is OutputLine.Stdout -> {
+                    session.onStdout(line.text, autoAllow = true).forEach { output(it, false) }
+                    if (session.takeTurnEnded()) return finish(retain = stop.value == null, force = false)
+                }
+                is OutputLine.Stderr -> output(line.text, true)
+                is OutputLine.Exit -> return finish(retain = false, force = false)
+            }
+        }
+    }
+    private suspend fun finish(retain: Boolean, force: Boolean): ProcessResult {
+        val id = session.sessionId()
+        if (retain && alive && job.isActive && id != null) {
+            binding = LiveSessionBinding(anchor.agentId, anchor.workspaceRef, anchor.modelId, anchor.gatewayProfileRef, anchor.capabilityRefs, anchor.requestedOutput, id)
+            return ProcessResult(null, true, retained = true)
+        }
+        shutdown(force = force || !alive)
+        if (job.isActive) withTimeoutOrNull(5_000) { job.join() }
+        if (job.isActive) { job.cancel(); job.join() }
+        val code = if (::exit.isInitialized) exit.get() else null
+        return ProcessResult(code, code != null || started, retained = false)
     }
 }

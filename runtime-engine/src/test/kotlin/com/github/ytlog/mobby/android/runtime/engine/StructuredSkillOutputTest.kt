@@ -76,9 +76,10 @@ class StructuredSkillOutputTest {
         for (agent in AgentId.values()) for (session in listOf(null, SessionRef("session"))) {
             val request = RunRequest(RequestId("r"), agent, WorkspaceRef("default"), emptyList(), "model", GatewayProfileRef("g", 0), sessionRef = session, requestedOutput = RequestedOutput.SKILL_PROPOSAL)
             val args = AgentCommand.arguments(request, "/agent", "prompt", streamInput = agent == AgentId.CLAUDE_CODE, approvals = agent == AgentId.CLAUDE_CODE, schemaPath = if (agent == AgentId.CODEX) "/private/schema.json" else null)
-            val flag = if (agent == AgentId.CODEX) "--output-schema" else "--json-schema"
-            assertEquals(if (agent == AgentId.CODEX) "/private/schema.json" else SkillGeneration.schema, args[args.indexOf(flag) + 1])
-            assertFalse(flag in AgentCommand.arguments(request.copy(requestedOutput = RequestedOutput.TEXT), "/agent", "prompt"))
+            if (agent == AgentId.CLAUDE_CODE) assertEquals(SkillGeneration.schema, args[args.indexOf("--json-schema") + 1])
+            else { assertFalse(args.contains("--output-schema")); assertFalse(args.contains("/private/schema.json")); assertTrue(args.contains("app-server")) }
+            assertFalse("--json-schema" in AgentCommand.arguments(request.copy(requestedOutput = RequestedOutput.TEXT), "/agent", "prompt"))
+            assertFalse("--output-schema" in AgentCommand.arguments(request.copy(requestedOutput = RequestedOutput.TEXT), "/agent", "prompt"))
         }
     }
 

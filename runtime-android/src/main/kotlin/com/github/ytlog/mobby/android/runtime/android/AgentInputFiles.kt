@@ -1,5 +1,9 @@
 package com.github.ytlog.mobby.android.runtime.android
 
+import com.github.ytlog.mobby.android.runtime.api.RequestId
+import com.github.ytlog.mobby.android.runtime.engine.AgentTurn
+import com.github.ytlog.mobby.android.runtime.engine.TurnImage
+import com.github.ytlog.mobby.android.runtime.engine.claudeWireMessage
 import kotlinx.serialization.json.*
 import java.io.Closeable
 import java.io.File
@@ -10,22 +14,10 @@ import java.util.Base64
 internal class AgentInputFiles private constructor(private val directory: File, val imagePaths: List<String>, val schemaPath: String?) : Closeable {
     override fun close() = cleanup(directory)
     companion object {
-        fun claudeMessage(prompt: String, images: List<ResourceStore.Image>): JsonObject = buildJsonObject {
-            put("type", "user")
-            putJsonObject("message") {
-                put("role", "user")
-                putJsonArray("content") {
-                    add(buildJsonObject { put("type", "text"); put("text", prompt) })
-                    images.forEach { image -> add(buildJsonObject {
-                        put("type", "image")
-                        putJsonObject("source") {
-                            put("type", "base64"); put("media_type", image.mediaType)
-                            put("data", Base64.getEncoder().encodeToString(image.bytes))
-                        }
-                    }) }
-                }
-            }
-        }
+        fun claudeMessage(prompt: String, images: List<ResourceStore.Image>): JsonObject =
+            AgentTurn(RequestId("input"), prompt, images.map {
+                TurnImage(it.mediaType, "/", Base64.getEncoder().encodeToString(it.bytes))
+            }).claudeWireMessage()
 
         fun create(root: File, images: List<ResourceStore.Image>, schema: String? = null): AgentInputFiles {
             require(!Files.isSymbolicLink(root.toPath()))

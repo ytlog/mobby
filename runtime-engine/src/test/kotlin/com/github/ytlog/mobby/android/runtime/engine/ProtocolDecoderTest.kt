@@ -11,9 +11,11 @@ class ProtocolDecoderTest {
             val args = AgentCommand.arguments(request, "agent", "read and write the fixture")
             assertTrue(args.windowed(2).contains(listOf("--sandbox", "danger-full-access")))
             assertTrue(args.windowed(2).contains(listOf("-c", "approval_policy=\"never\"")))
-            assertTrue(args.indexOf("-c") < args.indexOf("exec"))
-            assertTrue(args.indexOf("--sandbox") < args.indexOf("--"))
-            if (session != null) assertTrue(args.indexOf("--sandbox") < args.indexOf("resume"))
+            assertTrue(args.indexOf("-c") < args.indexOf("app-server"))
+            assertTrue(args.windowed(3).contains(listOf("app-server", "--listen", "stdio://")))
+            assertFalse(args.contains("exec"))
+            assertFalse(args.contains("resume"))
+            assertFalse(args.contains("read and write the fixture"))
             assertFalse(args.contains("--ignore-rules"))
         }
     }
@@ -115,10 +117,15 @@ class ProtocolDecoderTest {
     @Test fun `resume is explicit and prompt remains literal without bypass flags`() {
         for (agent in AgentId.values()) {
             val request = RunRequest(RequestId("r"), agent, WorkspaceRef("default"), emptyList(), "model", GatewayProfileRef("g", 0), sessionRef = SessionRef("session-123"))
-            val args = AgentCommand.arguments(request, "agent", "--flag; $(command)\ntext")
-            assertEquals("--flag; $(command)\ntext", args.last())
-            assertEquals("--", args[args.lastIndex - 1])
-            assertTrue(args.contains("session-123"))
+            val args = AgentCommand.arguments(request, "agent", "--flag; $(command)\ntext", streamInput = agent == AgentId.CLAUDE_CODE, approvals = agent == AgentId.CLAUDE_CODE)
+            if (agent == AgentId.CLAUDE_CODE) {
+                assertFalse(args.contains("--flag; $(command)\ntext"))
+                assertTrue(args.windowed(2).contains(listOf("--resume", "session-123")))
+            } else {
+                assertFalse(args.contains("--flag; $(command)\ntext"))
+                assertFalse(args.contains("session-123"))
+                assertTrue(args.contains("app-server"))
+            }
             assertFalse(args.any { "bypass" in it || "skip-permissions" in it || it == "--last" })
         }
     }
@@ -126,7 +133,8 @@ class ProtocolDecoderTest {
         val request = RunRequest(RequestId("r"), AgentId.CODEX, WorkspaceRef("default"), emptyList(), "model", GatewayProfileRef("g", 0))
         val args = AgentCommand.arguments(request, "/agent", "use the phone")
         assertFalse(args.any { "mcp_servers" in it || it == "--mcp-config" || it.startsWith("mcp__") })
-        assertEquals("use the phone", args.last())
+        assertFalse(args.contains("use the phone"))
+        assertTrue(args.contains("app-server"))
         val claude = AgentCommand.arguments(request.copy(agentId = AgentId.CLAUDE_CODE), "/agent", "use the phone")
         assertFalse(claude.contains("--mcp-config"))
         assertFalse(claude.contains("--allowedTools"))

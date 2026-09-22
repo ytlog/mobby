@@ -30,7 +30,7 @@ APK：`app/build/outputs/apk/debug/app-debug.apk`，仅 ARM64，Android 8.0 及�
 加号中的插件页目前提供「使用当前手机」：需先在系统无障碍设置中开启 mobby 的同名服务，再把插件加入本轮草稿。未开启或未加入时，Agent 不能操作本机；应用不会自行打开系统权限。已加入后，Claude 的每次操作确认由应用自动允许，不再逐次弹出卡片。本轮选中后按 Codex 桌面插件交付：`plugin.json` + `skills/use-current-phone/SKILL.md` + `scripts/phone.cjs`。运行时把该技能装进当前 Agent 的技能目录（Codex：`~/.agents/skills`，Claude Code：`~/.claude/skills`），并在提示中带上 `$use-current-phone` / `/use-current-phone` 与 helper 命令。不改写用户 `config.toml` 或 Claude 配置，结束后移除本次技能。后续 Agent 只要能加载同一套 SKILL.md 即可接入。插件选择在切换 Agent 时保留，技能选择仍按 Agent 清除。
 对话生成技能使用 CLI 原生结构化输出，由应用生成有效的 SKILL.md；模型未返回合规结构时会明确失败，不把普通回复登记为技能。Codex 已在真机验证生成、确认保存、重新发现与新会话实际调用。
 设置中的外观选择会保存；会话菜单的「在聊天中查找」可点击结果定位消息。
-执行中可停止，输出可复制；切换会话保留各自草稿与阅读位置，不停止原任务。同一对话里，Codex 与 Claude Code 各自复用自己的 CLI 会话，只有新建对话才从头开始。中途更换 Agent 仍留在当前对话，并为那个 Agent 单独建立或恢复会话，不会沿用另一边的上下文。归档和删除可在设置中恢复，运行中的会话不允许归档或删除。
+执行中可停止，输出可复制；切换会话或页面、把应用切到后台，都不停止正在运行的任务。同一对话里，Codex 与 Claude Code 各自复用自己的 CLI 会话：进程还在就直接追加下一条，进程退出后才恢复；只有新建对话才从头开始。中途更换 Agent 仍留在当前对话，并为那个 Agent 单独建立或恢复会话，不会沿用另一边的上下文。归档和删除可在设置中恢复，运行中的会话不允许归档或删除。
 
 已在 ARM64 Android 13 手机上验证运行环境、真实网关下的 Agent 执行、Codex 项目工作区工具调用、Claude 审批与取消，以及两种 Agent 的图片输入。相机已验证真实拍摄、预览确认加入草稿，以及预览期间进程结束后的恢复与取消。语音完整转写、TalkBack 和其他 Android 版本的部分系统行为仍待验收；逐项证据见实施记录。
 网关协议测试：`node --test runtime/gateway-tests/bridge.test.cjs`。协议范围见 [网关说明](gateway.md)。

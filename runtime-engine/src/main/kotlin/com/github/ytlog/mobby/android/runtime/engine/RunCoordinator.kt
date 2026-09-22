@@ -300,7 +300,7 @@ class RunCoordinator(
                         cause == StopCause.STORAGE_FAILURE || cause == StopCause.PROTOCOL_FAILURE -> RunPhase.FAILED
                         old.phase == RunPhase.CANCELLING -> RunPhase.CANCELLED
                         result.error != null || protocolError != null || old.pendingApprovals.isNotEmpty() -> RunPhase.FAILED
-                        result.exitCode == 0 && protocolSuccess == true -> RunPhase.SUCCEEDED
+                        (result.retained || result.exitCode == 0) && protocolSuccess == true -> RunPhase.SUCCEEDED
                         else -> RunPhase.FAILED
                     }
                     val error = when (phase) {

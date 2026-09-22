@@ -4,16 +4,20 @@ import com.github.ytlog.mobby.android.runtime.api.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.serialization.json.*
-import java.io.Closeable
 import java.util.UUID
 
-/** One live CLI connection. Original tool inputs stay in memory; only sanitized stdout is journaled. */
-class ClaudeControlSession(private val requestId: RequestId, private val userMessage: JsonObject) : Closeable {
+/** Claude Code stream-json transport behind [AgentSession]. */
+class ClaudeControlSession : AgentSession {
     private val initializeId = "initialize-${UUID.randomUUID()}"
     private val queue = Channel<ByteArray>(18)
-    val input = queue.receiveAsFlow()
+    override val input = queue.receiveAsFlow()
+    private var requestId = RequestId("")
+    private var pendingTurn: AgentTurn? = null
     private var initialized = false
     private var finished = false
+    private var turnOpen = false
+    private var turnEnded = false
+    private var sessionId: String? = null
     private val pending = mutableMapOf<String, JsonObject>()
     private val seen = mutableSetOf<String>()
     init {
@@ -22,43 +26,54 @@ class ClaudeControlSession(private val requestId: RequestId, private val userMes
             putJsonObject("request") { put("subtype", "initialize"); put("hooks", JsonNull) }
         })
     }
-    /** False consumes a transport-only event; true forwards the line to the runtime decoder.
-     *  autoAllow answers a well-formed can_use_tool with the original input. The Android app
-     *  sandbox is the execution boundary, so phone actions must not wait on a confirmation card. */
-    @Synchronized fun onStdout(line: String, autoAllow: Boolean = false): Boolean {
-        check(!finished) { "CLI output after terminal result" }
+    override fun sessionId() = sessionId
+    @Synchronized override fun submit(turn: AgentTurn) {
+        check(!finished && !turnOpen && pendingTurn == null && pending.isEmpty()) { "CLI cannot accept another message" }
+        requestId = turn.requestId
+        if (!initialized) { pendingTurn = turn; return }
+        turnEnded = false
+        turnOpen = true
+        enqueue(turn.claudeWireMessage())
+    }
+    @Synchronized override fun takeTurnEnded(): Boolean = turnEnded.also { if (it) turnEnded = false }
+    @Synchronized override fun release() { if (!finished) queue.close() }
+    @Synchronized override fun onStdout(line: String, autoAllow: Boolean): List<String> {
+        if (finished) return emptyList()
         val value = runCatching { Json.parseToJsonElement(line) as? JsonObject }.getOrNull()
-            ?: return true // Decoder rejects malformed/truncated approvals; no parameters can be authorized here.
-        when (value["type"]?.jsonPrimitive?.contentOrNull) {
+            ?: return listOf(line)
+        value.text("session_id")?.let { if (sessionId == null) sessionId = it }
+        when (value.text("type")) {
             "control_response" -> {
                 val response = value["response"]?.jsonObject ?: error("Missing CLI initialization response")
-                check(!initialized && response["request_id"]?.jsonPrimitive?.content == initializeId &&
-                    response["subtype"]?.jsonPrimitive?.content == "success") { "CLI initialization failed" }
+                check(!initialized && response.text("request_id") == initializeId && response.text("subtype") == "success") { "CLI initialization failed" }
                 initialized = true
-                enqueue(userMessage)
-                return false
+                val turn = checkNotNull(pendingTurn) { "CLI initialized before a turn was submitted" }
+                pendingTurn = null
+                turnOpen = true
+                enqueue(turn.claudeWireMessage())
+                return emptyList()
             }
             "control_request" -> {
                 check(initialized) { "CLI requested permission before initialization" }
                 val fact = ProtocolDecoder(AgentId.CLAUDE_CODE).decode(line).filterIsInstance<AgentFact.Approval>().singleOrNull()
                     ?: error("Unsupported CLI control request")
                 val request = value.getValue("request").jsonObject
-                pending[fact.id]?.let { check(it == request) { "Conflicting CLI permission request" }; return false }
+                pending[fact.id]?.let { check(it == request) { "Conflicting CLI permission request" }; return emptyList() }
                 check(fact.id !in seen && seen.size < 512 && pending.size < 16) { "Reused or excessive CLI permission requests" }
                 pending[fact.id] = request
                 seen += fact.id
-                if (autoAllow && offer(requestId, fact.id, ApprovalChoice.ALLOW_ONCE)) return false
+                if (autoAllow && offer(requestId, fact.id, ApprovalChoice.ALLOW_ONCE)) return emptyList()
             }
             "result" -> {
+                if (!turnOpen) return emptyList()
                 check(initialized && pending.isEmpty()) { "CLI completed with unresolved permissions" }
-                finished = true
-                queue.close() // EOF only after a terminal CLI result, never while waiting for a decision.
+                turnOpen = false
+                turnEnded = true
             }
         }
-        return true
+        return listOf(line)
     }
-    /** Called only after the matching decision has been persisted by the coordinator. */
-    @Synchronized fun offer(requestId: RequestId, approvalId: String, choice: ApprovalChoice): Boolean {
+    @Synchronized override fun offer(requestId: RequestId, approvalId: String, choice: ApprovalChoice): Boolean {
         if (requestId != this.requestId || finished || !initialized) return false
         val request = pending[approvalId] ?: return false
         val reply = buildJsonObject {
@@ -79,4 +94,5 @@ class ClaudeControlSession(private val requestId: RequestId, private val userMes
     }
     @Synchronized override fun close() { finished = true; pending.clear(); seen.clear(); queue.cancel() }
     private fun enqueue(value: JsonObject) { check(queue.trySend((value.toString() + "\n").toByteArray()).isSuccess) { "CLI input queue unavailable" } }
+    private fun JsonObject.text(key: String) = (get(key) as? JsonPrimitive)?.contentOrNull
 }

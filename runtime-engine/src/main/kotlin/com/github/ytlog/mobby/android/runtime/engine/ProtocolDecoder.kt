@@ -38,7 +38,8 @@ class ProtocolDecoder(private val agent: AgentId, private val requestedOutput: R
                 else listOf(AgentFact.Diagnostic("invalid-json", line))
         return if (agent == AgentId.CODEX) codex(value, line) else claude(value, line)
     }
-    private fun codex(value: JsonObject, line: String): List<AgentFact> { return when (value.text("type")) {
+    private fun codex(value: JsonObject, line: String): List<AgentFact> {
+        return when (value.text("type")) {
         "thread.started" -> value.text("thread_id")?.let { listOf(AgentFact.Session(it)) }.orEmpty()
         "turn.started" -> emptyList()
         "turn.completed" -> if (requestedOutput == RequestedOutput.SKILL_PROPOSAL) finishSkill(skillResult) else listOf(AgentFact.Completed(true))
@@ -83,7 +84,7 @@ class ProtocolDecoder(private val agent: AgentId, private val requestedOutput: R
                     }
                 }
                 "command_execution", "file_change", "mcp_tool_call", "web_search", "todo_list" -> {
-                    val outcome = if (!completed) null else if (item.text("status") == "failed" ||
+                    val outcome = if (!completed) null else if (item.text("status") == "failed" || item.text("status") == "declined" ||
                         (item["exit_code"] as? JsonPrimitive)?.intOrNull?.let { it != 0 } == true) ToolOutcome.FAILED else ToolOutcome.SUCCEEDED
                     val kind = if (type == "mcp_tool_call") item.text("tool") ?: type else type
                     val summary = item.text("command") ?: item["arguments"]?.toString()?.takeIf { it != "{}" }
@@ -96,7 +97,7 @@ class ProtocolDecoder(private val agent: AgentId, private val requestedOutput: R
             }
         }
         else -> listOf(AgentFact.Diagnostic(value.text("type") ?: "unknown", line))
-    }
+        }
     }
 
     private fun claude(value: JsonObject, line: String): List<AgentFact> = buildList {
@@ -261,21 +262,16 @@ object AgentCommand {
         require(!approvals || request.agentId == AgentId.CLAUDE_CODE && streamInput)
         val structured = request.requestedOutput == RequestedOutput.SKILL_PROPOSAL
         require(schemaPath == null || structured && request.agentId == AgentId.CODEX && schemaPath.startsWith("/") && '\u0000' !in schemaPath)
-        require(!structured || request.agentId != AgentId.CODEX || schemaPath != null)
         val session = request.sessionRef?.value
         require(session == null || session.matches(Regex("[A-Za-z0-9-]{1,100}")))
         return when (request.agentId) {
             AgentId.CODEX -> buildList {
-                // Android UID/SELinux is the user-authorized execution boundary. The phone
-                // cannot provide Codex's additional Linux namespace sandbox.
+                // Phone Codex 0.155.1 exec accepts one prompt and exits. A live app-server
+                // takes later turns on the same stdin. The prompt itself is not an argument.
                 addAll(listOf(executable, "--sandbox", "danger-full-access",
                     "-c", "approval_policy=\"never\""))
                 request.reasoningLevel?.let { addAll(listOf("-c", "model_reasoning_effort=${JsonPrimitive(it)}")) }
-                addAll(listOf("exec", "--json"))
-                if (session != null) addAll(listOf("resume", session))
-                if (structured) addAll(listOf("--output-schema", requireNotNull(schemaPath)))
-                imagePaths.forEach { addAll(listOf("--image", it)) }
-                add("--"); add(prompt)
+                addAll(listOf("app-server", "--listen", "stdio://"))
             }
             AgentId.CLAUDE_CODE -> buildList {
                 addAll(listOf(executable, "-p", "--output-format", "stream-json", "--include-partial-messages", "--verbose"))

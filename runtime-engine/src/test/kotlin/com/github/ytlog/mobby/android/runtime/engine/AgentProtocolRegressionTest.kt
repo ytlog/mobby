@@ -11,7 +11,8 @@ class AgentProtocolRegressionTest {
         for (agent in AgentId.values()) {
             val request = RunRequest(RequestId("r"), agent, WorkspaceRef("default"), emptyList(), "model", GatewayProfileRef("g", 0))
             val args = AgentCommand.arguments(request, "/test/agent", prompt)
-            assertEquals(prompt, args.last()); assertEquals("--", args[args.lastIndex - 1])
+            if (agent == AgentId.CLAUDE_CODE) { assertEquals(prompt, args.last()); assertEquals("--", args[args.lastIndex - 1]) }
+            else { assertFalse(args.contains(prompt)); assertTrue(args.contains("app-server")) }
             assertFalse(args.windowed(2).contains(listOf("-c", prompt)))
         }
     }
@@ -40,9 +41,10 @@ class AgentProtocolRegressionTest {
             val request = RunRequest(RequestId("r"), AgentId.CODEX, WorkspaceRef("default"), emptyList(), "model", GatewayProfileRef("g", 0), sessionRef = session)
             val image = "/private/image with 'quotes'.png"
             val args = AgentCommand.arguments(request, "/agent", "look", listOf(image))
-            assertEquals(image, args[args.indexOf("--image") + 1])
-            assertEquals(listOf("--", "look"), args.takeLast(2))
-            assertEquals(session != null, "resume" in args)
+            assertFalse(args.contains(image))
+            assertFalse(args.contains("look"))
+            assertFalse("resume" in args)
+            assertTrue(args.contains("app-server"))
             val claude = AgentCommand.arguments(request.copy(agentId = AgentId.CLAUDE_CODE), "/agent", "private prompt", streamInput = true)
             assertFalse(claude.contains("private prompt"))
             assertEquals("stream-json", claude[claude.indexOf("--input-format") + 1])

@@ -4,9 +4,18 @@ import com.github.ytlog.mobby.android.runtime.api.*
 import kotlinx.coroutines.flow.StateFlow
 
 enum class StopCause { USER, TIMEOUT, HOST_STOP, STORAGE_FAILURE, PROTOCOL_FAILURE }
-data class ProcessResult(val exitCode: Int?, val terminationConfirmed: Boolean, val error: ErrorCode? = null)
+data class ProcessResult(val exitCode: Int?, val terminationConfirmed: Boolean, val error: ErrorCode? = null, val retained: Boolean = false)
+/** A live CLI can take another turn only when the process, engine, workspace, model, gateway, skills and output mode are unchanged. */
+data class LiveSessionBinding(
+    val agentId: AgentId, val workspaceRef: WorkspaceRef, val modelId: String, val gatewayProfileRef: GatewayProfileRef,
+    val capabilityRefs: Set<CapabilityRef>, val requestedOutput: RequestedOutput, val sessionId: String,
+) {
+    fun accepts(request: RunRequest) = agentId == request.agentId && workspaceRef == request.workspaceRef && modelId == request.modelId &&
+        gatewayProfileRef == request.gatewayProfileRef && capabilityRefs == request.capabilityRefs &&
+        requestedOutput == request.requestedOutput && sessionId == request.sessionRef?.value
+}
 interface ProcessPort {
-    /** Returns only after stream drain and process cleanup. Stop is explicit, not caller subscription. */
+    /** Returns when the turn ends. A retained process stays open for a compatible follow-up; stop is explicit. */
     suspend fun execute(request: RunRequest, stop: StateFlow<StopCause?>, output: suspend (String, Boolean) -> Unit): ProcessResult
     /** Nonblocking handoff after durable acceptance. Never applies to another request or unknown approval.
      * True means queued, not executed. Delivery/write failure must fail execute; never replay after restart. */

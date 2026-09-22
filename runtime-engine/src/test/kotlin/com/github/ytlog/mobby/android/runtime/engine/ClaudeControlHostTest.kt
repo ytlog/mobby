@@ -24,21 +24,9 @@ class ClaudeControlHostTest {
             val root = if (mode == "resume") resumeHome!! else Files.createTempDirectory("mobby-kotlin-control-").toFile().also { roots += it }
             if (mode == "resume") { assertNotNull(resumeId); assertTrue(File(root, "approved.txt").delete()) }
             val process = ProcessBuilder(listOf("node", fixture.path, cli!!, root.path) + if (mode == "resume") listOf(resumeId!!) else emptyList()).start()
-            val control = ClaudeControlSession(RequestId(mode), buildJsonObject {
-                put("type", "user"); putJsonObject("message") {
-                    put("role", "user")
-                    putJsonArray("content") {
-                        add(buildJsonObject { put("type", "text"); put("text", "Write approved.txt using the supplied content, requesting permission as needed.") })
-                        add(buildJsonObject {
-                            put("type", "image")
-                            putJsonObject("source") {
-                                put("type", "base64"); put("media_type", "image/png")
-                                put("data", "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEUlEQVR4nGP4z8AARAxg8j8AG/ID/fPnS7EAAAAASUVORK5CYII=")
-                            }
-                        })
-                    }
-                }
-            })
+            val control = ClaudeControlSession().also { it.submit(AgentTurn(RequestId(mode),
+                "Write approved.txt using the supplied content, requesting permission as needed.",
+                listOf(TurnImage("image/png", "/fixture.png", "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEUlEQVR4nGP4z8AARAxg8j8AG/ID/fPnS7EAAAAASUVORK5CYII=")))) }
             var permissions = 0
             var terminal: AgentFact.Completed? = null
             val target = File(root, "approved.txt")
@@ -51,8 +39,9 @@ class ClaudeControlHostTest {
                         process.inputStream.bufferedReader().use { reader ->
                             while (true) {
                                 val line = reader.readLine() ?: break
-                                if (!control.onStdout(line)) continue
-                                val facts = ProtocolDecoder(AgentId.CLAUDE_CODE).decode(line)
+                                val events = control.onStdout(line)
+                                if (events.isEmpty()) continue
+                                val facts = events.flatMap { ProtocolDecoder(AgentId.CLAUDE_CODE).decode(it) }
                                 if (mode == "allow") facts.filterIsInstance<AgentFact.Session>().firstOrNull()?.let { resumeId = it.id; resumeHome = root }
                                 if (facts.any { it is AgentFact.Approval }) {
                                     permissions++
@@ -61,7 +50,7 @@ class ClaudeControlHostTest {
                                     if (mode == "cancel") { control.close(); process.destroy(); break }
                                     assertTrue(control.offer(RequestId(mode), approval.id, if (mode in listOf("allow", "resume")) ApprovalChoice.ALLOW_ONCE else ApprovalChoice.DENY))
                                 }
-                                facts.filterIsInstance<AgentFact.Completed>().singleOrNull()?.let { terminal = it }
+                                facts.filterIsInstance<AgentFact.Completed>().singleOrNull()?.let { terminal = it; control.release() }
                             }
                         }
                         assertTrue(process.waitFor(5, TimeUnit.SECONDS))
