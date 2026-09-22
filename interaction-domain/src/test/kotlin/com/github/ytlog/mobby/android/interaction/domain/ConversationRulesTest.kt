@@ -110,8 +110,23 @@ class ConversationRulesTest {
         val replies = turn.transcript().filterIsInstance<TranscriptEntry.Reply>()
         assertEquals(listOf("a", "b"), replies.map { it.message.id })
         assertEquals("b", replies.last().message.id)
-        assertEquals("中间说明\n最终回复", turn.messages.joinToString("\n") { it.text })
+        assertEquals("最终回复", turn.visibleTranscript().filterIsInstance<TranscriptEntry.Reply>().single().message.text)
         assertTrue(turn.copy(messages = emptyList()).transcript().none { it is TranscriptEntry.Reply })
+    }
+    @Test fun `a finished turn keeps one activity group and the last reply`() {
+        val turn = Turn(TurnId("t"), "任务", null, ExecutionPhase.SUCCEEDED,
+            messages = listOf(Message("a", "中间说明", 0), Message("b", "最终回复", 4)),
+            steps = listOf(
+                Step("s1", "snapshot", "snapshot", "ok", "SUCCEEDED", 1),
+                Step("think", "thinking", "思考", "", "SUCCEEDED", 2),
+                Step("s2", "click", "click", "ok", "SUCCEEDED", 3)))
+        val shown = turn.visibleTranscript()
+        assertEquals(listOf("s1", "think", "s2"), (shown[0] as TranscriptEntry.ToolRun).steps.map { it.id })
+        assertEquals("最终回复", (shown[1] as TranscriptEntry.Reply).message.text)
+        val live = turn.copy(occupied = true, phase = ExecutionPhase.RUNNING).visibleTranscript()
+        assertEquals("中间说明", (live[0] as TranscriptEntry.Reply).message.text)
+        assertEquals(listOf("s1", "think", "s2"), (live[1] as TranscriptEntry.ToolRun).steps.map { it.id })
+        assertEquals("最终回复", (live[2] as TranscriptEntry.Reply).message.text)
     }
     @Test fun `submit freezes config and preserves text typed while waiting`() = runTest {
         val repository = MemoryRepository(original)

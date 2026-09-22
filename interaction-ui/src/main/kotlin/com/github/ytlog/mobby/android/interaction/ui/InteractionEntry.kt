@@ -493,7 +493,7 @@ internal fun Turn.replyActionsVisible() = !occupied && !pending
         if (detail.hasEarlier) add("earlier")
         detail.turns.forEach { t ->
             add("user:${t.id.value}")
-            t.transcript().forEach { entry ->
+            t.visibleTranscript().forEach { entry ->
                 when (entry) {
                     is TranscriptEntry.Reply -> add("message:${t.id.value}:${entry.message.id}")
                     is TranscriptEntry.ToolRun -> add("tools:${t.id.value}:${entry.steps.first().id}")
@@ -553,7 +553,7 @@ internal fun Turn.replyActionsVisible() = !occupied && !pending
                 }
             }
             detail.turns.forEach { turn ->
-                val entries = turn.transcript()
+                val entries = turn.visibleTranscript()
                 val lastReply = entries.filterIsInstance<TranscriptEntry.Reply>().lastOrNull()?.message?.id
                 val lastTools = entries.filterIsInstance<TranscriptEntry.ToolRun>().lastOrNull()?.steps?.firstOrNull()?.id
                 item(key = "user:${turn.id.value}") { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { Surface(shape = RoundedCornerShape(21.dp, 21.dp, 6.dp, 21.dp), color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.widthIn(max = 360.dp)) { Column(Modifier.padding(16.dp)) { androidx.compose.foundation.text.selection.SelectionContainer { Text(turn.userText) }; AttachmentList(turn.attachments, detail.conversation.config.workspace, vm) } } } }
@@ -566,7 +566,7 @@ internal fun Turn.replyActionsVisible() = !occupied && !pending
                             Column {
                                 ReplyContent(entry.message.text, streaming = turn.occupied && entry.message.id == lastReply, read = read)
                                 if (entry.message.id == lastReply && turn.replyActionsVisible()) {
-                                    val reply = turn.messages.joinToString("\n") { it.text }
+                                    val reply = entry.message.text
                                     Row {
                                         val clipboard = LocalClipboardManager.current
                                         ActionIcon("复制回复", { clipboard.setText(AnnotatedString(reply)) }, AppIcons.Copy)

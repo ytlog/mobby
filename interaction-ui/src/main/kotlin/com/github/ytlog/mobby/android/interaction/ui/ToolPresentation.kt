@@ -137,6 +137,7 @@ internal object ToolPresentation {
         "mcp__phone__home" to "主屏幕",
         "recents" to "最近任务",
         "mcp__phone__recents" to "最近任务",
+        "thinking" to "思考",
         "todo_list" to "待办",
         "task" to "任务",
         "tool" to "工具",

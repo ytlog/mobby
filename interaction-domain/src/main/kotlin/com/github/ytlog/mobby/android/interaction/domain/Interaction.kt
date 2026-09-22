@@ -35,6 +35,18 @@ data class Turn(
         flush()
         return result
     }
+
+    /** Running turns keep text where it arrived. A finished turn keeps one activity group and the last reply. */
+    fun visibleTranscript(): List<TranscriptEntry> {
+        val entries = transcript()
+        if (occupied || pending) return entries
+        val activity = entries.filterIsInstance<TranscriptEntry.ToolRun>().flatMap { it.steps }
+        val reply = entries.filterIsInstance<TranscriptEntry.Reply>().lastOrNull { it.message.text.isNotBlank() }
+        return buildList {
+            if (activity.isNotEmpty()) add(TranscriptEntry.ToolRun(activity))
+            if (reply != null) add(reply)
+        }
+    }
 }
 private sealed interface TranscriptPiece {
     data class Reply(val message: Message) : TranscriptPiece

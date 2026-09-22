@@ -25,8 +25,29 @@ class ProtocolDecoderTest {
         assertTrue(decoder.decode("""{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"thinking_delta","thinking":"private"}}}""").isEmpty())
         assertEquals(listOf(AgentFact.Tool("t1", "snapshot", "snapshot")), decoder.decode("""{"type":"stream_event","event":{"type":"content_block_start","index":2,"content_block":{"type":"tool_use","id":"t1","name":"snapshot","input":{}}}}"""))
         assertEquals(listOf(AgentFact.Text("m#3", "再看")), decoder.decode("""{"type":"stream_event","event":{"type":"content_block_delta","index":3,"delta":{"type":"text_delta","text":"再看"}}}"""))
-        assertEquals(listOf(AgentFact.Tool("t1", "snapshot", """{"cmd":"shot"}""")), decoder.decode("""{"type":"assistant","message":{"id":"m","content":[{"type":"text","text":"先截图"},{"type":"thinking","thinking":"private"},{"type":"tool_use","id":"t1","name":"snapshot","input":{"cmd":"shot"}},{"type":"text","text":"再看"}]}}"""))
+        val snapshot = decoder.decode("""{"type":"assistant","message":{"id":"m","content":[{"type":"text","text":"先截图"},{"type":"thinking","thinking":"private"},{"type":"tool_use","id":"t1","name":"snapshot","input":{"cmd":"shot"}},{"type":"text","text":"再看"}]}}""")
+        assertEquals(listOf(AgentFact.Tool("thinking:m#1", "thinking", "思考", outcome = ToolOutcome.SUCCEEDED), AgentFact.Tool("t1", "snapshot", """{"cmd":"shot"}""")), snapshot)
+        assertFalse(snapshot.toString().contains("private"))
         assertEquals(listOf(AgentFact.Completed(true)), decoder.decode("""{"type":"result","subtype":"success","is_error":false,"result":"先截图\n再看"}"""))
+    }
+    @Test fun `thinking at the first index does not make the later snapshot repeat the paragraph`() {
+        val decoder = ProtocolDecoder(AgentId.CLAUDE_CODE)
+        assertEquals(listOf(AgentFact.Tool("thinking:m#0", "thinking", "思考")), decoder.decode("""{"type":"stream_event","event":{"type":"message_start","message":{"id":"m"}}}""") + decoder.decode("""{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"private"}}}"""))
+        assertTrue(decoder.decode("""{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"private"}}}""").isEmpty())
+        assertEquals(listOf(AgentFact.Tool("thinking:m#0", "thinking", "思考", outcome = ToolOutcome.SUCCEEDED), AgentFact.Text("m#1", "answer")), decoder.decode("""{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"answer"}}}"""))
+        val snapshot = decoder.decode("""{"type":"assistant","message":{"id":"m","content":[{"type":"text","text":"answer"}]}}""")
+        assertTrue(snapshot.none { it is AgentFact.Text })
+        assertFalse(snapshot.toString().contains("private"))
+        assertEquals(listOf(AgentFact.Completed(true)), decoder.decode("""{"type":"result","subtype":"success","is_error":false,"result":"answer"}"""))
+    }
+    @Test fun `codex reasoning collapses without its private text`() {
+        val decoder = ProtocolDecoder(AgentId.CODEX)
+        val started = decoder.decode("""{"type":"item.started","item":{"id":"r","type":"reasoning","text":"private"}}""")
+        assertEquals(listOf(AgentFact.Tool("r", "thinking", "思考")), started)
+        assertTrue(decoder.decode("""{"type":"item.updated","item":{"id":"r","type":"reasoning","text":"private more"}}""").isEmpty())
+        val done = decoder.decode("""{"type":"item.completed","item":{"id":"r","type":"reasoning","text":"private"}}""")
+        assertEquals(listOf(AgentFact.Tool("r", "thinking", "思考", outcome = ToolOutcome.SUCCEEDED)), done)
+        assertFalse((started + done).toString().contains("private"))
     }
     @Test fun `codex message text streams as a suffix and completion does not repeat it`() {
         val decoder = ProtocolDecoder(AgentId.CODEX)
@@ -36,12 +57,14 @@ class ProtocolDecoderTest {
     }
     @Test fun `claude text stays in block order around tools and thinking stays hidden`() {
         val facts = ProtocolDecoder(AgentId.CLAUDE_CODE).decode("""{"type":"assistant","message":{"id":"m","content":[{"type":"thinking","thinking":"private"},{"type":"text","text":"先截图"},{"type":"tool_use","id":"t1","name":"snapshot","input":{}},{"type":"text","text":"再看结果"}]}}""")
-        assertEquals(listOf(AgentFact.Text("m#1", "先截图"), AgentFact.Tool("t1", "snapshot", "{}"), AgentFact.Text("m#3", "再看结果")), facts)
+        assertEquals(listOf(AgentFact.Tool("thinking:m#0", "thinking", "思考", outcome = ToolOutcome.SUCCEEDED), AgentFact.Text("m#1", "先截图"), AgentFact.Tool("t1", "snapshot", "{}"), AgentFact.Text("m#3", "再看结果")), facts)
+        assertFalse(facts.toString().contains("private"))
     }
     @Test fun `claude result does not repeat assistant and private thinking stays hidden`() {
         val decoder = ProtocolDecoder(AgentId.CLAUDE_CODE)
         val assistant = decoder.decode("""{"type":"assistant","session_id":"session","message":{"id":"m","content":[{"type":"thinking","thinking":"private"},{"type":"text","text":"answer"}]}}""")
-        assertEquals(listOf(AgentFact.Session("session"), AgentFact.Text("m#1", "answer")), assistant)
+        assertEquals(listOf(AgentFact.Session("session"), AgentFact.Tool("thinking:m#0", "thinking", "思考", outcome = ToolOutcome.SUCCEEDED), AgentFact.Text("m#1", "answer")), assistant)
+        assertFalse(assistant.toString().contains("private"))
         assertEquals(listOf(AgentFact.Completed(true)), decoder.decode("""{"type":"result","subtype":"success","is_error":false,"result":"answer"}"""))
     }
     @Test fun `permission denial is not success and missing terminal evidence is not success`() {

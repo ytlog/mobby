@@ -51,7 +51,8 @@ internal fun Turn.executionHeadline(steps: List<Step> = this.steps): String {
     return when {
         phase == ExecutionPhase.CANCELLING -> "停止中"
         busy -> "执行中"
-        phase == ExecutionPhase.SUCCEEDED || phase == ExecutionPhase.RUNNING || phase == ExecutionPhase.ACCEPTED || phase == null -> "已完成 ${count} 个步骤"
+        phase == ExecutionPhase.SUCCEEDED || phase == ExecutionPhase.RUNNING || phase == ExecutionPhase.ACCEPTED || phase == null ->
+            if (steps.isNotEmpty() && steps.all { it.kind == "thinking" }) "已思考" else "已完成 ${count} 个步骤"
         else -> "${phase.label()} · ${count} 个步骤"
     }
 }
@@ -60,6 +61,7 @@ internal fun stepKindIcon(kind: String): ImageVector = when (kind.lowercase()) {
     "webfetch" -> AppIcons.Globe
     "read", "write", "edit", "editnotebook", "ls", "file_change" -> AppIcons.File
     "bash", "shell", "command_execution" -> AppIcons.Terminal
+    "thinking" -> AppIcons.Help
     "todo_list", "task" -> AppIcons.Skill
     "mcp_tool_call", "tool", "snapshot", "click", "type", "tap", "back", "home", "recents" -> AppIcons.Phone
     "mcp__phone__snapshot", "mcp__phone__click", "mcp__phone__type", "mcp__phone__tap",
@@ -105,15 +107,21 @@ internal fun stepKindIcon(kind: String): ImageVector = when (kind.lowercase()) {
                 Text(turn.executionHeadline(steps), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Icon(if (expanded) AppIcons.ChevronUp else AppIcons.ChevronRight, if (expanded) "已展开" else "已收起", Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            if (expanded) Column(Modifier.padding(start = 2.dp, end = 8.dp, bottom = 8.dp)) {
+            if (expanded) {
+            val scroll = rememberScrollState()
+            LaunchedEffect(steps.size, steps.lastOrNull()?.id, steps.lastOrNull()?.summary, scroll.maxValue) {
+                if (running) scroll.scrollTo(scroll.maxValue)
+            }
+            Column(Modifier.then(if (running) Modifier.heightIn(max = 168.dp).verticalScroll(scroll) else Modifier).padding(start = 2.dp, end = 8.dp, bottom = 8.dp)) {
                 if (showExtras) turn.progress?.let { Text(it, Modifier.padding(horizontal = 12.dp, vertical = 2.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 steps.forEach { step ->
-                    val open = step.id in turn.expandedSteps
+                    val thinking = step.kind == "thinking"
+                    val open = !thinking && step.id in turn.expandedSteps
                     val view = remember(step.kind, step.summary, step.output) { ToolPresentation.step(step.kind, step.summary, step.output) }
-                    Row(Modifier.fillMaxWidth().clickable { vm.enqueue {
+                    Row(Modifier.fillMaxWidth().then(if (thinking) Modifier else Modifier.clickable { vm.enqueue {
                         vm.actions.stepExpansion(turn.id, step.id, !open)
                         if (!open) vm.actions.expansion(turn.id, true)
-                    } }.heightIn(min = 40.dp).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    } }).heightIn(min = 40.dp).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                         StepGlyph(step.kind, step.outcome, turn.phase, running && step.outcome == null)
                         Text(
                             view.title,
@@ -123,9 +131,9 @@ internal fun stepKindIcon(kind: String): ImageVector = when (kind.lowercase()) {
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        Icon(if (open) AppIcons.ChevronDown else AppIcons.ChevronRight, if (open) "已展开" else "已收起", Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (!thinking) Icon(if (open) AppIcons.ChevronDown else AppIcons.ChevronRight, if (open) "已展开" else "已收起", Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    if (open) {
+                    if (open && !thinking) {
                         val body = view.detail.ifBlank { "尚无输出" }
                         Column(Modifier.fillMaxWidth().padding(start = 40.dp, end = 8.dp, bottom = 8.dp)) {
                             when {
@@ -140,6 +148,7 @@ internal fun stepKindIcon(kind: String): ImageVector = when (kind.lowercase()) {
                     }
                 }
                 if (showExtras && turn.diagnostics.isNotEmpty()) TextButton(onClick = { read("运行诊断", turn.diagnostics.joinToString("\n\n") { it.text }) }) { Text("查看诊断（${turn.diagnostics.size}）") }
+            }
             }
         }
     }

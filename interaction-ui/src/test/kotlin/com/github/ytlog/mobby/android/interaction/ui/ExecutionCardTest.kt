@@ -60,6 +60,7 @@ class ExecutionCardTest {
     @Test fun `completed headline uses the step count and running stays compact`() {
         assertEquals("已完成 2 个步骤", empty.copy(steps = listOf(step, step.copy(id = "s2"))).executionHeadline())
         assertEquals("执行中", empty.copy(phase = ExecutionPhase.RUNNING, occupied = true, steps = listOf(step.copy(outcome = null))).executionHeadline())
+        assertEquals("已思考", empty.copy(steps = listOf(Step("t", "thinking", "思考", "", "SUCCEEDED"))).executionHeadline())
         assertEquals("已完成 1 个步骤", empty.copy(phase = ExecutionPhase.RUNNING, occupied = true, steps = listOf(step)).executionHeadline())
         assertEquals("失败 · 1 个步骤", empty.copy(phase = ExecutionPhase.FAILED, steps = listOf(step)).executionHeadline())
     }
@@ -94,5 +95,16 @@ class ExecutionCardTest {
         compose.onNodeWithText("已完成 1 个步骤").assertExists()
         compose.onNodeWithText("运行 ls").assertExists()
         compose.onNodeWithText("""{"command":"ls"}""").assertDoesNotExist()
+    }
+
+    @Test fun `thinking stays collapsed and its private text stays off the card`() {
+        val running = empty.copy(phase = ExecutionPhase.RUNNING, occupied = true, steps = listOf(
+            step.copy(outcome = null),
+            Step("think", "thinking", "思考", "private", null)))
+        compose.setContent { MaterialTheme { ExecutionCard(running, vm()) { _, _ -> } } }
+        compose.onNodeWithText("执行中").assertExists()
+        compose.onNodeWithText("思考").assertExists()
+        compose.onNodeWithText("private").assertDoesNotExist()
+        compose.onNodeWithText("运行 ls").assertExists()
     }
 }
