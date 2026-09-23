@@ -18,6 +18,7 @@ import androidx.lifecycle.lifecycleScope
 import com.github.ytlog.mobby.android.interaction.domain.ConversationId
 import com.github.ytlog.mobby.android.interaction.ui.InteractionEntry
 import com.github.ytlog.mobby.android.interaction.ui.InteractionHostActions
+import com.github.ytlog.mobby.android.interaction.ui.mobbySystemBarColor
 import kotlinx.coroutines.launch
 import java.util.UUID
 
@@ -46,7 +47,7 @@ class MainActivity : ComponentActivity() {
                     .setIcon(Icon.createWithResource(this, R.drawable.ic_launcher)).setIntent(target).build(), null)
             } else android.widget.Toast.makeText(this, "当前桌面不支持添加快捷方式", android.widget.Toast.LENGTH_SHORT).show()
         }, appearance = { dark ->
-            val background = if (dark) android.graphics.Color.rgb(17, 18, 19) else android.graphics.Color.rgb(250, 250, 250)
+            val background = mobbySystemBarColor(dark)
             val style = if (dark) SystemBarStyle.dark(background) else SystemBarStyle.light(background, background)
             enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
         }, pet = { want ->

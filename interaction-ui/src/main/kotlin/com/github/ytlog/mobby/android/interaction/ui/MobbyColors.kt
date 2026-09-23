@@ -7,6 +7,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
 
 /** Named colors for every page. Screens read these instead of embedding hex values. */
 internal object MobbyColors {
@@ -15,6 +16,7 @@ internal object MobbyColors {
     val menuMuted = Color(0xFF8E8E93)
 
     object Dark {
+        val systemBar = Color(0xFF111213)
         val page = Color(0xFF121212)
         val card = Color(0xFF1E1E1E)
         val surfaceVariant = Color(0xFF2A2A2C)
@@ -57,6 +59,7 @@ internal object MobbyColors {
     }
 
     object Light {
+        val systemBar = Color(0xFFFAFAFA)
         val statusCard = Color(0xFFF5F1E9)
         val statusAccent = Color(0xFF79551C)
         val page = Color(0xFFF5F5F7)
@@ -85,6 +88,10 @@ internal object MobbyColors {
         )
     }
 }
+
+/** Shared system-bar colors for the Activity, which lives outside the UI module. */
+fun mobbySystemBarColor(dark: Boolean): Int =
+    (if (dark) MobbyColors.Dark.systemBar else MobbyColors.Light.systemBar).toArgb()
 
 internal val MobbyDarkScheme: ColorScheme = darkColorScheme(
     background = MobbyColors.Dark.page,
