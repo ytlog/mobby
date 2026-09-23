@@ -53,8 +53,15 @@ class ExecutionCardTest {
 
     @Test fun `a streaming reply keeps one blue mark and does not add a second row`() {
         val reply = empty.copy(messages = listOf(Message("m", "hello")), occupied = true, phase = ExecutionPhase.RUNNING)
+        assertEquals(ActivityMark.REPLY, reply.activityMark())
         assertFalse(reply.showsSeparateActivity())
-        assertTrue(reply.copy(messages = emptyList()).showsSeparateActivity())
+        val waiting = reply.copy(messages = emptyList())
+        assertEquals(ActivityMark.STANDALONE, waiting.activityMark())
+        assertTrue(waiting.showsSeparateActivity())
+        val thinking = waiting.copy(steps = listOf(Step.Thinking("think", "private", null)))
+        assertEquals(ActivityMark.CARD, thinking.activityMark())
+        assertFalse(thinking.showsSeparateActivity())
+        assertEquals(ActivityMark.CARD, waiting.copy(steps = listOf(step.copy(outcome = null))).activityMark())
         assertTrue(reply.copy(phase = ExecutionPhase.CANCELLING).showsSeparateActivity())
         assertTrue(empty.copy(pending = true).showsSeparateActivity())
         assertFalse(empty.copy(messages = listOf(Message("m", "hello"))).showsSeparateActivity())
@@ -126,7 +133,7 @@ class ExecutionCardTest {
         compose.onNodeWithText("查看诊断（1）").assertExists()
     }
 
-    @Test fun `thinking stays collapsed until opened and then shows its text`() {
+    @Test fun `live thinking shows its text and a finished thought stays closed until opened`() {
         val running = empty.copy(phase = ExecutionPhase.RUNNING, occupied = true, steps = listOf(
             step.copy(outcome = null),
             Step.Thinking("think", "private", null)))
@@ -134,9 +141,16 @@ class ExecutionCardTest {
         compose.setContent { MaterialTheme { ExecutionCard(shown.value, vm()) { _, _ -> } } }
         compose.onNodeWithText("执行中").assertExists()
         compose.onNodeWithText("思考").assertExists()
-        compose.onNodeWithText("private").assertDoesNotExist()
-        compose.onNodeWithText("运行 ls").assertExists()
-        compose.runOnIdle { shown.value = running.copy(expandedSteps = setOf("think")) }
         compose.onNodeWithText("private").assertExists()
+        compose.onAllNodesWithContentDescription("正在回复…").assertCountEquals(1)
+        compose.onNodeWithText("运行 ls").assertExists()
+        val finished = running.copy(occupied = false, phase = ExecutionPhase.SUCCEEDED, steps = listOf(
+            step, Step.Thinking("think", "private", "SUCCEEDED")), expandedSteps = setOf("tools:s1"))
+        compose.runOnIdle { shown.value = finished }
+        compose.onNodeWithText("private").assertDoesNotExist()
+        compose.onNodeWithContentDescription("正在回复…").assertDoesNotExist()
+        compose.runOnIdle { shown.value = finished.copy(expandedSteps = setOf("tools:s1", "think")) }
+        compose.onNodeWithText("private").assertExists()
+        compose.onNodeWithContentDescription("正在回复…").assertDoesNotExist()
     }
 }

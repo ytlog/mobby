@@ -1,10 +1,5 @@
 package com.github.ytlog.mobby.android.interaction.ui
 
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -14,7 +9,6 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -55,6 +49,8 @@ internal fun Turn.toolsLive(): Boolean = occupied && phase in setOf(
     null, ExecutionPhase.ACCEPTED, ExecutionPhase.RUNNING, ExecutionPhase.AWAITING_APPROVAL, ExecutionPhase.CANCELLING,
 )
 internal fun Turn.toolGroupExpanded(steps: List<Step>): Boolean = toolsLive() || toolGroupKey(steps) in expandedSteps
+/** Live thinking stays readable for the whole turn. After the turn, it opens only when chosen. */
+internal fun Turn.thinkingBodyOpen(step: Step): Boolean = step is Step.Thinking && (toolsLive() || step.id in expandedSteps)
 internal fun Turn.executionHeadline(steps: List<Step> = this.steps): String {
     val count = steps.size
     return when {
@@ -107,7 +103,8 @@ internal fun stepKindIcon(kind: String): AppGlyph = when (kind.lowercase()) {
 @Composable internal fun ExecutionCard(turn: Turn, vm: ConversationViewModel, steps: List<Step> = turn.steps, showExtras: Boolean = true, read: (String, String) -> Unit) {
     if (steps.isEmpty()) return
     val expanded = turn.toolGroupExpanded(steps)
-    val running = turn.occupied && turn.phase in setOf(ExecutionPhase.ACCEPTED, ExecutionPhase.RUNNING, ExecutionPhase.AWAITING_APPROVAL, ExecutionPhase.CANCELLING)
+    val cardCursor = turn.activityMark() == ActivityMark.CARD
+    val thinkingCursor = cardCursor && steps.any { it is Step.Thinking && it.outcome == null }
     Surface(
         Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -122,23 +119,26 @@ internal fun stepKindIcon(kind: String): AppGlyph = when (kind.lowercase()) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(turn.executionHeadline(steps), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (cardCursor && !thinkingCursor) StreamingCursor(description = "正在回复…")
                 AppIcon(if (expanded) AppIcons.ChevronUp else AppIcons.ChevronRight, if (expanded) "已展开" else "已收起", Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (expanded) {
-            val scroll = rememberScrollState()
-            LaunchedEffect(steps.size, steps.lastOrNull(), scroll.maxValue) {
-                if (running) scroll.scrollTo(scroll.maxValue)
-            }
-            Column(Modifier.then(if (running) Modifier.heightIn(max = 168.dp).verticalScroll(scroll) else Modifier).padding(start = 2.dp, end = 8.dp, bottom = 8.dp)) {
+            Column(Modifier.padding(start = 2.dp, end = 8.dp, bottom = 8.dp)) {
                 if (showExtras) turn.progress?.let { Text(it.label(), Modifier.padding(horizontal = 12.dp, vertical = 2.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                steps.forEach { step ->
-                    val open = step.id in turn.expandedSteps
+                steps.forEach { step -> key(step.id) {
+                    var heldClosed by rememberSaveable { mutableStateOf(false) }
+                    val open = step.id in turn.expandedSteps || (turn.thinkingBodyOpen(step) && !heldClosed)
                     val view = remember(step) { ToolPresentation.present(step) }
-                    Row(Modifier.fillMaxWidth().clickable { vm.enqueue {
-                        vm.actions.stepExpansion(turn.id, step.id, !open)
-                        if (!open) vm.actions.expansion(turn.id, true)
-                    } }.heightIn(min = 40.dp).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        StepGlyph(step.glyphKind(), step.outcome, turn.phase, running && step.outcome == null)
+                    val liveThought = thinkingCursor && step.id == steps.lastOrNull { it is Step.Thinking && it.outcome == null }?.id
+                    Row(Modifier.fillMaxWidth().clickable {
+                        val next = !open
+                        if (step is Step.Thinking) heldClosed = !next
+                        vm.enqueue {
+                            vm.actions.stepExpansion(turn.id, step.id, next)
+                            if (next) vm.actions.expansion(turn.id, true)
+                        }
+                    }.heightIn(min = 40.dp).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        StepGlyph(step.glyphKind(), step.outcome, turn.phase)
                         Text(
                             view.title,
                             Modifier.weight(1f).padding(horizontal = 10.dp),
@@ -147,22 +147,33 @@ internal fun stepKindIcon(kind: String): AppGlyph = when (kind.lowercase()) {
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        if (liveThought && !open) StreamingCursor(description = "正在回复…")
                         AppIcon(if (open) AppIcons.ChevronDown else AppIcons.ChevronRight, if (open) "已展开" else "已收起", Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     if (open) {
-                        val body = view.detail.ifBlank { "尚无输出" }
+                        val body = view.detail
                         Column(Modifier.fillMaxWidth().padding(start = 40.dp, end = 8.dp, bottom = 8.dp)) {
                             when {
-                                view.terminal -> CodeContent(view.title, body, read)
-                                ToolPresentation.looksLikeMarkdown(body) -> ReplyContent(body, streaming = running && step.outcome == null, read = read)
+                                step is Step.Thinking -> if (body.isBlank()) {
+                                    if (liveThought) StreamingCursor(description = "正在回复…")
+                                    else Text("尚无输出", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                } else if (ToolPresentation.looksLikeMarkdown(body)) ReplyContent(body, streaming = liveThought && open, read = read)
+                                else {
+                                    SelectionContainer {
+                                        Text(body, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    if (liveThought && open) StreamingCursor(description = "正在回复…")
+                                }
+                                view.terminal -> CodeContent(view.title, body.ifBlank { "尚无输出" }, read)
+                                ToolPresentation.looksLikeMarkdown(body) -> ReplyContent(body, streaming = false, read = read)
                                 else -> SelectionContainer {
-                                    Text(body, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    Text(body.ifBlank { "尚无输出" }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp).verticalScroll(rememberScrollState()))
                                 }
                             }
                         }
                     }
-                }
+                } }
                 if (showExtras && turn.diagnosticsActionVisible()) TextButton(onClick = { read("运行诊断", turn.diagnostics.joinToString("\n\n") { it.text }) }) { Text("查看诊断（${turn.diagnostics.size}）") }
             }
             }
@@ -215,24 +226,18 @@ internal fun stepStatusLabel(outcome: String?, phase: ExecutionPhase?): String =
     else -> "步骤结果未确认"
 }
 
-@Composable internal fun StepGlyph(kind: String, outcome: String?, phase: ExecutionPhase?, active: Boolean = false) {
+@Composable internal fun StepGlyph(kind: String, outcome: String?, phase: ExecutionPhase?) {
     val icon = when (outcome) {
         "FAILED" -> AppIcons.Error
         "CANCELLED" -> AppIcons.Close
         else -> stepKindIcon(kind)
     }
-    val reduced = rememberReducedMotion()
-    val alpha = if (!active || reduced) 1f else {
-        val pulse = rememberInfiniteTransition(label = "step")
-        val value by pulse.animateFloat(0.35f, 1f, infiniteRepeatable(tween(900), RepeatMode.Reverse), label = "step-alpha")
-        value
-    }
-    AppIcon(icon, stepStatusLabel(outcome, phase), Modifier.size(18.dp).alpha(alpha), tint = when (outcome) {
+    AppIcon(icon, stepStatusLabel(outcome, phase), Modifier.size(18.dp), tint = when (outcome) {
         "FAILED" -> MaterialTheme.colorScheme.error
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     })
 }
 
-@Composable internal fun StepStatus(outcome: String?, phase: ExecutionPhase?, active: Boolean = false) {
-    StepGlyph("", outcome, phase, active)
+@Composable internal fun StepStatus(outcome: String?, phase: ExecutionPhase?) {
+    StepGlyph("", outcome, phase)
 }

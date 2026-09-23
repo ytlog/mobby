@@ -565,12 +565,18 @@ private val DrawerRowHeight = 32.dp
 @OptIn(FlowPreview::class)
 internal fun Turn.replyActionsVisible() = !occupied && !pending
 
-/** The streaming reply already ends with the blue mark. A second row would stack a spinner under it. */
-internal fun Turn.showsSeparateActivity(): Boolean {
-    if (replyActionsVisible()) return false
-    if (phase == ExecutionPhase.CANCELLING) return true
-    return !(occupied && visibleTranscript().any { it is TranscriptEntry.Reply })
+/** One blue mark for the whole turn: on the reply, on the live card, or alone while nothing has arrived. */
+internal enum class ActivityMark { NONE, REPLY, CARD, STANDALONE }
+
+internal fun Turn.activityMark(): ActivityMark {
+    if (replyActionsVisible()) return ActivityMark.NONE
+    if (phase == ExecutionPhase.CANCELLING) return ActivityMark.STANDALONE
+    if (occupied && messages.any { it.text.isNotBlank() }) return ActivityMark.REPLY
+    if (occupied && steps.isNotEmpty()) return ActivityMark.CARD
+    return ActivityMark.STANDALONE
 }
+
+internal fun Turn.showsSeparateActivity(): Boolean = activityMark() == ActivityMark.STANDALONE
 
 @Composable internal fun ReplyActivity(phase: ExecutionPhase?) {
     if (phase == ExecutionPhase.CANCELLING) {
@@ -628,7 +634,7 @@ internal fun Turn.showsSeparateActivity(): Boolean {
         snapshotFlow { list.layoutInfo.totalItemsCount > 0 && !list.isScrollInProgress && !list.canScrollForward }.collect { if (it) follow = true }
     }
     val outputVersion = detail.turns.map { listOf(it.id, it.phase, it.permissions.map { p -> p.id to p.revision }, it.messages.map { m -> m.text.length }, it.steps.map { s -> s.displayedText().length }) }
-    LaunchedEffect(outputVersion) { if (follow && !list.isScrollInProgress && keys.isNotEmpty()) list.scrollToItem(keys.lastIndex) }
+    LaunchedEffect(outputVersion, keys) { if (follow && !list.isScrollInProgress && keys.isNotEmpty()) list.scrollToItem(keys.lastIndex, Int.MAX_VALUE) }
     LaunchedEffect(list) {
         snapshotFlow { list.layoutInfo.visibleItemsInfo.firstOrNull()?.key?.toString() to list.firstVisibleItemScrollOffset }.debounce(250).collect { (key, offset) ->
             if (key != null && key != "earlier") vm.enqueue { vm.actions.anchor(detail.conversation.id, key, offset) }
@@ -657,7 +663,7 @@ internal fun Turn.showsSeparateActivity(): Boolean {
                         }
                         is TranscriptEntry.Reply -> item(key = "message:${turn.id.value}:${entry.message.id}") {
                             Column {
-                                ReplyContent(entry.message.text, streaming = turn.occupied && turn.phase != ExecutionPhase.CANCELLING && entry.message.id == lastReply, read = read)
+                                ReplyContent(entry.message.text, streaming = turn.activityMark() == ActivityMark.REPLY && entry.message.id == lastReply, read = read)
                                 if (entry.message.id == lastReply && turn.replyActionsVisible()) {
                                     val reply = entry.message.text
                                     Row {
@@ -694,7 +700,7 @@ internal fun Turn.showsSeparateActivity(): Boolean {
             }
         }
         if (!follow && detail.turns.isNotEmpty()) FilledTonalButton(
-            onClick = { follow = true; scope.launch { if (keys.isNotEmpty()) list.animateScrollToItem(keys.lastIndex) } },
+            onClick = { follow = true; scope.launch { if (keys.isNotEmpty()) list.animateScrollToItem(keys.lastIndex, Int.MAX_VALUE) } },
             modifier = Modifier.align(Alignment.BottomEnd).padding(followPadding).size(48.dp),
             shape = CircleShape,
             contentPadding = PaddingValues(0.dp),
