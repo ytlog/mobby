@@ -130,9 +130,23 @@ internal val ToolbarControl = 44.dp
     ) { Text(text, Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodyLarge) }
 }
 
-@Composable internal fun SettingsItem(title: String, onClick: () -> Unit, detail: String? = null) {
+@Composable internal fun SettingsToggle(title: String, checked: Boolean, onChecked: (Boolean) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 52.dp).clickable(role = Role.Switch) { onChecked(!checked) }.padding(horizontal = 16.dp).semantics(mergeDescendants = true) {},
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(title, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
+        Switch(checked = checked, onCheckedChange = null)
+    }
+}
+
+@Composable internal fun SettingsItem(title: String, onClick: () -> Unit, detail: String? = null, icon: AppGlyph? = null) {
     TextButton(onClick = onClick, modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
         colors = textButtonColors(onButtonColor())) {
+        if (icon != null) {
+            AppIcon(icon, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurface)
+            Spacer(Modifier.width(12.dp))
+        }
         Column(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
             Text(title, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
             if (detail != null) Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -227,7 +241,8 @@ internal val ToolbarControl = 44.dp
     }
 }
 
-@Composable internal fun ChoiceRow(text: String, selected: Boolean, onClick: () -> Unit, enabled: Boolean = true, modifier: Modifier = Modifier) {
+@Composable internal fun ChoiceRow(text: String, selected: Boolean, onClick: () -> Unit, enabled: Boolean = true, icon: AppGlyph? = null, modifier: Modifier = Modifier) {
+    val color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.38f)
     Row(
         modifier.fillMaxWidth().heightIn(min = 52.dp)
             .clickable(enabled = enabled, role = Role.RadioButton, onClick = onClick)
@@ -235,7 +250,11 @@ internal val ToolbarControl = 44.dp
             .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(text, Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.38f), style = MaterialTheme.typography.bodyLarge)
+        if (icon != null) {
+            AppIcon(icon, null, Modifier.size(20.dp), tint = color)
+            Spacer(Modifier.width(12.dp))
+        }
+        Text(text, Modifier.weight(1f), color = color, style = MaterialTheme.typography.bodyLarge)
         if (selected) AppIcon(AppIcons.Check, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
     }
 }
@@ -245,7 +264,7 @@ internal val ToolbarControl = 44.dp
     content()
 }
 
-@Composable internal fun MenuOption(text: String, selected: Boolean, enabled: Boolean = true, onClick: () -> Unit) {
+@Composable internal fun MenuOption(text: String, selected: Boolean, enabled: Boolean = true, icon: AppGlyph? = null, onClick: () -> Unit) {
     val color = menuInk().copy(alpha = if (enabled) 1f else 0.38f)
     Row(
         Modifier.fillMaxWidth().height(48.dp)
@@ -254,6 +273,10 @@ internal val ToolbarControl = 44.dp
             .padding(horizontal = 20.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (icon != null) {
+            AppIcon(icon, null, Modifier.size(20.dp), tint = color)
+            Spacer(Modifier.width(12.dp))
+        }
         Text(text, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, color = color, style = MaterialTheme.typography.bodyLarge, fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal)
         if (selected) AppIcon(AppIcons.Check, null, Modifier.size(20.dp), tint = menuTick())
     }

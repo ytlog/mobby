@@ -126,7 +126,7 @@ sealed interface CommandResult {
     data class Rejected(val error: RuntimeError) : CommandResult
 }
 @Serializable
-data class ModelCapability(val id: String, val reasoningLevels: Set<String>)
+data class ModelCapability(val id: String, val reasoningLevels: Set<String>, val name: String = "")
 @Serializable
 data class AgentCapability(
     val agentId: AgentId, val models: List<ModelCapability>, val unavailableReason: RuntimeError? = null,

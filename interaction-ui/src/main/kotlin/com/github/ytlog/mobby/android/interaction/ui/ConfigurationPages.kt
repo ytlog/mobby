@@ -90,11 +90,14 @@ import kotlinx.coroutines.*
     FrostedMenu(true, dismiss, anchor) {
         Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()).padding(bottom = 12.dp)) {
             MenuSection("Agent") {
-                AgentId.values().forEach { value -> MenuOption(value.label(), agent == value) { agent = value; model = profiles.firstOrNull { p -> p.agent == value }?.model.orEmpty(); reasoning = null } }
+                AgentId.values().forEach { value -> MenuOption(value.label(), agent == value, icon = value.glyph()) { agent = value; model = profiles.firstOrNull { p -> p.agent == value }?.model.orEmpty(); reasoning = null } }
             }
             MenuSection("模型") {
                 if (option?.models.isNullOrEmpty()) MenuCaption("尚未配置模型，请前往网关设置。")
-                option?.models?.keys?.forEach { item -> MenuOption(item, model == item) { model = item; reasoning = null } }
+                val names = option?.modelNames.orEmpty()
+                option?.models?.keys?.forEach { item -> MenuOption(modelMenuLabel(item, names), model == item) { model = item; reasoning = null } }
+                val known = option?.models?.keys.orEmpty()
+                if (known.isNotEmpty() && model.isNotBlank() && model !in known) MenuCaption("当前模型不在已保存列表中，请重新选择。")
             }
             MenuSection("思考程度") {
                 if (levels.isEmpty()) MenuCaption("当前模型未开放调整")
@@ -169,11 +172,14 @@ import kotlinx.coroutines.*
                 if (state.projects.isEmpty()) MenuCaption("可在会话抽屉的项目管理中新建项目。")
             }
             MenuSection("Agent") {
-                AgentId.values().forEach { value -> MenuOption(value.label(), agent == value) { agent = value; model = profiles.firstOrNull { p -> p.agent == value }?.model.orEmpty(); reasoning = null } }
+                AgentId.values().forEach { value -> MenuOption(value.label(), agent == value, icon = value.glyph()) { agent = value; model = profiles.firstOrNull { p -> p.agent == value }?.model.orEmpty(); reasoning = null } }
             }
             MenuSection("模型") {
                 if (option?.models.isNullOrEmpty()) MenuCaption("尚未配置模型，请前往网关设置。")
-                option?.models?.keys?.forEach { item -> MenuOption(item, model == item) { model = item; reasoning = null } }
+                val names = option?.modelNames.orEmpty()
+                option?.models?.keys?.forEach { item -> MenuOption(modelMenuLabel(item, names), model == item) { model = item; reasoning = null } }
+                val known = option?.models?.keys.orEmpty()
+                if (known.isNotEmpty() && model.isNotBlank() && model !in known) MenuCaption("当前模型不在已保存列表中，请重新选择。")
             }
             MenuSection("思考程度") {
                 if (levels.isEmpty()) MenuCaption("当前模型未开放调整")
@@ -217,12 +223,15 @@ import kotlinx.coroutines.*
         Box(Modifier.align(Alignment.CenterEnd)) { trailing() }
     }
 }
-@Composable internal fun SettingsPage(system: SystemStatus, appearance: Appearance, setAppearance: (Appearance) -> Unit, navigate: (String) -> Unit, back: () -> Unit, vm: ConversationViewModel) {
+@Composable internal fun SettingsPage(
+    system: SystemStatus, appearance: Appearance, setAppearance: (Appearance) -> Unit, navigate: (String) -> Unit, back: () -> Unit, vm: ConversationViewModel,
+    petEnabled: Boolean = false, petPermitted: Boolean = false, setPet: (Boolean) -> Unit = {},
+) {
     Column(Modifier.fillMaxSize()) {
         PageHeader("设置", back)
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             SettingsGroup {
-                SettingsItem("网关设置", { navigate("gateway") }, "模型地址与密钥")
+                SettingsItem("网关设置", { navigate("gateway") }, "已配置的网关与模型")
                 GroupDivider()
                 SettingsItem("存储与保留", { navigate("history-limits") }, "会话与附件保留期限")
             }
@@ -239,6 +248,11 @@ import kotlinx.coroutines.*
                 }
             }
             SettingsGroup {
+                SettingsToggle("桌面悬浮球", petEnabled, setPet)
+            }
+            SettingsCaption("离开应用且任务还在执行时，桌面上会出现一只小宠物。点开后可以停止任务或回到对话，拖动可以换位置。")
+            if (petEnabled && !petPermitted) SettingsCaption("需要允许显示在其他应用的上层。", error = true)
+            SettingsGroup {
                 SettingsItem("已归档与最近删除", { navigate("archived") })
             }
         }
@@ -246,14 +260,62 @@ import kotlinx.coroutines.*
 }
 @Composable internal fun GatewayPage(vm: ConversationViewModel, back: () -> Unit) {
     val profiles by vm.gateways.collectAsStateWithLifecycle()
+    var editing by rememberSaveable { mutableStateOf<String?>(null) }
+    var notice by rememberSaveable { mutableStateOf("") }
     LaunchedEffect(Unit) { vm.enqueue { vm.refresh() } }
-    GatewayForm(profiles, vm::enqueue, vm.actions::saveGateway, vm::refresh, back, vm.actions::checkGateway)
+    val agent = editing?.let { runCatching { AgentId.valueOf(it) }.getOrNull() }
+    if (agent == null) GatewayList(profiles, notice, back) { editing = it.name; notice = "" }
+    else key(agent) {
+        GatewayForm(profiles, vm::enqueue, vm.actions::saveGateway, vm::refresh, { editing = null }, vm.actions::checkGateway, agent) { message ->
+            notice = message
+            editing = null
+        }
+    }
+}
+
+@Composable internal fun GatewayList(profiles: List<GatewayProfile>, notice: String, back: () -> Unit, open: (AgentId) -> Unit) {
+    val configured = profiles.filter { it.endpoint.isNotBlank() }
+    val missing = AgentId.values().filter { agent -> configured.none { it.agent == agent } }
+    Column(Modifier.fillMaxSize()) {
+        PageHeader("网关", back)
+        Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            if (configured.isEmpty()) EmptyPlaceholder("还没有配置网关", "添加后可以从列表中选择，并拉取模型用于切换")
+            else SettingsGroup("已配置") {
+                configured.forEachIndexed { index, profile ->
+                    if (index > 0) GroupDivider()
+                    SettingsItem(profile.agent.label(), { open(profile.agent) }, gatewaySummary(profile), profile.agent.glyph())
+                }
+            }
+            if (notice.isNotBlank()) SettingsCaption(notice, error = notice.contains("未能"))
+            if (missing.isNotEmpty()) SettingsGroup { SettingsAction("添加网关") { open(missing.first()) } }
+            SettingsCaption("每个 Agent 保存一个网关。点按一项可修改地址、默认模型和密钥。再次保存会重新拉取模型列表。")
+        }
+    }
+}
+
+internal fun modelMenuLabel(id: String, names: Map<String, String>): String {
+    val name = names[id]?.takeIf { it.isNotBlank() && it != id } ?: return id
+    return if (names.values.count { it == name } > 1) id else name
+}
+
+private fun gatewaySummary(profile: GatewayProfile): String {
+    val providerId = GatewayProviders.match(profile.agent, profile.endpoint)
+    val provider = GatewayProviders.forAgent(profile.agent).firstOrNull { it.id == providerId }?.label
+        ?: runCatching { java.net.URI(profile.endpoint).host }.getOrNull()
+        ?: "自定义"
+    val catalog = when {
+        profile.catalogError != null -> "模型列表未更新"
+        profile.models.isNotEmpty() -> "${profile.models.size} 个模型"
+        else -> null
+    }
+    return listOfNotNull(provider, profile.model.takeIf { it.isNotBlank() }, catalog).joinToString(" · ")
 }
 
 @Composable internal fun GatewayForm(profiles: List<GatewayProfile>, submit: (suspend () -> Unit) -> Unit,
-    save: suspend (GatewayEdit) -> OperationResult, refresh: suspend () -> Unit, back: () -> Unit,
-    check: suspend (GatewayProfile) -> DataResult<GatewayCheckReport>) {
-    var agent by rememberSaveable { mutableStateOf(AgentId.CODEX) }
+    save: suspend (GatewayEdit) -> GatewaySaveResult, refresh: suspend () -> Unit, back: () -> Unit,
+    check: suspend (GatewayProfile) -> DataResult<GatewayCheckReport>, initial: AgentId = AgentId.CODEX,
+    onSaved: ((String) -> Unit)? = null) {
+    var agent by rememberSaveable { mutableStateOf(initial) }
     var providerId by remember { mutableStateOf(GatewayProviders.CUSTOM) }
     var endpoint by remember { mutableStateOf("") }
     var model by remember { mutableStateOf("") }
@@ -282,12 +344,12 @@ import kotlinx.coroutines.*
         key = ""; keyEdited = false
     }
     Column(Modifier.fillMaxSize()) {
-        PageHeader("网关设置", back)
+        PageHeader(if (profile?.endpoint?.isNotBlank() == true) "编辑网关" else "添加网关", back)
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             SettingsGroup {
                 AgentId.values().forEachIndexed { index, value ->
                     if (index > 0) GroupDivider()
-                    ChoiceRow(value.label(), agent == value, { agent = value }, enabled = !busy)
+                    ChoiceRow(value.label(), agent == value, { agent = value }, enabled = !busy, icon = value.glyph())
                 }
             }
             SettingsCaption("${agent.label()} 使用 $nativeLabel，通过本地桥接连接网关。")
@@ -329,23 +391,32 @@ import kotlinx.coroutines.*
                     SettingsAction("移除已保存密钥", enabled = !busy) { key = ""; keyEdited = true; notice = "" }
                 }
             }
-            SettingsCaption("凭据加密保存在设备；保存成功不代表连通性验证通过。")
+            SettingsCaption("凭据加密保存在设备。保存后会拉取模型列表，供会话里切换模型；保存成功不代表连通性验证通过。")
             if (endpoint.trim().startsWith("http://", ignoreCase = true)) SettingsCaption("HTTP 会明文传输密钥和内容，仅用于可信网络；建议使用 HTTPS。", error = true)
             SettingsGroup {
                 SettingsAction("保存当前配置", enabled = !busy && protocolSupported) {
                     val edit = GatewayEdit(agent, endpoint.trim(), model.trim(), protocol, if (keyEdited) key.toCharArray() else null)
                     saving = true; notice = ""
                     submit {
+                        var leave: String? = null
                         try {
                             when (val result = save(edit)) {
-                                OperationResult.Done -> { notice = "配置已保存，尚未测试连接"; key = ""; keyEdited = false; refresh() }
-                                is OperationResult.Failed -> notice = result.message
+                                is GatewaySaveResult.Saved -> {
+                                    key = ""; keyEdited = false; refresh()
+                                    leave = when {
+                                        result.catalogError != null -> "配置已保存，模型列表未能拉取。${result.catalogError}"
+                                        result.models.isNotEmpty() -> "配置已保存，已拉取 ${result.models.size} 个模型，尚未测试连接"
+                                        else -> "配置已保存，尚未测试连接"
+                                    }
+                                }
+                                is GatewaySaveResult.Failed -> notice = result.message
                             }
                         } finally { edit.credential?.fill('\u0000'); saving = false }
+                        leave?.let { message -> if (onSaved != null) onSaved(message) else notice = message }
                     }
                 }
             }
-            if (notice.isNotBlank()) SettingsCaption(notice, error = notice.contains("失败") || notice.contains("不正确") || notice.contains("无效") || notice.contains("未确认"))
+            if (notice.isNotBlank()) SettingsCaption(notice, error = notice.contains("失败") || notice.contains("未能") || notice.contains("不正确") || notice.contains("无效") || notice.contains("未确认"))
             SettingsCaption("测试连接会用已保存配置发送一个小型模型请求，可能产生少量费用；不验证 CLI、工具或会话恢复。")
             val matchesSaved = protocolSupported && profile != null && profile.endpoint.isNotBlank() && profile.model.isNotBlank() && !keyEdited &&
                 endpoint.trim() == profile.endpoint && model.trim() == profile.model && protocol == profile.protocol
@@ -408,6 +479,8 @@ import kotlinx.coroutines.*
                     rows.forEachIndexed { index, row ->
                         if (index > 0) GroupDivider()
                         Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            AppIcon(row.conversation.config.agent.glyph(), null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurface)
+                            Spacer(Modifier.width(12.dp))
                             Text(row.conversation.title, Modifier.weight(1f), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodyLarge)
                             TextButton(onClick = { vm.enqueue { vm.report(if (row.conversation.deleted) vm.actions.delete(row.conversation.id, false) else vm.actions.archive(row.conversation.id, false)) } },
                                 colors = textButtonColors(onButtonColor())) { Text("恢复", style = MaterialTheme.typography.bodyLarge) }

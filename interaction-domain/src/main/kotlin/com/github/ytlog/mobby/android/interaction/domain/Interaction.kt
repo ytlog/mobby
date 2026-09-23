@@ -75,7 +75,7 @@ sealed interface TranscriptEntry {
     data class Reply(val message: Message) : TranscriptEntry
     data class ToolRun(val steps: List<Step>) : TranscriptEntry
 }
-data class ConversationSummary(val conversation: Conversation, val phase: ExecutionPhase? = null, val occupied: Boolean = false)
+data class ConversationSummary(val conversation: Conversation, val phase: ExecutionPhase? = null, val occupied: Boolean = false, val execution: ExecutionId? = null)
 data class ConversationDetail(val conversation: Conversation, val turns: List<Turn>, val hasEarlier: Boolean = false)
 data class Project(val name: String, val defaultWorkspace: String)
 data class InteractionState(
@@ -84,9 +84,14 @@ data class InteractionState(
 ) {
     val occupied: ConversationSummary? get() = conversations.firstOrNull { it.occupied }
 }
-data class AgentOption(val agent: AgentId, val models: Map<String, Set<String>>, val unavailable: String?, val resume: Boolean, val skills: Set<String>, val resources: Boolean = false, val images: Boolean = false, val approvals: Boolean = false)
-data class GatewayProfile(val agent: AgentId, val id: String, val version: Long, val endpoint: String, val model: String, val protocol: String, val hasCredential: Boolean)
+data class AgentOption(val agent: AgentId, val models: Map<String, Set<String>>, val unavailable: String?, val resume: Boolean, val skills: Set<String>, val resources: Boolean = false, val images: Boolean = false, val approvals: Boolean = false, val modelNames: Map<String, String> = emptyMap())
+data class GatewayModel(val id: String, val name: String)
+data class GatewayProfile(val agent: AgentId, val id: String, val version: Long, val endpoint: String, val model: String, val protocol: String, val hasCredential: Boolean, val models: List<GatewayModel> = emptyList(), val catalogError: String? = null)
 data class GatewayCheckReport(val passed: Boolean, val message: String)
+sealed interface GatewaySaveResult {
+    data class Saved(val models: List<GatewayModel>, val catalogError: String?) : GatewaySaveResult
+    data class Failed(val message: String) : GatewaySaveResult
+}
 class GatewayEdit(val agent: AgentId, val endpoint: String, val model: String, val protocol: String, val credential: CharArray?) {
     override fun toString() = "GatewayEdit(agent=$agent)"
 }
@@ -140,7 +145,7 @@ interface SystemPort {
     suspend fun agents(): List<AgentOption>
     suspend fun checkGateway(profile: GatewayProfile): DataResult<GatewayCheckReport>
     suspend fun gateways(): List<GatewayProfile>
-    suspend fun saveGateway(edit: GatewayEdit): OperationResult
+    suspend fun saveGateway(edit: GatewayEdit): GatewaySaveResult
     suspend fun initialize(): OperationResult
     suspend fun shell(command: String): OperationResult
     suspend fun stopShell(): OperationResult
@@ -296,9 +301,9 @@ class InteractionUseCases(
     suspend fun agents() = system.agents()
     suspend fun checkGateway(profile: GatewayProfile) = system.checkGateway(profile)
     suspend fun gateways() = system.gateways()
-    suspend fun saveGateway(edit: GatewayEdit): OperationResult {
+    suspend fun saveGateway(edit: GatewayEdit): GatewaySaveResult {
         val result = system.saveGateway(edit)
-        if (result == OperationResult.Done) system.gateways().firstOrNull { it.agent == edit.agent }?.let { repository.updateGateway(it) }
+        if (result is GatewaySaveResult.Saved) system.gateways().firstOrNull { it.agent == edit.agent }?.let { repository.updateGateway(it) }
         return result
     }
     suspend fun initialize() = system.initialize()

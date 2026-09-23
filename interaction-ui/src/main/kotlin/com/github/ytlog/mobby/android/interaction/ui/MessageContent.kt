@@ -30,6 +30,12 @@ internal fun AgentId.label() = when (this) {
     AgentId.CLAUDE_CODE -> "Claude Code"
     AgentId.OPEN_CODE -> "OpenCode"
 }
+
+internal fun AgentId.glyph() = when (this) {
+    AgentId.CODEX -> AppIcons.Codex
+    AgentId.CLAUDE_CODE -> AppIcons.Claude
+    AgentId.OPEN_CODE -> AppIcons.OpenCode
+}
 internal fun ExecutionPhase?.label(): String = when (this) {
     null -> "等待接纳"
     ExecutionPhase.ACCEPTED -> "准备执行"

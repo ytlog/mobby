@@ -61,10 +61,15 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlin.math.roundToInt
 
-class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String, String) -> Unit, val appearance: (Boolean) -> Unit)
+class InteractionHostActions(
+    val share: (String) -> Unit, val shortcut: (String, String) -> Unit, val appearance: (Boolean) -> Unit, val pet: (Boolean) -> Unit = {},
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable fun InteractionEntry(actions: InteractionUseCases, hostActions: InteractionHostActions, conversationNavigation: String? = null) {
+@Composable fun InteractionEntry(
+    actions: InteractionUseCases, hostActions: InteractionHostActions, conversationNavigation: String? = null,
+    petEnabled: Boolean = false, petPermitted: Boolean = false,
+) {
     val factory = remember(actions) { object : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST") override fun <T : ViewModel> create(modelClass: Class<T>): T = ConversationViewModel(actions) as T
     } }
@@ -143,7 +148,7 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                 ) {
                     when (route) {
                         "projects" -> ProjectPage(vm) { route = "conversation" }
-                        "settings" -> SettingsPage(system, appearance, { value -> vm.enqueue { vm.report(actions.setAppearance(value)) } }, { navigate(it) }, { route = "conversation" }, vm)
+                        "settings" -> SettingsPage(system, appearance, { value -> vm.enqueue { vm.report(actions.setAppearance(value)) } }, { navigate(it) }, { route = "conversation" }, vm, petEnabled, petPermitted, hostActions.pet)
                         "gateway" -> GatewayPage(vm) { route = "settings" }
                         "history-limits" -> EventHistoryPage(actions::eventHistoryLimits, actions::saveEventHistoryLimits) { route = "settings" }
                         "diagnostic" -> DiagnosticPage(vm) { route = "settings" }
@@ -294,7 +299,7 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                 }
                 if (query.isBlank() || projectNames.isNotEmpty()) {
                     item(key = "section:projects") { DrawerSection("项目") }
-                    if (query.isBlank()) item(key = "manage-projects") { DrawerEntry("项目管理", onProjects) }
+                    if (query.isBlank()) item(key = "manage-projects") { DrawerEntry("项目管理", onClick = onProjects) }
                     projectNames.forEach { name ->
                         item(key = "project:$name") { DrawerEntry(name) { state.projects.firstOrNull { it.name == name }?.let(vm::openProject); onProjects() } }
                         items(inProject.filter { it.conversation.project == name }, key = { it.conversation.id.value }) { DrawerConversation(it, state, onSelect) }
@@ -318,9 +323,16 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
     Text(title, Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 4.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
-@Composable private fun DrawerEntry(title: String, onClick: () -> Unit) {
-    Box(Modifier.fillMaxWidth().height(DrawerRowHeight).clickable(onClick = onClick).padding(horizontal = 12.dp), contentAlignment = Alignment.CenterStart) {
-        Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, color = LocalContentColor.current)
+@Composable private fun DrawerEntry(title: String, mark: AppGlyph? = null, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().height(DrawerRowHeight).clickable(onClick = onClick).padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (mark != null) {
+            AppIcon(mark, null, Modifier.size(16.dp))
+            Spacer(Modifier.width(8.dp))
+        }
+        Text(title, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, color = LocalContentColor.current)
     }
 }
 
@@ -331,7 +343,7 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
         contentColor = if (selected) onButtonColor() else conversationInk(),
         shape = RoundedCornerShape(14.dp),
     ) {
-        DrawerEntry(item.conversation.title) { onSelect(item.conversation) }
+        DrawerEntry(item.conversation.title, mark = item.conversation.config.agent.glyph()) { onSelect(item.conversation) }
     }
 }
 
@@ -397,7 +409,14 @@ private val DrawerRowHeight = 40.dp
                         modifier = Modifier.height(ToolbarControl),
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
                         colors = textButtonColors(onButtonColor()),
-                    ) { Text(c?.config?.agent?.label() ?: "选择 Agent") }
+                    ) {
+                        val agent = c?.config?.agent
+                        if (agent != null) {
+                            AppIcon(agent.glyph(), null, Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                        }
+                        Text(agent?.label() ?: "选择 Agent")
+                    }
                     }
                 }
                 if (c != null) AgentConfigMenu(config, { config = false }, c, vm, chip)

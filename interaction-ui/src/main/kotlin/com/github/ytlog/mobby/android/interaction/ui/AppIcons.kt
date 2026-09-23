@@ -68,6 +68,9 @@ internal object AppIcons {
     val Edit = glyph("M4 20h4L19 9l-4-4L4 16zM13 7l4 4")
     val Terminal = glyph("M4 5h16v14H4zM8 9l2.2 2L8 13M12.5 13H16")
     val Trash = glyph("M6 7h12M9 7V5h6v2M8 7l1 13h6l1-13")
+    val Codex = glyph("M12 3.8 19.1 7.9 19.1 16.1 12 20.2 4.9 16.1 4.9 7.9Z M12 8.2 16.2 10.6 16.2 13.4 12 15.8 7.8 13.4 7.8 10.6Z")
+    val Claude = glyph("M12 3.5 14.7 9.3 20.5 12 14.7 14.7 12 20.5 9.3 14.7 3.5 12 9.3 9.3Z")
+    val OpenCode = glyph("M15.9 6.4A6.8 6.8 0 1 0 15.9 17.6 M8.6 10.4 11.8 13 8.6 15.6 M12.2 15.6H15.2")
 }
 
 @Composable

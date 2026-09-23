@@ -1,0 +1,185 @@
+package com.github.ytlog.mobby.android.interaction.ui
+
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.os.SystemClock
+import android.view.MotionEvent
+import android.view.View
+import android.view.ViewGroup
+import androidx.test.core.app.ApplicationProvider
+import com.github.ytlog.mobby.android.interaction.domain.*
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34], qualifiers = "w400dp-h800dp-mdpi")
+class PetOverlayTest {
+    private val context: Context get() = ApplicationProvider.getApplicationContext()
+
+    @Test fun `pet stays inside the screen and keeps the ball beside the tray`() {
+        assertEquals(PetFrame(0, 0, 56, 56, true), petFrame(-20, -5, false, 400, 800, 56, 196, 128))
+        assertEquals(PetFrame(344, 744, 56, 56, true), petFrame(999, 999, false, 400, 800, 56, 196, 128))
+        val right = petFrame(300, 100, true, 400, 800, 56, 196, 128)
+        assertTrue(right.ballOnRight)
+        assertEquals(300 to 100, ballOrigin(right, 56))
+        assertTrue(right.x >= 0 && right.x + right.width <= 400)
+        val left = petFrame(10, 700, true, 400, 800, 56, 196, 128)
+        assertFalse(left.ballOnRight)
+        assertEquals(10 to 700, ballOrigin(left, 56))
+        assertTrue(left.y >= 0 && left.y + left.height <= 800)
+    }
+
+    @Test fun `pet is shown only outside the app for an occupied run that is not tucked`() {
+        val target = PetTarget(ConversationId("c"), "整理相册", ExecutionId("run"), ExecutionPhase.RUNNING)
+        assertFalse(petShouldShow(target, foreground = true, enabled = true, permitted = true, tuckedExecution = null))
+        assertFalse(petShouldShow(target, false, false, true, null))
+        assertFalse(petShouldShow(target, false, true, false, null))
+        assertFalse(petShouldShow(null, false, true, true, null))
+        assertFalse(petShouldShow(target, false, true, true, "run"))
+        assertTrue(petShouldShow(target, false, true, true, null))
+        assertEquals("停止中", petStatus(ExecutionPhase.CANCELLING))
+        assertEquals("等待确认", petStatus(ExecutionPhase.AWAITING_APPROVAL))
+        assertEquals("正在执行", petStatus(ExecutionPhase.FAILED))
+        assertFalse(petCanStop(ExecutionPhase.CANCELLING))
+        assertTrue(petCanStop(ExecutionPhase.RUNNING))
+        val occupied = running("run")
+        assertEquals(ExecutionId("run"), petTarget(occupied)?.execution)
+        assertNull(petTarget(running(null)))
+    }
+
+    @Test fun `background task shows a draggable ball that opens a tray`() {
+        val window = MemoryWindow()
+        val prefs = context.getSharedPreferences("pet-drag", Context.MODE_PRIVATE)
+        prefs.edit().clear().putInt("x", 100).putInt("y", 200).commit()
+        val pet = DesktopPet(context, window, prefs, {}, {})
+        pet.update(running("run"), foreground = true, enabled = true, permitted = true)
+        assertFalse(window.attached)
+        pet.update(running("run"), foreground = false, enabled = false, permitted = true)
+        assertFalse(window.attached)
+        pet.update(running("run"), foreground = false, enabled = true, permitted = false)
+        assertFalse(window.attached)
+        pet.update(running(null), foreground = false, enabled = true, permitted = true)
+        assertFalse(window.attached)
+        pet.update(running("run"), foreground = false, enabled = true, permitted = true)
+        val ballSize = petPx(PET_BALL_DP, context.resources.displayMetrics.density).coerceAtLeast(1)
+        assertEquals(100, window.frame?.x)
+        assertEquals(200, window.frame?.y)
+        assertEquals(ballSize, window.frame?.width)
+        draw(window.view!!, ballSize)
+        touch(window.view!!.described("任务悬浮球")!!, 20f, 20f, 90f, 50f)
+        assertEquals(170, window.frame?.x)
+        assertEquals(230, window.frame?.y)
+        assertEquals(ballSize, window.frame?.width)
+        assertEquals(170, prefs.getInt("x", -1))
+        touch(window.view!!.described("任务悬浮球")!!, 20f, 20f, 20f, 20f)
+        assertTrue((window.frame?.width ?: 0) > ballSize)
+        assertNotNull(window.view!!.described("停止当前任务"))
+    }
+
+    @Test fun `stop open and tuck use the occupied run and a new run shows again`() {
+        val window = MemoryWindow()
+        val prefs = context.getSharedPreferences("pet-actions", Context.MODE_PRIVATE)
+        prefs.edit().clear().commit()
+        var stopped: ExecutionId? = null
+        var opened: ConversationId? = null
+        val pet = DesktopPet(context, window, prefs, { stopped = it }, { opened = it })
+        pet.update(running("run", title = "整理相册"), foreground = false, enabled = true, permitted = true)
+        touch(window.view!!.described("任务悬浮球")!!, 8f, 8f, 8f, 8f)
+        assertEquals("整理相册", (window.view!!.described("停止当前任务")!!.parent.parent as View).let { tray ->
+            (tray as ViewGroup).getChildAt(0) as android.widget.TextView
+        }.text)
+        window.view!!.described("停止当前任务")!!.performClick()
+        assertEquals(ExecutionId("run"), stopped)
+        assertEquals(petPx(PET_BALL_DP, context.resources.displayMetrics.density).coerceAtLeast(1), window.frame?.width)
+        touch(window.view!!.described("任务悬浮球")!!, 8f, 8f, 8f, 8f)
+        window.view!!.described("回到对话")!!.performClick()
+        assertEquals(ConversationId("c"), opened)
+        touch(window.view!!.described("任务悬浮球")!!, 8f, 8f, 8f, 8f)
+        window.view!!.described("收起悬浮球")!!.performClick()
+        assertFalse(window.attached)
+        pet.update(running("run"), foreground = false, enabled = true, permitted = true)
+        assertFalse(window.attached)
+        pet.update(running("next"), foreground = false, enabled = true, permitted = true)
+        assertTrue(window.attached)
+        pet.update(running("next"), foreground = true, enabled = true, permitted = true)
+        assertFalse(window.attached)
+    }
+
+    @Test fun `cancelling disables stop`() {
+        val window = MemoryWindow()
+        val prefs = context.getSharedPreferences("pet-cancel", Context.MODE_PRIVATE)
+        prefs.edit().clear().commit()
+        var stopped = false
+        val pet = DesktopPet(context, window, prefs, { stopped = true }, {})
+        pet.update(running("run", ExecutionPhase.CANCELLING), foreground = false, enabled = true, permitted = true)
+        touch(window.view!!.described("任务悬浮球")!!, 8f, 8f, 8f, 8f)
+        val stop = window.view!!.described("停止当前任务")!!
+        assertFalse(stop.isEnabled)
+        assertEquals("停止中", textUnder(window.view!!, 1))
+        stop.performClick()
+        assertFalse(stopped)
+    }
+
+    private fun running(execution: String?, phase: ExecutionPhase = ExecutionPhase.RUNNING, title: String = "当前任务") = InteractionState(
+        loading = false,
+        conversations = listOf(ConversationSummary(
+            Conversation(ConversationId("c"), NextTurnConfig(AgentId.CODEX, "model", null, "default", "CODEX"), title = title),
+            phase,
+            occupied = true,
+            execution = execution?.let(::ExecutionId),
+        )),
+    )
+
+    private fun draw(view: View, size: Int) {
+        val spec = View.MeasureSpec.makeMeasureSpec(size, View.MeasureSpec.EXACTLY)
+        view.measure(spec, spec)
+        view.layout(0, 0, size, size)
+        view.draw(Canvas(Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)))
+    }
+
+    private fun touch(view: View, x: Float, y: Float, upX: Float, upY: Float) {
+        val down = SystemClock.uptimeMillis()
+        view.dispatchTouchEvent(event(down, down, MotionEvent.ACTION_DOWN, x, y))
+        if (upX != x || upY != y) view.dispatchTouchEvent(event(down, down + 16, MotionEvent.ACTION_MOVE, upX, upY))
+        view.dispatchTouchEvent(event(down, down + 32, MotionEvent.ACTION_UP, upX, upY))
+    }
+
+    private fun event(down: Long, time: Long, action: Int, x: Float, y: Float): MotionEvent =
+        MotionEvent.obtain(down, time, action, x, y, 0)
+
+    private fun textUnder(root: View, index: Int): String {
+        val tray = root.described("停止当前任务")!!.parent.parent as ViewGroup
+        return (tray.getChildAt(index) as android.widget.TextView).text.toString()
+    }
+}
+
+private class MemoryWindow : PetWindow {
+    var view: View? = null
+    var frame: PetFrame? = null
+    override val attached get() = view != null
+    override fun attach(view: View, frame: PetFrame) {
+        this.view = view
+        this.frame = frame
+    }
+    override fun update(frame: PetFrame) { this.frame = frame }
+    override fun detach() {
+        view = null
+        frame = null
+    }
+}
+
+private fun View.described(text: String): View? {
+    if (contentDescription == text) return this
+    if (this is ViewGroup) {
+        for (index in 0 until childCount) getChildAt(index).described(text)?.let { return it }
+    }
+    return null
+}

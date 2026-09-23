@@ -203,7 +203,7 @@ internal class RuntimeSystemAdapter(private val context: android.content.Context
     override val diagnostic = diagnostics.state.map { DiagnosticOutput(it.phase?.domain(), it.output) }
     override suspend fun agents(): List<AgentOption> = when (val result = client.capabilities()) {
         is CapabilityResult.Unavailable -> DomainAgent.values().map { AgentOption(it, emptyMap(), result.error.message(), false, emptySet()) }
-        is CapabilityResult.Available -> result.capabilities.agents.map { AgentOption(DomainAgent.valueOf(it.agentId.name), it.models.associate { m -> m.id to m.reasoningLevels }, it.unavailableReason?.message(), it.supportsResume, it.skillCapabilities.map { ref -> ref.value }.toSet(), it.supportsResources, it.supportsImages, it.supportsApproval) }
+        is CapabilityResult.Available -> result.capabilities.agents.map { AgentOption(DomainAgent.valueOf(it.agentId.name), it.models.associate { m -> m.id to m.reasoningLevels }, it.unavailableReason?.message(), it.supportsResume, it.skillCapabilities.map { ref -> ref.value }.toSet(), it.supportsResources, it.supportsImages, it.supportsApproval, it.models.associate { m -> m.id to m.name }) }
     }
     override suspend fun checkGateway(profile: GatewayProfile): DataResult<GatewayCheckReport> =
         when (val result = admin.validateGateway(GatewayProfileRef(profile.id, profile.version))) {
@@ -211,14 +211,17 @@ internal class RuntimeSystemAdapter(private val context: android.content.Context
             is AdminResult.Success -> DataResult.Loaded(GatewayCheckReport(result.value.outcome == GatewayCheckOutcome.SUCCEEDED, result.value.message()))
         }
     override suspend fun gateways(): List<GatewayProfile> = when (val result = admin.listGatewayProfiles()) {
-        is AdminResult.Success -> result.value.map { GatewayProfile(DomainAgent.valueOf(it.agent.name), it.ref.id, it.ref.version, it.endpoint, it.model, it.protocol.name, it.hasCredential) }
+        is AdminResult.Success -> result.value.map { GatewayProfile(DomainAgent.valueOf(it.agent.name), it.ref.id, it.ref.version, it.endpoint, it.model, it.protocol.name, it.hasCredential, it.models.map { model -> GatewayModel(model.id, model.name) }, it.catalogError) }
         is AdminResult.Failed -> throw IllegalStateException(result.error.message())
     }
-    override suspend fun saveGateway(edit: GatewayEdit): OperationResult {
+    override suspend fun saveGateway(edit: GatewayEdit): GatewaySaveResult {
         val secret = edit.credential?.let(::SecretInput)
         edit.credential?.fill('\u0000')
-        return admin.saveGatewayProfile(SaveGatewayRequest(RuntimeAgent.valueOf(edit.agent.name), edit.endpoint, edit.model,
-            GatewayProtocol.valueOf(edit.protocol), secret)).operation()
+        return when (val result = admin.saveGatewayProfile(SaveGatewayRequest(RuntimeAgent.valueOf(edit.agent.name), edit.endpoint, edit.model,
+            GatewayProtocol.valueOf(edit.protocol), secret))) {
+            is AdminResult.Success -> GatewaySaveResult.Saved(result.value.models.map { GatewayModel(it.id, it.name) }, result.value.catalogError)
+            is AdminResult.Failed -> GatewaySaveResult.Failed(result.error.message())
+        }
     }
     override suspend fun initialize() = admin.initialize().operation()
     override suspend fun shell(command: String) = diagnostics.executeShell(command).operation()

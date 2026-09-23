@@ -1,8 +1,11 @@
 package com.github.ytlog.mobby.android.interaction.ui
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.lifecycle.ViewModelStore
 import com.github.ytlog.mobby.android.interaction.domain.*
 import kotlinx.coroutines.CoroutineScope
@@ -12,6 +15,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -61,5 +65,49 @@ class SettingsSectionTest {
         assertTrue(storage.bottom < shell.top)
         assertTrue(shell.bottom < check.top)
         assertTrue(check.top - shell.bottom < shell.top - storage.bottom)
+    }
+
+    @Test fun `desktop pet switch reports the requested value`() {
+        var requested: Boolean? = null
+        val vm = viewModel()
+        compose.setContent {
+            MaterialTheme {
+                SettingsPage(SystemStatus(true, true, "运行环境已就绪"), Appearance.DARK, {}, {}, {}, vm, setPet = { requested = it })
+            }
+        }
+        compose.onNodeWithText("桌面悬浮球").performClick()
+        compose.waitForIdle()
+        assertEquals(true, requested)
+        compose.onNodeWithText("离开应用且任务还在执行时，桌面上会出现一只小宠物。点开后可以停止任务或回到对话，拖动可以换位置。").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test fun `desktop pet explains a missing overlay permission`() {
+        val vm = viewModel()
+        compose.setContent {
+            MaterialTheme {
+                SettingsPage(SystemStatus(true, true, "运行环境已就绪"), Appearance.DARK, {}, {}, {}, vm, petEnabled = true, petPermitted = false)
+            }
+        }
+        compose.onNodeWithText("需要允许显示在其他应用的上层。").performScrollTo().assertIsDisplayed()
+    }
+
+    private fun viewModel(): ConversationViewModel {
+        val repository = stub<InteractionRepository> { name -> when (name) {
+            "getState" -> MutableStateFlow(InteractionState(loading = false))
+            else -> error(name)
+        } }
+        val system = stub<SystemPort> { name -> when (name) {
+            "getStatus" -> flowOf(SystemStatus(true, true, "运行环境已就绪"))
+            "getDiagnostic" -> flowOf(DiagnosticOutput(null, emptyList()))
+            "agents" -> emptyList<AgentOption>()
+            "gateways" -> emptyList<GatewayProfile>()
+            else -> error(name)
+        } }
+        val preferences = stub<PreferencePort> { name -> when (name) {
+            "getAppearance" -> MutableStateFlow(Appearance.DARK)
+            else -> error(name)
+        } }
+        val actions = InteractionUseCases(repository, stub<ExecutionPort> { error(it) }, system, { "fixture" }, scope, preferences)
+        return ConversationViewModel(actions).also { store.put(it.toString(), it) }
     }
 }

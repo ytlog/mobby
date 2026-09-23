@@ -214,7 +214,8 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
         val (version, config) = store.snapshot(mode)
         return GatewayProfileSummary(GatewayProfileRef(mode.name, version),
             mode.productAgent(),
-            config.endpoint, config.model, com.github.ytlog.mobby.android.runtime.api.GatewayProtocol.valueOf(config.protocol.name), config.key.isNotEmpty())
+            config.endpoint, config.model, com.github.ytlog.mobby.android.runtime.api.GatewayProtocol.valueOf(config.protocol.name), config.key.isNotEmpty(),
+            config.models.map { GatewayModelSummary(it.id, it.name) }, config.catalogError)
     }
     override suspend fun saveGatewayProfile(request: SaveGatewayRequest): AdminResult<GatewayProfileSummary> = withContext(Dispatchers.IO) {
         val chars = request.credential?.consume()
@@ -222,9 +223,19 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
             val mode = request.agent.launchMode()
             val store = GatewayStore(this@RuntimeService)
             val old = store.load(mode)
-            store.save(mode, GatewayConfig(request.endpoint, request.model, chars?.concatToString() ?: old.key, GatewayProtocol.valueOf(request.protocol.name)))
+            val protocol = GatewayProtocol.valueOf(request.protocol.name)
+            val draft = GatewayConfig(request.endpoint, request.model, chars?.concatToString() ?: old.key, protocol)
+            draft.validateFor(mode)
+            val fetched = GatewayCatalog().fetch(draft)
+            val models = when (fetched) {
+                is CatalogResult.Ready -> mergeCatalog(draft.model, fetched.models)
+                is CatalogResult.Unavailable -> listOf(GatewayModel(draft.model, draft.model))
+            }
+            val catalogError = (fetched as? CatalogResult.Unavailable)?.message
+            store.save(mode, draft.copy(models = models, catalogError = catalogError))
             AdminResult.Success(summary(mode))
-        } catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.INVALID_CONFIG)) }
+        } catch (e: CancellationException) { throw e }
+        catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.INVALID_CONFIG)) }
         finally { chars?.fill('\u0000') }
     }
     @OptIn(ExperimentalCoroutinesApi::class)

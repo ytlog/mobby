@@ -26,7 +26,7 @@ internal data class OutputCacheCandidate(val turnId: String, val runId: String, 
 internal data class SelectionRow(@PrimaryKey val key: String = "current", val conversationId: String)
 
 /** Sidebar projection excludes user text, frozen drafts, expanded steps and historic snapshots. */
-internal data class ConversationActivityRow(val conversationId: String, val snapshot: String?, val occupied: Boolean)
+internal data class ConversationActivityRow(val conversationId: String, val snapshot: String?, val occupied: Boolean, val executionId: String?)
 
 internal data class TurnWithChunks(
     @Embedded val turn: TurnRow,
@@ -45,7 +45,8 @@ internal data class TurnWithChunks(
     suspend fun countThrough(id: String, time: Long, turnId: String): Int
     @Query("SELECT * FROM chunks WHERE runId IN (SELECT runId FROM turns WHERE conversationId=:id)") suspend fun historyChunks(id: String): List<ChunkRow>
     @Query("""SELECT c.id AS conversationId, t.snapshot AS snapshot,
-        EXISTS(SELECT 1 FROM turns busy WHERE busy.conversationId=c.id AND busy.occupied=1) AS occupied
+        EXISTS(SELECT 1 FROM turns busy WHERE busy.conversationId=c.id AND busy.occupied=1) AS occupied,
+        (SELECT busy.runId FROM turns busy WHERE busy.conversationId=c.id AND busy.occupied=1 AND busy.runId IS NOT NULL ORDER BY busy.createdAt, busy.id LIMIT 1) AS executionId
         FROM conversations c LEFT JOIN turns t ON t.id=(
             SELECT latest.id FROM turns latest WHERE latest.conversationId=c.id
             ORDER BY latest.createdAt DESC, latest.id DESC LIMIT 1

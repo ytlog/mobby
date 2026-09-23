@@ -109,12 +109,17 @@ class DrawerFooterTest {
         compose.onNodeWithContentDescription("打开会话抽屉").performClick()
         val headers = listOf("置顶", "项目", "历史记录")
         val entries = listOf("置顶事项", "项目管理", "示例项目", "项目事项", "空项目")
+        val marked = listOf("置顶事项", "项目事项")
+        val plain = listOf("项目管理", "示例项目", "空项目")
         (headers + entries).forEach { compose.onNodeWithText(it).assertExists() }
         val headerLeft = headers.map { compose.onNodeWithText(it, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.left }
-        val entryLeft = entries.map { compose.onNodeWithText(it, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.left }
+        val markedLeft = marked.map { compose.onNodeWithText(it, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.left }
+        val plainLeft = plain.map { compose.onNodeWithText(it, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.left }
         headerLeft.forEach { assertEquals(headerLeft.first(), it, 1f) }
-        entryLeft.forEach { assertEquals(entryLeft.first(), it, 1f) }
-        assertTrue(entryLeft.first() > headerLeft.first())
+        markedLeft.forEach { assertEquals(markedLeft.first(), it, 1f) }
+        plainLeft.forEach { assertEquals(plainLeft.first(), it, 1f) }
+        assertTrue(plainLeft.first() > headerLeft.first())
+        assertTrue(markedLeft.first() > plainLeft.first())
         val top = (headers + entries).associateWith { compose.onNodeWithText(it).fetchSemanticsNode().boundsInRoot.top }
         assertTrue(top.getValue("置顶") < top.getValue("置顶事项"))
         assertTrue(top.getValue("置顶事项") < top.getValue("项目"))
@@ -128,7 +133,7 @@ class DrawerFooterTest {
         compose.onNode(hasScrollAction()).performScrollToNode(hasText("周末计划"))
         assertEquals(header, compose.onNodeWithText("mobby").fetchSemanticsNode().boundsInRoot.top, 1f)
         assertEquals(footer, compose.onNodeWithContentDescription("搜索会话").fetchSemanticsNode().boundsInRoot.top, 1f)
-        assertEquals(entryLeft.first(), compose.onNodeWithText("周末计划", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.left, 1f)
+        assertEquals(markedLeft.first(), compose.onNodeWithText("周末计划", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.left, 1f)
         assertTrue(compose.onNodeWithText("历史记录").fetchSemanticsNode().boundsInRoot.top < compose.onNodeWithText("周末计划").fetchSemanticsNode().boundsInRoot.top)
     }
 }

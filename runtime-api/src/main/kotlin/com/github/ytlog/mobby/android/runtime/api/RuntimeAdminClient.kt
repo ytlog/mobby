@@ -5,9 +5,11 @@ import kotlinx.coroutines.flow.StateFlow
 enum class EnvironmentPhase { INITIALIZING, READY, FAILED }
 data class EnvironmentSnapshot(val phase: EnvironmentPhase, val summary: String, val error: RuntimeError? = null)
 enum class GatewayProtocol { CHAT, RESPONSES, MESSAGES }
+data class GatewayModelSummary(val id: String, val name: String)
 data class GatewayProfileSummary(
     val ref: GatewayProfileRef, val agent: AgentId, val endpoint: String, val model: String,
-    val protocol: GatewayProtocol, val hasCredential: Boolean
+    val protocol: GatewayProtocol, val hasCredential: Boolean,
+    val models: List<GatewayModelSummary> = emptyList(), val catalogError: String? = null,
 )
 /** Short-lived memory only; never include in a DTO toString, journal, Flow, or SavedState. */
 class SecretInput(value: CharArray) {

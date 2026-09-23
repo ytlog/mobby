@@ -31,4 +31,31 @@ class GatewayConfigTest {
         }
     }
 
+    @Test fun `legacy config without a catalog still loads and only accepts its saved model`() {
+        val parsed = GatewayConfig.parse("""{"endpoint":"https://example.com/v1","model":"only","key":"k","protocol":"responses"}""")
+        assertTrue(parsed.models.isEmpty())
+        assertNull(parsed.catalogError)
+        assertTrue(parsed.accepts("only"))
+        assertFalse(parsed.accepts("other"))
+        assertEquals("only", parsed.forRun("only").model)
+    }
+
+    @Test fun `catalog roundtrip keeps the default model and a selected model does not rewrite the stored default`() {
+        val original = GatewayConfig("https://example.com/v1", "default", "key\"", GatewayProtocol.RESPONSES,
+            listOf(GatewayModel("default", "Default"), GatewayModel("other", "Other")), null)
+        val parsed = GatewayConfig.parse(original.json())
+        assertEquals(original, parsed)
+        assertEquals("other", original.forRun("other").model)
+        assertEquals("default", original.model)
+        assertTrue(original.forRun("other").models.isEmpty())
+        assertFalse(original.forRun("other").json().contains("Other"))
+        assertFalse(original.accepts("missing"))
+    }
+
+    @Test fun `catalog failure note roundtrips and invalid model entries are dropped`() {
+        val parsed = GatewayConfig.parse("""{"endpoint":"https://example.com/v1","model":"only","key":"k","protocol":"responses","catalogError":"该网关没有模型列表接口","models":[{"id":"ok","name":"Ok"},{"id":"bad${'\n'}name","name":"Bad"},{"name":"missing"}]}""")
+        assertEquals("该网关没有模型列表接口", parsed.catalogError)
+        assertEquals(listOf(GatewayModel("ok", "Ok")), parsed.models)
+    }
+
 }

@@ -19,7 +19,7 @@ class GatewayFormTest {
     private val profile = GatewayProfile(AgentId.CODEX, "CODEX", 1, "https://gateway.invalid/v1", "test-model", "RESPONSES", true)
     private fun field(label: String) = compose.onNode(hasSetTextAction() and hasText(label))
     @Test fun `switch to unconfigured agent clears previous input and secret`() {
-        compose.setContent { MaterialTheme { GatewayForm(listOf(profile), {}, { OperationResult.Done }, {}, {}, { DataResult.Failed("unused") }) } }
+        compose.setContent { MaterialTheme { GatewayForm(listOf(profile), {}, { GatewaySaveResult.Saved(emptyList(), null) }, {}, {}, { DataResult.Failed("unused") }) } }
         field("已保存密钥，输入可替换").performScrollTo().performTextReplacement("synthetic-test-secret")
         compose.onNodeWithText("Claude Code").performScrollTo().performClick()
         field("网关地址").assertTextEquals("网关地址", "")
@@ -29,7 +29,7 @@ class GatewayFormTest {
     @Test fun `saving freezes all fields and reports result for the submitted agent only`() {
         var pending: (suspend () -> Unit)? = null
         var saved: GatewayEdit? = null
-        compose.setContent { MaterialTheme { GatewayForm(listOf(profile), { pending = it }, { saved = it; OperationResult.Done }, {}, {}, { DataResult.Failed("unused") }) } }
+        compose.setContent { MaterialTheme { GatewayForm(listOf(profile), { pending = it }, { saved = it; GatewaySaveResult.Saved(emptyList(), null) }, {}, {}, { DataResult.Failed("unused") }) } }
         compose.onNodeWithText("保存当前配置").performScrollTo().performClick()
         field("网关地址").assertIsNotEnabled()
         field("模型名称").assertIsNotEnabled()
@@ -48,7 +48,7 @@ class GatewayFormTest {
         var request: GatewayEdit? = null
         var sentKey: String? = null
         compose.setContent { MaterialTheme { GatewayForm(listOf(profile), { pending = it }, {
-            request = it; sentKey = it.credential?.concatToString(); OperationResult.Failed("保存失败，请重试")
+            request = it; sentKey = it.credential?.concatToString(); GatewaySaveResult.Failed("保存失败，请重试")
         }, {}, {}, { DataResult.Failed("unused") }) } }
         field("网关地址").performScrollTo().performTextReplacement("https://changed.invalid/v1")
         field("已保存密钥，输入可替换").performScrollTo().performTextReplacement("synthetic-test-secret")
@@ -65,7 +65,7 @@ class GatewayFormTest {
     @Test fun `check uses saved profile freezes edits and cancellation never reports success`() {
         val response = CompletableDeferred<DataResult<GatewayCheckReport>>()
         var checked: GatewayProfile? = null
-        compose.setContent { MaterialTheme { GatewayForm(listOf(profile), {}, { OperationResult.Done }, {}, {}, {
+        compose.setContent { MaterialTheme { GatewayForm(listOf(profile), {}, { GatewaySaveResult.Saved(emptyList(), null) }, {}, {}, {
             checked = it; response.await()
         }) } }
         compose.onNodeWithText("测试已保存连接").performScrollTo().performClick()
@@ -79,7 +79,7 @@ class GatewayFormTest {
         compose.onNodeWithText("测试已保存连接").assertIsEnabled()
     }
     @Test fun `unsaved edits disable checks and invalidate earlier connection result`() {
-        compose.setContent { MaterialTheme { GatewayForm(listOf(profile), {}, { OperationResult.Done }, {}, {}, {
+        compose.setContent { MaterialTheme { GatewayForm(listOf(profile), {}, { GatewaySaveResult.Saved(emptyList(), null) }, {}, {}, {
             DataResult.Loaded(GatewayCheckReport(true, "最小请求通过"))
         }) } }
         compose.onNodeWithText("测试已保存连接").performScrollTo().performClick()
@@ -93,7 +93,7 @@ class GatewayFormTest {
     @Test fun `legacy saved profile with version zero remains checkable`() {
         var checked: GatewayProfile? = null
         val legacy = profile.copy(version = 0)
-        compose.setContent { MaterialTheme { GatewayForm(listOf(legacy), {}, { OperationResult.Done }, {}, {}, {
+        compose.setContent { MaterialTheme { GatewayForm(listOf(legacy), {}, { GatewaySaveResult.Saved(emptyList(), null) }, {}, {}, {
             checked = it; DataResult.Failed("测试网络错误")
         }) } }
         compose.onNodeWithText("测试已保存连接").performScrollTo().assertIsEnabled().performClick()
@@ -105,7 +105,7 @@ class GatewayFormTest {
         var pending: (suspend () -> Unit)? = null
         var saved: GatewayEdit? = null
         compose.setContent { MaterialTheme { GatewayForm(listOf(profile.copy(protocol = "CHAT")), { pending = it }, {
-            saved = it; OperationResult.Done
+            saved = it; GatewaySaveResult.Saved(emptyList(), null)
         }, {}, {}, { DataResult.Failed("unused") }) } }
         compose.onNodeWithText("当前保存的协议不适用于此 Agent；暂不提供协议转换。").assertExists()
         compose.onNodeWithText("保存当前配置").performScrollTo().assertIsNotEnabled()
@@ -121,7 +121,7 @@ class GatewayFormTest {
 
     @Test fun `selecting a service fills its address and custom clears that preset`() {
         var saved: GatewayEdit? = null
-        compose.setContent { MaterialTheme { GatewayForm(listOf(profile), { runBlocking { it() } }, { saved = it; OperationResult.Done }, {}, {}, { DataResult.Failed("unused") }) } }
+        compose.setContent { MaterialTheme { GatewayForm(listOf(profile), { runBlocking { it() } }, { saved = it; GatewaySaveResult.Saved(emptyList(), null) }, {}, {}, { DataResult.Failed("unused") }) } }
         field("模型名称").performScrollTo().performTextReplacement("kept-model")
         compose.onNodeWithText("OpenAI").performScrollTo().performClick()
         field("网关地址").assertTextEquals("网关地址", "https://api.openai.com/v1").assertIsNotEnabled()
@@ -136,14 +136,14 @@ class GatewayFormTest {
 
     @Test fun `saved preset address stays selected and is not rewritten until another service is chosen`() {
         val saved = profile.copy(endpoint = "https://api.openai.com/v1/")
-        compose.setContent { MaterialTheme { GatewayForm(listOf(saved), {}, { OperationResult.Done }, {}, {}, { DataResult.Failed("unused") }) } }
+        compose.setContent { MaterialTheme { GatewayForm(listOf(saved), {}, { GatewaySaveResult.Saved(emptyList(), null) }, {}, {}, { DataResult.Failed("unused") }) } }
         field("网关地址").assertTextEquals("网关地址", "https://api.openai.com/v1/").assertIsNotEnabled()
         compose.onNodeWithText("OpenRouter").performScrollTo().performClick()
         field("网关地址").assertTextEquals("网关地址", "https://openrouter.ai/api/v1")
     }
 
     @Test fun `claude code lists only messages services`() {
-        compose.setContent { MaterialTheme { GatewayForm(listOf(profile), {}, { OperationResult.Done }, {}, {}, { DataResult.Failed("unused") }) } }
+        compose.setContent { MaterialTheme { GatewayForm(listOf(profile), {}, { GatewaySaveResult.Saved(emptyList(), null) }, {}, {}, { DataResult.Failed("unused") }) } }
         compose.onNodeWithText("Claude Code").performScrollTo().performClick()
         compose.onNodeWithText("Anthropic").assertExists()
         compose.onNodeWithText("DeepSeek").assertExists()
@@ -152,6 +152,23 @@ class GatewayFormTest {
         compose.onNodeWithText("xAI").assertDoesNotExist()
         compose.onNodeWithText("Groq").assertDoesNotExist()
         compose.onNodeWithText("自定义").assertExists()
+    }
+
+    @Test fun `saved catalog tells how many models were stored`() {
+        compose.setContent { MaterialTheme { GatewayForm(listOf(profile), { runBlocking { it() } }, {
+            GatewaySaveResult.Saved(listOf(GatewayModel("test-model", "Test"), GatewayModel("other", "Other")), null)
+        }, {}, {}, { DataResult.Failed("unused") }) } }
+        compose.onNodeWithText("保存当前配置").performScrollTo().performClick()
+        compose.onNodeWithText("配置已保存，已拉取 2 个模型，尚未测试连接").assertExists()
+    }
+
+    @Test fun `catalog failure keeps the save and reports why the list is missing`() {
+        compose.setContent { MaterialTheme { GatewayForm(listOf(profile), { runBlocking { it() } }, {
+            GatewaySaveResult.Saved(listOf(GatewayModel("test-model", "Test")), "该网关没有模型列表接口")
+        }, {}, {}, { DataResult.Failed("unused") }) } }
+        compose.onNodeWithText("保存当前配置").performScrollTo().performClick()
+        compose.onNodeWithText("配置已保存，模型列表未能拉取。该网关没有模型列表接口").assertExists()
+        compose.onNodeWithText("配置已保存，尚未测试连接").assertDoesNotExist()
     }
 
 }

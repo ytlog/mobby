@@ -39,7 +39,12 @@ internal class AndroidRuntimePorts(
     override suspend fun capabilities(): CapabilityResult = withContext(Dispatchers.IO) {
         CapabilityResult.Available(RuntimeCapabilities("mobby-local-1", AgentId.values().map { agent ->
             val config = runCatching { gateways.load(mode(agent)).also { it.validateFor(mode(agent)) } }.getOrNull()
-            AgentCapability(agent, if (config == null) emptyList() else listOf(ModelCapability(config.model, emptySet())),
+            val models = when {
+                config == null -> emptyList()
+                config.models.isNotEmpty() -> config.models.map { ModelCapability(it.id, emptySet(), it.name) }
+                else -> listOf(ModelCapability(config.model, emptySet()))
+            }
+            AgentCapability(agent, models,
                 unavailableReason = when {
                     state.value.phase != EnvironmentPhase.READY -> RuntimeError(ErrorCode.NOT_READY, true)
                     agent == AgentId.OPEN_CODE && !runtime.opencodeReady -> RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY)
@@ -76,13 +81,18 @@ internal class AndroidRuntimePorts(
         val valid = runCatching {
             runtime.executable(mode)
             gateways.load(mode, request.gatewayProfileRef.version).also {
-                it.validateFor(mode); require(it.model == request.modelId)
+                it.validateFor(mode); require(it.accepts(request.modelId))
             }
         }.isSuccess
         if (valid) null else RuntimeError(ErrorCode.INVALID_CONFIG)
     }
     override suspend fun execute(request: RunRequest, stop: StateFlow<StopCause?>, output: suspend (String, Boolean) -> Unit): ProcessResult {
-        val config = withContext(Dispatchers.IO) { gateways.load(mode(request.agentId), request.gatewayProfileRef.version).also { it.validateFor(mode(request.agentId)) } }
+        val config = withContext(Dispatchers.IO) {
+            val stored = gateways.load(mode(request.agentId), request.gatewayProfileRef.version)
+            stored.validateFor(mode(request.agentId))
+            require(stored.accepts(request.modelId))
+            stored.forRun(request.modelId)
+        }
         val reusable = gate.withLock { held?.takeIf { it.accepts(request) } }
         val watcher = scope.launch { stop.filterNotNull().first(); gate.withLock { held }?.shutdown(force = true) }
         var files: AgentInputFiles? = null

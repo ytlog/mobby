@@ -35,10 +35,7 @@ internal class GatewayProbe(private val timeoutMillis: Int = 10_000,
         var status: Int? = null
         fun result(outcome: GatewayCheckOutcome) = GatewayCheck(ref, outcome, status)
         try {
-            val base = java.net.URI(config.endpoint)
-            val prefix = base.rawPath.orEmpty().trimEnd('/').replace(Regex("/(chat/completions|responses|messages)$"), "").ifEmpty { "/v1" }
-            val url = java.net.URL("${base.scheme}://${base.rawAuthority}$prefix$path")
-            val http = open(url).also { connection = it }
+            val http = open(GatewayEndpoint.url(config.endpoint, path)).also { connection = it }
             http.instanceFollowRedirects = false
             http.connectTimeout = timeoutMillis; http.readTimeout = timeoutMillis
             http.requestMethod = "POST"; http.doOutput = true

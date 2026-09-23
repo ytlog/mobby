@@ -52,7 +52,7 @@ class RoomInteractionRepositoryTest {
         override val diagnostic = flowOf(DiagnosticOutput(null, emptyList()))
         override suspend fun agents() = emptyList<AgentOption>()
         override suspend fun gateways() = listOf(GatewayProfile(DomainAgent.CODEX, "CODEX", 0, "", "test-model", "RESPONSES", false))
-        override suspend fun saveGateway(edit: GatewayEdit) = OperationResult.Done
+        override suspend fun saveGateway(edit: GatewayEdit) = GatewaySaveResult.Saved(emptyList(), null)
         override suspend fun initialize() = OperationResult.Done
         override suspend fun shell(command: String) = OperationResult.Done
         override suspend fun stopShell() = OperationResult.Done
@@ -176,19 +176,22 @@ class RoomInteractionRepositoryTest {
         val config = RunConfigSnapshot(RuntimeAgent.CODEX, WorkspaceRef("default"), "test-model", null, GatewayProfileRef("CODEX", 0), emptySet())
         val older = storageJson.encodeToString(RunSnapshot(RunId("a"), RunPhase.RUNNING, 1, 1, config))
         val latest = storageJson.encodeToString(RunSnapshot(RunId("z"), RunPhase.FAILED, 1, 1, config))
-        db.dao().save(TurnRow("a", c.id.value, "older", frozen, 100, snapshot = older, pending = false, occupied = true))
+        db.dao().save(TurnRow("a", c.id.value, "older", frozen, 100, runId = "a", snapshot = older, pending = false, occupied = true))
         db.dao().save(TurnRow("z", c.id.value, "latest", frozen, 100, snapshot = latest, pending = false, occupied = false))
         db.dao().save(TurnRow("other", other.value, "separate", otherFrozen, 101, pending = false, occupied = false))
         val activities = db.dao().conversationActivities().first()
         assertEquals(latest, activities.single { it.conversationId == c.id.value }.snapshot)
         assertTrue(activities.single { it.conversationId == c.id.value }.occupied)
+        assertEquals("a", activities.single { it.conversationId == c.id.value }.executionId)
         assertFalse(activities.single { it.conversationId == other.value }.occupied)
+        assertNull(activities.single { it.conversationId == other.value }.executionId)
         assertEquals(listOf("a", "z"), db.dao().timeline(c.id.value, 40).first().map { it.turn.id })
         repository.select(other)
         val selected = state { it.selected?.conversation?.id == other && it.selected!!.turns.size == 1 }
         assertEquals("separate", selected.selected!!.turns.single().userText)
         assertEquals(c.id, selected.occupied!!.conversation.id)
         assertEquals(ExecutionPhase.FAILED, selected.occupied!!.phase)
+        assertEquals(ExecutionId("a"), selected.occupied!!.execution)
     }
     @Test fun `source retention follows pending imports across conversations and releases only completed or discarded ones`() = runBlocking {
         val c = state().selected!!.conversation

@@ -25,17 +25,31 @@ internal fun AgentMode.gatewayProtocol(): GatewayProtocol = when (this) {
     AgentMode.SHELL -> error("Shell has no model protocol")
 }
 
+data class GatewayModel(val id: String, val name: String)
+
 data class GatewayConfig(
     val endpoint: String = "", val model: String = "", val key: String = "",
-    val protocol: GatewayProtocol = GatewayProtocol.RESPONSES
+    val protocol: GatewayProtocol = GatewayProtocol.RESPONSES,
+    val models: List<GatewayModel> = emptyList(), val catalogError: String? = null,
 ) {
     override fun toString() = "GatewayConfig(protocol=$protocol, credentials=[redacted])"
+    fun accepts(modelId: String) = modelId == model || models.any { it.id == modelId }
+    /** The process receives only the selected model. The stored default and catalog stay unchanged. */
+    fun forRun(modelId: String): GatewayConfig {
+        require(accepts(modelId))
+        return copy(model = modelId, models = emptyList(), catalogError = null)
+    }
     fun validate() {
         val uri = runCatching { URI(endpoint) }.getOrNull()
         require(uri != null && uri.scheme in listOf("https", "http") && !uri.host.isNullOrBlank() &&
             uri.userInfo == null && uri.fragment == null && uri.query == null) { "请输入有效的网关 URL，不要在地址中放密钥或查询参数" }
         require(model.isNotBlank() && model.length <= 200 && model.none { it.isISOControl() }) { "请填写有效的模型名称" }
         require(key.length <= 8192 && key.none { it.isISOControl() }) { "密钥格式不正确" }
+        require(models.size <= 400 && models.all { item ->
+            item.id.isNotBlank() && item.id.length <= 200 && item.id.none { it.isISOControl() } &&
+                item.name.isNotBlank() && item.name.length <= 120 && item.name.none { it.isISOControl() }
+        }) { "模型列表无效" }
+        require(catalogError == null || (catalogError.length <= 200 && catalogError.none { it.isISOControl() })) { "模型列表说明无效" }
     }
     fun validateFor(mode: AgentMode) {
         validate()
@@ -45,13 +59,39 @@ data class GatewayConfig(
     }
     fun json(): String = buildJsonObject {
         put("endpoint", endpoint); put("model", model); put("key", key); put("protocol", protocol.name.lowercase())
+        if (models.isNotEmpty()) putJsonArray("models") {
+            models.forEach { item -> addJsonObject { put("id", item.id); put("name", item.name) } }
+        }
+        catalogError?.let { put("catalogError", it) }
     }.toString()
     companion object {
         fun parse(value: String): GatewayConfig {
             val obj = Json.parseToJsonElement(value).jsonObject
+            val models = runCatching {
+                obj["models"]?.jsonArray?.mapNotNull { element ->
+                    val item = element as? JsonObject ?: return@mapNotNull null
+                    val id = item["id"]?.jsonPrimitive?.takeIf { it.isString }?.content ?: return@mapNotNull null
+                    if (id.isBlank() || id.length > 200 || id.any { it.isISOControl() }) return@mapNotNull null
+                    val name = item["name"]?.jsonPrimitive?.takeIf { it.isString }?.content?.take(120) ?: id
+                    if (name.any { it.isISOControl() }) return@mapNotNull null
+                    GatewayModel(id, name.ifBlank { id })
+                }?.distinctBy { it.id }?.take(400)
+            }.getOrNull().orEmpty()
+            val catalogError = obj["catalogError"]?.jsonPrimitive?.takeIf { it.isString }?.content
+                ?.takeIf { it.length <= 200 && it.none { char -> char.isISOControl() } }
             return GatewayConfig(obj.getValue("endpoint").jsonPrimitive.content, obj.getValue("model").jsonPrimitive.content,
-                obj.getValue("key").jsonPrimitive.content, GatewayProtocol.valueOf(obj.getValue("protocol").jsonPrimitive.content.uppercase()))
+                obj.getValue("key").jsonPrimitive.content, GatewayProtocol.valueOf(obj.getValue("protocol").jsonPrimitive.content.uppercase()),
+                models, catalogError)
         }
+    }
+}
+
+internal object GatewayEndpoint {
+    private val apiSuffix = Regex("/(chat/completions|responses|messages)$")
+    fun url(endpoint: String, path: String): java.net.URL {
+        val base = URI(endpoint)
+        val prefix = base.rawPath.orEmpty().trimEnd('/').replace(apiSuffix, "").ifEmpty { "/v1" }
+        return java.net.URL("${base.scheme}://${base.rawAuthority}$prefix$path")
     }
 }
 

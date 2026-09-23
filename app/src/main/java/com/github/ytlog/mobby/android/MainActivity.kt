@@ -4,7 +4,9 @@ import android.content.Intent
 import android.content.pm.ShortcutInfo
 import android.content.pm.ShortcutManager
 import android.graphics.drawable.Icon
+import android.net.Uri
 import android.os.Bundle
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.SystemBarStyle
@@ -21,9 +23,17 @@ import java.util.UUID
 
 class MainActivity : ComponentActivity() {
     private var conversationNavigation by mutableStateOf<String?>(null)
+    private var petEnabled by mutableStateOf(false)
+    private var petPermitted by mutableStateOf(false)
+    private var pendingPet = false
     private val actions get() = (application as MobbyApplication).interaction
+    private val app get() = application as MobbyApplication
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        petEnabled = app.petEnabled()
+        petPermitted = Settings.canDrawOverlays(this)
+        app.setPetPermitted(petPermitted)
+        app.noteForeground(true)
         enableEdgeToEdge()
         if (savedInstanceState == null) openConversation(intent)
         val host = InteractionHostActions(share = { text ->
@@ -39,8 +49,43 @@ class MainActivity : ComponentActivity() {
             val background = if (dark) android.graphics.Color.rgb(17, 18, 19) else android.graphics.Color.rgb(250, 250, 250)
             val style = if (dark) SystemBarStyle.dark(background) else SystemBarStyle.light(background, background)
             enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
+        }, pet = { want ->
+            if (!want) {
+                pendingPet = false
+                petEnabled = false
+                app.setPetEnabled(false)
+            } else if (Settings.canDrawOverlays(this)) {
+                petPermitted = true
+                petEnabled = true
+                app.setPetPermitted(true)
+                app.setPetEnabled(true)
+            } else {
+                pendingPet = true
+                startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
+            }
         })
-        setContent { InteractionEntry(actions, host, conversationNavigation) }
+        setContent { InteractionEntry(actions, host, conversationNavigation, petEnabled, petPermitted) }
+    }
+    override fun onStart() {
+        super.onStart()
+        app.noteForeground(true)
+    }
+    override fun onResume() {
+        super.onResume()
+        val allowed = Settings.canDrawOverlays(this)
+        petPermitted = allowed
+        app.setPetPermitted(allowed)
+        if (pendingPet) {
+            pendingPet = false
+            if (allowed) {
+                petEnabled = true
+                app.setPetEnabled(true)
+            }
+        }
+    }
+    override fun onStop() {
+        if (!isChangingConfigurations) app.noteForeground(false)
+        super.onStop()
     }
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); openConversation(intent) }
     private fun openConversation(intent: Intent) {
