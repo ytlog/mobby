@@ -4,11 +4,13 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.ClickableText
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.*
@@ -158,7 +160,7 @@ private data class ParsedReply(val source: String, val document: Node)
         if (links.isEmpty()) Text(value, modifier.fillMaxWidth(), style = style)
         else ClickableText(value, modifier.fillMaxWidth().semantics {
             customActions = links.map { link -> CustomAccessibilityAction("打开 ${value.text.substring(link.start, link.end)}") { open(link.item); true } }
-        }, style = style.copy(color = MaterialTheme.colorScheme.onSurface), onClick = { offset ->
+        }, style = style.copy(color = style.color.takeIf { it != Color.Unspecified } ?: LocalContentColor.current), onClick = { offset ->
             value.getStringAnnotations("URL", offset, offset).firstOrNull()?.let { open(it.item) }
         })
     }

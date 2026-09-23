@@ -17,7 +17,6 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
@@ -135,7 +134,7 @@ import kotlinx.coroutines.*
             },
             modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 20.dp).heightIn(min = 48.dp),
             shape = RoundedCornerShape(22.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = menuAccent(), contentColor = Color.White),
+            colors = ButtonDefaults.buttonColors(containerColor = menuAccent(), contentColor = MobbyColors.onAccent),
             elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp, pressedElevation = 0.dp, focusedElevation = 0.dp, hoveredElevation = 0.dp),
         ) { Text("应用", fontWeight = FontWeight.SemiBold) }
     }
@@ -206,7 +205,7 @@ import kotlinx.coroutines.*
             enabled = canCreate,
             modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 20.dp).heightIn(min = 48.dp),
             shape = RoundedCornerShape(22.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = menuAccent(), contentColor = Color.White, disabledContainerColor = menuAccent().copy(alpha = 0.38f), disabledContentColor = Color.White.copy(alpha = 0.7f)),
+            colors = ButtonDefaults.buttonColors(containerColor = menuAccent(), contentColor = MobbyColors.onAccent, disabledContainerColor = menuAccent().copy(alpha = 0.38f), disabledContentColor = MobbyColors.onAccentDisabled),
             elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp, pressedElevation = 0.dp, focusedElevation = 0.dp, hoveredElevation = 0.dp),
         ) { Text("创建", fontWeight = FontWeight.SemiBold) }
     }

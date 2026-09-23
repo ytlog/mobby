@@ -113,7 +113,8 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
         val camera = rememberCameraCapture(actions, { captured ->
             actions.importAttachment(ConversationId(captured.conversation), captured.workspace, requireNotNull(captured.attachmentUri))
         }, { message -> vm.report(OperationResult.Failed(message)) })
-        Surface(Modifier.fillMaxSize()) {
+        val pageColor = if (dark && route == "conversation") MobbyColors.Dark.Conversation.canvas else MaterialTheme.colorScheme.background
+        Surface(Modifier.fillMaxSize(), color = pageColor) {
             InteractionViewport {
                 val fullWidth = maxWidth
                 val availableHeight = maxHeight
@@ -129,7 +130,7 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                 Surface(
                     Modifier.requiredWidth(fullWidth).fillMaxHeight().offset { IntOffset((pixels * progress).roundToInt(), 0) }
                         .then(if (drawer) Modifier.clearAndSetSemantics {} else Modifier),
-                    color = MaterialTheme.colorScheme.background,
+                    color = pageColor,
                     shadowElevation = 0.dp,
                     tonalElevation = 0.dp,
                 ) {
@@ -156,6 +157,8 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                                 style = MaterialTheme.typography.bodySmall,
                             )
                             Box(Modifier.weight(1f).fillMaxWidth().clipToBounds().testTag("conversation-transcript")) {
+                                CompositionLocalProvider(LocalContentColor provides conversationInk()) {
+                                Box(Modifier.fillMaxSize()) {
                                 when {
                                     state.error != null -> Text(state.error!!, Modifier.align(Alignment.Center).padding(24.dp), color = MaterialTheme.colorScheme.error)
                                     state.loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
@@ -174,6 +177,8 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                                             )
                                         }
                                     }
+                                }
+                                }
                                 }
                             }
                             if (state.selected != null && state.error == null && !state.loading) {
@@ -314,10 +319,6 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
         DrawerEntry(item.conversation.title) { onSelect(item.conversation) }
     }
 }
-
-@Composable private fun drawerColor(): Color = if (darkChrome()) Color(0xFF1F1F1F) else Color(0xFFF5F5F5)
-
-@Composable private fun drawerControlColor(): Color = if (darkChrome()) Color(0xFF2A2A2A) else Color.White
 
 private val DrawerControlHeight = 36.dp
 private val DrawerRowHeight = 32.dp
@@ -587,6 +588,17 @@ internal fun Turn.showsSeparateActivity(): Boolean = activityMark() == ActivityM
     } else StreamingCursor(description = "正在回复…")
 }
 
+@Composable internal fun UserMessageBubble(content: @Composable ColumnScope.() -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(21.dp, 21.dp, 6.dp, 21.dp),
+        color = userBubbleColor(),
+        contentColor = userBubbleInk(),
+        modifier = Modifier.widthIn(max = 360.dp).testTag("user-bubble"),
+    ) {
+        Column(Modifier.padding(16.dp), content = content)
+    }
+}
+
 @Composable private fun Timeline(detail: ConversationDetail, vm: ConversationViewModel, modifier: Modifier, contentPadding: PaddingValues = PaddingValues(horizontal = 16.dp, vertical = 12.dp), followPadding: PaddingValues = PaddingValues(12.dp), read: (String, String) -> Unit, hostActions: InteractionHostActions, proposal: (SkillProposal) -> Unit) {
     val keys = buildList {
         if (detail.hasEarlier) add("earlier")
@@ -655,7 +667,7 @@ internal fun Turn.showsSeparateActivity(): Boolean = activityMark() == ActivityM
                 val entries = turn.visibleTranscript()
                 val lastReply = entries.filterIsInstance<TranscriptEntry.Reply>().lastOrNull()?.message?.id
                 val lastTools = entries.filterIsInstance<TranscriptEntry.ToolRun>().lastOrNull()?.steps?.firstOrNull()?.id
-                item(key = "user:${turn.id.value}") { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { Surface(shape = RoundedCornerShape(21.dp, 21.dp, 6.dp, 21.dp), color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.widthIn(max = 360.dp)) { Column(Modifier.padding(16.dp)) { androidx.compose.foundation.text.selection.SelectionContainer { Text(turn.userText) }; AttachmentList(turn.attachments, detail.conversation.config.workspace, vm) } } } }
+                item(key = "user:${turn.id.value}") { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { UserMessageBubble { androidx.compose.foundation.text.selection.SelectionContainer { Text(turn.userText) }; AttachmentList(turn.attachments, detail.conversation.config.workspace, vm) } } }
                 entries.forEach { entry ->
                     when (entry) {
                         is TranscriptEntry.ToolRun -> item(key = "tools:${turn.id.value}:${entry.steps.first().id}") {

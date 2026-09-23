@@ -174,23 +174,6 @@ import androidx.compose.ui.unit.dp
     }
 }
 
-@Composable internal fun catalogSwatch(key: String): Pair<Color, Color> {
-    val palettes = if (darkChrome()) listOf(
-        Color(0xFF80BAFF) to Color(0xFF1A3050),
-        Color(0xFF8BC34A) to Color(0xFF1C2E18),
-        Color(0xFFFFB74D) to Color(0xFF3A2A14),
-        Color(0xFFEF9A9A) to Color(0xFF3A1C1C),
-        Color(0xFFCE93D8) to Color(0xFF2E1A36),
-    ) else listOf(
-        Color(0xFF1E88E5) to Color(0xFFE3F2FD),
-        Color(0xFF43A047) to Color(0xFFE8F5E9),
-        Color(0xFFFB8C00) to Color(0xFFFFF3E0),
-        Color(0xFFE53935) to Color(0xFFFFEBEE),
-        Color(0xFF8E24AA) to Color(0xFFF3E5F5),
-    )
-    return palettes[key.hashCode().and(Int.MAX_VALUE) % palettes.size]
-}
-
 @Composable internal fun CatalogRow(
     title: String,
     subtitle: String,

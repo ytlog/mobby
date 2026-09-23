@@ -9,7 +9,10 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
@@ -81,13 +84,15 @@ internal fun stepKindIcon(kind: String): AppGlyph = when (kind.lowercase()) {
     "mcp__phone__back", "mcp__phone__home", "mcp__phone__recents" -> AppIcons.Phone
     else -> AppIcons.More
 }
-@Composable internal fun CodeContent(title: String, text: String, read: (String, String) -> Unit) {
+@Composable internal fun CodeContent(title: String, text: String, read: (String, String) -> Unit, container: Color = raisedColor(), ink: Color = Color.Unspecified) {
     val clipboard = LocalClipboardManager.current
     var wrap by rememberSaveable { mutableStateOf(false) }
-    Surface(shape = RoundedCornerShape(16.dp), color = raisedColor(), modifier = Modifier.fillMaxWidth()) {
+    val content = if (ink == Color.Unspecified) LocalContentColor.current else ink
+    val titleInk = if (ink == Color.Unspecified) MaterialTheme.colorScheme.onSurfaceVariant else ink
+    Surface(shape = RoundedCornerShape(16.dp), color = container, contentColor = content, modifier = Modifier.fillMaxWidth()) {
         Column {
             Row(Modifier.fillMaxWidth().padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(title.take(30), Modifier.weight(1f), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(title.take(30), Modifier.weight(1f), style = MaterialTheme.typography.labelMedium, color = titleInk)
                 ActionIcon("复制原始代码", { clipboard.setText(AnnotatedString(text)) }, AppIcons.Copy)
                 ActionIcon(if (wrap) "关闭代码换行" else "代码自动换行", { wrap = !wrap }, AppIcons.Wrap)
                 ActionIcon("放大代码", { read(title, text) }, AppIcons.Expand)
@@ -105,10 +110,13 @@ internal fun stepKindIcon(kind: String): AppGlyph = when (kind.lowercase()) {
     val expanded = turn.toolGroupExpanded(steps)
     val cardCursor = turn.activityMark() == ActivityMark.CARD
     val thinkingCursor = cardCursor && steps.any { it is Step.Thinking && it.outcome == null }
+    val ink = toolCallInk()
     Surface(
-        Modifier.fillMaxWidth(),
+        Modifier.fillMaxWidth().testTag("execution-card"),
         shape = RoundedCornerShape(16.dp),
-        color = raisedColor(),
+        color = toolCallSurface(),
+        contentColor = ink,
+        border = if (darkChrome()) BorderStroke(Dp.Hairline, MobbyColors.Dark.Conversation.toolBorder) else null,
         tonalElevation = 0.dp,
         shadowElevation = 0.dp,
     ) {
@@ -118,13 +126,13 @@ internal fun stepKindIcon(kind: String): AppGlyph = when (kind.lowercase()) {
                     .heightIn(min = 44.dp).padding(start = 14.dp, end = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(turn.executionHeadline(steps), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(turn.executionHeadline(steps), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = ink)
                 if (cardCursor && !thinkingCursor) StreamingCursor(description = "正在回复…")
-                AppIcon(if (expanded) AppIcons.ChevronUp else AppIcons.ChevronRight, if (expanded) "已展开" else "已收起", Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                AppIcon(if (expanded) AppIcons.ChevronUp else AppIcons.ChevronRight, if (expanded) "已展开" else "已收起", Modifier.size(18.dp), tint = ink)
             }
             if (expanded) {
             Column(Modifier.padding(start = 2.dp, end = 8.dp, bottom = 8.dp)) {
-                if (showExtras) turn.progress?.let { Text(it.label(), Modifier.padding(horizontal = 12.dp, vertical = 2.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                if (showExtras) turn.progress?.let { Text(it.label(), Modifier.padding(horizontal = 12.dp, vertical = 2.dp), style = MaterialTheme.typography.bodySmall, color = ink) }
                 steps.forEach { step -> key(step.id) {
                     var heldClosed by rememberSaveable { mutableStateOf(false) }
                     val open = step.id in turn.expandedSteps || (turn.thinkingBodyOpen(step) && !heldClosed)
@@ -145,10 +153,10 @@ internal fun stepKindIcon(kind: String): AppGlyph = when (kind.lowercase()) {
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = ink,
                         )
                         if (liveThought && !open) StreamingCursor(description = "正在回复…")
-                        AppIcon(if (open) AppIcons.ChevronDown else AppIcons.ChevronRight, if (open) "已展开" else "已收起", Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        AppIcon(if (open) AppIcons.ChevronDown else AppIcons.ChevronRight, if (open) "已展开" else "已收起", Modifier.size(16.dp), tint = ink)
                     }
                     if (open) {
                         val body = view.detail
@@ -156,18 +164,18 @@ internal fun stepKindIcon(kind: String): AppGlyph = when (kind.lowercase()) {
                             when {
                                 step is Step.Thinking -> if (body.isBlank()) {
                                     if (liveThought) StreamingCursor(description = "正在回复…")
-                                    else Text("尚无输出", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    else Text("尚无输出", style = MaterialTheme.typography.bodySmall, color = ink)
                                 } else if (ToolPresentation.looksLikeMarkdown(body)) ReplyContent(body, streaming = liveThought && open, read = read)
                                 else {
                                     SelectionContainer {
-                                        Text(body, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Text(body, style = MaterialTheme.typography.bodySmall, color = ink)
                                     }
                                     if (liveThought && open) StreamingCursor(description = "正在回复…")
                                 }
-                                view.terminal -> CodeContent(view.title, body.ifBlank { "尚无输出" }, read)
+                                view.terminal -> CodeContent(view.title, body.ifBlank { "尚无输出" }, read, toolCallSurface(), ink)
                                 ToolPresentation.looksLikeMarkdown(body) -> ReplyContent(body, streaming = false, read = read)
                                 else -> SelectionContainer {
-                                    Text(body.ifBlank { "尚无输出" }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    Text(body.ifBlank { "尚无输出" }, style = MaterialTheme.typography.bodySmall, color = ink,
                                         modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp).verticalScroll(rememberScrollState()))
                                 }
                             }
@@ -234,7 +242,7 @@ internal fun stepStatusLabel(outcome: String?, phase: ExecutionPhase?): String =
     }
     AppIcon(icon, stepStatusLabel(outcome, phase), Modifier.size(18.dp), tint = when (outcome) {
         "FAILED" -> MaterialTheme.colorScheme.error
-        else -> MaterialTheme.colorScheme.onSurfaceVariant
+        else -> toolCallInk()
     })
 }
 

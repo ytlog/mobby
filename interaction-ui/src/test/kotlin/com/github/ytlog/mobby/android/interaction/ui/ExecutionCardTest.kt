@@ -2,6 +2,7 @@ package com.github.ytlog.mobby.android.interaction.ui
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import com.github.ytlog.mobby.android.interaction.domain.*
@@ -82,6 +83,34 @@ class ExecutionCardTest {
         assertEquals("执行中", between.executionHeadline())
         assertTrue(between.toolGroupExpanded(between.steps))
         assertEquals("失败 · 1 个步骤", empty.copy(phase = ExecutionPhase.FAILED, steps = listOf(step)).executionHeadline())
+    }
+
+    @Test fun `dark conversation colors come from the shared palette`() {
+        val conversation = MobbyColors.Dark.Conversation
+        assertEquals(Color(0xFF111111), conversation.canvas)
+        assertEquals(Color(0xFFDADADA), conversation.ink)
+        assertEquals(Color(0xFF979797), conversation.toolInk)
+        assertEquals(Color(0xFF3A3A3A), conversation.toolBorder)
+        assertEquals(Color(0xFF292929), conversation.userBubble)
+        assertEquals(Color(0xFFDBDBDB), conversation.userInk)
+        val seen = arrayOfNulls<Color>(6)
+        compose.setContent {
+            MaterialTheme(colorScheme = MobbyDarkScheme) {
+                seen[0] = conversationCanvas()
+                seen[1] = conversationInk()
+                seen[2] = toolCallSurface()
+                seen[3] = toolCallInk()
+                seen[4] = userBubbleColor()
+                seen[5] = userBubbleInk()
+            }
+        }
+        compose.waitForIdle()
+        assertEquals(conversation.canvas, seen[0])
+        assertEquals(conversation.ink, seen[1])
+        assertEquals(conversation.canvas, seen[2])
+        assertEquals(conversation.toolInk, seen[3])
+        assertEquals(conversation.userBubble, seen[4])
+        assertEquals(conversation.userInk, seen[5])
     }
 
     @Test fun `zero step completion does not render an empty process card`() {

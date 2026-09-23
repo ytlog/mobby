@@ -323,9 +323,8 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectVo
         animationSpec = tween(240, easing = FastOutSlowInEasing),
         label = "voice-model-progress",
     )
-    val night = darkChrome()
     val primary = MaterialTheme.colorScheme.primary
-    val track = if (night) primary.copy(alpha = 0.20f) else Color(0xFFE4EEFF)
+    val track = voiceTrack()
     val reduced = rememberReducedMotion()
     val slide = if (fraction != null || reduced) 0f else {
         val pulse = rememberInfiniteTransition(label = "voice-model-progress")
@@ -366,13 +365,7 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectVo
 }
 
 @Composable internal fun VoiceRecordingOverlay(cancelArmed: Boolean, level: Float, modifier: Modifier = Modifier) {
-    val night = darkChrome()
-    val wash = when {
-        cancelArmed && night -> Color(0xFF3A2226)
-        cancelArmed -> Color(0xFFFFE4E6)
-        night -> Color(0xFF1A2A44)
-        else -> Color(0xFFD9E8FF)
-    }
+    val wash = voiceWash(cancelArmed)
     val hint = if (cancelArmed) "松开取消" else "松手发送，上滑取消"
     Box(
         modifier.fillMaxWidth().heightIn(min = 168.dp).background(Brush.verticalGradient(listOf(Color.Transparent, wash))),
