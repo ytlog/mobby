@@ -4,6 +4,7 @@ Requires Pillow and ffmpeg (the checked-in assets need neither at viewing time).
 No device capture, account data, or gateway credentials are used.
 """
 from pathlib import Path
+import math
 import subprocess
 from PIL import Image, ImageDraw, ImageFont
 
@@ -59,6 +60,8 @@ def rr(d, box, radius, fill, outline=None, width=1):
 
 def frame(seconds):
     im=Image.new('RGB',(1280,720),BG);d=ImageDraw.Draw(im)
+    phase=seconds%3
+    pulse=(1+math.sin(seconds*2*math.pi*1.2))/2
     d.ellipse((830,-270,1460,360),fill='#142c49')
     d.ellipse((-300,460,220,980),fill='#102e37')
     text(d,(67,51),'mobby',BOLD,CYAN)
@@ -69,10 +72,15 @@ def frame(seconds):
     for i,(number,title,desc) in enumerate(steps):
         y=284+i*126
         fill='#273f55' if i==active else '#1a2841'
-        rr(d,(68,y,644,y+98),23,fill,outline=CYAN if i==active else '#34435d',width=2 if i==active else 1)
+        border=(106,int(203+23*pulse),int(190+30*pulse)) if i==active else '#34435d'
+        rr(d,(68,y,644,y+98),23,fill,outline=border,width=3 if i==active else 1)
         text(d,(94,y+23),number,MID,CYAN if i==active else '#73849d')
         text(d,(165,y+13),title,REG,WHITE)
         text(d,(165,y+51),desc,SMALL,MUTED)
+    # A traveling signal ties the current step to the fictional phone screen.
+    d.line((664,336,759,336),fill='#315f69',width=3)
+    dot_x=665+int(92*(phase/3))
+    d.ellipse((dot_x-7,329,dot_x+7,343),fill=CYAN)
     # Simplified, deliberately fictional phone UI.
     rr(d,(781,26,1186,698),53,'#090e1d',outline='#53627d',width=3)
     rr(d,(796,42,1171,681),40,'#f6f8fb')
@@ -84,12 +92,17 @@ def frame(seconds):
         for j,label in enumerate(('Codex','Claude Code','OpenCode')):
             y=254+j*72; rr(d,(839,y,1128,y+57),16,'#eaf7f4' if j==0 else '#f2f5f8')
             text(d,(858,y+11),label,SMALL,'#1c5060' if j==0 else '#53657b')
+        d.ellipse((1091-int(3*pulse),273-int(3*pulse),1115+int(3*pulse),297+int(3*pulse)),outline='#118c86',width=3)
     elif active==1:
         rr(d,(817,170,1150,542),25,'#ffffff',outline='#e1e7ed')
         text(d,(841,191),'网关设置',REG,'#1f3049')
         for j,(label,value) in enumerate((('服务','OpenRouter'),('Agent','Codex · OpenCode'),('模型','选择模型'))):
             y=252+j*80;rr(d,(838,y,1128,y+66),15,'#f2f5f8')
             text(d,(850,y+7),label,SMALL,'#69798c');text(d,(850,y+34),value,SMALL,'#1f3049')
+        d.ellipse((1095,281,1119,305),fill='#118c86')
+        d.ellipse((1102,288,1112,298),fill=WHITE)
+        rr(d,(838,510,1128,517),4,'#e4eeec')
+        rr(d,(838,510,838+int(290*(phase/3)),517),4,'#118c86')
     else:
         rr(d,(817,169,1150,256),22,'#e8f3f1')
         text(d,(840,190),'检查项目里的测试失败',SMALL,'#263b52')
@@ -97,6 +110,8 @@ def frame(seconds):
         text(d,(840,299),'Codex 正在处理',REG,'#263b52')
         for j,label in enumerate(('✓ 读取测试报告','✓ 检查相关文件','● 修改并验证')):
             text(d,(844,351+j*46),label,SMALL,'#19867f' if j==2 else '#54667b')
+        rr(d,(844,474,1118,482),4,'#e2eeec')
+        rr(d,(844,474,844+int(274*(0.2+0.8*phase/3)),482),4,'#118c86')
     rr(d,(817,566,1150,635),21,'#ffffff',outline='#d9e3eb')
     text(d,(840,584),'继续提问…',SMALL,'#8290a1')
     d.ellipse((1090,578,1133,621),fill='#118c86');text(d,(1101,583),'↑',REG,WHITE)
