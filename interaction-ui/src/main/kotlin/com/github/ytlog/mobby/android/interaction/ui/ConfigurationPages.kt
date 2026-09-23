@@ -218,13 +218,13 @@ import kotlinx.coroutines.*
                 SettingsItem("网关设置", { navigate("gateway") }, "模型地址与密钥")
                 GroupDivider()
                 SettingsItem("存储与保留", { navigate("history-limits") }, "会话与附件保留期限")
-                GroupDivider()
-                SettingsItem("Shell 诊断", { navigate("diagnostic") })
             }
-            SettingsCaption(system.message)
-            SettingsGroup {
+            SettingsGroup("运行环境") {
+                SettingsItem("Shell 诊断", { navigate("diagnostic") })
+                GroupDivider()
                 SettingsAction("重新检查运行环境") { vm.enqueue { vm.report(vm.actions.initialize()) } }
             }
+            SettingsCaption(system.message)
             SettingsGroup("外观") {
                 listOf(Appearance.SYSTEM to "跟随系统", Appearance.DARK to "深色", Appearance.LIGHT to "浅色").forEachIndexed { index, (key, label) ->
                     if (index > 0) GroupDivider()
