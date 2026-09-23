@@ -49,11 +49,10 @@ class GatewayProbeTest {
             exchange.responseHeaders.entries.joinToString("") { "${it.key}: ${it.value}\r\n" } + "\r\n"
         exchange.socket.getOutputStream().use { it.write(headers.toByteArray()); it.write(bytes) }
     }
-    @Test fun `all protocols send bounded native requests with normalized paths and correct auth`() {
+    @Test fun `native protocols send bounded requests with normalized paths and correct auth`() {
         for (protocol in GatewayProtocol.values()) {
             var path = ""; var bearer: String? = null; var auth: String? = null; var version: String? = null; var body = ""
             val response = when (protocol) {
-                GatewayProtocol.CHAT -> """{"choices":[{"message":{"role":"assistant","content":"OK"},"finish_reason":"stop"}]}"""
                 GatewayProtocol.RESPONSES -> """{"object":"response","status":"completed","output":[]}"""
                 GatewayProtocol.MESSAGES -> """{"type":"message","role":"assistant","content":[{"type":"text","text":"OK"}],"stop_reason":"end_turn"}"""
             }
@@ -67,7 +66,7 @@ class GatewayProbeTest {
                 for (suffix in listOf("", "/v1/", "/v1/responses", "/api/v2/messages")) {
                     val check = runBlocking { GatewayProbe().check(ref, GatewayConfig(base + suffix, "test-model", "synthetic-secret", protocol)) }
                     assertEquals(GatewayCheckOutcome.SUCCEEDED, check.outcome); assertEquals(ref, check.profile)
-                    val ending = when (protocol) { GatewayProtocol.CHAT -> "chat/completions"; GatewayProtocol.RESPONSES -> "responses"; GatewayProtocol.MESSAGES -> "messages" }
+                    val ending = when (protocol) { GatewayProtocol.RESPONSES -> "responses"; GatewayProtocol.MESSAGES -> "messages" }
                     assertEquals((if (suffix.startsWith("/api")) "/api/v2/" else "/v1/") + ending, path)
                     assertEquals("Bearer synthetic-secret", bearer)
                     assertEquals(if (protocol == GatewayProtocol.MESSAGES) "synthetic-secret" else "Bearer synthetic-secret", auth)
@@ -129,7 +128,6 @@ class GatewayProbeTest {
 
     @Test fun `output limits and incomplete responses are not reported as completed checks`() {
         val responses = listOf(
-            GatewayProtocol.CHAT to """{"choices":[{"message":{"role":"assistant","content":""},"finish_reason":"length"}]}""",
             GatewayProtocol.RESPONSES to """{"object":"response","status":"incomplete","output":[]}""",
             GatewayProtocol.MESSAGES to """{"type":"message","role":"assistant","content":[],"stop_reason":"max_tokens"}""")
         for ((protocol, body) in responses) server({ reply(it, 200, body) }) { base ->

@@ -47,7 +47,7 @@ class DrawerFooterTest {
             "getDiagnostic" -> flowOf(DiagnosticOutput(null, emptyList()))
             "agents" -> emptyList<AgentOption>()
             "gateways" -> emptyList<GatewayProfile>()
-            "defaultGatewayAgent" -> AgentId.CODEX
+            "defaultGateway" -> null
             else -> Unit
         } }
         val preferences = stub<PreferencePort> { name -> when (name) {
@@ -99,7 +99,7 @@ class DrawerFooterTest {
             "getDiagnostic" -> flowOf(DiagnosticOutput(null, emptyList()))
             "agents" -> emptyList<AgentOption>()
             "gateways" -> emptyList<GatewayProfile>()
-            "defaultGatewayAgent" -> AgentId.CODEX
+            "defaultGateway" -> null
             else -> Unit
         } }
         val preferences = stub<PreferencePort> { name -> when (name) {

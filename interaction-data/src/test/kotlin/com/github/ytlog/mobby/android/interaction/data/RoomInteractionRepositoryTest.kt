@@ -54,8 +54,9 @@ class RoomInteractionRepositoryTest {
         override suspend fun agents() = emptyList<AgentOption>()
         override suspend fun gateways() = listOf(GatewayProfile(DomainAgent.CODEX, "CODEX", 0, "", "test-model", "RESPONSES", false))
         override suspend fun saveGateway(edit: GatewayEdit) = GatewaySaveResult.Saved(emptyList(), null)
-        override suspend fun defaultGatewayAgent() = DomainAgent.CODEX
-        override suspend fun selectDefaultGatewayAgent(agent: DomainAgent) = OperationResult.Done
+        override suspend fun defaultGateway() = GatewayDefault(DomainAgent.CODEX, "CODEX", 0)
+        override suspend fun selectDefaultGateway(profile: GatewayProfile) = OperationResult.Done
+        override suspend fun deleteGateway(id: String) = OperationResult.Done
         override suspend fun initialize() = OperationResult.Done
         override suspend fun shell(command: String) = OperationResult.Done
         override suspend fun stopShell() = OperationResult.Done

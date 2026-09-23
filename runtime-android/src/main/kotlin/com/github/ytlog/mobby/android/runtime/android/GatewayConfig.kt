@@ -14,9 +14,7 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-enum class GatewayProtocol(val label: String) {
-    CHAT("Chat Completions"), RESPONSES("Responses"), MESSAGES("Messages")
-}
+enum class GatewayProtocol(val label: String) { RESPONSES("Responses"), MESSAGES("Messages") }
 
 /** OpenCode's built-in OpenAI provider speaks Responses, the same wire format as Codex. */
 internal fun AgentMode.gatewayProtocol(): GatewayProtocol = when (this) {
@@ -101,7 +99,7 @@ class GatewayStore(context: Context) {
         const val KEY_ALIAS = "mobby.gateway"
         val writeLock = Any()
     }
-    private val prefs = context.getSharedPreferences("gateway", Context.MODE_PRIVATE)
+    private val prefs = context.getSharedPreferences("gateway_profiles", Context.MODE_PRIVATE)
     private fun encryptionKey(): SecretKey {
         val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         (store.getKey(KEY_ALIAS, null) as? SecretKey)?.let { return it }
@@ -121,26 +119,80 @@ class GatewayStore(context: Context) {
         cipher.init(Cipher.DECRYPT_MODE, encryptionKey(), GCMParameterSpec(128, bytes.copyOfRange(0, 12)))
         return String(cipher.doFinal(bytes.copyOfRange(12, bytes.size)), Charsets.UTF_8)
     }
-    fun version(mode: AgentMode): Long = prefs.getLong("${mode.name}.version", 0)
-    fun load(mode: AgentMode, version: Long = version(mode)): GatewayConfig {
-        val storageKey = if (version == version(mode)) mode.name else "${mode.name}:$version"
-        val encoded = prefs.getString(storageKey, null) ?: return GatewayConfig(protocol = mode.gatewayProtocol())
-        return GatewayConfig.parse(decrypt(encoded))
+    fun ids(): List<String> = prefs.getString("index", null)?.let { encrypted ->
+        Json.parseToJsonElement(decrypt(encrypted)).jsonArray.map { it.jsonPrimitive.content }
+    }.orEmpty()
+    fun load(id: String, version: Long? = null): GatewayRecord {
+        require(id in ids()) { "网关不存在" }
+        val current = GatewayRecord.parse(decrypt(requireNotNull(prefs.getString(id, null)) { "网关不存在" }))
+        if (version == null || version == current.version) return current
+        val encoded = requireNotNull(prefs.getString("$id:$version", null)) { "网关版本不存在" }
+        return GatewayRecord.parse(decrypt(encoded))
     }
-    fun defaultMode(): AgentMode = prefs.getString("defaultAgent", null)?.let { encoded ->
-        AgentMode.valueOf(decrypt(encoded)).also { require(it != AgentMode.SHELL) }
-    } ?: AgentMode.CODEX
-    fun selectDefault(mode: AgentMode) = synchronized(writeLock) {
-        require(mode != AgentMode.SHELL)
-        check(prefs.edit().putString("defaultAgent", encrypt(mode.name)).commit()) { "保存默认网关失败" }
+    fun list(): List<GatewayRecord> = ids().map(::load)
+    fun default(): GatewayChoice? = prefs.getString("default", null)?.let { GatewayChoice.parse(decrypt(it)) }
+    fun selectDefault(choice: GatewayChoice) = synchronized(writeLock) {
+        require(load(choice.id).endpoints.containsKey(choice.mode)) { "网关不支持此 Agent" }
+        check(prefs.edit().putString("default", encrypt(choice.json())).commit()) { "保存默认网关失败" }
     }
-    fun snapshot(mode: AgentMode): Pair<Long, GatewayConfig> = synchronized(writeLock) { version(mode) to load(mode) }
-    fun save(mode: AgentMode, config: GatewayConfig) = synchronized(writeLock) {
-        config.validateFor(mode)
-        val oldVersion = version(mode)
-        val encoded = encrypt(config.json())
+    fun save(record: GatewayRecord): GatewayRecord = synchronized(writeLock) {
+        record.validate()
+        val ids = ids()
+        val existing = if (record.id in ids) load(record.id) else null
+        val saved = record.copy(version = (existing?.version ?: 0) + 1)
         val edit = prefs.edit()
-        prefs.getString(mode.name, null)?.let { edit.putString("${mode.name}:$oldVersion", it) }
-        check(edit.putString(mode.name, encoded).putLong("${mode.name}.version", oldVersion + 1).commit()) { "保存网关失败" }
+        if (existing != null) edit.putString("${record.id}:${existing.version}", prefs.getString(record.id, null))
+        if (default()?.id == record.id && default()?.mode !in saved.endpoints) edit.remove("default")
+        val updated = if (existing == null) ids + record.id else ids
+        check(edit.putString(record.id, encrypt(saved.json()))
+            .putString("index", encrypt(JsonArray(updated.map(::JsonPrimitive)).toString()))
+            .commit()) { "保存网关失败" }
+        saved
     }
+    fun delete(id: String) = synchronized(writeLock) {
+        require(id in ids())
+        val updated = ids() - id
+        val edit = prefs.edit().remove(id).putString("index", encrypt(JsonArray(updated.map(::JsonPrimitive)).toString()))
+        prefs.all.keys.filter { it.startsWith("$id:") }.forEach(edit::remove)
+        if (default()?.id == id) edit.remove("default")
+        check(edit.commit()) { "删除网关失败" }
+    }
+}
+
+data class GatewayChoice(val id: String, val mode: AgentMode) {
+    fun json(): String = buildJsonObject { put("id", id); put("mode", mode.name) }.toString()
+    companion object { fun parse(value: String): GatewayChoice = Json.parseToJsonElement(value).jsonObject.let {
+        GatewayChoice(it.getValue("id").jsonPrimitive.content, AgentMode.valueOf(it.getValue("mode").jsonPrimitive.content))
+    } }
+}
+
+data class GatewayRecord(
+    val id: String, val version: Long, val endpoints: Map<AgentMode, String>, val model: String, val key: String,
+    val models: List<GatewayModel> = emptyList(), val catalogError: String? = null,
+) {
+    override fun toString() = "GatewayRecord(id=$id, version=$version, agents=${endpoints.keys}, credentials=[redacted])"
+    fun config(mode: AgentMode) = GatewayConfig(requireNotNull(endpoints[mode]) { "网关不支持此 Agent" }, model, key,
+        mode.gatewayProtocol(), models, catalogError)
+    fun validate() {
+        require(id.matches(Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")) && endpoints.isNotEmpty())
+        endpoints.forEach { (mode, _) -> config(mode).validateFor(mode) }
+    }
+    fun json(): String = buildJsonObject {
+        put("id", id); put("version", version); put("model", model); put("key", key)
+        putJsonObject("endpoints") { endpoints.forEach { (mode, endpoint) -> put(mode.name, endpoint) } }
+        putJsonArray("models") { models.forEach { addJsonObject { put("id", it.id); put("name", it.name) } } }
+        catalogError?.let { put("catalogError", it) }
+    }.toString()
+    companion object { fun parse(value: String): GatewayRecord {
+        val obj = Json.parseToJsonElement(value).jsonObject
+        val endpoints = obj.getValue("endpoints").jsonObject.mapKeys { AgentMode.valueOf(it.key) }.mapValues { it.value.jsonPrimitive.content }
+        val first = endpoints.keys.first()
+        val config = GatewayConfig.parse(buildJsonObject {
+            put("endpoint", endpoints.getValue(first)); put("model", obj.getValue("model")); put("key", obj.getValue("key"))
+            put("protocol", first.gatewayProtocol().name.lowercase()); obj["models"]?.let { put("models", it) }
+            obj["catalogError"]?.let { put("catalogError", it) }
+        }.toString())
+        return GatewayRecord(obj.getValue("id").jsonPrimitive.content, obj.getValue("version").jsonPrimitive.long,
+            endpoints, config.model, config.key, config.models, config.catalogError)
+    } }
 }

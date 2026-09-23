@@ -45,7 +45,7 @@ class ConversationDrawerPageTest {
             "getDiagnostic" -> flowOf(DiagnosticOutput(null, emptyList()))
             "agents" -> emptyList<AgentOption>()
             "gateways" -> emptyList<GatewayProfile>()
-            "defaultGatewayAgent" -> AgentId.CODEX
+            "defaultGateway" -> null
             "capture" -> DataResult.Loaded<CameraCapture?>(null)
             else -> error(name)
         } }

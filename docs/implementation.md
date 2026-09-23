@@ -975,3 +975,9 @@ Runtime 对外的对话消息现在是固定类型。回复仍是 `AssistantDelt
 ## Agent 列表图标（2026-09-23）
 
 Codex、Claude Code 和 OpenCode 用各自公开的单色标记，实心填色，颜色跟随当前文字，深色和浅色不用两套图。Codex 是 OpenAI 的结，Claude Code 是 Claude 的星形，OpenCode 是官方方框。网关列表、Agent 选择、新建对话和顶栏名称都放在名称前面。会话抽屉和归档列表里，会话标题前也有这枚标记，因此比项目名更靠右；项目名和「项目管理」不带标记。
+
+## 独立网关与多 Agent 绑定（2026-09-24）
+
+旧版“每个 Agent 一个网关槽位”已由独立网关 ID 取代。一个网关可绑定多个 Agent，同一 Agent 可配置多个网关；列表按网关分组，当前会话和新会话默认值都保存具体的网关与 Agent。保存、编辑、删除在加密存储中对整个网关操作，编辑保留供已有会话使用的版本快照。Responses / Messages 由 Agent 决定，自定义网关为不同 Agent 分别填写基址；不再提供旧 Chat 协议或旧槽位读取路径。旧加密槽位不会自动显示为新网关，用户需重新创建配置。当前使用说明见[网关接入](gateway.md)。
+
+相关 Android 单测、APK 构建与 lint 通过，Node 桥接 12 项测试和 Runtime Python 10 项测试通过。手机端隔离 Keystore 测试已编译，但测试安装时 USB 设备断开，后续覆盖安装被设备以 `INSTALL_FAILED_USER_RESTRICTED` 取消；本轮未取得手机端网关验收结果，也未使用真实网关密钥。

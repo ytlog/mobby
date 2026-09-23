@@ -37,8 +37,11 @@ class WorkspacePickerTest {
             "getStatus" -> flowOf(SystemStatus(true, true))
             "getDiagnostic" -> flowOf(DiagnosticOutput(null, emptyList()))
             "agents" -> listOf(AgentOption(AgentId.CLAUDE_CODE, mapOf("claude-fixture" to emptySet()), null, true, emptySet()))
-            "gateways" -> emptyList<GatewayProfile>()
-            "defaultGatewayAgent" -> gatewayDefault
+            "gateways" -> listOf(
+                GatewayProfile(AgentId.CODEX, "CODEX", 1, "https://example.test/v1", "model", "RESPONSES", true),
+                GatewayProfile(AgentId.CLAUDE_CODE, "CLAUDE", 1, "https://example.test/v1", "claude-fixture", "MESSAGES", true,
+                    listOf(GatewayModel("claude-fixture", "claude-fixture"))))
+            "defaultGateway" -> GatewayDefault(gatewayDefault, if (gatewayDefault == AgentId.CODEX) "CODEX" else "CLAUDE", 1)
             "workspaces" -> DataResult.Loaded(options.toList())
             "createWorkspace" -> {
                 creations++

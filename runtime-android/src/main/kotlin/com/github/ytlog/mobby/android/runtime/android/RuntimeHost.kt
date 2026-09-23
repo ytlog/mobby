@@ -77,10 +77,11 @@ class RuntimeHost(context: Context, notification: () -> PendingIntent) {
         override suspend fun importSkill(agent: AgentId, markdown: String) = connected()?.importSkill(agent, markdown) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
         override suspend fun saveManualSkill(request: ManualSkillRequest) = connected()?.saveManualSkill(request) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
         override suspend fun initialize() = connected()?.initialize() ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
-        override suspend fun validateGateway(profile: GatewayProfileRef) = connected()?.validateGateway(profile) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
+        override suspend fun validateGateway(profile: GatewayProfileRef, agent: AgentId) = connected()?.validateGateway(profile, agent) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
         override suspend fun listGatewayProfiles() = connected()?.listGatewayProfiles() ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
         override suspend fun saveGatewayProfile(request: SaveGatewayRequest) = connected()?.saveGatewayProfile(request) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
-        override suspend fun defaultGatewayAgent() = connected()?.defaultGatewayAgent() ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
-        override suspend fun selectDefaultGatewayAgent(agent: AgentId) = connected()?.selectDefaultGatewayAgent(agent) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
+        override suspend fun defaultGateway() = connected()?.defaultGateway() ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
+        override suspend fun selectDefaultGateway(selection: GatewaySelection) = connected()?.selectDefaultGateway(selection) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
+        override suspend fun deleteGatewayProfile(id: String) = connected()?.deleteGatewayProfile(id) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
     }
 }

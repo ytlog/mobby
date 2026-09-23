@@ -4,7 +4,7 @@ import kotlinx.coroutines.flow.StateFlow
 
 enum class EnvironmentPhase { INITIALIZING, READY, FAILED }
 data class EnvironmentSnapshot(val phase: EnvironmentPhase, val summary: String, val error: RuntimeError? = null)
-enum class GatewayProtocol { CHAT, RESPONSES, MESSAGES }
+enum class GatewayProtocol { RESPONSES, MESSAGES }
 data class GatewayModelSummary(val id: String, val name: String)
 data class GatewayProfileSummary(
     val ref: GatewayProfileRef, val agent: AgentId, val endpoint: String, val model: String,
@@ -17,9 +17,10 @@ class SecretInput(value: CharArray) {
     fun consume(): CharArray = chars.copyOf().also { chars.fill('\u0000') }
     override fun toString() = "[redacted]"
 }
-class SaveGatewayRequest(val agent: AgentId, val endpoint: String, val model: String,
-    val protocol: GatewayProtocol, val credential: SecretInput? = null) {
-    override fun toString() = "SaveGatewayRequest(agent=$agent)"
+data class GatewaySelection(val agent: AgentId, val profile: GatewayProfileRef)
+class SaveGatewayRequest(val id: String?, val endpoints: Map<AgentId, String>, val model: String,
+    val credential: SecretInput? = null) {
+    override fun toString() = "SaveGatewayRequest(id=$id, agents=${endpoints.keys})"
 }
 sealed interface AdminResult<out T> {
     data class Success<T>(val value: T) : AdminResult<T>
@@ -37,7 +38,7 @@ interface RuntimeAdminClient {
     suspend fun createWorkspace(name: String): AdminResult<WorkspaceSummary> = AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
     suspend fun eventHistorySettings(): AdminResult<EventHistorySettings> = AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
     suspend fun saveEventHistorySettings(settings: EventHistorySettings): AdminResult<Unit> = AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
-    suspend fun validateGateway(profile: GatewayProfileRef): AdminResult<GatewayCheck>
+    suspend fun validateGateway(profile: GatewayProfileRef, agent: AgentId): AdminResult<GatewayCheck>
     suspend fun previewResource(ref: ResourceRef, workspace: WorkspaceRef, expanded: Boolean): AdminResult<ResourcePreview>
     suspend fun importResource(request: ImportResourceRequest): AdminResult<ResourceSummary>
     suspend fun resource(ref: ResourceRef, workspace: WorkspaceRef): AdminResult<ResourceSummary>
@@ -52,8 +53,9 @@ interface RuntimeAdminClient {
     suspend fun initialize(): AdminResult<Unit>
     suspend fun listGatewayProfiles(): AdminResult<List<GatewayProfileSummary>>
     suspend fun saveGatewayProfile(request: SaveGatewayRequest): AdminResult<GatewayProfileSummary>
-    suspend fun defaultGatewayAgent(): AdminResult<AgentId> = AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
-    suspend fun selectDefaultGatewayAgent(agent: AgentId): AdminResult<Unit> = AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
+    suspend fun defaultGateway(): AdminResult<GatewaySelection?> = AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
+    suspend fun selectDefaultGateway(selection: GatewaySelection): AdminResult<Unit> = AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
+    suspend fun deleteGatewayProfile(id: String): AdminResult<Unit> = AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
 }
 
 /** Internal diagnostics, deliberately separate from the product Agent enum and conversation API. */

@@ -44,7 +44,7 @@ class ConversationChromeTest {
             "getDiagnostic" -> flowOf(DiagnosticOutput(null, emptyList()))
             "agents" -> emptyList<AgentOption>()
             "gateways" -> emptyList<GatewayProfile>()
-            "defaultGatewayAgent" -> AgentId.CODEX
+            "defaultGateway" -> null
             "capture" -> DataResult.Loaded<CameraCapture?>(null)
             else -> error(name)
         } }
@@ -139,7 +139,7 @@ class ConversationChromeTest {
         return ConversationDetail(
             Conversation(
                 ConversationId("c"),
-                NextTurnConfig(agent, "model", null, "default", agent.gatewayProfileId()),
+                NextTurnConfig(agent, "model", null, "default", "fixture-gateway"),
                 anchor = "user:t1",
             ),
             turns,

@@ -2,10 +2,22 @@ package com.github.ytlog.mobby.android.runtime.android
 
 import org.junit.Assert.*
 import org.junit.Test
+import com.github.ytlog.mobby.android.runtime.engine.AgentMode
 
 class GatewayConfigTest {
+    @Test fun `one gateway stores separate native endpoints and roundtrips without losing credentials`() {
+        val original = GatewayRecord("e1335130-8548-4c86-935c-b10918180006", 3,
+            mapOf(AgentMode.CODEX to "https://example.test/v1", AgentMode.CLAUDE to "https://example.test/anthropic/v1"),
+            "shared-model", "synthetic-key", listOf(GatewayModel("shared-model", "Shared")))
+        original.validate()
+        val restored = GatewayRecord.parse(original.json())
+        assertEquals(original, restored)
+        assertEquals(GatewayProtocol.RESPONSES, restored.config(AgentMode.CODEX).protocol)
+        assertEquals(GatewayProtocol.MESSAGES, restored.config(AgentMode.CLAUDE).protocol)
+        assertThrows(IllegalArgumentException::class.java) { restored.config(AgentMode.OPEN_CODE) }
+    }
     @Test fun roundtripKeepsProtocolAndLiteralValues() {
-        val original = GatewayConfig("https://example.com/v1", "model-name", "key-with-quote\"", GatewayProtocol.CHAT)
+        val original = GatewayConfig("https://example.com/v1", "model-name", "key-with-quote\"", GatewayProtocol.RESPONSES)
         original.validate()
         assertEquals(original, GatewayConfig.parse(original.json()))
     }
@@ -17,21 +29,18 @@ class GatewayConfigTest {
         assertThrows(IllegalArgumentException::class.java) { GatewayConfig("https://example.com", "model", "key\r\nheader").validate() }
     }
     @Test fun allowLocalGatewaysAndKeylessGateways() {
-        GatewayConfig("http://192.168.1.2:8080/v1/chat/completions", "local", "", GatewayProtocol.CHAT).validate()
+        GatewayConfig("http://192.168.1.2:8080/v1/responses", "local", "", GatewayProtocol.RESPONSES).validate()
     }
-    @Test fun protocolMustMatchAgentWithoutRewritingLegacyConfig() {
-        val legacy = GatewayConfig("https://example.com/v1", "model", "fake", GatewayProtocol.CHAT)
-        assertEquals(legacy, GatewayConfig.parse(legacy.json()))
+    @Test fun protocolMustMatchAgent() {
         for (mode in listOf(com.github.ytlog.mobby.android.runtime.engine.AgentMode.CODEX, com.github.ytlog.mobby.android.runtime.engine.AgentMode.CLAUDE, com.github.ytlog.mobby.android.runtime.engine.AgentMode.OPEN_CODE)) {
-            assertThrows(IllegalArgumentException::class.java) { legacy.validateFor(mode) }
-            val native = legacy.copy(protocol = mode.gatewayProtocol())
+            val native = GatewayConfig("https://example.com/v1", "model", "fake", mode.gatewayProtocol())
             native.validateFor(mode)
             val other = if (mode == com.github.ytlog.mobby.android.runtime.engine.AgentMode.CLAUDE) com.github.ytlog.mobby.android.runtime.engine.AgentMode.OPEN_CODE else com.github.ytlog.mobby.android.runtime.engine.AgentMode.CLAUDE
             assertThrows(IllegalArgumentException::class.java) { native.validateFor(other) }
         }
     }
 
-    @Test fun `legacy config without a catalog still loads and only accepts its saved model`() {
+    @Test fun `config without a catalog only accepts its saved model`() {
         val parsed = GatewayConfig.parse("""{"endpoint":"https://example.com/v1","model":"only","key":"k","protocol":"responses"}""")
         assertTrue(parsed.models.isEmpty())
         assertNull(parsed.catalogError)

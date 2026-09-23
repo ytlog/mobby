@@ -1,6 +1,8 @@
 # 网关接入
 
-「网关设置」先列出已经保存的网关。点按一项会把该网关用于当前会话的下一轮，并设为新建会话的默认网关；右侧编辑按钮用于修改地址、默认模型和 API Key。没有配置时，从「添加网关」开始。Claude Code、Codex、OpenCode 各保存一个网关；密钥可留空以连接无鉴权网关。默认选择与网关配置一起加密保存在设备上。已有任务的执行配置不会改变，保存成功只代表设备配置已保存。
+「网关设置」按网关列出已经保存的配置，一个网关可勾选一个或多个 Agent；同一 Agent 也可使用多个网关。点按网关下的 Agent 会把这组网关与 Agent 用于当前会话的下一轮，并设为新建会话的默认组合。编辑、删除作用于整个网关。密钥可留空以连接无鉴权网关。默认选择与网关配置一起加密保存在设备上。已有任务的执行配置不会改变，保存成功只代表设备配置已保存。
+
+新建或编辑时，一个网关只保存一次模型和密钥，支持的 Agent 分别保存原生接口基址。预设服务根据接口支持范围启用复选框；自定义服务可为每个 Agent 分别填写地址。保存后生成独立网关 ID，后续编辑增加版本；已有会话引用旧版本时仍按当时的地址、模型与密钥运行。删除网关会删除其加密版本及默认选择，引用该网关的会话需要重新选择网关。旧版按 Agent 命名的配置槽位不参与新的列表或执行路径，需要重新创建网关。
 
 保存之后，应用用同一地址和密钥请求 `GET {基址}/models`。Messages 会按 `has_more` 分页，最多四页。只保存模型 id 和显示名，不保存响应正文，也不把密钥写进列表。拉取失败时，网关配置仍然保留，模型切换暂时只有填写的默认模型，界面说明原因。成功后，会话里的模型菜单使用这份列表；下一轮把所选模型交给本地桥接，已保存的默认模型和密钥不变。模型列表接口通常不提供思考程度，因此这些模型仍显示为未开放调整。
 
@@ -10,13 +12,13 @@
 | OpenCode | Responses | `/responses` |
 | Claude Code | Messages | `/messages` |
 
-按 2026-09-21 用户更新，模型请求统一经过本地 Node 桥接，暂不提供任何协议转换。Chat Completions 不再作为可选协议。旧的 Chat 或 Agent/协议不匹配配置仍保留在加密存储中，但不能执行、检查或原样保存；界面提示后须明确点击“改用 Responses / Messages”并保存，密钥不会因此清空。网关本身也必须支持对应接口。
+模型请求统一经过本地 Node 桥接，暂不提供任何协议转换。Chat Completions 不再作为可选协议；协议由 Agent 决定，用户只需勾选网关确实支持的 Agent。网关本身必须支持对应接口。
 
 地址可为基础路径或完整接口路径，例如 `https://host/v1`、`https://host/v1/messages`；无路径时使用 `/v1`。自定义路径会保留，例如 `https://host/api/v2` 会追加原生接口。
 
 ## 服务选择
 
-列表只包含当前 Agent 原生协议可以直接请求的服务，最后一项是自定义。选择服务只填入下表基址，不改协议、不替换模型、也不改动已保存密钥。再次打开时，地址与基址一致（忽略末尾斜线以及 `/responses`、`/messages`）就选中该服务；其余地址保持自定义，不会被改写。
+服务预设列在一个表单中；选择后只允许勾选它有原生接口的 Agent。选择服务填入各 Agent 的基址，不替换模型或已保存密钥。再次打开时，地址与基址一致（忽略末尾斜线以及 `/responses`、`/messages`）就选中该服务；其余地址保持自定义。
 
 | 服务 | Agent | 基址 |
 | --- | --- | --- |
@@ -25,9 +27,12 @@
 | xAI | Codex、OpenCode | `https://api.x.ai/v1` |
 | Groq | Codex、OpenCode | `https://api.groq.com/openai/v1` |
 | Anthropic | Claude Code | `https://api.anthropic.com/v1` |
-| DeepSeek | Claude Code | `https://api.deepseek.com/anthropic/v1` |
+| DeepSeek | Codex、OpenCode；Claude Code | `https://api.deepseek.com`；`https://api.deepseek.com/anthropic/v1` |
+| 小米 MiMo | Codex、OpenCode；Claude Code | `https://api.xiaomimimo.com/v1`；`https://api.xiaomimimo.com/anthropic/v1` |
+| Kimi | Codex、OpenCode；Claude Code | `https://api.moonshot.ai/v1`；`https://api.moonshot.ai/anthropic/v1` |
+| 智谱 GLM | Codex、OpenCode；Claude Code | `https://open.bigmodel.cn/api/v1`；`https://open.bigmodel.cn/api/anthropic/v1` |
 
-Google Gemini 目前提供的是 Chat Completions 和 Interactions，没有 Responses 或 Messages，因此不列入可执行选项。需要 Gemini 时，使用 OpenRouter 上的对应模型，或在自定义中填写已经提供上述原生接口的网关。DeepSeek 的 Messages 基址必须带 `/anthropic/v1`，桥接会在其后追加 `/messages`。
+Google Gemini 目前提供的是 Chat Completions 和 Interactions，没有 Responses 或 Messages，因此不列入可执行选项。需要 Gemini 时，使用 OpenRouter 上的对应模型，或在自定义中填写已经提供上述原生接口的网关。Messages 基址必须包含服务要求的 `/v1`，桥接会在其后追加 `/messages`。
 
 ## 运行方式
 

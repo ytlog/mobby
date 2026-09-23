@@ -74,6 +74,7 @@ import kotlinx.coroutines.*
     val agents by vm.agents.collectAsStateWithLifecycle()
     val profiles by vm.gateways.collectAsStateWithLifecycle()
     var agent by rememberSaveable(c.id.value) { mutableStateOf(c.config.agent) }
+    var gatewayId by rememberSaveable(c.id.value) { mutableStateOf(c.config.gatewayProfile) }
     var model by rememberSaveable(c.id.value) { mutableStateOf(c.config.model) }
     var reasoning by rememberSaveable(c.id.value) { mutableStateOf(c.config.reasoning) }
     var workspace by rememberSaveable(c.id.value) { mutableStateOf(c.config.workspace) }
@@ -92,13 +93,24 @@ import kotlinx.coroutines.*
     FrostedMenu(true, dismiss, anchor) {
         Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()).padding(bottom = 12.dp)) {
             MenuSection("Agent") {
-                AgentId.values().forEach { value -> MenuOption(value.label(), agent == value, icon = value.glyph()) { agent = value; model = profiles.firstOrNull { p -> p.agent == value }?.model.orEmpty(); reasoning = null } }
+                AgentId.values().forEach { value -> MenuOption(value.label(), agent == value, icon = value.glyph()) {
+                    agent = value
+                    val gateway = profiles.firstOrNull { it.agent == value && it.id == gatewayId } ?: profiles.firstOrNull { it.agent == value }
+                    gatewayId = gateway?.id.orEmpty(); model = gateway?.model.orEmpty(); reasoning = null
+                } }
+            }
+            MenuSection("网关") {
+                profiles.filter { it.agent == agent }.forEach { gateway ->
+                    MenuOption(gatewaySummary(gateway), gatewayId == gateway.id) { gatewayId = gateway.id; model = gateway.model; reasoning = null }
+                }
+                if (profiles.none { it.agent == agent }) MenuCaption("该 Agent 尚无网关，请前往网关设置。")
             }
             MenuSection("模型") {
-                if (option?.models.isNullOrEmpty()) MenuCaption("尚未配置模型，请前往网关设置。")
+                val gateway = profiles.firstOrNull { it.agent == agent && it.id == gatewayId }
+                if (gateway?.models.isNullOrEmpty()) MenuCaption("尚未配置模型，请前往网关设置。")
                 val names = option?.modelNames.orEmpty()
-                option?.models?.keys?.forEach { item -> MenuOption(modelMenuLabel(item, names), model == item) { model = item; reasoning = null } }
-                val known = option?.models?.keys.orEmpty()
+                gateway?.models?.forEach { item -> MenuOption(modelMenuLabel(item.id, names), model == item.id) { model = item.id; reasoning = null } }
+                val known = gateway?.models?.map { it.id }.orEmpty().toSet()
                 if (known.isNotEmpty() && model.isNotBlank() && model !in known) MenuCaption("当前模型不在已保存列表中，请重新选择。")
             }
             MenuSection("思考程度") {
@@ -133,10 +145,11 @@ import kotlinx.coroutines.*
         }
         Button(
             onClick = {
-                val p = profiles.firstOrNull { it.agent == agent }
-                vm.enqueue { vm.actions.configure(c.id, NextTurnConfig(agent, model, reasoning, workspace, p?.id ?: agent.gatewayProfileId(), p?.version ?: 0)) }
+                val p = profiles.firstOrNull { it.agent == agent && it.id == gatewayId }
+                if (p != null) vm.enqueue { vm.actions.configure(c.id, NextTurnConfig(agent, model, reasoning, workspace, p.id, p.version)) }
                 dismiss()
             },
+            enabled = profiles.any { it.agent == agent && it.id == gatewayId },
             modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 20.dp).heightIn(min = 48.dp),
             shape = RoundedCornerShape(22.dp),
             colors = filledButtonColors(if (darkChrome()) MobbyColors.Dark.button else menuAccent(), if (darkChrome()) MobbyColors.Dark.onButton else MobbyColors.onAccent),
@@ -150,8 +163,9 @@ import kotlinx.coroutines.*
     val agents by vm.agents.collectAsStateWithLifecycle()
     val profiles by vm.gateways.collectAsStateWithLifecycle()
     val defaultGateway by vm.defaultGateway.collectAsStateWithLifecycle()
-    var agent by rememberSaveable { mutableStateOf(defaultGateway) }
-    var model by rememberSaveable { mutableStateOf(profiles.firstOrNull { it.agent == defaultGateway }?.model.orEmpty()) }
+    var agent by rememberSaveable { mutableStateOf(defaultGateway?.agent ?: AgentId.CODEX) }
+    var gatewayId by rememberSaveable { mutableStateOf(defaultGateway?.id.orEmpty()) }
+    var model by rememberSaveable { mutableStateOf(profiles.firstOrNull { it.id == gatewayId && it.agent == agent }?.model.orEmpty()) }
     var reasoning by rememberSaveable { mutableStateOf<String?>(null) }
     var workspace by rememberSaveable { mutableStateOf(state.projects.firstOrNull { it.name == project }?.defaultWorkspace ?: c?.config?.workspace ?: "default") }
     val workspaceOwner = rememberSaveable { java.util.UUID.randomUUID().toString() }
@@ -163,8 +177,16 @@ import kotlinx.coroutines.*
     var name by rememberSaveable { mutableStateOf("") }
     val option = agents.firstOrNull { it.agent == agent }
     val levels = option?.models?.get(model).orEmpty()
-    val canCreate = !creating && workspaces.any { it.ref == workspace } && (project == null || state.projects.any { it.name == project })
+    val canCreate = !creating && profiles.any { it.agent == agent && it.id == gatewayId } && model.isNotBlank() &&
+        workspaces.any { it.ref == workspace } && (project == null || state.projects.any { it.name == project })
     LaunchedEffect(Unit) { vm.enqueue { vm.refresh() }; vm.loadWorkspaces() }
+    LaunchedEffect(defaultGateway, profiles) {
+        if (profiles.none { it.agent == agent && it.id == gatewayId }) {
+            val target = profiles.firstOrNull { it.id == defaultGateway?.id && it.agent == defaultGateway?.agent }
+                ?: profiles.firstOrNull { it.agent == agent } ?: profiles.firstOrNull()
+            if (target != null) { agent = target.agent; gatewayId = target.id; model = target.model }
+        }
+    }
     LaunchedEffect(created) { created?.takeIf { it.owner == workspaceOwner }?.let { workspace = it.workspace.ref; adding = false; name = ""; vm.consumeWorkspaceCreated(it) } }
     FrostedMenu(true, onDismiss, anchor) {
         Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()).padding(bottom = 12.dp)) {
@@ -175,13 +197,24 @@ import kotlinx.coroutines.*
                 if (state.projects.isEmpty()) MenuCaption("可在会话抽屉的项目管理中新建项目。")
             }
             MenuSection("Agent") {
-                AgentId.values().forEach { value -> MenuOption(value.label(), agent == value, icon = value.glyph()) { agent = value; model = profiles.firstOrNull { p -> p.agent == value }?.model.orEmpty(); reasoning = null } }
+                AgentId.values().forEach { value -> MenuOption(value.label(), agent == value, icon = value.glyph()) {
+                    agent = value
+                    val gateway = profiles.firstOrNull { it.agent == value && it.id == gatewayId } ?: profiles.firstOrNull { it.agent == value }
+                    gatewayId = gateway?.id.orEmpty(); model = gateway?.model.orEmpty(); reasoning = null
+                } }
+            }
+            MenuSection("网关") {
+                profiles.filter { it.agent == agent }.forEach { gateway ->
+                    MenuOption(gatewaySummary(gateway), gatewayId == gateway.id) { gatewayId = gateway.id; model = gateway.model; reasoning = null }
+                }
+                if (profiles.none { it.agent == agent }) MenuCaption("该 Agent 尚无网关，请前往网关设置。")
             }
             MenuSection("模型") {
-                if (option?.models.isNullOrEmpty()) MenuCaption("尚未配置模型，请前往网关设置。")
+                val gateway = profiles.firstOrNull { it.agent == agent && it.id == gatewayId }
+                if (gateway?.models.isNullOrEmpty()) MenuCaption("尚未配置模型，请前往网关设置。")
                 val names = option?.modelNames.orEmpty()
-                option?.models?.keys?.forEach { item -> MenuOption(modelMenuLabel(item, names), model == item) { model = item; reasoning = null } }
-                val known = option?.models?.keys.orEmpty()
+                gateway?.models?.forEach { item -> MenuOption(modelMenuLabel(item.id, names), model == item.id) { model = item.id; reasoning = null } }
+                val known = gateway?.models?.map { it.id }.orEmpty().toSet()
                 if (known.isNotEmpty() && model.isNotBlank() && model !in known) MenuCaption("当前模型不在已保存列表中，请重新选择。")
             }
             MenuSection("思考程度") {
@@ -208,8 +241,8 @@ import kotlinx.coroutines.*
         }
         Button(
             onClick = {
-                val p = profiles.firstOrNull { it.agent == agent }
-                onApply(NextTurnConfig(agent, model.ifBlank { p?.model.orEmpty() }, reasoning, workspace, p?.id ?: agent.gatewayProfileId(), p?.version ?: 0), project)
+                val p = profiles.firstOrNull { it.agent == agent && it.id == gatewayId } ?: return@Button
+                onApply(NextTurnConfig(agent, model.ifBlank { p.model }, reasoning, workspace, p.id, p.version), project)
             },
             enabled = canCreate,
             modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 20.dp).heightIn(min = 48.dp),
@@ -268,54 +301,55 @@ import kotlinx.coroutines.*
     var editing by rememberSaveable { mutableStateOf<String?>(null) }
     var notice by rememberSaveable { mutableStateOf("") }
     LaunchedEffect(Unit) { vm.enqueue { vm.refresh() } }
-    val agent = editing?.let { runCatching { AgentId.valueOf(it) }.getOrNull() }
-    if (agent == null) GatewayList(profiles, notice, defaultGateway, state.selected?.conversation?.config?.agent, back,
-        select = vm::chooseGateway, open = { editing = it.name; notice = "" })
-    else key(agent) {
-        GatewayForm(profiles, vm::enqueue, vm.actions::saveGateway, vm::refresh, { editing = null }, vm.actions::checkGateway, agent) { message ->
+    if (editing == null) GatewayList(profiles, notice, defaultGateway, state.selected?.conversation?.config, back,
+        select = vm::chooseGateway, open = { editing = it ?: "new"; notice = "" })
+    else key(editing) {
+        GatewayForm(profiles, vm::enqueue, vm.actions::saveGateway, vm::refresh, { editing = null }, vm.actions::checkGateway,
+            editingId = editing.takeUnless { it == "new" } ?: "", delete = vm.actions::deleteGateway) { message ->
             notice = message
             editing = null
         }
     }
 }
 
-@Composable internal fun GatewayList(profiles: List<GatewayProfile>, notice: String, defaultGateway: AgentId, currentAgent: AgentId?,
-    back: () -> Unit, select: (GatewayProfile) -> Unit, open: (AgentId) -> Unit) {
+@Composable internal fun GatewayList(profiles: List<GatewayProfile>, notice: String, defaultGateway: GatewayDefault?, current: NextTurnConfig?,
+    back: () -> Unit, select: (GatewayProfile) -> Unit, open: (String?) -> Unit) {
     val configured = profiles.filter { it.endpoint.isNotBlank() }
-    val missing = AgentId.values().filter { agent -> configured.none { it.agent == agent } }
     Column(Modifier.fillMaxSize()) {
         PageHeader("网关", back)
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             if (configured.isEmpty()) EmptyPlaceholder("还没有配置网关", "添加后可以从列表中选择，并拉取模型用于切换")
             else SettingsGroup("已配置") {
-                configured.forEachIndexed { index, profile ->
+                configured.groupBy { it.id }.entries.forEachIndexed { index, entry ->
                     if (index > 0) GroupDivider()
-                    val selected = defaultGateway == profile.agent
-                    val current = currentAgent == profile.agent
-                    val nativeProtocol = if (profile.agent == AgentId.CLAUDE_CODE) "MESSAGES" else "RESPONSES"
-                    val usable = profile.model.isNotBlank() && profile.protocol == nativeProtocol
+                    val representative = entry.value.first()
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Row(Modifier.weight(1f).heightIn(min = 68.dp).selectable(selected = selected, enabled = usable, role = Role.RadioButton) { select(profile) }
-                            .padding(start = 16.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                            AppIcon(profile.agent.glyph(), null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurface)
-                            Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(profile.agent.label(), style = MaterialTheme.typography.bodyLarge)
-                                Text(gatewaySummary(profile), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                val status = listOfNotNull(if (current) "当前会话" else null, if (selected) "新会话默认" else null).joinToString(" · ")
-                                if (status.isNotEmpty()) Text(status, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                                if (!usable) Text("配置不可用，请编辑网关", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
-                            }
-                            if (selected) AppIcon(AppIcons.Check, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+                        Column(Modifier.weight(1f).padding(start = 16.dp, top = 12.dp, bottom = 8.dp)) {
+                            Text(gatewaySummary(representative), style = MaterialTheme.typography.bodyLarge)
+                            Text(entry.value.joinToString(" · ") { it.agent.label() }, style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        ActionIcon("编辑${profile.agent.label()}网关", { open(profile.agent) }, AppIcons.Edit, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        ActionIcon("编辑网关", { open(entry.key) }, AppIcons.Edit, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.width(8.dp))
+                    }
+                    entry.value.forEach { profile ->
+                        val selected = defaultGateway?.id == profile.id && defaultGateway.agent == profile.agent
+                        val isCurrent = current?.gatewayProfile == profile.id && current.agent == profile.agent
+                        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).selectable(selected = selected, role = Role.RadioButton) { select(profile) }
+                            .padding(start = 24.dp, end = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            AppIcon(profile.agent.glyph(), null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurface)
+                            Spacer(Modifier.width(12.dp))
+                            Text(profile.agent.label(), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                            val status = listOfNotNull(if (isCurrent) "当前会话" else null, if (selected) "新会话默认" else null).joinToString(" · ")
+                            if (status.isNotBlank()) Text(status, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                            if (selected) AppIcon(AppIcons.Check, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                        }
                     }
                 }
             }
             if (notice.isNotBlank()) SettingsCaption(notice, error = notice.contains("未能"))
-            SettingsGroup { SettingsAction("添加网关") { open(missing.firstOrNull() ?: AgentId.CODEX) } }
-            SettingsCaption("目前每个 Agent 保存一个活动网关。创建时可勾选多个 Agent，一次写入各自的原生协议地址；已配置的 Agent 会被更新。点按列表项可用于当前会话和新会话。")
+            SettingsGroup { SettingsAction("添加网关") { open(null) } }
+            SettingsCaption("每个网关可支持一个或多个 Agent。点按 Agent 可用于当前会话，并设为新会话默认。")
         }
     }
 }
@@ -341,13 +375,14 @@ private fun gatewaySummary(profile: GatewayProfile): String {
 @Composable internal fun GatewayForm(profiles: List<GatewayProfile>, submit: (suspend () -> Unit) -> Unit,
     save: suspend (GatewayEdit) -> GatewaySaveResult, refresh: suspend () -> Unit, back: () -> Unit,
     check: suspend (GatewayProfile) -> DataResult<GatewayCheckReport>, initial: AgentId = AgentId.CODEX,
+    editingId: String? = profiles.singleOrNull()?.id, delete: suspend (String) -> OperationResult = { OperationResult.Failed("无法删除") },
     onSaved: ((String) -> Unit)? = null) {
     var agent by rememberSaveable { mutableStateOf(initial) }
     var selectedAgents by remember { mutableStateOf(setOf(initial)) }
     var providerId by remember { mutableStateOf(GatewayProviders.CUSTOM) }
     var endpoint by remember { mutableStateOf("") }
+    var customEndpoints by remember { mutableStateOf<Map<AgentId, String>>(emptyMap()) }
     var model by remember { mutableStateOf("") }
-    var protocol by remember { mutableStateOf("RESPONSES") }
     // Credentials deliberately excluded from SavedState/Room and never loaded back from the store.
     var key by remember { mutableStateOf("") }
     var keyEdited by remember { mutableStateOf(false) }
@@ -358,21 +393,22 @@ private fun gatewaySummary(profile: GatewayProfile): String {
     var checkJob by remember { mutableStateOf<Job?>(null) }
     val checkScope = rememberCoroutineScope()
     val busy = saving || checking
-    val profile = profiles.firstOrNull { it.agent == agent }
-    val nativeProtocol = if (agent == AgentId.CLAUDE_CODE) "MESSAGES" else "RESPONSES"
-    val nativeLabel = if (agent == AgentId.CLAUDE_CODE) "Messages" else "Responses"
-    val protocolSupported = protocol == nativeProtocol
-    var connectionNotice by remember(profile, endpoint, model, protocol, keyEdited) { mutableStateOf("") }
+    val group = profiles.filter { it.id == editingId }
+    val profile = group.firstOrNull { it.agent == agent }
+    var connectionNotice by remember(profile, endpoint, model, selectedAgents, keyEdited) { mutableStateOf("") }
     LaunchedEffect(agent) { notice = "" }
-    LaunchedEffect(initial) {
-        endpoint = profile?.endpoint.orEmpty()
+    LaunchedEffect(editingId, initial) {
+        selectedAgents = if (group.isEmpty()) setOf(initial) else group.map { it.agent }.toSet()
+        agent = group.firstOrNull()?.agent ?: initial
+        val selectedProfile = group.firstOrNull()
+        endpoint = selectedProfile?.endpoint.orEmpty()
+        customEndpoints = group.associate { it.agent to it.endpoint }
         providerId = GatewayProviders.match(agent, endpoint)
-        model = profile?.model.orEmpty()
-        protocol = profile?.protocol ?: if (agent == AgentId.CLAUDE_CODE) "MESSAGES" else "RESPONSES"
+        model = selectedProfile?.model.orEmpty()
         key = ""; keyEdited = false
     }
     Column(Modifier.fillMaxSize()) {
-        PageHeader(if (profile?.endpoint?.isNotBlank() == true) "编辑网关" else "添加网关", back)
+        PageHeader(if (!editingId.isNullOrBlank()) "编辑网关" else "添加网关", back)
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             SettingsCaption("选择服务后可勾选支持的 Agent。Codex / OpenCode 使用 Responses，Claude Code 使用 Messages。")
             val providers = GatewayProviders.all
@@ -385,7 +421,6 @@ private fun gatewaySummary(profile: GatewayProfile): String {
                             val next = selectedAgents.intersect(provider.agents).ifEmpty { setOf(provider.agents.first()) }
                             selectedAgents = next
                             agent = next.first()
-                            protocol = if (agent == AgentId.CLAUDE_CODE) "MESSAGES" else "RESPONSES"
                             endpoint = provider.endpoint(agent).orEmpty()
                             notice = ""
                         }
@@ -394,7 +429,7 @@ private fun gatewaySummary(profile: GatewayProfile): String {
                 GroupDivider()
                 ChoiceRow("自定义", providerId == GatewayProviders.CUSTOM, {
                     if (providerId != GatewayProviders.CUSTOM) {
-                        if (GatewayProviders.matches(agent, endpoint)) endpoint = ""
+                        if (GatewayProviders.matches(agent, endpoint)) { endpoint = ""; customEndpoints = emptyMap() }
                         providerId = GatewayProviders.CUSTOM
                         notice = ""
                     }
@@ -407,8 +442,8 @@ private fun gatewaySummary(profile: GatewayProfile): String {
                     Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).clickable(enabled = !busy && value in availableAgents) {
                         selectedAgents = if (value in selectedAgents) selectedAgents - value else selectedAgents + value
                         if (agent !in selectedAgents) agent = selectedAgents.firstOrNull() ?: value
-                        protocol = if (agent == AgentId.CLAUDE_CODE) "MESSAGES" else "RESPONSES"
-                        if (providerId != GatewayProviders.CUSTOM) endpoint = GatewayProviders.find(providerId)?.endpoint(agent).orEmpty()
+                        endpoint = if (providerId != GatewayProviders.CUSTOM) GatewayProviders.find(providerId)?.endpoint(agent).orEmpty()
+                            else customEndpoints[agent].orEmpty()
                         notice = ""
                     }.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(value in selectedAgents, null, enabled = !busy && value in availableAgents)
@@ -420,13 +455,16 @@ private fun gatewaySummary(profile: GatewayProfile): String {
             if (selectedAgents.size > 1 && providerId != GatewayProviders.CUSTOM) SettingsCaption(
                 selectedAgents.joinToString(" · ") { "${it.label()}: ${GatewayProviders.find(providerId)?.endpoint(it)}" })
             SettingsCaption("切换服务只更新地址，请确认模型和密钥仍属于该服务。仅勾选服务提供原生接口的 Agent。")
-            if (!protocolSupported) {
-                SettingsCaption("当前保存的协议不适用于此 Agent；暂不提供协议转换。", error = true)
-                SettingsGroup { SettingsAction("改用 $nativeLabel", enabled = !busy) { protocol = nativeProtocol; notice = "" } }
-            }
-            val stored = profile?.hasCredential == true
+            val stored = group.firstOrNull()?.hasCredential == true
             SettingsGroup {
-                SettingsField(endpoint, { if (providerId == GatewayProviders.CUSTOM) { endpoint = it; notice = "" } }, "网关地址", enabled = !busy && providerId == GatewayProviders.CUSTOM)
+                if (providerId == GatewayProviders.CUSTOM) selectedAgents.forEachIndexed { index, target ->
+                    if (index > 0) GroupDivider()
+                    SettingsField(customEndpoints[target].orEmpty(), {
+                        customEndpoints = customEndpoints + (target to it)
+                        if (target == agent) endpoint = it
+                        notice = ""
+                    }, if (selectedAgents.size == 1) "网关地址" else "${target.label()} 网关地址", enabled = !busy)
+                } else SettingsField(endpoint, {}, "网关地址", enabled = false)
                 GroupDivider()
                 SettingsField(model, { model = it; notice = "" }, "模型名称", enabled = !busy)
                 GroupDivider()
@@ -437,46 +475,54 @@ private fun gatewaySummary(profile: GatewayProfile): String {
                 }
             }
             SettingsCaption("凭据加密保存在设备。保存后会拉取模型列表，供会话里切换模型；保存成功不代表连通性验证通过。")
-            if (selectedAgents.size > 1 && !keyEdited) SettingsCaption("同时配置多个 Agent 时请填写 API Key；各 Agent 的凭据分别加密保存。")
-            if (endpoint.trim().startsWith("http://", ignoreCase = true)) SettingsCaption("HTTP 会明文传输密钥和内容，仅用于可信网络；建议使用 HTTPS。", error = true)
+            if ((if (providerId == GatewayProviders.CUSTOM) customEndpoints.values else listOf(endpoint)).any { it.trim().startsWith("http://", ignoreCase = true) })
+                SettingsCaption("HTTP 会明文传输密钥和内容，仅用于可信网络；建议使用 HTTPS。", error = true)
             SettingsGroup {
-                SettingsAction("保存当前配置", enabled = !busy && selectedAgents.isNotEmpty() &&
-                    (selectedAgents.size > 1 || protocolSupported) && (selectedAgents.size == 1 || keyEdited)) {
+                SettingsAction("保存当前配置", enabled = !busy && selectedAgents.isNotEmpty()) {
                     saving = true; notice = ""
                     submit {
                         var leave: String? = null
                         try {
-                            var completed = 0
-                            for (target in AgentId.values().filter { it in selectedAgents }) {
-                                val native = if (target == AgentId.CLAUDE_CODE) "MESSAGES" else "RESPONSES"
-                                val targetEndpoint = GatewayProviders.find(providerId)?.endpoint(target) ?: endpoint.trim()
-                                val edit = GatewayEdit(target, targetEndpoint, model.trim(),
-                                    if (selectedAgents.size == 1) protocol else native,
-                                    if (keyEdited) key.toCharArray() else null)
-                                val result = try { save(edit) } finally { edit.credential?.fill('\u0000') }
-                                when (result) {
-                                    is GatewaySaveResult.Saved -> { completed++; leave = when {
+                            val endpoints = selectedAgents.associateWith { target ->
+                                GatewayProviders.find(providerId)?.endpoint(target) ?: customEndpoints[target].orEmpty().trim()
+                            }
+                            val edit = GatewayEdit(editingId?.takeIf { it.isNotBlank() }, endpoints, model.trim(), if (keyEdited) key.toCharArray() else null)
+                            when (val result = try { save(edit) } finally { edit.credential?.fill('\u0000') }) {
+                                is GatewaySaveResult.Saved -> {
+                                    key = ""; keyEdited = false; refresh()
+                                    leave = when {
                                         result.catalogError != null -> "配置已保存，模型列表未能拉取。${result.catalogError}"
                                         result.models.isNotEmpty() -> "配置已保存，已拉取 ${result.models.size} 个模型，尚未测试连接"
                                         else -> "配置已保存，尚未测试连接"
-                                    } }
-                                    is GatewaySaveResult.Failed -> { notice = if (completed > 0) "已保存 $completed 个 Agent，${target.label()} 保存失败：${result.message}" else result.message; break }
+                                    }
                                 }
-                            }
-                            if (completed > 0) {
-                                key = ""; keyEdited = false; refresh()
-                                if (notice.isBlank() && completed > 1) leave = "已为 $completed 个 Agent 保存配置，尚未测试连接"
-                                if (notice.isNotBlank()) leave = null
+                                is GatewaySaveResult.Failed -> notice = result.message
                             }
                         } finally { saving = false }
                         leave?.let { message -> if (onSaved != null) onSaved(message) else notice = message }
                     }
                 }
             }
+            if (!editingId.isNullOrBlank()) SettingsGroup {
+                SettingsAction("删除网关", enabled = !busy) {
+                    saving = true
+                    submit {
+                        try { when (val result = delete(editingId)) {
+                            OperationResult.Done -> { refresh(); onSaved?.invoke("网关已删除") ?: back() }
+                            is OperationResult.Failed -> notice = result.message
+                        } } finally { saving = false }
+                    }
+                }
+            }
             if (notice.isNotBlank()) SettingsCaption(notice, error = notice.contains("失败") || notice.contains("未能") || notice.contains("不正确") || notice.contains("无效") || notice.contains("未确认"))
             SettingsCaption("测试连接会用已保存配置发送一个小型模型请求，可能产生少量费用；不验证 CLI、工具或会话恢复。")
-            val matchesSaved = protocolSupported && profile != null && profile.endpoint.isNotBlank() && profile.model.isNotBlank() && !keyEdited &&
-                endpoint.trim() == profile.endpoint && model.trim() == profile.model && protocol == profile.protocol
+            val matchesSaved = profile != null && profile.endpoint.isNotBlank() && profile.model.isNotBlank() && !keyEdited &&
+                selectedAgents == group.map { it.agent }.toSet() && model.trim() == profile.model &&
+                selectedAgents.all { target ->
+                    val saved = group.firstOrNull { it.agent == target }?.endpoint
+                    val entered = GatewayProviders.find(providerId)?.endpoint(target) ?: customEndpoints[target]?.trim()
+                    saved == entered
+                }
             SettingsGroup {
                 SettingsAction("测试已保存连接", enabled = !busy && matchesSaved) {
                     val target = profile ?: return@SettingsAction

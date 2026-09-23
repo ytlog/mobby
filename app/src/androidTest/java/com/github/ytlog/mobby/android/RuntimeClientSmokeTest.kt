@@ -35,7 +35,7 @@ class RuntimeClientSmokeTest {
     @Test fun configuredAgentsCompleteAndResumeThroughPersistentRuntime() = runBlocking {
         assumeTrue("Real gateway test requires explicit instrumentation opt-in", InstrumentationRegistry.getArguments().getString("realGateway") == "true")
         val profiles = (host.admin.listGatewayProfiles() as AdminResult.Success).value
-        assertEquals(2, profiles.size)
+        assertTrue(profiles.isNotEmpty())
         for (profile in profiles) {
             assertTrue("Gateway must already be configured on device", profile.model.isNotBlank())
             val request = RunRequest(RequestId(UUID.randomUUID().toString()), profile.agent, WorkspaceRef("default"),

@@ -185,19 +185,11 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
             catch (_: Exception) { return AdminResult.Failed(RuntimeError(ErrorCode.INVALID_CONFIG)) }
         return importSkill(request.agent, preview.markdown)
     }
-    override suspend fun validateGateway(profile: GatewayProfileRef): AdminResult<GatewayCheck> {
+    override suspend fun validateGateway(profile: GatewayProfileRef, agent: AgentId): AdminResult<GatewayCheck> {
         val config = try {
             withContext(Dispatchers.IO) {
-                val mode = when (profile.id) {
-                    "CODEX" -> AgentMode.CODEX
-                    "CLAUDE" -> AgentMode.CLAUDE
-                    "OPEN_CODE" -> AgentMode.OPEN_CODE
-                    else -> error("invalid profile")
-                }
-                val (version, saved) = GatewayStore(this@RuntimeService).snapshot(mode)
-                require(version == profile.version)
-                saved.validateFor(mode)
-                saved
+                val record = GatewayStore(this@RuntimeService).load(profile.id, profile.version)
+                record.config(agent.launchMode()).also { it.validateFor(agent.launchMode()) }
             }
         } catch (e: CancellationException) { throw e }
         catch (_: Exception) { return AdminResult.Failed(RuntimeError(ErrorCode.INVALID_CONFIG)) }
@@ -206,26 +198,26 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
         catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.PROTOCOL_ERROR, true)) }
     }
     override suspend fun listGatewayProfiles(): AdminResult<List<GatewayProfileSummary>> = withContext(Dispatchers.IO) {
-        try { AdminResult.Success(AgentMode.values().filter { it != AgentMode.SHELL }.map { summary(it) }) }
+        try { AdminResult.Success(GatewayStore(this@RuntimeService).list().flatMap { record -> record.endpoints.keys.map { summary(record, it) } }) }
         catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.INVALID_CONFIG)) }
     }
-    override suspend fun defaultGatewayAgent(): AdminResult<AgentId> = withContext(Dispatchers.IO) {
-        try { AdminResult.Success(GatewayStore(this@RuntimeService).defaultMode().productAgent()) }
+    override suspend fun defaultGateway(): AdminResult<GatewaySelection?> = withContext(Dispatchers.IO) {
+        try { AdminResult.Success(GatewayStore(this@RuntimeService).default()?.let { GatewaySelection(it.mode.productAgent(), GatewayProfileRef(it.id, GatewayStore(this@RuntimeService).load(it.id).version)) }) }
         catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.INVALID_CONFIG)) }
     }
-    override suspend fun selectDefaultGatewayAgent(agent: AgentId): AdminResult<Unit> = withContext(Dispatchers.IO) {
+    override suspend fun selectDefaultGateway(selection: GatewaySelection): AdminResult<Unit> = withContext(Dispatchers.IO) {
         try {
-            val mode = agent.launchMode()
-            GatewayStore(this@RuntimeService).load(mode).validateFor(mode)
-            GatewayStore(this@RuntimeService).selectDefault(mode)
+            val mode = selection.agent.launchMode()
+            val store = GatewayStore(this@RuntimeService)
+            require(store.load(selection.profile.id).version == selection.profile.version)
+            store.selectDefault(GatewayChoice(selection.profile.id, mode))
             AdminResult.Success(Unit)
         } catch (_: IllegalArgumentException) { AdminResult.Failed(RuntimeError(ErrorCode.INVALID_CONFIG)) }
         catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.STORAGE_FULL, true)) }
     }
-    private fun summary(mode: AgentMode): GatewayProfileSummary {
-        val store = GatewayStore(this)
-        val (version, config) = store.snapshot(mode)
-        return GatewayProfileSummary(GatewayProfileRef(mode.name, version),
+    private fun summary(record: GatewayRecord, mode: AgentMode): GatewayProfileSummary {
+        val config = record.config(mode)
+        return GatewayProfileSummary(GatewayProfileRef(record.id, record.version),
             mode.productAgent(),
             config.endpoint, config.model, com.github.ytlog.mobby.android.runtime.api.GatewayProtocol.valueOf(config.protocol.name), config.key.isNotEmpty(),
             config.models.map { GatewayModelSummary(it.id, it.name) }, config.catalogError)
@@ -233,23 +225,36 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
     override suspend fun saveGatewayProfile(request: SaveGatewayRequest): AdminResult<GatewayProfileSummary> = withContext(Dispatchers.IO) {
         val chars = request.credential?.consume()
         try {
-            val mode = request.agent.launchMode()
             val store = GatewayStore(this@RuntimeService)
-            val old = store.load(mode)
-            val protocol = GatewayProtocol.valueOf(request.protocol.name)
-            val draft = GatewayConfig(request.endpoint, request.model, chars?.concatToString() ?: old.key, protocol)
-            draft.validateFor(mode)
+            val id = request.id ?: java.util.UUID.randomUUID().toString()
+            val old = request.id?.let { store.load(it) }
+            val endpoints = request.endpoints.mapKeys { it.key.launchMode() }
+            val record = GatewayRecord(id, 0, endpoints, request.model, chars?.concatToString() ?: old?.key.orEmpty())
+            record.validate()
+            val draft = record.config(endpoints.keys.first())
             val fetched = GatewayCatalog().fetch(draft)
             val models = when (fetched) {
                 is CatalogResult.Ready -> mergeCatalog(draft.model, fetched.models)
                 is CatalogResult.Unavailable -> listOf(GatewayModel(draft.model, draft.model))
             }
             val catalogError = (fetched as? CatalogResult.Unavailable)?.message
-            store.save(mode, draft.copy(models = models, catalogError = catalogError))
-            AdminResult.Success(summary(mode))
+            val saved = store.save(record.copy(models = models, catalogError = catalogError))
+            if (store.default() == null) store.selectDefault(GatewayChoice(saved.id, endpoints.keys.first()))
+            AdminResult.Success(summary(saved, endpoints.keys.first()))
         } catch (e: CancellationException) { throw e }
-        catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.INVALID_CONFIG)) }
+        catch (_: IllegalArgumentException) { AdminResult.Failed(RuntimeError(ErrorCode.INVALID_CONFIG)) }
+        catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.STORAGE_FULL, true)) }
         finally { chars?.fill('\u0000') }
+    }
+    override suspend fun deleteGatewayProfile(id: String): AdminResult<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val store = GatewayStore(this@RuntimeService)
+            store.delete(id)
+            if (store.default() == null) store.list().firstOrNull()?.let { store.selectDefault(GatewayChoice(it.id, it.endpoints.keys.first())) }
+            AdminResult.Success(Unit)
+        }
+        catch (_: IllegalArgumentException) { AdminResult.Failed(RuntimeError(ErrorCode.INVALID_CONFIG)) }
+        catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.STORAGE_FULL, true)) }
     }
     @OptIn(ExperimentalCoroutinesApi::class)
     override suspend fun executeShell(command: String): CommandResult {
@@ -267,7 +272,7 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
                 var started = false
                 var error: ErrorCode? = null
                 try {
-                    val secrets = AgentMode.values().filter { it != AgentMode.SHELL }.mapNotNull { runCatching { GatewayStore(this@RuntimeService).load(it).key }.getOrNull() }.filter { it.isNotEmpty() }
+                    val secrets = GatewayStore(this@RuntimeService).list().map { it.key }.filter { it.isNotEmpty() }
                     runtime.runShell(command,
                         onStarted = { started = true; registry.started(it) }, onTerminated = { exit = it; registry.terminated(it) }).collect { line ->
                         val text = when (line) {

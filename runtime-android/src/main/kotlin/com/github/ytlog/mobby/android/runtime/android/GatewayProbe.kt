@@ -18,7 +18,6 @@ internal class GatewayProbe(private val timeoutMillis: Int = 10_000,
     suspend fun check(ref: GatewayProfileRef, config: GatewayConfig): GatewayCheck = runInterruptible(Dispatchers.IO) {
         config.validate()
         val path = when (config.protocol) {
-            GatewayProtocol.CHAT -> "/chat/completions"
             GatewayProtocol.RESPONSES -> "/responses"
             GatewayProtocol.MESSAGES -> "/messages"
         }
@@ -77,7 +76,6 @@ internal class GatewayProbe(private val timeoutMillis: Int = 10_000,
     }
 
     private fun incomplete(protocol: GatewayProtocol, value: JsonObject): Boolean = when (protocol) {
-        GatewayProtocol.CHAT -> value["choices"]!!.jsonArray.first().jsonObject["finish_reason"]?.jsonPrimitive?.content != "stop"
         GatewayProtocol.RESPONSES -> value["status"]?.jsonPrimitive?.content != "completed"
         GatewayProtocol.MESSAGES -> value["stop_reason"]?.jsonPrimitive?.content !in setOf("end_turn", "stop_sequence")
     }
@@ -85,11 +83,6 @@ internal class GatewayProbe(private val timeoutMillis: Int = 10_000,
     private fun valid(protocol: GatewayProtocol, value: JsonObject?): Boolean = runCatching {
         if (value == null || value["error"]?.let { it != JsonNull } == true) return false
         when (protocol) {
-            GatewayProtocol.CHAT -> {
-                val choice = value["choices"]?.jsonArray?.firstOrNull()?.jsonObject
-                choice?.get("message")?.jsonObject?.get("role")?.jsonPrimitive?.content == "assistant" &&
-                    choice["finish_reason"] is JsonPrimitive && choice["finish_reason"] != JsonNull
-            }
             GatewayProtocol.RESPONSES -> value["object"]?.jsonPrimitive?.content == "response" &&
                 value["status"]?.jsonPrimitive?.content in setOf("completed", "incomplete") && value["output"] is JsonArray
             GatewayProtocol.MESSAGES -> value["type"]?.jsonPrimitive?.content == "message" &&

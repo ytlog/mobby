@@ -18,11 +18,12 @@ class GatewayFormTest {
     @get:Rule val compose = createComposeRule()
     private val profile = GatewayProfile(AgentId.CODEX, "CODEX", 1, "https://gateway.invalid/v1", "test-model", "RESPONSES", true)
     private fun field(label: String) = compose.onNode(hasSetTextAction() and hasText(label))
-    @Test fun `checking another agent retains unsaved fields and requires a shared key`() {
+    @Test fun `checking another agent keeps the first native address editable`() {
         compose.setContent { MaterialTheme { GatewayForm(listOf(profile), {}, { GatewaySaveResult.Saved(emptyList(), null) }, {}, {}, { DataResult.Failed("unused") }) } }
         field("已保存密钥，输入可替换").performScrollTo().performTextReplacement("synthetic-test-secret")
         compose.onNodeWithText("Claude Code").performScrollTo().performClick()
-        field("网关地址").assertTextEquals("网关地址", "https://gateway.invalid/v1")
+        field("Codex 网关地址").assertTextEquals("Codex 网关地址", "https://gateway.invalid/v1")
+        field("Claude Code 网关地址").assertExists()
         field("模型名称").assertTextEquals("模型名称", "test-model")
         field("API Key（无鉴权可留空）").assertExists()
     }
@@ -38,7 +39,7 @@ class GatewayFormTest {
         compose.onNodeWithText("移除已保存密钥").assertIsNotEnabled()
         compose.onNodeWithText("Claude Code").assertIsNotEnabled()
         compose.runOnIdle { runBlocking { pending!!() } }
-        assertEquals(AgentId.CODEX, saved!!.agent)
+        assertEquals(setOf(AgentId.CODEX), saved!!.endpoints.keys)
         compose.onNodeWithText("配置已保存，尚未测试连接").assertExists()
         compose.onNodeWithText("Claude Code").performScrollTo().performClick()
         compose.onNodeWithText("配置已保存，尚未测试连接").assertDoesNotExist()
@@ -90,7 +91,7 @@ class GatewayFormTest {
         compose.onNodeWithText("请先保存当前修改，再测试连接。").assertExists()
     }
 
-    @Test fun `legacy saved profile with version zero remains checkable`() {
+    @Test fun `saved profile with version zero remains checkable`() {
         var checked: GatewayProfile? = null
         val legacy = profile.copy(version = 0)
         compose.setContent { MaterialTheme { GatewayForm(listOf(legacy), {}, { GatewaySaveResult.Saved(emptyList(), null) }, {}, {}, {
@@ -101,24 +102,6 @@ class GatewayFormTest {
         compose.onNodeWithText("测试网络错误").assertExists()
     }
 
-    @Test fun `legacy incompatible profile requires explicit protocol change before saving or checking`() {
-        var pending: (suspend () -> Unit)? = null
-        var saved: GatewayEdit? = null
-        compose.setContent { MaterialTheme { GatewayForm(listOf(profile.copy(protocol = "CHAT")), { pending = it }, {
-            saved = it; GatewaySaveResult.Saved(emptyList(), null)
-        }, {}, {}, { DataResult.Failed("unused") }) } }
-        compose.onNodeWithText("当前保存的协议不适用于此 Agent；暂不提供协议转换。").assertExists()
-        compose.onNodeWithText("保存当前配置").performScrollTo().assertIsNotEnabled()
-        compose.onNodeWithText("测试已保存连接").performScrollTo().assertIsNotEnabled()
-        compose.onNodeWithText("改用 Responses").performScrollTo().performClick()
-        compose.onNodeWithText("保存当前配置").performScrollTo().performClick()
-        compose.runOnIdle { runBlocking { pending!!() } }
-        assertEquals("RESPONSES", saved!!.protocol)
-        assertEquals(profile.endpoint, saved!!.endpoint)
-        assertEquals(profile.model, saved!!.model)
-        assertNull(saved!!.credential)
-    }
-
     @Test fun `selecting a service fills its address and custom clears that preset`() {
         var saved: GatewayEdit? = null
         compose.setContent { MaterialTheme { GatewayForm(listOf(profile), { runBlocking { it() } }, { saved = it; GatewaySaveResult.Saved(emptyList(), null) }, {}, {}, { DataResult.Failed("unused") }) } }
@@ -127,9 +110,8 @@ class GatewayFormTest {
         field("网关地址").assertTextEquals("网关地址", "https://api.openai.com/v1").assertIsNotEnabled()
         field("模型名称").assertTextContains("kept-model")
         compose.onNodeWithText("保存当前配置").performScrollTo().performClick()
-        assertEquals("https://api.openai.com/v1", saved!!.endpoint)
+        assertEquals("https://api.openai.com/v1", saved!!.endpoints[AgentId.CODEX])
         assertEquals("kept-model", saved!!.model)
-        assertEquals("RESPONSES", saved!!.protocol)
         compose.onNodeWithText("自定义").performScrollTo().performClick()
         field("网关地址").assertTextEquals("网关地址", "").assertIsEnabled()
     }
@@ -153,9 +135,9 @@ class GatewayFormTest {
     }
 
     @Test fun `one preset saves separate native routes for every selected agent`() {
-        val requests = mutableListOf<Triple<AgentId, String, String>>()
+        val requests = mutableListOf<GatewayEdit>()
         compose.setContent { MaterialTheme { GatewayForm(emptyList(), { runBlocking { it() } }, { edit ->
-            requests += Triple(edit.agent, edit.endpoint, edit.protocol)
+            requests += edit
             GatewaySaveResult.Saved(emptyList(), null)
         }, {}, {}, { DataResult.Failed("unused") }) } }
         compose.onNodeWithText("DeepSeek").performScrollTo().performClick()
@@ -164,11 +146,12 @@ class GatewayFormTest {
         compose.onNodeWithText("Claude Code").performScrollTo().performClick()
         compose.onNodeWithText("OpenCode").performScrollTo().performClick()
         compose.onNodeWithText("保存当前配置").performScrollTo().performClick()
-        assertEquals(listOf(
-            Triple(AgentId.CODEX, "https://api.deepseek.com", "RESPONSES"),
-            Triple(AgentId.CLAUDE_CODE, "https://api.deepseek.com/anthropic/v1", "MESSAGES"),
-            Triple(AgentId.OPEN_CODE, "https://api.deepseek.com", "RESPONSES")
-        ), requests)
+        assertEquals(1, requests.size)
+        assertEquals(mapOf(
+            AgentId.CODEX to "https://api.deepseek.com",
+            AgentId.CLAUDE_CODE to "https://api.deepseek.com/anthropic/v1",
+            AgentId.OPEN_CODE to "https://api.deepseek.com"
+        ), requests.single().endpoints)
     }
 
     @Test fun `saved catalog tells how many models were stored`() {

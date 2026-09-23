@@ -33,7 +33,7 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
     val composer = MutableStateFlow(ComposerState())
     val agents = MutableStateFlow<List<AgentOption>>(emptyList())
     val gateways = MutableStateFlow<List<GatewayProfile>>(emptyList())
-    val defaultGateway = MutableStateFlow(AgentId.CODEX)
+    val defaultGateway = MutableStateFlow<GatewayDefault?>(null)
     val skills = MutableStateFlow<List<Skill>>(emptyList())
     val skillsError = MutableStateFlow<String?>(null)
     val skillsLoading = MutableStateFlow(false)
@@ -346,15 +346,15 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
     }
     suspend fun refresh() {
         gateways.value = actions.gateways()
-        defaultGateway.value = actions.defaultGatewayAgent()
+        defaultGateway.value = actions.defaultGateway()
         agents.value = actions.agents()
     }
     fun chooseGateway(profile: GatewayProfile) = enqueue {
         state.value.selected?.conversation?.let { conversation ->
             actions.configure(conversation.id, NextTurnConfig(profile.agent, profile.model, null, conversation.config.workspace, profile.id, profile.version))
         }
-        when (val result = actions.selectDefaultGatewayAgent(profile.agent)) {
-            OperationResult.Done -> defaultGateway.value = profile.agent
+        when (val result = actions.selectDefaultGateway(profile)) {
+            OperationResult.Done -> defaultGateway.value = GatewayDefault(profile.agent, profile.id, profile.version)
             is OperationResult.Failed -> report(result)
         }
     }

@@ -87,13 +87,14 @@ data class InteractionState(
 data class AgentOption(val agent: AgentId, val models: Map<String, Set<String>>, val unavailable: String?, val resume: Boolean, val skills: Set<String>, val resources: Boolean = false, val images: Boolean = false, val approvals: Boolean = false, val modelNames: Map<String, String> = emptyMap())
 data class GatewayModel(val id: String, val name: String)
 data class GatewayProfile(val agent: AgentId, val id: String, val version: Long, val endpoint: String, val model: String, val protocol: String, val hasCredential: Boolean, val models: List<GatewayModel> = emptyList(), val catalogError: String? = null)
+data class GatewayDefault(val agent: AgentId, val id: String, val version: Long)
 data class GatewayCheckReport(val passed: Boolean, val message: String)
 sealed interface GatewaySaveResult {
     data class Saved(val models: List<GatewayModel>, val catalogError: String?) : GatewaySaveResult
     data class Failed(val message: String) : GatewaySaveResult
 }
-class GatewayEdit(val agent: AgentId, val endpoint: String, val model: String, val protocol: String, val credential: CharArray?) {
-    override fun toString() = "GatewayEdit(agent=$agent)"
+class GatewayEdit(val id: String?, val endpoints: Map<AgentId, String>, val model: String, val credential: CharArray?) {
+    override fun toString() = "GatewayEdit(id=$id, agents=${endpoints.keys})"
 }
 data class SystemStatus(val ready: Boolean = false, val connected: Boolean = false, val message: String = "连接中", val diagnosticBusy: Boolean = false)
 data class DiagnosticOutput(val phase: ExecutionPhase?, val lines: List<String>)
@@ -146,8 +147,9 @@ interface SystemPort {
     suspend fun checkGateway(profile: GatewayProfile): DataResult<GatewayCheckReport>
     suspend fun gateways(): List<GatewayProfile>
     suspend fun saveGateway(edit: GatewayEdit): GatewaySaveResult
-    suspend fun defaultGatewayAgent(): AgentId
-    suspend fun selectDefaultGatewayAgent(agent: AgentId): OperationResult
+    suspend fun defaultGateway(): GatewayDefault?
+    suspend fun selectDefaultGateway(profile: GatewayProfile): OperationResult
+    suspend fun deleteGateway(id: String): OperationResult
     suspend fun initialize(): OperationResult
     suspend fun shell(command: String): OperationResult
     suspend fun stopShell(): OperationResult
@@ -303,11 +305,12 @@ class InteractionUseCases(
     suspend fun agents() = system.agents()
     suspend fun checkGateway(profile: GatewayProfile) = system.checkGateway(profile)
     suspend fun gateways() = system.gateways()
-    suspend fun defaultGatewayAgent() = system.defaultGatewayAgent()
-    suspend fun selectDefaultGatewayAgent(agent: AgentId) = system.selectDefaultGatewayAgent(agent)
+    suspend fun defaultGateway() = system.defaultGateway()
+    suspend fun selectDefaultGateway(profile: GatewayProfile) = system.selectDefaultGateway(profile)
+    suspend fun deleteGateway(id: String) = system.deleteGateway(id)
     suspend fun saveGateway(edit: GatewayEdit): GatewaySaveResult {
         val result = system.saveGateway(edit)
-        if (result is GatewaySaveResult.Saved) system.gateways().firstOrNull { it.agent == edit.agent }?.let { repository.updateGateway(it) }
+        if (result is GatewaySaveResult.Saved) system.gateways().filter { it.id == edit.id }.forEach { repository.updateGateway(it) }
         return result
     }
     suspend fun initialize() = system.initialize()

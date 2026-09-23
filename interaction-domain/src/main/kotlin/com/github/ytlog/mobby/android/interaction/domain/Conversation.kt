@@ -7,12 +7,6 @@ import kotlinx.coroutines.flow.Flow
 @JvmInline value class ExecutionId(val value: String)
 enum class AgentId { CODEX, CLAUDE_CODE, OPEN_CODE }
 
-/** Stored gateway profile id. It matches the runtime launcher name, not the enum name of Claude Code. */
-fun AgentId.gatewayProfileId(): String = when (this) {
-    AgentId.CODEX -> "CODEX"
-    AgentId.CLAUDE_CODE -> "CLAUDE"
-    AgentId.OPEN_CODE -> "OPEN_CODE"
-}
 data class NextTurnConfig(val agent: AgentId, val model: String, val reasoning: String?, val workspace: String, val gatewayProfile: String, val gatewayVersion: Long = 0)
 data class PendingAttachment(val id: String, val workspace: String, val location: String, val error: String? = null)
 data class Draft(

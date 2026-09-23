@@ -26,7 +26,7 @@ class GatewayListTest {
         Proxy.newProxyInstance(T::class.java.classLoader, arrayOf(T::class.java)) { _, method, args -> body(method.name, args) } as T
 
     private fun page(profiles: List<GatewayProfile>, current: Conversation? = null,
-        configured: (NextTurnConfig) -> Unit = {}, selectedDefault: (AgentId) -> Unit = {}): ConversationViewModel {
+        configured: (NextTurnConfig) -> Unit = {}, selectedDefault: (GatewayProfile) -> Unit = {}): ConversationViewModel {
         val state = MutableStateFlow(InteractionState(loading = false, selected = current?.let { ConversationDetail(it, emptyList()) }))
         val repository = stub<InteractionRepository> { name, args -> when {
             name == "getState" -> state
@@ -43,8 +43,8 @@ class GatewayListTest {
             "getDiagnostic" -> flowOf(DiagnosticOutput(null, emptyList()))
             "agents" -> emptyList<AgentOption>()
             "gateways" -> profiles
-            "defaultGatewayAgent" -> AgentId.CODEX
-            "selectDefaultGatewayAgent" -> { selectedDefault(args!![0] as AgentId); OperationResult.Done }
+            "defaultGateway" -> GatewayDefault(AgentId.CODEX, profile.id, profile.version)
+            "selectDefaultGateway" -> { selectedDefault(args!![0] as GatewayProfile); OperationResult.Done }
             else -> error(name)
         } }
         val actions = InteractionUseCases(repository, stub<ExecutionPort> { name, _ -> error(name) }, system, { "id" }, scope,
@@ -60,7 +60,7 @@ class GatewayListTest {
         page(listOf(profile))
         compose.onNodeWithText("模型名称").assertDoesNotExist()
         compose.onNodeWithText("OpenRouter · openai/gpt-test · 2 个模型").assertExists()
-        compose.onNodeWithContentDescription("编辑Codex网关").performClick()
+        compose.onNodeWithContentDescription("编辑网关").performClick()
         compose.onNodeWithText("编辑网关").assertExists()
         compose.onNodeWithText("模型名称").assertExists()
         compose.onNodeWithContentDescription("返回").performClick()
@@ -72,18 +72,30 @@ class GatewayListTest {
         val claude = GatewayProfile(AgentId.CLAUDE_CODE, "CLAUDE", 4, "https://example.com/v1", "claude-model", "MESSAGES", true)
         val current = Conversation(ConversationId("current"), NextTurnConfig(AgentId.CODEX, "old", "high", "workspace", "CODEX", 2))
         var configured: NextTurnConfig? = null
-        var selectedDefault: AgentId? = null
+        var selectedDefault: GatewayProfile? = null
         val vm = page(listOf(profile, claude), current, { configured = it }, { selectedDefault = it })
         compose.waitUntil(5_000) { vm.state.value.selected != null }
-        compose.onNodeWithText("Claude Code").performClick()
+        compose.onAllNodesWithText("Claude Code").onLast().performClick()
         compose.waitUntil(5_000) { configured != null && selectedDefault != null }
         Assert.assertEquals(AgentId.CLAUDE_CODE, configured?.agent)
         Assert.assertEquals("claude-model", configured?.model)
         Assert.assertEquals("workspace", configured?.workspace)
         Assert.assertEquals("CLAUDE", configured?.gatewayProfile)
         Assert.assertEquals(4L, configured?.gatewayVersion)
-        Assert.assertEquals(AgentId.CLAUDE_CODE, selectedDefault)
+        Assert.assertEquals(AgentId.CLAUDE_CODE, selectedDefault?.agent)
+        Assert.assertEquals("CLAUDE", selectedDefault?.id)
         compose.onNodeWithText("当前会话 · 新会话默认").assertExists()
+    }
+
+    @Test fun `same agent can choose a second independent gateway`() {
+        val second = profile.copy(id = "second-gateway", endpoint = "https://api.openai.com/v1", model = "other-model", version = 1)
+        val current = Conversation(ConversationId("current"), NextTurnConfig(AgentId.CODEX, profile.model, null, "workspace", profile.id, profile.version))
+        var configured: NextTurnConfig? = null
+        var selected: GatewayProfile? = null
+        page(listOf(profile, second), current, { configured = it }, { selected = it })
+        compose.onAllNodesWithText("Codex").onLast().performClick()
+        compose.waitUntil(5_000) { configured?.gatewayProfile == second.id && selected?.id == second.id }
+        Assert.assertEquals("other-model", configured?.model)
     }
 
     @Test fun `empty gateway page offers add and a failed catalog stays visible on the row`() {

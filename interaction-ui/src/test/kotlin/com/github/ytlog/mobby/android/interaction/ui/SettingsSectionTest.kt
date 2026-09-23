@@ -46,7 +46,7 @@ class SettingsSectionTest {
             "getDiagnostic" -> flowOf(DiagnosticOutput(null, emptyList()))
             "agents" -> emptyList<AgentOption>()
             "gateways" -> emptyList<GatewayProfile>()
-            "defaultGatewayAgent" -> AgentId.CODEX
+            "defaultGateway" -> null
             else -> error(name)
         } }
         val preferences = stub<PreferencePort> { name -> when (name) {
@@ -102,7 +102,7 @@ class SettingsSectionTest {
             "getDiagnostic" -> flowOf(DiagnosticOutput(null, emptyList()))
             "agents" -> emptyList<AgentOption>()
             "gateways" -> emptyList<GatewayProfile>()
-            "defaultGatewayAgent" -> AgentId.CODEX
+            "defaultGateway" -> null
             else -> error(name)
         } }
         val preferences = stub<PreferencePort> { name -> when (name) {

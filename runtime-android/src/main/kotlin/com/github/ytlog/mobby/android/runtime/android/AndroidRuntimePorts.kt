@@ -38,20 +38,19 @@ internal class AndroidRuntimePorts(
     private fun mode(agent: AgentId) = agent.launchMode()
     override suspend fun capabilities(): CapabilityResult = withContext(Dispatchers.IO) {
         CapabilityResult.Available(RuntimeCapabilities("mobby-local-1", AgentId.values().map { agent ->
-            val config = runCatching { gateways.load(mode(agent)).also { it.validateFor(mode(agent)) } }.getOrNull()
-            val models = when {
-                config == null -> emptyList()
-                config.models.isNotEmpty() -> config.models.map { ModelCapability(it.id, emptySet(), it.name) }
-                else -> listOf(ModelCapability(config.model, emptySet()))
-            }
+            val configs = gateways.list().mapNotNull { record -> runCatching { record.config(mode(agent)).also { it.validateFor(mode(agent)) } }.getOrNull() }
+            val models = configs.flatMap { config ->
+                if (config.models.isNotEmpty()) config.models.map { ModelCapability(it.id, emptySet(), it.name) }
+                else listOf(ModelCapability(config.model, emptySet()))
+            }.distinctBy { it.id }
             AgentCapability(agent, models,
                 unavailableReason = when {
                     state.value.phase != EnvironmentPhase.READY -> RuntimeError(ErrorCode.NOT_READY, true)
                     agent == AgentId.OPEN_CODE && !runtime.opencodeReady -> RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY)
-                    config == null -> RuntimeError(ErrorCode.INVALID_CONFIG)
+                    configs.isEmpty() -> RuntimeError(ErrorCode.INVALID_CONFIG)
                     else -> null
                 },
-                supportsResume = true, supportsApproval = agent == AgentId.CLAUDE_CODE, supportsResources = true, supportsImages = config != null, skillCapabilities = skills.list(agent).filter { it.available }.map { it.ref }.toSet())
+                supportsResume = true, supportsApproval = agent == AgentId.CLAUDE_CODE, supportsResources = true, supportsImages = configs.isNotEmpty(), skillCapabilities = skills.list(agent).filter { it.available }.map { it.ref }.toSet())
         }))
     }
     override suspend fun validate(request: RunRequest): RuntimeError? = withContext(Dispatchers.IO) {
@@ -76,11 +75,10 @@ internal class AndroidRuntimePorts(
         catch (_: Exception) { return@withContext RuntimeError(ErrorCode.INVALID_CONFIG) }
         val mode = mode(request.agentId)
         if (request.agentId == AgentId.OPEN_CODE && !runtime.opencodeReady) return@withContext RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY)
-        if (request.gatewayProfileRef.id != mode.name) return@withContext RuntimeError(ErrorCode.INVALID_CONFIG)
         if (request.sessionRef?.value?.matches(AgentSessionId) == false) return@withContext RuntimeError(ErrorCode.INVALID_CONFIG)
         val valid = runCatching {
             runtime.executable(mode)
-            gateways.load(mode, request.gatewayProfileRef.version).also {
+            gateways.load(request.gatewayProfileRef.id, request.gatewayProfileRef.version).config(mode).also {
                 it.validateFor(mode); require(it.accepts(request.modelId))
             }
         }.isSuccess
@@ -88,7 +86,7 @@ internal class AndroidRuntimePorts(
     }
     override suspend fun execute(request: RunRequest, stop: StateFlow<StopCause?>, output: suspend (String, Boolean) -> Unit): ProcessResult {
         val config = withContext(Dispatchers.IO) {
-            val stored = gateways.load(mode(request.agentId), request.gatewayProfileRef.version)
+            val stored = gateways.load(request.gatewayProfileRef.id, request.gatewayProfileRef.version).config(mode(request.agentId))
             stored.validateFor(mode(request.agentId))
             require(stored.accepts(request.modelId))
             stored.forRun(request.modelId)
