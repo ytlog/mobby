@@ -50,6 +50,16 @@ class ToolPresentationTest {
         assertTrue(read.detail.contains("40"))
     }
 
+    @Test fun `reader section labels stay labels only when a value follows`() {
+        val lines = listOf("命令", "ls", "", "结果", "无输出", "命令", "", "起始行", "12", "行数")
+        assertTrue(ToolPresentation.readerSectionLabel(lines, 0))
+        assertFalse(ToolPresentation.readerSectionLabel(lines, 1))
+        assertTrue(ToolPresentation.readerSectionLabel(lines, 3))
+        assertFalse(ToolPresentation.readerSectionLabel(lines, 5))
+        assertTrue(ToolPresentation.readerSectionLabel(lines, 7))
+        assertFalse(ToolPresentation.readerSectionLabel(lines, 9))
+    }
+
     @Test fun `phone click is a screen action instead of raw protocol kind`() {
         val view = ToolPresentation.present(Step.Action("s", "click", "确定", "已点击：确定", "SUCCEEDED"))
         assertEquals("点击 确定", view.title)

@@ -46,6 +46,9 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.dp
@@ -222,16 +225,19 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                 }
                 skillProposal?.let { editor -> SkillProposalDialog(editor.proposal, vm, sourceAvailable = state.selected?.turns?.any { turn -> turn.skillProposals.any { it.ref == editor.proposal.ref } } == true, onDismiss = vm::dismissSkillProposal) }
                 reading?.let { (title, text) ->
-                    ModalBottomSheet(onDismissRequest = { reading = null }, containerColor = raisedColor()) {
+                    val ink = readerInk()
+                    val muted = readerMuted()
+                    ModalBottomSheet(onDismissRequest = { reading = null }, containerColor = raisedColor(), contentColor = if (dark) ink else contentColorFor(raisedColor())) {
                         Column(Modifier.fillMaxWidth().heightIn(max = (availableHeight - 48.dp).coerceAtLeast(120.dp))) {
-                            Row(Modifier.fillMaxWidth().padding(start = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-                                ActionIcon("关闭阅读面板", { reading = null }, AppIcons.Close)
-                            }
+                            Text(title, Modifier.fillMaxWidth().padding(horizontal = 16.dp), color = if (dark) muted else Color.Unspecified, style = MaterialTheme.typography.titleMedium)
                             val clipboard = LocalClipboardManager.current
-                            TextButton(onClick = { clipboard.setText(AnnotatedString(text)) }) { Text("复制原文") }
+                            TextButton(onClick = { clipboard.setText(AnnotatedString(text)) }, colors = if (dark) textButtonColors(muted) else textButtonColors()) { Text("复制原文") }
                             androidx.compose.foundation.text.selection.SelectionContainer {
-                                Text(text, Modifier.heightIn(max = (availableHeight - 180.dp).coerceAtLeast(100.dp)).verticalScroll(rememberScrollState()).padding(16.dp), style = MaterialTheme.typography.bodyMedium)
+                                Text(
+                                    if (dark) readerBody(text, ink, muted) else AnnotatedString(text),
+                                    Modifier.heightIn(max = (availableHeight - 180.dp).coerceAtLeast(100.dp)).verticalScroll(rememberScrollState()).padding(16.dp),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
                             }
                         }
                     }
@@ -849,6 +855,18 @@ private val DrawerFlingThreshold = 125.dp
         }
     }
     return motion
+}
+
+internal fun readerBody(text: String, primary: Color, secondary: Color): AnnotatedString {
+    val lines = text.split('\n')
+    return buildAnnotatedString {
+        lines.forEachIndexed { index, line ->
+            withStyle(SpanStyle(color = if (ToolPresentation.readerSectionLabel(lines, index)) secondary else primary)) {
+                append(line)
+            }
+            if (index != lines.lastIndex) append('\n')
+        }
+    }
 }
 
 /**

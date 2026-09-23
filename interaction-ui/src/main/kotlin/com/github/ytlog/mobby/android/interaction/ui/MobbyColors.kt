@@ -49,6 +49,7 @@ internal object MobbyColors {
             val toolBorder = Color(0xFF3A3A3A)
             val userBubble = Color(0xFF292929)
             val userInk = Color(0xFFDBDBDB)
+            val readerMuted = Color(0xFFA5A5A5)
             val replyAction = Color(0xFF757575)
         }
     }
@@ -202,3 +203,9 @@ internal val MobbyLightScheme: ColorScheme = lightColorScheme(
 
 @Composable internal fun replyActionColor(): Color =
     if (darkChrome()) MobbyColors.Dark.Conversation.replyAction else onButtonColor()
+
+@Composable internal fun readerInk(): Color =
+    if (darkChrome()) MobbyColors.Dark.Conversation.userInk else MaterialTheme.colorScheme.onSurface
+
+@Composable internal fun readerMuted(): Color =
+    if (darkChrome()) MobbyColors.Dark.Conversation.readerMuted else MaterialTheme.colorScheme.onSurfaceVariant

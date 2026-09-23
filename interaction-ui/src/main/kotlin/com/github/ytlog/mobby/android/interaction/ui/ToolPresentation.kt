@@ -57,6 +57,14 @@ internal object ToolPresentation {
         is PermissionSubject.Action -> ToolView(title(subject.name, subject.detail.lineSequence().firstOrNull().orEmpty()), subject.detail, false)
     }
 
+    fun readerSectionLabel(lines: List<String>, index: Int): Boolean {
+        val line = lines.getOrNull(index) ?: return false
+        if (line !in READER_SECTION_LABELS) return false
+        val afterBreak = index == 0 || lines[index - 1].isBlank()
+        val hasValue = index + 1 < lines.size && lines[index + 1].isNotBlank()
+        return afterBreak && hasValue
+    }
+
     fun looksLikeMarkdown(text: String): Boolean {
         val sample = text.trim()
         return sample.contains("```") || sample.startsWith("#") || sample.contains("\n# ") ||
@@ -70,6 +78,8 @@ internal object ToolPresentation {
         else if (focus.startsWith(label)) focus
         else "$label $focus"
     }
+
+    private val READER_SECTION_LABELS = setOf("命令", "结果", "起始行", "行数")
 
     private val KIND_LABELS = mapOf(
         "read" to "读取",

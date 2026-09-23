@@ -96,6 +96,7 @@ class ExecutionCardTest {
         assertEquals(Color(0xFF292929), MobbyColors.Dark.button)
         assertEquals(Color(0xFFDADADA), MobbyColors.Dark.onButton)
         assertEquals(Color(0xFF757575), conversation.replyAction)
+        assertEquals(Color(0xFFA5A5A5), conversation.readerMuted)
         val seen = arrayOfNulls<Color>(7)
         compose.setContent {
             MaterialTheme(colorScheme = MobbyDarkScheme) {
