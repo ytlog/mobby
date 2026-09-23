@@ -44,8 +44,16 @@ sealed interface StopResult {
     data class Rejected(val reason: Failure) : StopResult
 }
 enum class ExecutionPhase { ACCEPTED, RUNNING, AWAITING_APPROVAL, CANCELLING, SUCCEEDED, FAILED, CANCELLED, TIMED_OUT, INTERRUPTED, OUTCOME_UNKNOWN }
+enum class ProgressNotice { OUTPUT_TRUNCATED }
 data class ExecutionFact(val executionId: ExecutionId, val phase: ExecutionPhase)
-data class PermissionRequest(val id: String, val revision: Long, val action: String, val scope: String)
+sealed interface PermissionSubject {
+    data class Command(val command: String) : PermissionSubject
+    data class FileRead(val path: String, val offset: String = "", val limit: String = "") : PermissionSubject
+    data class FileWrite(val path: String, val content: String) : PermissionSubject
+    data class FileDiff(val paths: List<String>, val diff: String) : PermissionSubject
+    data class Action(val name: String, val detail: String) : PermissionSubject
+}
+data class PermissionRequest(val id: String, val revision: Long, val subject: PermissionSubject)
 data class PermissionKey(val execution: ExecutionId, val approvalId: String, val revision: Long)
 data class PermissionDecision(val commandId: String, val key: PermissionKey, val allow: Boolean)
 interface ExecutionPort {

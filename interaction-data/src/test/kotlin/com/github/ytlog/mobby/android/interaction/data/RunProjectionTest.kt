@@ -19,12 +19,12 @@ class RunProjectionTest {
     }
     @Test fun `message completion is not run completion and session event cannot undo cancelling`() {
         assertEquals(RunPhase.RUNNING, RunProjection.apply(initial, event(2, RuntimeEvent.AssistantCompleted("m")))!!.phase)
-        val stopping = RunProjection.apply(initial, event(2, RuntimeEvent.CancellationRequested))!!
+        val stopping = RunProjection.apply(initial, event(2, RuntimeEvent.CancellationRequested(CancelReason.USER_REQUEST)))!!
         assertEquals(RunPhase.CANCELLING, RunProjection.apply(stopping, event(3, RuntimeEvent.RunStarted(SessionRef("session"))))!!.phase)
     }
     @Test fun `pending approvals survive session updates and resolve independently until cancellation`() {
-        val first = PendingApproval("first", 2, "Write", "/first")
-        val second = PendingApproval("second", 3, "Write", "/second")
+        val first = PendingApproval("first", 2, ApprovalSubject.FileWrite("/first", ""))
+        val second = PendingApproval("second", 3, ApprovalSubject.FileWrite("/second", ""))
         val one = RunProjection.apply(initial, event(2, RuntimeEvent.ApprovalRequired(first)))!!
         val two = RunProjection.apply(one, event(3, RuntimeEvent.ApprovalRequired(second)))!!
         val session = RunProjection.apply(two, event(4, RuntimeEvent.RunStarted(SessionRef("session"))))!!
@@ -32,7 +32,7 @@ class RunProjectionTest {
         val resolved = RunProjection.apply(session, event(5, RuntimeEvent.ApprovalResolved("first", ApprovalChoice.DENY)))!!
         assertEquals(RunPhase.AWAITING_APPROVAL, resolved.phase)
         assertEquals(listOf(second), resolved.pendingApprovals)
-        val stopped = RunProjection.apply(resolved, event(6, RuntimeEvent.CancellationRequested))!!
+        val stopped = RunProjection.apply(resolved, event(6, RuntimeEvent.CancellationRequested(CancelReason.USER_REQUEST)))!!
         assertEquals(RunPhase.CANCELLING, stopped.phase)
         assertTrue(stopped.pendingApprovals.isEmpty())
         val complete = RunProjection.apply(resolved, event(6, RuntimeEvent.ApprovalResolved("second", ApprovalChoice.ALLOW_ONCE)))!!

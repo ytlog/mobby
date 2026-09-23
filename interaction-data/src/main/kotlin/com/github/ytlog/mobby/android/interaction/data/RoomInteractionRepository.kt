@@ -394,9 +394,22 @@ internal class RoomInteractionRepository(
             }.orEmpty(),
             snapshot?.outputSegments?.filter { it.messageId.startsWith("diagnostic:") }?.messages().orEmpty(),
             if (error == OutputCache.VERIFICATION_WARNING) listOfNotNull(snapshot?.terminalEvidence?.error?.message(), error).joinToString("\n")
-            else error ?: snapshot?.terminalEvidence?.error?.message(), snapshot?.progressSummary, pending, occupied, expanded, storageJson.decodeFromString(expandedSteps),
+            else error ?: snapshot?.terminalEvidence?.error?.message(), snapshot?.progress?.domain(), pending, occupied, expanded, storageJson.decodeFromString(expandedSteps),
             snapshot?.artifacts?.mapNotNull { ref -> content[ref.value]?.takeUnless { it.expired }?.let { SkillProposal(ref.value, it.text, DomainAgent.valueOf(snapshot.acceptedConfig.agentId.name)) } }.orEmpty(),
             storageJson.decodeFromString<StoredConversation>(frozen).creator != null, snapshot?.artifacts?.any { it.value !in content } == true, storageJson.decodeFromString<StoredConversation>(frozen).attachments,
-            snapshot?.pendingApprovals?.map { PermissionRequest(it.approvalId, it.revision, it.actionSummary, it.scopeSummary) }.orEmpty())
+            snapshot?.pendingApprovals?.map { PermissionRequest(it.approvalId, it.revision, it.subject.domain()) }.orEmpty())
     }
+}
+
+private fun com.github.ytlog.mobby.android.runtime.api.ProgressNotice.domain() = when (this) {
+    com.github.ytlog.mobby.android.runtime.api.ProgressNotice.OUTPUT_TRUNCATED ->
+        com.github.ytlog.mobby.android.interaction.domain.ProgressNotice.OUTPUT_TRUNCATED
+}
+
+private fun ApprovalSubject.domain(): PermissionSubject = when (this) {
+    is ApprovalSubject.Command -> PermissionSubject.Command(command)
+    is ApprovalSubject.FileRead -> PermissionSubject.FileRead(path, offset, limit)
+    is ApprovalSubject.FileWrite -> PermissionSubject.FileWrite(path, content)
+    is ApprovalSubject.FileDiff -> PermissionSubject.FileDiff(paths, diff)
+    is ApprovalSubject.Action -> PermissionSubject.Action(name, detail)
 }

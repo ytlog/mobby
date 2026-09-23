@@ -13,7 +13,7 @@ import org.junit.Test
 class ClaudeControlSessionTest {
     private val id = RequestId("fixture")
     private val user = Json.parseToJsonElement("""{"type":"user","message":{"role":"user","content":[{"type":"text","text":"literal"},{"type":"image","source":{"type":"base64","media_type":"image/png","data":"AQI="}}]}}""").jsonObject
-    private val permission = """{"type":"control_request","request_id":"p","request":{"subtype":"can_use_tool","tool_name":"Write","input":{"file_path":"/fixture/file","content":"Bearer original-token","unknown":[1,true]}}}"""
+    private val permission = """{"type":"control_request","request_id":"p","request":{"subtype":"can_use_tool","tool_name":"Write","input":{"file_path":"/fixture/file","content":"Bearer original-token","description":"write the fixture"}}}"""
     private fun initialized(initialize: JsonObject) = """{"type":"control_response","response":{"subtype":"success","request_id":${initialize.getValue("request_id")}}}"""
     private fun session() = ClaudeControlSession().also { it.submit(AgentTurn(id, "literal", listOf(TurnImage("image/png", "/fixture.png", "AQI=")))) }
     @Test fun `handshake waits then preserves user content and a later turn appends without another initialize`() = runTest {

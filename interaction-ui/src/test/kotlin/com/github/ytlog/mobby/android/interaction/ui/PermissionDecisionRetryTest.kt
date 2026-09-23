@@ -41,7 +41,7 @@ class PermissionDecisionRetryTest {
         val actions = InteractionUseCases(repository, execution, system, { "id" }, scope, stub<PreferencePort> { error(it) })
         val store = ViewModelStore()
         lateinit var vm: ConversationViewModel
-        val pending = PermissionRequest("permission", 7, "Write", "/fixture")
+        val pending = PermissionRequest("permission", 7, PermissionSubject.FileWrite("/fixture", ""))
         val id = ExecutionId("run")
         compose.setContent { Text("fixture") }
         try {

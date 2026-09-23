@@ -16,11 +16,11 @@ internal data class EventHistoryPolicy(val maxAgeMillis: Long = 30L * 24 * 60 * 
     init { require(maxAgeMillis >= 0 && maxBytes >= 0) }
 }
 
-/** Runtime is the only writer; separate from conversations. No gateway credentials or run prompts;
- * bounded, platform-sanitized approval scopes are persisted for explicit user review. */
+/** Runtime is the only writer; separate from conversations. No gateway credentials or run prompts.
+ * Approvals are stored as ApprovalSubject. Opening a newer journal drops the previous event log. */
 internal class RuntimeJournal(context: Context, private val historyPolicy: EventHistoryPolicy = EventHistoryPolicy(),
     private val policyProvider: () -> EventHistoryPolicy = { historyPolicy },
-    private val clock: () -> Long = System::currentTimeMillis) : SQLiteOpenHelper(context, "runtime-journal.db", null, 2), JournalPort {
+    private val clock: () -> Long = System::currentTimeMillis) : SQLiteOpenHelper(context, "runtime-journal.db", null, 3), JournalPort {
     private val json = Json { ignoreUnknownKeys = true }
     override fun onConfigure(db: SQLiteDatabase) { db.setForeignKeyConstraintsEnabled(true) }
     override fun onCreate(db: SQLiteDatabase) {

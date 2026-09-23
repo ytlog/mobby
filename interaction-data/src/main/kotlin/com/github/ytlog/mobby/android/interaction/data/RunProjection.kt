@@ -12,7 +12,7 @@ internal object RunProjection {
             is RuntimeEvent.RunAccepted -> current.copy(acceptedConfig = payload.config)
             is RuntimeEvent.RunStarted -> current.copy(sessionRef = payload.sessionRef ?: current.sessionRef,
                 phase = if (current.phase == RunPhase.CANCELLING || current.phase.terminal || current.pendingApprovals.isNotEmpty()) current.phase else RunPhase.RUNNING)
-            is RuntimeEvent.ProgressSummary -> current.copy(progressSummary = payload.text)
+            is RuntimeEvent.Progress -> current.copy(progress = payload.notice)
             is RuntimeEvent.AssistantDelta -> current.copy(outputSegments = current.outputSegments + payload.segment)
             is RuntimeEvent.AssistantCompleted -> current
             is RuntimeEvent.ToolStarted -> {
@@ -29,7 +29,7 @@ internal object RunProjection {
                 current.copy(phase = if (remaining.isEmpty()) RunPhase.RUNNING else RunPhase.AWAITING_APPROVAL, pendingApprovals = remaining)
             }
             is RuntimeEvent.ArtifactAvailable -> current.copy(artifacts = current.artifacts + payload.ref)
-            RuntimeEvent.CancellationRequested -> current.copy(phase = RunPhase.CANCELLING, pendingApprovals = emptyList())
+            is RuntimeEvent.CancellationRequested -> current.copy(phase = RunPhase.CANCELLING, pendingApprovals = emptyList())
             is RuntimeEvent.RunFinished -> if (current.phase.terminal) current else current.copy(phase = payload.phase, terminalEvidence = payload.evidence, pendingApprovals = emptyList())
             is RuntimeEvent.Unknown -> payload.diagnosticRef?.let { current.copy(outputSegments = current.outputSegments + OutputSegment("diagnostic:${payload.kind}", event.sequence, it)) } ?: current
         }

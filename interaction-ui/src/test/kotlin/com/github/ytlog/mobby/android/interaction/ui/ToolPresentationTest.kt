@@ -1,5 +1,6 @@
 package com.github.ytlog.mobby.android.interaction.ui
 
+import com.github.ytlog.mobby.android.interaction.domain.PermissionSubject
 import com.github.ytlog.mobby.android.interaction.domain.Step
 import org.junit.Assert.*
 import org.junit.Test
@@ -36,11 +37,17 @@ class ToolPresentationTest {
         assertTrue(edit.detail.contains("+ print(2)"))
     }
 
-    @Test fun `permission scope shows human fields not the original json`() {
-        val view = ToolPresentation.permission("Write", """{"file_path":"/fixture/file","content":"literal"}""")
+    @Test fun `permission shows the typed write instead of a json payload`() {
+        val view = ToolPresentation.permission(PermissionSubject.FileWrite("/fixture/file", "literal"))
         assertEquals("写入 /fixture/file", view.title)
-        assertEquals("文件\n/fixture/file\n\n内容\nliteral", view.detail)
+        assertEquals("literal", view.detail)
         assertFalse(view.detail.contains("file_path"))
+        val read = ToolPresentation.permission(PermissionSubject.FileRead("/tmp/a.py", "12", "40"))
+        assertEquals("读取 /tmp/a.py", read.title)
+        assertTrue(read.detail.contains("起始行"))
+        assertTrue(read.detail.contains("12"))
+        assertTrue(read.detail.contains("行数"))
+        assertTrue(read.detail.contains("40"))
     }
 
     @Test fun `phone click is a screen action instead of raw protocol kind`() {

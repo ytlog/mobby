@@ -94,10 +94,17 @@ class ProtocolDecoderTest {
             assertTrue(ProtocolDecoder(AgentId.CODEX).decode(line).single() is AgentFact.Diagnostic)
         }
     }
-    @Test fun `approval uses native request identity and full unmodified scope`() {
-        val input = """{"command":"printf '%s' 'literal'","unknown":{"preserved":true}}"""
-        val facts = ProtocolDecoder(AgentId.CLAUDE_CODE).decode("""{"type":"control_request","request_id":"request-id","request":{"subtype":"can_use_tool","tool_name":"Bash","input":$input}}""")
-        assertEquals(AgentFact.Approval("request-id", "Bash", input), facts.single())
+    @Test fun `approval uses a typed subject and unknown keys are not an approval`() {
+        val decoder = ProtocolDecoder(AgentId.CLAUDE_CODE)
+        val clean = """{"command":"printf '%s' 'literal'"}"""
+        val facts = decoder.decode("""{"type":"control_request","request_id":"request-id","request":{"subtype":"can_use_tool","tool_name":"Bash","input":$clean}}""")
+        assertEquals(AgentFact.Approval("request-id", ApprovalSubject.Command("printf '%s' 'literal'")), facts.single())
+        val read = decoder.decode("""{"type":"control_request","request_id":"read-id","request":{"subtype":"can_use_tool","tool_name":"Read","input":{"file_path":"/tmp/a.py","offset":12,"limit":40}}}""")
+        assertEquals(AgentFact.Approval("read-id", ApprovalSubject.FileRead("/tmp/a.py", "12", "40")), read.single())
+        val extra = """{"command":"printf '%s' 'literal'","unknown":{"preserved":true}}"""
+        val rejected = decoder.decode("""{"type":"control_request","request_id":"request-id","request":{"subtype":"can_use_tool","tool_name":"Bash","input":$extra}}""")
+        assertTrue(rejected.contains(AgentFact.InvalidApproval))
+        assertTrue(rejected.none { it is AgentFact.Approval })
     }
     @Test fun `malformed unknown oversized and truncated control requests cannot authorize partial scope`() {
         val lines = listOf(

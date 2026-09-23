@@ -120,11 +120,12 @@ interface ExecutionPort {
 进程或宿主失联 → 重新核实 → 恢复观察 / Interrupted / OutcomeUnknown
 ConnectionState 只表达连接情况，不覆盖 RunPhase。</pre><p>所有非终态均可因启动失败、系统中断或协议错误结束。一个 run 只写入一次终态，由串行状态机决定竞态：若完成已落盘，后续取消返回 AlreadyTerminal；若取消请求先被接纳，则不能再因一个迟到的成功片段宣布成功。成功要求 Agent 协议成功终态及进程退出证据一致；普通 stderr 不直接等于失败。未获得进程退出证据时显示停止中或 OutcomeUnknown，不显示已停止。</p><div class="table"><table><thead><tr><th>事件</th><th>负载与展示投影</th></tr></thead><tbody>
 <tr><td>RunAccepted / RunStarted</td><td>冻结配置、时间和 sessionRef；展示开始状态</td></tr>
-<tr><td>ProgressSummary</td><td>Agent 提供的公开进度摘要，不暴露私有推理内容</td></tr>
+<tr><td>Progress</td><td>固定通知。目前只有 OUTPUT_TRUNCATED，表示输出超过保留上限。界面选择中文文案；思考原文仍在 thinking 步骤里</td></tr>
 <tr><td>ToolStarted / ToolOutput / ToolFinished</td><td>stepId、固定的 StepBody、输出分段、明确工具终态。StepBody 只有 thinking、command、file_read、file_write、file_diff、action。command 带 command；file_read / file_write 带 path；file_diff 带 paths；action 带 name 与纯文本 detail。输出分段依次是思考原文、命令结果、文件内容、unified diff 或动作结果。回复是 AssistantDelta / AssistantCompleted，不是步骤。上层按这些类型读取，不再从工具 JSON 猜测字段</td></tr>
 <tr><td>AssistantDelta / AssistantCompleted</td><td>messageId、chunkIndex、文本增量 / 完成标记；消息完成不是 run 成功的替代信号</td></tr>
-<tr><td>ApprovalRequired / ApprovalResolved</td><td>approvalId、动作摘要、范围、版本；待审批进入快照，重连后仍可见</td></tr>
-<tr><td>ArtifactAvailable / RunFinished</td><td>受控产物引用 / 终态、退出码、错误码、证据摘要；UI 自行决定折叠和操作</td></tr>
+<tr><td>ApprovalRequired / ApprovalResolved</td><td>approvalId、revision、ApprovalSubject。Subject 与步骤同形：command、file_read（path，以及 offset、limit）、file_write（path 与 content）、file_diff（paths 与 diff）、action（name 与 detail）。类型之外的输入键不会成为审批。决定仍按 CLI 的 request id 允许或拒绝一次。待审批进入快照，重连后仍可见</td></tr>
+<tr><td>CancellationRequested</td><td>reason。目前只有 USER_REQUEST。快照阶段变为 CANCELLING，并清空待审批</td></tr>
+<tr><td>ArtifactAvailable / RunFinished</td><td>受控产物引用 / 终态阶段与 TerminalEvidence（protocolSucceeded、exitCode、error、terminationConfirmed）。RunFinished 只接受终态阶段。UI 自行决定折叠和操作</td></tr>
 </tbody></table></div><h3>避免漏事件与重复执行</h3><ol><li>Domain 生成 requestId，Data 在交互数据库先保存待提交轮次与请求记录，再调用 Runtime。Runtime 对 requestId 与请求摘要做幂等检查；相同 ID 相同参数返回同一 run，不同参数返回冲突。</li><li>Runtime 持久接纳记录后才回复 Accepted；日志和执行槽接纳必须原子化。数据层应答丢失时查询同一 requestId。进程在接纳后启动前崩溃，恢复时标为中断待用户决定，不自动重新执行有副作用的命令。</li><li>首次订阅获得 Baseline(snapshot, cursor)，再连续读 cursor 之后的日志。持久日志为权威，实时通知仅作唤醒信号。恢复订阅在 after 游标有效时重放后续事件，不重新应用基线内的文本。</li><li>Data 在同一数据库事务中应用事件并推进游标；按 (runId, sequence) 去重，缺口先补齐。日志已压缩时返回 ResyncRequired，再从一致快照与输出分段索引重建投影，不把增量再追加到已有全文。</li><li>UI 退后台可暂停绘制；事件接收与投影由应用/Service 生命周期的同步器处理，或稍后可靠重放。慢消费者不阻塞进程 stdout 读取：输出写有界分段文件，事件引用分段；容量到达上限明确标记截断，状态与审批事件不能静默丢弃。</li></ol><p>日志清理仅针对终态 run，保留期与大小预算可配置；清理后保留幂等请求摘要和终态索引。活跃任务的终态、审批与最新一致快照不随普通输出裁剪。写盘失败时拒绝新任务；执行中则请求安全停止并报告 StorageFull，不能把未持久化接纳当作可靠成功。</p></section>
 <section id="flows"><h2>8. 关键交互调用链</h2><h3>发送与停止</h3><pre>点击发送 → SubmitTurnUseCase → 保存待提交轮次 + draftRevision
         → RuntimeExecutionAdapter → RuntimeClient.submit

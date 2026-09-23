@@ -30,7 +30,7 @@ data class Turn(
     val id: TurnId, val userText: String, val execution: ExecutionId?, val phase: ExecutionPhase?,
     val messages: List<Message> = emptyList(), val steps: List<Step> = emptyList(),
     val diagnostics: List<Message> = emptyList(), val failure: String? = null,
-    val progress: String? = null, val pending: Boolean = false, val occupied: Boolean = false,
+    val progress: ProgressNotice? = null, val pending: Boolean = false, val occupied: Boolean = false,
     val expanded: Boolean? = null, val expandedSteps: Set<String> = emptySet(),
     val skillProposals: List<SkillProposal> = emptyList(), val creatingSkill: Boolean = false, val proposalsLoading: Boolean = false, val attachments: List<String> = emptyList(),
     val permissions: List<PermissionRequest> = emptyList()

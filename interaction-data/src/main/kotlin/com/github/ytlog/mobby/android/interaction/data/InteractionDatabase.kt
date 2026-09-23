@@ -77,7 +77,7 @@ internal data class TurnWithChunks(
     @Upsert suspend fun select(row: SelectionRow)
     @Upsert suspend fun chunks(rows: List<ChunkRow>)
 }
-@Database(entities = [ConversationRow::class, TurnRow::class, ChunkRow::class, SelectionRow::class, ExpiredOutputCacheRow::class, ProjectRow::class], version = 5, exportSchema = true)
+@Database(entities = [ConversationRow::class, TurnRow::class, ChunkRow::class, SelectionRow::class, ExpiredOutputCacheRow::class, ProjectRow::class], version = 6, exportSchema = true)
 internal abstract class InteractionDatabase : RoomDatabase() {
     abstract fun dao(): InteractionDao
     companion object {

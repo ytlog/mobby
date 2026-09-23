@@ -9,6 +9,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import com.github.ytlog.mobby.android.interaction.domain.PermissionRequest
+import com.github.ytlog.mobby.android.interaction.domain.PermissionSubject
 import org.junit.*
 import org.junit.Assert.*
 import org.junit.runner.RunWith
@@ -21,15 +22,15 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class PermissionUiTest {
     @get:Rule val compose = createComposeRule()
-    private val permission = PermissionRequest("p", 7, "Write", "{\"file_path\":\"/fixture/file\",\"content\":\"literal\"}")
+    private val permission = PermissionRequest("p", 7, PermissionSubject.FileWrite("/fixture/file", "literal"))
     @Test fun `display and recomposition do not authorize and buttons send explicit one time choices`() {
         val choices = mutableListOf<Boolean>()
         var busy by mutableStateOf(false)
         compose.setContent { MaterialTheme { PermissionContent(permission, !busy, busy, false, true) { choices += it; busy = true } } }
         compose.onNodeWithText("需要你的授权").assertIsDisplayed()
         compose.onNodeWithText("写入 /fixture/file").assertExists()
-        compose.onNodeWithText("文件\n/fixture/file\n\n内容\nliteral", useUnmergedTree = true).assertExists()
-        compose.onNodeWithText(permission.scope).assertDoesNotExist()
+        compose.onNodeWithText("literal", useUnmergedTree = true).assertExists()
+        compose.onNodeWithText("{\"file_path\":\"/fixture/file\",\"content\":\"literal\"}").assertDoesNotExist()
         assertTrue(choices.isEmpty())
         compose.onNodeWithText("仅允许这一次").performClick()
         compose.onNodeWithText("拒绝").assertIsNotEnabled()
@@ -51,10 +52,10 @@ class PermissionUiTest {
         compose.onNodeWithText("仅允许这一次").assertIsNotEnabled()
     }
     @Test @Config(sdk = [34], qualifiers = "w640dp-h320dp-land")
-    fun `long scope stays complete and both decisions remain reachable in a short viewport`() {
-        val scope = (1..100).joinToString("\n") { "parameter-$it" }
-        compose.setContent { MaterialTheme { Column(Modifier.verticalScroll(rememberScrollState())) { PermissionContent(permission.copy(scope = scope), true, false, false, true) {} } } }
-        compose.onNodeWithText(scope).assertExists()
+    fun `long approval content stays complete and both decisions remain reachable in a short viewport`() {
+        val content = (1..100).joinToString("\n") { "parameter-$it" }
+        compose.setContent { MaterialTheme { Column(Modifier.verticalScroll(rememberScrollState())) { PermissionContent(permission.copy(subject = PermissionSubject.FileWrite("/fixture/file", content)), true, false, false, true) {} } } }
+        compose.onNodeWithText(content).assertExists()
         compose.onNodeWithText("拒绝").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("仅允许这一次").performScrollTo().assertIsDisplayed()
     }

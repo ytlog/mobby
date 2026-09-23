@@ -148,18 +148,43 @@ enum class RunPhase(val terminal: Boolean = false) {
     ACCEPTED, STARTING, RUNNING, AWAITING_APPROVAL, CANCELLING,
     SUCCEEDED(true), FAILED(true), CANCELLED(true), TIMED_OUT(true), INTERRUPTED(true), OUTCOME_UNKNOWN(true)
 }
+/** Closed progress notices. The interface chooses the wording. */
+@Serializable
+enum class ProgressNotice { OUTPUT_TRUNCATED }
 /** A successful protocol message alone is insufficient. The turn is confirmed by a zero exit, or by an explicit confirmation while the process stays open for the next turn. */
 @Serializable
 data class TerminalEvidence(val protocolSucceeded: Boolean?, val exitCode: Int?, val error: RuntimeError? = null, val terminationConfirmed: Boolean = exitCode != null)
+/**
+ * What an approval is asking to run. Fields are the same kinds as a conversation step,
+ * with the proposed write or diff inline because the tool has not produced output yet.
+ * Input keys outside that kind are rejected and do not become an approval.
+ */
 @Serializable
-data class PendingApproval(val approvalId: String, val revision: Long, val actionSummary: String, val scopeSummary: String)
+sealed interface ApprovalSubject {
+    @Serializable
+    @SerialName("command")
+    data class Command(val command: String) : ApprovalSubject
+    @Serializable
+    @SerialName("file_read")
+    data class FileRead(val path: String, val offset: String = "", val limit: String = "") : ApprovalSubject
+    @Serializable
+    @SerialName("file_write")
+    data class FileWrite(val path: String, val content: String) : ApprovalSubject
+    @Serializable
+    @SerialName("file_diff")
+    data class FileDiff(val paths: List<String>, val diff: String) : ApprovalSubject
+    @Serializable
+    @SerialName("action")
+    data class Action(val name: String, val detail: String = "") : ApprovalSubject
+}
+@Serializable
+data class PendingApproval(val approvalId: String, val revision: Long, val subject: ApprovalSubject)
 @Serializable
 data class OutputSegment(val messageId: String, val chunkIndex: Long, val ref: ResourceRef)
 /**
  * One conversation step. Upper layers switch on this type.
  * The step's output segments are the body text for that type:
  * thinking text, command result, file content, unified diff, or action result.
- * A missing body on previously stored snapshots reads as [Action] with name `tool`.
  */
 @Serializable
 sealed interface StepBody {
@@ -200,7 +225,7 @@ fun StepBody.supersedes(previous: StepBody): Boolean = when {
     else -> false
 }
 @Serializable
-data class ToolSnapshot(val stepId: String, val body: StepBody = StepBody.Action("tool", ""),
+data class ToolSnapshot(val stepId: String, val body: StepBody,
     val outcome: ToolOutcome? = null, val output: List<OutputSegment> = emptyList(), val order: Long = -1)
 @Serializable
 data class RunSnapshot(
@@ -208,7 +233,7 @@ data class RunSnapshot(
     val acceptedConfig: RunConfigSnapshot, val sessionRef: SessionRef? = null,
     val pendingApprovals: List<PendingApproval> = emptyList(), val terminalEvidence: TerminalEvidence? = null,
     val artifacts: List<ResourceRef> = emptyList(), val outputSegments: List<OutputSegment> = emptyList(),
-    val steps: List<ToolSnapshot> = emptyList(), val progressSummary: String? = null
+    val steps: List<ToolSnapshot> = emptyList(), val progress: ProgressNotice? = null
 )
 @Serializable
 sealed interface SnapshotResult {
@@ -233,7 +258,7 @@ sealed interface RuntimeEvent {
     @Serializable
     data class RunStarted(val sessionRef: SessionRef?) : RuntimeEvent
     @Serializable
-    data class ProgressSummary(val text: String) : RuntimeEvent
+    data class Progress(val notice: ProgressNotice) : RuntimeEvent
     @Serializable
     data class ToolStarted(val stepId: String, val body: StepBody, val order: Long = -1) : RuntimeEvent
     @Serializable
@@ -251,9 +276,11 @@ sealed interface RuntimeEvent {
     @Serializable
     data class ArtifactAvailable(val ref: ResourceRef) : RuntimeEvent
     @Serializable
-    data object CancellationRequested : RuntimeEvent
+    data class CancellationRequested(val reason: CancelReason) : RuntimeEvent
     @Serializable
-    data class RunFinished(val phase: RunPhase, val evidence: TerminalEvidence) : RuntimeEvent
+    data class RunFinished(val phase: RunPhase, val evidence: TerminalEvidence) : RuntimeEvent {
+        init { require(phase.terminal) }
+    }
     /** Retain sanitized diagnostics for unknown events; never infer success from them. */
     @Serializable
     data class Unknown(val kind: String, val diagnosticRef: ResourceRef?) : RuntimeEvent

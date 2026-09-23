@@ -114,7 +114,7 @@ class RunCoordinator(
         }
         val command = commandId?.let { CommandRecord(it, fingerprint, result) }
         if (result == CommandResult.Accepted && old!!.phase != RunPhase.CANCELLING) {
-            append(old, RuntimeEvent.CancellationRequested, old.copy(phase = RunPhase.CANCELLING, pendingApprovals = emptyList()), command)
+            append(old, RuntimeEvent.CancellationRequested(CancelReason.USER_REQUEST), old.copy(phase = RunPhase.CANCELLING, pendingApprovals = emptyList()), command)
             stop?.value = cause
         } else if (command != null) journal.recordCommand(command)
         return result
@@ -201,7 +201,7 @@ class RunCoordinator(
                         truncated = true
                         // This fact may already have persisted ToolStarted before writing its output.
                         val current = journal.snapshot(id)!!
-                        append(current, RuntimeEvent.ProgressSummary("输出超过保留上限，后续正文已截断"), current.copy(progressSummary = "输出超过保留上限，后续正文已截断"))
+                        append(current, RuntimeEvent.Progress(ProgressNotice.OUTPUT_TRUNCATED), current.copy(progress = ProgressNotice.OUTPUT_TRUNCATED))
                     }
                     return null
                 }
@@ -213,14 +213,14 @@ class RunCoordinator(
             when (fact) {
                 is AgentFact.Approval -> {
                     if (old.phase == RunPhase.CANCELLING || signal.value != null) return@withLock
-                    val fingerprint = MessageDigest.getInstance("SHA-256").digest(Json.encodeToString(listOf(fact.action, fact.scope)).toByteArray()).joinToString("") { "%02x".format(it) }
+                    val fingerprint = MessageDigest.getInstance("SHA-256").digest(Json.encodeToString(fact.subject).toByteArray()).joinToString("") { "%02x".format(it) }
                     val previous = seenApprovals[fact.id]
                     if (previous != null) {
                         if (previous != fingerprint || old.pendingApprovals.none { it.approvalId == fact.id })
                             stopLocked(id, StopCause.PROTOCOL_FAILURE)
                     } else if (seenApprovals.size >= 512 || old.pendingApprovals.size >= 16) stopLocked(id, StopCause.PROTOCOL_FAILURE)
                     else {
-                        val pending = PendingApproval(fact.id, old.revision + 1, fact.action, fact.scope)
+                        val pending = PendingApproval(fact.id, old.revision + 1, fact.subject)
                         append(old, RuntimeEvent.ApprovalRequired(pending), old.copy(phase = RunPhase.AWAITING_APPROVAL, pendingApprovals = old.pendingApprovals + pending))
                         seenApprovals[fact.id] = fingerprint
                     }

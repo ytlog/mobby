@@ -18,7 +18,7 @@ class RuntimeJournalApprovalTest {
         val id = RunId("fixture-run")
         val config = RunConfigSnapshot(AgentId.CLAUDE_CODE, WorkspaceRef("fixture"), "model", null, GatewayProfileRef("CLAUDE", 0), emptySet())
         val initial = RunSnapshot(id, RunPhase.ACCEPTED, 1, 1, config)
-        val pending = PendingApproval("permission", 2, "Write", "/fixture/file")
+        val pending = PendingApproval("permission", 2, ApprovalSubject.FileWrite("/fixture/file", ""))
         val awaiting = initial.copy(phase = RunPhase.AWAITING_APPROVAL, revision = 2, lastSequence = 2, pendingApprovals = listOf(pending))
         fun event(sequence: Long, value: RuntimeEvent) = EventEnvelope("e-$sequence", id, sequence, 0, value)
         RuntimeJournal(context).use { journal ->

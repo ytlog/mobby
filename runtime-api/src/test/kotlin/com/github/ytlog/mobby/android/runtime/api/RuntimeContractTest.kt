@@ -74,13 +74,13 @@ class RuntimeContractTest {
     }
     @Test fun `stale approval cannot approve newer request and pending approval survives reconnect`() = runTest {
         val runtime = FakeRuntimeClient(); val id = runtime.admit()
-        runtime.requireApproval(id, PendingApproval("approval", 2, "Read", "workspace"))
+        runtime.requireApproval(id, PendingApproval("approval", 2, ApprovalSubject.FileRead("workspace")))
         val decision = ApprovalDecision(CommandId("decision"), id, "approval", ApprovalChoice.ALLOW_ONCE, 1)
         assertEquals(ErrorCode.STALE_APPROVAL, (runtime.resolveApproval(decision) as CommandResult.Rejected).error.code)
         assertEquals(1, (runtime.observe(id).first() as RuntimeUpdate.Baseline).snapshot.pendingApprovals.size)
         val current = decision.copy(commandId = CommandId("current"), expectedRevision = 2)
         assertEquals(CommandResult.Accepted, runtime.resolveApproval(current))
-        runtime.requireApproval(id, PendingApproval("new", 4, "Write", "workspace"))
+        runtime.requireApproval(id, PendingApproval("new", 4, ApprovalSubject.FileWrite("workspace", "")))
         assertEquals(CommandResult.Accepted, runtime.resolveApproval(current))
         assertEquals("new", runtime.state(id).pendingApprovals.single().approvalId)
     }

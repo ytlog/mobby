@@ -1,12 +1,10 @@
 package com.github.ytlog.mobby.android.interaction.ui
 
-import org.json.JSONArray
-import org.json.JSONObject
+import com.github.ytlog.mobby.android.interaction.domain.PermissionSubject
 import com.github.ytlog.mobby.android.interaction.domain.Step
 
 /**
- * Timeline labels for a conversation step. The step's fields are already typed.
- * Approval scope is a separate payload and is formatted here.
+ * Timeline labels for a typed conversation step or approval.
  */
 internal data class ToolView(val title: String, val detail: String, val terminal: Boolean)
 
@@ -42,69 +40,27 @@ internal object ToolPresentation {
         }
     }
 
-    fun permission(action: String, scope: String): ToolView {
-        val presented = present(scope)
-        val title = title(action, presented.headline)
-        val detail = if (presented.fields.isEmpty()) presented.body.ifBlank { scope }
-        else presented.fields.entries.joinToString("\n\n") { (key, value) -> "$key\n$value" }
-        return ToolView(title.ifBlank { action }, detail, presented.terminal)
+    fun permission(subject: PermissionSubject): ToolView = when (subject) {
+        is PermissionSubject.Command -> ToolView(title("command_execution", subject.command.lineSequence().firstOrNull().orEmpty()), "命令\n${subject.command}".trim(), true)
+        is PermissionSubject.FileRead -> {
+            val range = listOf(
+                subject.offset.takeIf { it.isNotBlank() }?.let { "起始行\n$it" },
+                subject.limit.takeIf { it.isNotBlank() }?.let { "行数\n$it" },
+            ).filterNotNull().joinToString("\n\n")
+            ToolView(title("read", subject.path), range, false)
+        }
+        is PermissionSubject.FileWrite -> ToolView(title("write", subject.path), subject.content, subject.content.isNotBlank())
+        is PermissionSubject.FileDiff -> {
+            val path = subject.paths.firstOrNull().orEmpty().substringAfterLast('/').ifBlank { subject.paths.firstOrNull().orEmpty() }
+            ToolView(title("file_change", path), subject.diff, subject.diff.isNotBlank())
+        }
+        is PermissionSubject.Action -> ToolView(title(subject.name, subject.detail.lineSequence().firstOrNull().orEmpty()), subject.detail, false)
     }
 
     fun looksLikeMarkdown(text: String): Boolean {
         val sample = text.trim()
         return sample.contains("```") || sample.startsWith("#") || sample.contains("\n# ") ||
             sample.startsWith("- ") || sample.contains("\n- ") || sample.contains("**")
-    }
-
-    private data class Presented(val headline: String, val fields: Map<String, String>, val body: String, val terminal: Boolean)
-
-    private fun present(raw: String): Presented {
-        val text = raw.trim()
-        if (text.isEmpty()) return Presented("", emptyMap(), "", false)
-        val parsed = runCatching {
-            when {
-                text.startsWith("{") -> fields(JSONObject(text))
-                text.startsWith("[") -> array(JSONArray(text))
-                else -> null
-            }
-        }.getOrNull()
-        return parsed ?: Presented("", emptyMap(), text, false)
-    }
-
-    private fun fields(obj: JSONObject): Presented {
-        val values = linkedMapOf<String, String>()
-        for (key in PRIORITY_KEYS) {
-            val rendered = render(obj.opt(key)) ?: continue
-            values[label(key)] = rendered
-        }
-        obj.keys().asSequence().toList().filterNot { it in PRIORITY_KEYS || it in HIDDEN_KEYS }.sorted().forEach { key ->
-            render(obj.opt(key))?.let { values[label(key)] = it }
-        }
-        val headline = PRIORITY_KEYS.firstNotNullOfOrNull { key ->
-            obj.opt(key)?.let { render(it)?.takeIf { value -> value.lines().size == 1 && value.length <= 120 } }
-        }.orEmpty()
-        val body = values.values.singleOrNull() ?: values.entries.joinToString("\n\n") { (key, value) -> "$key\n$value" }
-        return Presented(headline, values, body, false)
-    }
-
-    private fun array(array: JSONArray): Presented {
-        val texts = (0 until array.length()).mapNotNull { index ->
-            when (val item = array.opt(index)) {
-                is JSONObject -> item.optString("text").ifBlank { render(item) }
-                JSONObject.NULL, null -> null
-                else -> item.toString()
-            }?.takeIf { it.isNotBlank() }
-        }
-        val body = texts.joinToString("\n\n")
-        return Presented(texts.firstOrNull()?.takeIf { it.lines().size == 1 && it.length <= 120 }.orEmpty(), emptyMap(), body, false)
-    }
-
-    private fun render(value: Any?): String? = when (value) {
-        null, JSONObject.NULL -> null
-        is JSONObject -> present(value.toString()).body.takeIf { it.isNotBlank() }
-        is JSONArray -> array(value).body.takeIf { it.isNotBlank() }
-        is Number, is Boolean -> value.toString()
-        else -> value.toString().ifBlank { null }
     }
 
     private fun title(kind: String, headline: String): String {
@@ -114,8 +70,6 @@ internal object ToolPresentation {
         else if (focus.startsWith(label)) focus
         else "$label $focus"
     }
-
-    private fun label(key: String) = FIELD_LABELS[key] ?: key
 
     private val KIND_LABELS = mapOf(
         "read" to "读取",
@@ -152,26 +106,4 @@ internal object ToolPresentation {
         "task" to "任务",
         "tool" to "工具",
     )
-    private val FIELD_LABELS = mapOf(
-        "command" to "命令",
-        "cmd" to "命令",
-        "file_path" to "文件",
-        "path" to "路径",
-        "file" to "文件",
-        "query" to "查询",
-        "pattern" to "匹配",
-        "glob" to "范围",
-        "url" to "链接",
-        "description" to "说明",
-        "old_string" to "原文",
-        "new_string" to "替换为",
-        "content" to "内容",
-        "offset" to "起始行",
-        "limit" to "行数",
-    )
-    private val PRIORITY_KEYS = listOf(
-        "command", "cmd", "query", "pattern", "glob", "file_path", "path", "file", "url",
-        "description", "old_string", "new_string", "content", "offset", "limit",
-    )
-    private val HIDDEN_KEYS = setOf("type", "id", "tool_use_id", "is_error", "name")
 }

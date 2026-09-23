@@ -12,7 +12,7 @@ sealed interface AgentFact {
     data class Tool(val id: String, val body: StepBody?, val output: String? = null, val outcome: ToolOutcome? = null) : AgentFact
     data class Diagnostic(val kind: String, val text: String) : AgentFact
     data class Completed(val success: Boolean, val error: ErrorCode? = null) : AgentFact
-    data class Approval(val id: String, val action: String, val scope: String) : AgentFact
+    data class Approval(val id: String, val subject: ApprovalSubject) : AgentFact
     object InvalidApproval : AgentFact
 }
 
@@ -173,7 +173,12 @@ class ProtocolDecoder(private val agent: AgentId, private val requestedOutput: R
                 val input = request?.get("input") as? JsonObject
                 if (request?.text("subtype") == "can_use_tool" && !id.isNullOrBlank() && id.length <= 256 &&
                     !tool.isNullOrBlank() && tool.length <= 256 && input != null && input.toString().toByteArray().size <= 65536) {
-                    add(AgentFact.Approval(id, tool, input.toString()))
+                    val subject = approvalSubject(tool, input)
+                    if (subject != null) add(AgentFact.Approval(id, subject))
+                    else {
+                        add(AgentFact.Diagnostic("invalid-approval", "无法完整解析 CLI 审批请求，已停止授权流程"))
+                        add(AgentFact.InvalidApproval)
+                    }
                 } else {
                     add(AgentFact.Diagnostic("invalid-approval", "无法完整解析 CLI 审批请求，已停止授权流程"))
                     add(AgentFact.InvalidApproval)
@@ -329,6 +334,26 @@ class ProtocolDecoder(private val agent: AgentId, private val requestedOutput: R
             "write" -> StepBody.FileWrite(path)
             "edit", "editnotebook", "apply_patch" -> StepBody.FileDiff(listOf(path).filter { it.isNotEmpty() })
             else -> StepBody.Action(name.ifBlank { "tool" }.take(256), actionDetail(input))
+        }
+    }
+    private fun approvalSubject(name: String, input: JsonObject): ApprovalSubject? {
+        val body = conversationBody(name, input)
+        val allowed = when (body) {
+            StepBody.Thinking -> return null
+            is StepBody.Command -> setOf("command", "cmd", "description")
+            is StepBody.FileRead -> setOf("file_path", "path", "file", "notebook_path", "offset", "limit", "description")
+            is StepBody.FileWrite -> setOf("file_path", "path", "file", "notebook_path", "content", "description")
+            is StepBody.FileDiff -> setOf("file_path", "path", "file", "notebook_path", "old_string", "old_str", "new_string", "new_str", "description")
+            is StepBody.Action -> input.keys.filter { textOf(input[it]) != null }.toSet() + "description"
+        }
+        if (input.keys.any { it !in allowed }) return null
+        return when (body) {
+            StepBody.Thinking -> null
+            is StepBody.Command -> ApprovalSubject.Command(body.command)
+            is StepBody.FileRead -> ApprovalSubject.FileRead(body.path, field(input, "offset"), field(input, "limit"))
+            is StepBody.FileWrite -> ApprovalSubject.FileWrite(body.path, field(input, "content").fit())
+            is StepBody.FileDiff -> ApprovalSubject.FileDiff(body.paths, capturedText(body, input).orEmpty())
+            is StepBody.Action -> ApprovalSubject.Action(body.name, body.detail)
         }
     }
     private fun capturedText(body: StepBody, input: JsonElement?): String? {

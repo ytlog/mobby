@@ -106,7 +106,7 @@ class RoomInteractionRepositoryTest {
         assertNull(db.dao().conversation(old.id.value))
         assertNull(db.dao().turn("turn-005"))
         assertNull(db.dao().chunk("history-body"))
-        assertEquals(5, db.openHelper.readableDatabase.version)
+        assertEquals(6, db.openHelper.readableDatabase.version)
     }
     @Test fun `initial page loads forty turns and older pages preserve range when a new reply arrives`() = runBlocking {
         val c = seedHistory(110)
@@ -611,11 +611,11 @@ class RoomInteractionRepositoryTest {
         repository.editDraft(c.id, "write", 5, 5)
         val turn = (repository.prepareTurn(c.id, TurnId("permission-turn")) as PrepareTurnResult.Prepared).turn
         runtime.admit(turn)
-        val pending = PendingApproval("native-id", 7, "Write", "{\"file_path\":\"/fixture/file\"}")
+        val pending = PendingApproval("native-id", 7, ApprovalSubject.FileWrite("/fixture/file", "literal"))
         runtime.snapshots[turn.turnId.value] = runtime.snapshots.getValue(turn.turnId.value).copy(phase = RunPhase.AWAITING_APPROVAL, revision = 7, lastSequence = 7, pendingApprovals = listOf(pending))
         repository.recordSubmission(turn, Submission.Accepted(ExecutionId(turn.turnId.value)))
         val projected = state { it.selected?.turns?.singleOrNull()?.permissions?.isNotEmpty() == true }.selected!!.turns.single()
-        assertEquals(PermissionRequest(pending.approvalId, pending.revision, pending.actionSummary, pending.scopeSummary), projected.permissions.single())
+        assertEquals(PermissionRequest(pending.approvalId, pending.revision, PermissionSubject.FileWrite("/fixture/file", "literal")), projected.permissions.single())
         scope.coroutineContext[Job]!!.cancelAndJoin(); db.close(); start()
         val restored = state { it.selected?.turns?.singleOrNull()?.permissions?.isNotEmpty() == true }.selected!!.turns.single()
         assertEquals(projected.permissions, restored.permissions)

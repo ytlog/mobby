@@ -22,6 +22,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.github.ytlog.mobby.android.interaction.domain.*
 
+internal fun ProgressNotice.label() = when (this) {
+    ProgressNotice.OUTPUT_TRUNCATED -> "输出超过保留上限，后续正文已截断"
+}
+
 internal fun AgentId.label() = when (this) {
     AgentId.CODEX -> "Codex"
     AgentId.CLAUDE_CODE -> "Claude Code"
@@ -126,7 +130,7 @@ internal fun stepKindIcon(kind: String): AppGlyph = when (kind.lowercase()) {
                 if (running) scroll.scrollTo(scroll.maxValue)
             }
             Column(Modifier.then(if (running) Modifier.heightIn(max = 168.dp).verticalScroll(scroll) else Modifier).padding(start = 2.dp, end = 8.dp, bottom = 8.dp)) {
-                if (showExtras) turn.progress?.let { Text(it, Modifier.padding(horizontal = 12.dp, vertical = 2.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                if (showExtras) turn.progress?.let { Text(it.label(), Modifier.padding(horizontal = 12.dp, vertical = 2.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 steps.forEach { step ->
                     val open = step.id in turn.expandedSteps
                     val view = remember(step) { ToolPresentation.present(step) }
@@ -179,7 +183,7 @@ internal fun stepKindIcon(kind: String): AppGlyph = when (kind.lowercase()) {
 }
 
 @Composable internal fun PermissionContent(permission: PermissionRequest, enabled: Boolean, busy: Boolean, submitted: Boolean, connected: Boolean, decide: (Boolean) -> Unit) {
-    val view = remember(permission.action, permission.scope) { ToolPresentation.permission(permission.action, permission.scope) }
+    val view = remember(permission.subject) { ToolPresentation.permission(permission.subject) }
     Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = raisedColor()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("需要你的授权", style = MaterialTheme.typography.titleMedium)

@@ -51,7 +51,7 @@ internal class FakeRuntimeClient : RuntimeClient {
             val state = journals[request.runId]?.value?.snapshots?.last()
                 ?: return@command CommandResult.Rejected(RuntimeError(ErrorCode.NOT_FOUND))
             if (state.phase.terminal) return@command CommandResult.AlreadyTerminal
-            if (state.phase != RunPhase.CANCELLING) append(request.runId, RuntimeEvent.CancellationRequested,
+            if (state.phase != RunPhase.CANCELLING) append(request.runId, RuntimeEvent.CancellationRequested(CancelReason.USER_REQUEST),
                 state.copy(phase = RunPhase.CANCELLING, pendingApprovals = emptyList()))
             CommandResult.Accepted
         }

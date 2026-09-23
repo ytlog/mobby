@@ -932,5 +932,9 @@ Codex 若把最终回复只放进推理、并以 `<arg_value>` 开头，这段�
 
 展开单条步骤时，命令显示实际执行的命令和结果；读取显示文件内容，写入显示写入的正文，编辑和文件修改显示 diff。Codex 的命令输出按增量追加，完成时不再把同一段结果写第二遍。
 
-Runtime 对外的对话消息现在是固定类型。回复仍是 `AssistantDelta` / `AssistantCompleted`。步骤是 `StepBody`：`thinking`、`command`（command）、`file_read` / `file_write`（path）、`file_diff`（paths）、`action`（name、detail）。长正文留在输出分段里，含义由类型决定。协议解码时就把 CLI 载荷拆进这些字段；交互层只按类型投影，不再解析工具 JSON。早先快照没有 `body` 时按通用动作 `tool` 读取，回复正文仍在原输出分段里。审批请求仍保留原始 scope，不属于这组对话类型。
+Runtime 对外的对话消息现在是固定类型。回复仍是 `AssistantDelta` / `AssistantCompleted`。步骤是 `StepBody`：`thinking`、`command`（command）、`file_read` / `file_write`（path）、`file_diff`（paths）、`action`（name、detail）。长正文留在输出分段里，含义由类型决定。协议解码时就把 CLI 载荷拆进这些字段；交互层只按类型投影，不再解析工具 JSON。
+
+运行事件同样是固定类型，不再保留自由文本或原始 JSON。接纳是 `RunAccepted`（冻结配置）和 `RunStarted`（sessionRef）。进度是 `Progress`，目前只有 `OUTPUT_TRUNCATED`。审批是 `PendingApproval`（approvalId、revision、`ApprovalSubject`）；Subject 与步骤同形，读取带 offset 与 limit，写入带 content，修改带 diff。类型之外的输入键不会成为审批，决定仍按 CLI 的 request id 允许或拒绝一次。取消是 `CancellationRequested`，目前只有 `USER_REQUEST`。终态是 `RunFinished`，只接受终态阶段，证据是 `TerminalEvidence`。认不出的 CLI 行仍是 `Unknown`，不算成功，也不算对话消息。
+
+没有旧快照兼容。交互库升到 6，运行日志升到 3；下次打开应用会清空对话投影和运行日志，加密网关、HOME 和工作区留在各自的存储里。缺少 `body` 的旧步骤不能再解码。
 

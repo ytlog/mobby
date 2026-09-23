@@ -43,7 +43,7 @@ class RuntimeJournalRetentionTest {
             finish(journal, "new", 500)
             journal.recordCommand(receipt)
             val initial = accept(journal, "active", 10)
-            val permission = PendingApproval("permission", 2, "Write", "/fixture")
+            val permission = PendingApproval("permission", 2, ApprovalSubject.FileWrite("/fixture", ""))
             awaiting = initial.copy(phase = RunPhase.AWAITING_APPROVAL, revision = 2, lastSequence = 2, pendingApprovals = listOf(permission))
             journal.append(awaiting, event(awaiting, 20, RuntimeEvent.ApprovalRequired(permission)))
         }
