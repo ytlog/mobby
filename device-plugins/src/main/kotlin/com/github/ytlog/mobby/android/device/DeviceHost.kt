@@ -67,18 +67,50 @@ object DeviceHost {
     private fun allowed(context: Context, permission: String) =
         context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
 
-    fun start(context: Context, root: File, inbox: File, workspace: File, node: String, refs: Set<String>): DeviceSession {
-        val token = DeviceCommands.token()
-        val allow = DeviceCatalog.allow(refs)
-        val actions = DeviceActions(context, inbox, workspace)
-        val bridge = DeviceBridge(token, allow) { plugin, action, args -> actions.perform(plugin, action, args) }
-        val skills = DeviceSkillPack.write(root, node, bridge.port, token, refs)
-        return DeviceSession(bridge, skills)
+    fun start(context: Context, root: File, inbox: File, workspace: File, node: String, refs: Set<String>): DeviceSession =
+        openDeviceSession(refs, ScreenAccessService::stay) {
+            val token = DeviceCommands.token()
+            val allow = DeviceCatalog.allow(refs)
+            val actions = DeviceActions(context, inbox, workspace)
+            val bridge = DeviceBridge(token, allow) { plugin, action, args -> actions.perform(plugin, action, args) }
+            try {
+                bridge to DeviceSkillPack.write(root, node, bridge.port, token, refs)
+            } catch (error: Throwable) {
+                bridge.close()
+                throw error
+            }
+        }
+}
+
+internal fun openDeviceSession(
+    refs: Set<String>,
+    keepScreenOn: () -> AutoCloseable,
+    open: () -> Pair<DeviceBridge, List<File>>,
+): DeviceSession {
+    val held = if ("plugin:device:screen" in refs) keepScreenOn() else null
+    return try {
+        val (bridge, skills) = open()
+        DeviceSession(bridge, skills, held)
+    } catch (error: Throwable) {
+        held?.close()
+        throw error
     }
 }
 
-class DeviceSession internal constructor(private val bridge: DeviceBridge, val skills: List<File>) : AutoCloseable {
-    override fun close() = bridge.close()
+class DeviceSession internal constructor(
+    private val bridge: DeviceBridge,
+    val skills: List<File>,
+    private val awake: AutoCloseable? = null,
+) : AutoCloseable {
+    private val closed = AtomicBoolean(false)
+    override fun close() {
+        if (!closed.compareAndSet(false, true)) return
+        try {
+            bridge.close()
+        } finally {
+            awake?.close()
+        }
+    }
 }
 
 internal class DeviceBridge(

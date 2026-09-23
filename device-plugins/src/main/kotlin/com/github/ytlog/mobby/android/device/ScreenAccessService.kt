@@ -2,20 +2,31 @@ package com.github.ytlog.mobby.android.device
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
+import android.graphics.PixelFormat
 import android.graphics.Path
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
+import android.view.Gravity
+import android.view.View
+import android.view.WindowManager
 import android.view.accessibility.AccessibilityNodeInfo
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
 class ScreenAccessService : AccessibilityService() {
+    private val stay = ScreenStay(ServiceDisplay())
+
     override fun onServiceConnected() { instance = this }
     override fun onAccessibilityEvent(event: android.view.accessibility.AccessibilityEvent?) = Unit
     override fun onInterrupt() = Unit
-    override fun onDestroy() { if (instance === this) instance = null; super.onDestroy() }
+    override fun onDestroy() {
+        stay.drop()
+        if (instance === this) instance = null
+        super.onDestroy()
+    }
 
     internal fun operate(action: String, args: Map<String, String>): String = when (action) {
         "tap" -> tap(args["x"]?.toFloatOrNull(), args["y"]?.toFloatOrNull())
@@ -135,8 +146,55 @@ class ScreenAccessService : AccessibilityService() {
         return result.get().getOrThrow()
     }
 
+    private inner class ServiceDisplay : DisplayHold {
+        private var wake: PowerManager.WakeLock? = null
+        private var overlay: View? = null
+
+        override fun hold() = onMain {
+            @Suppress("DEPRECATION")
+            val lock = getSystemService(PowerManager::class.java).newWakeLock(
+                PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
+                "mobby:screen",
+            )
+            lock.setReferenceCounted(false)
+            lock.acquire()
+            wake = lock
+            try {
+                val view = View(this@ScreenAccessService).apply {
+                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                }
+                val params = WindowManager.LayoutParams(
+                    1, 1, WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                        WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                        WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                        WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
+                    PixelFormat.TRANSLUCENT,
+                )
+                params.gravity = Gravity.START or Gravity.TOP
+                getSystemService(WindowManager::class.java).addView(view, params)
+                overlay = view
+            } catch (error: RuntimeException) {
+                lock.release()
+                wake = null
+                throw error
+            }
+        }
+
+        override fun release() = onMain {
+            overlay?.let { runCatching { getSystemService(WindowManager::class.java).removeView(it) } }
+            overlay = null
+            wake?.let { if (it.isHeld) it.release() }
+            wake = null
+        }
+    }
+
     companion object {
         @Volatile internal var instance: ScreenAccessService? = null
         fun connected() = instance != null
+        internal fun stay(): AutoCloseable {
+            val service = instance ?: error("系统无障碍未开启。请在系统设置中打开 mobby 的“屏幕”。")
+            return service.stay.acquire()
+        }
     }
 }

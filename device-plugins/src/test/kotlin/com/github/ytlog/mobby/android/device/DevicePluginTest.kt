@@ -34,6 +34,79 @@ class DevicePluginTest {
         assertFalse(DeviceCatalog.isKnown("plugin:PHONE:ACCESSIBILITY"))
     }
 
+    @Test fun `a screen run keeps the display awake until the session closes`() {
+        var holds = 0
+        val bridge = DeviceBridge("tok", emptyMap()) { _, _, _ -> error("unused") }
+        val session = openDeviceSession(setOf("plugin:device:screen", "plugin:device:sms"), {
+            holds += 1
+            AutoCloseable { holds -= 1 }
+        }) { bridge to emptyList() }
+        assertEquals(1, holds)
+        session.close()
+        assertEquals(0, holds)
+        session.close()
+        assertEquals(0, holds)
+    }
+
+    @Test fun `a run without the screen plugin does not keep the display awake`() {
+        val bridge = DeviceBridge("tok", emptyMap()) { _, _, _ -> error("unused") }
+        val session = openDeviceSession(setOf("plugin:device:sms"), { error("should not hold") }) { bridge to emptyList() }
+        session.close()
+    }
+
+    @Test fun `a failed screen session releases the display hold`() {
+        var holds = 0
+        assertThrows(IllegalStateException::class.java) {
+            openDeviceSession(setOf("plugin:device:screen"), {
+                holds += 1
+                AutoCloseable { holds -= 1 }
+            }) { error("bridge failed") }
+        }
+        assertEquals(0, holds)
+    }
+
+    @Test fun `screen hold is acquired once and released when the service drops it`() {
+        var held = 0
+        val stay = ScreenStay(object : DisplayHold {
+            override fun hold() { held += 1 }
+            override fun release() { held -= 1 }
+        })
+        val first = stay.acquire()
+        val second = stay.acquire()
+        assertEquals(1, held)
+        first.close()
+        assertEquals(1, held)
+        stay.drop()
+        assertEquals(0, held)
+        second.close()
+        assertEquals(0, held)
+    }
+
+    @Test fun `a failed screen hold can be acquired later`() {
+        var fail = true
+        var held = 0
+        val stay = ScreenStay(object : DisplayHold {
+            override fun hold() {
+                if (fail) error("no service")
+                held += 1
+            }
+            override fun release() { held -= 1 }
+        })
+        assertThrows(IllegalStateException::class.java) { stay.acquire() }
+        assertEquals(0, held)
+        fail = false
+        val session = stay.acquire()
+        assertEquals(1, held)
+        session.close()
+        assertEquals(0, held)
+    }
+
+    @Test fun `screen skill tells the model the display stays on for the run`() {
+        val markdown = DeviceSkillPack.write(temporary.newFolder(), "/bin/node", 9, "tok", setOf("plugin:device:screen")).single().readText()
+        assertTrue(markdown.contains("stays on"))
+        assertTrue(markdown.contains("Do not change the system screen timeout"))
+    }
+
     @Test fun `skill text includes only the actions enabled for this run`() {
         val root = temporary.newFolder()
         val skill = DeviceSkillPack.write(root, "/bin/node", 43123, """tok"en""", setOf("plugin:device:sms")).single()

@@ -27,7 +27,7 @@ object DeviceCatalog {
     val all = listOf(
         DevicePluginSpec(
             "screen", "屏幕", "读取并操作当前屏幕", "手机",
-            "Use this skill to read or control the current phone. Always snapshot first. Password fields appear as [secure]. Report failures; do not invent controls or success.",
+            "Use this skill to read or control the current phone. The display stays on for this run and the previous screen timeout returns when the run ends. Always snapshot first. Password fields appear as [secure]. Report failures; do not invent controls or success. Do not change the system screen timeout.",
             DeviceAccess.ACCESSIBILITY,
             commands = listOf(
                 DeviceCommand("snapshot", "snapshot", "Read the current window before other actions."),
