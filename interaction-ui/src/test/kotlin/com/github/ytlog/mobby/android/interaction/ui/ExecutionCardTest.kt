@@ -44,10 +44,20 @@ class ExecutionCardTest {
         assertTrue(reply.copy(occupied = false, pending = false, phase = ExecutionPhase.SUCCEEDED).replyActionsVisible())
         val phase = mutableStateOf(ExecutionPhase.RUNNING)
         compose.setContent { MaterialTheme { ReplyActivity(phase.value) } }
-        compose.onNodeWithText("正在回复…").assertExists()
+        compose.onNodeWithContentDescription("正在回复…").assertExists()
+        compose.onNodeWithText("正在回复…").assertDoesNotExist()
         compose.runOnIdle { phase.value = ExecutionPhase.CANCELLING }
         compose.onNodeWithText("正在停止…").assertExists()
-        compose.onNodeWithText("正在回复…").assertDoesNotExist()
+        compose.onNodeWithContentDescription("正在回复…").assertDoesNotExist()
+    }
+
+    @Test fun `a streaming reply keeps one blue mark and does not add a second row`() {
+        val reply = empty.copy(messages = listOf(Message("m", "hello")), occupied = true, phase = ExecutionPhase.RUNNING)
+        assertFalse(reply.showsSeparateActivity())
+        assertTrue(reply.copy(messages = emptyList()).showsSeparateActivity())
+        assertTrue(reply.copy(phase = ExecutionPhase.CANCELLING).showsSeparateActivity())
+        assertTrue(empty.copy(pending = true).showsSeparateActivity())
+        assertFalse(empty.copy(messages = listOf(Message("m", "hello"))).showsSeparateActivity())
     }
 
     @Test fun `turns without steps stay off the timeline`() {

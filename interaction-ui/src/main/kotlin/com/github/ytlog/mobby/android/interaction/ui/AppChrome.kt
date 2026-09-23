@@ -37,14 +37,15 @@ import androidx.compose.ui.unit.dp
     }
 }
 
-@Composable internal fun StreamingCursor() {
+@Composable internal fun StreamingCursor(description: String? = null) {
     val reduced = rememberReducedMotion()
     val alpha = if (reduced) 1f else {
         val pulse = rememberInfiniteTransition(label = "cursor")
         val value by pulse.animateFloat(0.2f, 1f, infiniteRepeatable(tween(700), RepeatMode.Reverse), label = "cursor-alpha")
         value
     }
-    Box(Modifier.padding(top = 4.dp).size(8.dp, 16.dp).alpha(alpha).background(MaterialTheme.colorScheme.primary, CircleShape))
+    val mark = Modifier.padding(top = 4.dp).size(8.dp, 16.dp).alpha(alpha).background(MaterialTheme.colorScheme.primary, CircleShape)
+    Box(if (description == null) mark else mark.semantics { contentDescription = description })
 }
 
 @Composable internal fun AttachmentTile(label: String, icon: AppGlyph, enabled: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {

@@ -900,7 +900,7 @@ Android 13 真机先复现：进入“设置与运行环境”，通过显式 AC
 
 `:runtime-engine:test` 的控制会话与协议解码、`:interaction-domain:test` 的会话规则、`:interaction-ui:testDebugUnitTest` 的执行卡、`:interaction-data:testDebugUnitTest` 的仓库投影均通过。真机上新的一轮手机操作尚未在本轮重新跑完。
 
-文字此前并不是按模型输出往外长。Codex 只在 `item.completed` 收下整段 `agent_message`，Claude 只在完整 `assistant` 消息到达后才显示；界面再用打字机把已经收齐的文字慢慢放出来。现在 Claude 增加 `--include-partial-messages`，`text_delta` 按内容块顺序追加，同一段不在随后的完整消息里再写一遍。Codex 若先发出变长的 `item.updated`，只追加新增后缀。工具记在它开始时的输出序号上，后到的参数和结果不再把它排到后面的文字之后。已经到达的文字立即可见，Markdown 仍大约每秒整理一次，避免每个 token 都重排。同一轮里复制/分享只出现在结束后仍显示的最后一段正文下方，复制的也是这一段；没有正文时不显示。本轮仍在输出或尚未结束时，这两个按钮不显示，时间线底部改为“正在回复…”；停止过程中改为“正在停止…”。
+文字此前并不是按模型输出往外长。Codex 只在 `item.completed` 收下整段 `agent_message`，Claude 只在完整 `assistant` 消息到达后才显示；界面再用打字机把已经收齐的文字慢慢放出来。现在 Claude 增加 `--include-partial-messages`，`text_delta` 按内容块顺序追加，同一段不在随后的完整消息里再写一遍。Codex 若先发出变长的 `item.updated`，只追加新增后缀。工具记在它开始时的输出序号上，后到的参数和结果不再把它排到后面的文字之后。已经到达的文字立即可见，Markdown 仍大约每秒整理一次，避免每个 token 都重排。同一轮里复制/分享只出现在结束后仍显示的最后一段正文下方，复制的也是这一段；没有正文时不显示。本轮仍在输出或尚未结束时，这两个按钮不显示。等待标记只有正文末尾那个蓝色闪动点；还没有正文时，时间线底部也只用这一个点，不再另加转圈。停止过程中收起正文上的点，底部改为同一个点加上“正在停止…”。
 
 ## 安装身份改为 com.github.ytlog.mobby.android（2026-09-22）
 

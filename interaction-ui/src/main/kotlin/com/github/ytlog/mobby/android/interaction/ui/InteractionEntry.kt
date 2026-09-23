@@ -565,14 +565,20 @@ private val DrawerRowHeight = 32.dp
 @OptIn(FlowPreview::class)
 internal fun Turn.replyActionsVisible() = !occupied && !pending
 
+/** The streaming reply already ends with the blue mark. A second row would stack a spinner under it. */
+internal fun Turn.showsSeparateActivity(): Boolean {
+    if (replyActionsVisible()) return false
+    if (phase == ExecutionPhase.CANCELLING) return true
+    return !(occupied && visibleTranscript().any { it is TranscriptEntry.Reply })
+}
+
 @Composable internal fun ReplyActivity(phase: ExecutionPhase?) {
-    val reduced = rememberReducedMotion()
-    val label = if (phase == ExecutionPhase.CANCELLING) "正在停止…" else "正在回复…"
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        if (reduced) CircularProgressIndicator(progress = { 0.75f }, modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-        else CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-        Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
+    if (phase == ExecutionPhase.CANCELLING) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            StreamingCursor()
+            Text("正在停止…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    } else StreamingCursor(description = "正在回复…")
 }
 
 @Composable private fun Timeline(detail: ConversationDetail, vm: ConversationViewModel, modifier: Modifier, contentPadding: PaddingValues = PaddingValues(horizontal = 16.dp, vertical = 12.dp), followPadding: PaddingValues = PaddingValues(12.dp), read: (String, String) -> Unit, hostActions: InteractionHostActions, proposal: (SkillProposal) -> Unit) {
@@ -590,7 +596,7 @@ internal fun Turn.replyActionsVisible() = !occupied && !pending
             t.skillProposals.forEach { add("artifact:${t.id.value}:${it.ref}") }
             if (t.creatingSkill && !t.occupied && t.skillProposals.isEmpty() && !t.proposalsLoading) add("creator:${t.id.value}")
             if (t.failure != null || t.phase in listOf(ExecutionPhase.CANCELLED, ExecutionPhase.TIMED_OUT, ExecutionPhase.INTERRUPTED, ExecutionPhase.OUTCOME_UNKNOWN, ExecutionPhase.AWAITING_APPROVAL)) add("status:${t.id.value}")
-            if (!t.replyActionsVisible()) add("activity:${t.id.value}")
+            if (t.showsSeparateActivity()) add("activity:${t.id.value}")
         }
     }
     val initial = keys.indexOf(detail.conversation.anchor).coerceAtLeast(0)
@@ -651,7 +657,7 @@ internal fun Turn.replyActionsVisible() = !occupied && !pending
                         }
                         is TranscriptEntry.Reply -> item(key = "message:${turn.id.value}:${entry.message.id}") {
                             Column {
-                                ReplyContent(entry.message.text, streaming = turn.occupied && entry.message.id == lastReply, read = read)
+                                ReplyContent(entry.message.text, streaming = turn.occupied && turn.phase != ExecutionPhase.CANCELLING && entry.message.id == lastReply, read = read)
                                 if (entry.message.id == lastReply && turn.replyActionsVisible()) {
                                     val reply = entry.message.text
                                     Row {
@@ -684,7 +690,7 @@ internal fun Turn.replyActionsVisible() = !occupied && !pending
                         }
                     }
                 }
-                if (!turn.replyActionsVisible()) item(key = "activity:${turn.id.value}") { ReplyActivity(turn.phase) }
+                if (turn.showsSeparateActivity()) item(key = "activity:${turn.id.value}") { ReplyActivity(turn.phase) }
             }
         }
         if (!follow && detail.turns.isNotEmpty()) FilledTonalButton(
