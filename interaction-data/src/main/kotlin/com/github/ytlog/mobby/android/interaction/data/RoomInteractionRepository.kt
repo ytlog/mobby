@@ -381,7 +381,7 @@ internal class RoomInteractionRepository(
                 if (snapshot?.artifacts?.any { content[it.value]?.expired == true } == true) listOf(Message("retained-artifact-notice", "技能草稿已按保留策略清理")) else emptyList(),
             snapshot?.steps?.map { step ->
                 val order = if (step.order >= 0) step.order else step.output.minOfOrNull { it.chunkIndex } ?: nextOrder++
-                val text = step.output.render("\n")
+                val text = step.output.sortedBy { it.chunkIndex }.render(if (step.body is StepBody.Thinking) "" else "\n")
                 val outcome = step.outcome?.name
                 when (val body = step.body) {
                     StepBody.Thinking -> Step.Thinking(step.stepId, text, outcome, order)

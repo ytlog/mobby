@@ -606,6 +606,24 @@ class RoomInteractionRepositoryTest {
         assertEquals("再打开商店", (projected[2] as TranscriptEntry.Reply).message.text)
         assertEquals(listOf("s3"), (projected[3] as TranscriptEntry.ToolRun).steps.map { it.id })
     }
+    @Test fun `thinking deltas join without a newline between tokens`() = runBlocking {
+        val c = state().selected!!.conversation
+        repository.editDraft(c.id, "think", 5, 5)
+        val turn = (repository.prepareTurn(c.id, TurnId("thought")) as PrepareTurnResult.Prepared).turn
+        runtime.admit(turn)
+        val first = ResourceRef("thought/0")
+        val second = ResourceRef("thought/1")
+        runtime.artifactBodies[first] = "先".toByteArray()
+        runtime.artifactBodies[second] = "想一下".toByteArray()
+        runtime.snapshots[turn.turnId.value] = runtime.snapshots.getValue(turn.turnId.value).copy(phase = RunPhase.RUNNING,
+            steps = listOf(ToolSnapshot("think", StepBody.Thinking, null, listOf(
+                OutputSegment("tool:think", 1, second),
+                OutputSegment("tool:think", 0, first),
+            ))))
+        repository.recordSubmission(turn, Submission.Accepted(ExecutionId(turn.turnId.value)))
+        val thinking = state { it.selected?.turns?.singleOrNull()?.steps?.isNotEmpty() == true }.selected!!.turns.single().steps.single()
+        assertEquals("先想一下", (thinking as Step.Thinking).text)
+    }
     @Test fun `permission projection survives database reopen and adapter preserves decision identity`() = runBlocking {
         val c = state().selected!!.conversation
         repository.editDraft(c.id, "write", 5, 5)
