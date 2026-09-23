@@ -745,10 +745,26 @@ internal fun Turn.showsSeparateActivity(): Boolean = activityMark() == ActivityM
                     Text("本轮没有可保存的技能草稿。请根据回复继续补充需求；执行完成不表示技能已添加。", style = MaterialTheme.typography.bodySmall)
                 }
                 if ("status:${turn.id.value}" in keys) item(key = "status:${turn.id.value}") {
-                    Surface(color = MaterialTheme.colorScheme.errorContainer, shape = RoundedCornerShape(12.dp)) {
-                        Column(Modifier.fillMaxWidth().padding(12.dp)) {
-                            Text(turn.failure ?: turn.phase.label())
-                            if (!turn.occupied) TextButton(onClick = { vm.enqueue { vm.actions.restoreDraft(detail.conversation.id, turn) } }) { Text("放入草稿重试") }
+                    val statusInk = if (darkChrome()) MobbyColors.Dark.statusAccent else MobbyColors.Light.statusAccent
+                    Surface(
+                        color = if (darkChrome()) MobbyColors.Dark.statusCard else MobbyColors.Light.statusCard,
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.dp, statusInk.copy(alpha = 0.16f)),
+                    ) {
+                        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
+                                AppIcon(AppIcons.Error, null, Modifier.padding(top = 1.dp).size(20.dp), tint = statusInk)
+                                Text(turn.failure ?: turn.phase.label(), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                            }
+                            if (!turn.occupied) OutlinedButton(
+                                onClick = { vm.enqueue { vm.actions.restoreDraft(detail.conversation.id, turn) } },
+                                modifier = Modifier.align(Alignment.End),
+                                shape = RoundedCornerShape(10.dp),
+                                border = BorderStroke(1.dp, statusInk.copy(alpha = 0.3f)),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = statusInk),
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                            ) { Text("恢复到输入框", style = MaterialTheme.typography.labelLarge) }
                         }
                     }
                 }

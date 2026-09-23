@@ -23,6 +23,8 @@ internal object MobbyColors {
         val ink = Color(0xFFEDEDED)
         val muted = Color(0xFF9A9A9A)
         val error = Color(0xFFE88B8B)
+        val statusCard = Color(0xFF1C1C1E)
+        val statusAccent = Color(0xFFD6AE70)
         val onError = Color(0xFF3B1010)
         val outline = Color(0xFF2E2E30)
         val menuInk = Color(0xFFF2F2F4)
@@ -55,6 +57,8 @@ internal object MobbyColors {
     }
 
     object Light {
+        val statusCard = Color(0xFFF5F1E9)
+        val statusAccent = Color(0xFF79551C)
         val page = Color(0xFFF5F5F7)
         val card = Color.White
         val surfaceVariant = Color(0xFFF0F1F3)
