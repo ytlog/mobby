@@ -426,7 +426,7 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectVo
     Box(Modifier.fillMaxWidth()) {
         if (recording) VoiceRecordingOverlay(cancelArmed, level, Modifier.align(Alignment.BottomCenter))
         Surface(
-            Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 10.dp).alpha(if (recording) 0f else 1f).align(Alignment.BottomCenter)
+            Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = if (darkChrome()) 0.dp else 12.dp, bottom = 10.dp).alpha(if (recording) 0f else 1f).align(Alignment.BottomCenter)
                 .then(if (recording) Modifier.clearAndSetSemantics {} else Modifier),
             shape = RoundedCornerShape(28.dp),
             color = buttonColor(),

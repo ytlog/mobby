@@ -24,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -397,7 +398,7 @@ private val DrawerRowHeight = 40.dp
     var more by remember { mutableStateOf(false) }
     var chip by remember { mutableStateOf(IntRect.Zero) }
     var actions by remember { mutableStateOf(IntRect.Zero) }
-    Row(modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, top = 8.dp, bottom = if (darkChrome()) 0.dp else 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Surface(Modifier.size(ToolbarControl), shape = CircleShape, color = buttonColor(), contentColor = onButtonColor(), shadowElevation = floatingElevation(), tonalElevation = 0.dp) { ActionIcon("打开会话抽屉", onMenu, AppIcons.Menu) }
             Box(Modifier.padding(horizontal = 6.dp).onGloballyPositioned { coordinates ->
                 val origin = coordinates.positionInWindow()
@@ -777,7 +778,10 @@ internal fun Turn.showsSeparateActivity(): Boolean = activityMark() == ActivityM
         }
         if (!follow && detail.turns.isNotEmpty()) FilledTonalButton(
             onClick = { follow = true; scope.launch { if (keys.isNotEmpty()) list.animateScrollToItem(keys.lastIndex, Int.MAX_VALUE) } },
-            modifier = Modifier.align(Alignment.BottomEnd).padding(followPadding).size(48.dp),
+            modifier = Modifier.align(Alignment.BottomEnd)
+                .padding(if (darkChrome()) followPadding else PaddingValues(20.dp))
+                .shadow(if (darkChrome()) 0.dp else floatingElevation(), CircleShape)
+                .size(48.dp),
             shape = CircleShape,
             colors = tonalButtonColors(),
             contentPadding = PaddingValues(0.dp),
