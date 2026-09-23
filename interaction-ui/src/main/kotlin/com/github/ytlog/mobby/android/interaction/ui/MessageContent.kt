@@ -127,7 +127,7 @@ internal fun stepKindIcon(kind: String): AppGlyph = when (kind.lowercase()) {
         shape = RoundedCornerShape(16.dp),
         color = toolCallSurface(),
         contentColor = ink,
-        border = if (darkChrome()) BorderStroke(Dp.Hairline, MobbyColors.Dark.Conversation.toolBorder) else null,
+        border = BorderStroke(Dp.Hairline, if (darkChrome()) MobbyColors.Dark.Conversation.toolBorder else MobbyColors.Light.Conversation.toolBorder),
         tonalElevation = 0.dp,
         shadowElevation = 0.dp,
     ) {

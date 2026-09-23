@@ -51,6 +51,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -125,7 +126,7 @@ class InteractionHostActions(
         val camera = rememberCameraCapture(actions, { captured ->
             actions.importAttachment(ConversationId(captured.conversation), captured.workspace, requireNotNull(captured.attachmentUri))
         }, { message -> vm.report(OperationResult.Failed(message)) })
-        val pageColor = if (dark && route == "conversation") MobbyColors.Dark.Conversation.canvas else MaterialTheme.colorScheme.background
+        val pageColor = if (route == "conversation") conversationCanvas() else MaterialTheme.colorScheme.background
         Surface(Modifier.fillMaxSize(), color = pageColor) {
             InteractionViewport {
                 val fullWidth = maxWidth
@@ -643,7 +644,10 @@ internal fun Turn.showsSeparateActivity(): Boolean = activityMark() == ActivityM
     }
 }
 
-@Composable private fun Timeline(detail: ConversationDetail, vm: ConversationViewModel, modifier: Modifier, contentPadding: PaddingValues = PaddingValues(start = 16.dp, top = ConversationEdgeFade, end = 16.dp, bottom = ConversationEdgeFade), followPadding: PaddingValues = PaddingValues(12.dp), read: (String, String) -> Unit, hostActions: InteractionHostActions, proposal: (SkillProposal) -> Unit) {
+@Composable private fun Timeline(detail: ConversationDetail, vm: ConversationViewModel, modifier: Modifier, followPadding: PaddingValues = PaddingValues(12.dp), read: (String, String) -> Unit, hostActions: InteractionHostActions, proposal: (SkillProposal) -> Unit) {
+    val topFade = if (darkChrome()) ConversationEdgeFade else LightConversationTopFade
+    val bottomFade = if (darkChrome()) ConversationEdgeFade else LightConversationBottomFade
+    val contentPadding = PaddingValues(start = 16.dp, top = topFade, end = 16.dp, bottom = bottomFade)
     val keys = buildList {
         if (detail.hasEarlier) add("earlier")
         detail.turns.forEach { t ->
@@ -697,7 +701,7 @@ internal fun Turn.showsSeparateActivity(): Boolean = activityMark() == ActivityM
         }
     }
     Box(modifier.fillMaxWidth()) {
-        LazyColumn(state = list, modifier = Modifier.fillMaxSize().conversationEdgeFade(conversationCanvas()), contentPadding = contentPadding, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        LazyColumn(state = list, modifier = Modifier.fillMaxSize().conversationEdgeFade(conversationCanvas(), topFade, bottomFade), contentPadding = contentPadding, verticalArrangement = Arrangement.spacedBy(16.dp)) {
             if (detail.hasEarlier) item(key = "earlier") {
                 TextButton(onClick = { follow = false; vm.enqueue { vm.actions.loadEarlier(detail.conversation.id) } }, modifier = Modifier.fillMaxWidth()) { Text("加载更早的消息") }
             }
@@ -782,11 +786,14 @@ internal fun Turn.showsSeparateActivity(): Boolean = activityMark() == ActivityM
 }
 
 private val ConversationEdgeFade = 28.dp
+private val LightConversationTopFade = 48.dp
+private val LightConversationBottomFade = 64.dp
 
 /** Softens the list where it meets the toolbar buttons and the input, without covering the jump button. */
-private fun Modifier.conversationEdgeFade(color: Color) = drawWithContent {
+private fun Modifier.conversationEdgeFade(color: Color, topFade: Dp, bottomFade: Dp) = drawWithContent {
     drawContent()
-    val fade = ConversationEdgeFade.toPx()
+    val topHeight = topFade.toPx()
+    val bottomHeight = bottomFade.toPx()
     val clear = color.copy(alpha = 0f)
     drawRect(
         brush = Brush.verticalGradient(
@@ -796,11 +803,11 @@ private fun Modifier.conversationEdgeFade(color: Color) = drawWithContent {
             0.78f to color.copy(alpha = 0.06f),
             1f to clear,
             startY = 0f,
-            endY = fade,
+            endY = topHeight,
         ),
-        size = Size(size.width, fade),
+        size = Size(size.width, topHeight),
     )
-    val top = size.height - fade
+    val top = size.height - bottomHeight
     drawRect(
         brush = Brush.verticalGradient(
             0f to clear,
@@ -812,7 +819,7 @@ private fun Modifier.conversationEdgeFade(color: Color) = drawWithContent {
             endY = size.height,
         ),
         topLeft = Offset(0f, top),
-        size = Size(size.width, fade),
+        size = Size(size.width, bottomHeight),
     )
 }
 

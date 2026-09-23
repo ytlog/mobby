@@ -86,6 +86,14 @@ internal object MobbyColors {
             Color(0xFFE53935) to Color(0xFFFFEBEE),
             Color(0xFF8E24AA) to Color(0xFFF3E5F5),
         )
+
+        object Conversation {
+            val canvas = Color.White
+            val ink = Color(0xFF111111)
+            val toolInk = Color(0xFF686868)
+            val toolBorder = Color(0xFFDFDFDF)
+            val userBubble = Color(0xFFF5F5F5)
+        }
     }
 }
 
@@ -195,22 +203,22 @@ internal val MobbyLightScheme: ColorScheme = lightColorScheme(
 )
 
 @Composable internal fun conversationCanvas(): Color =
-    if (darkChrome()) MobbyColors.Dark.Conversation.canvas else MaterialTheme.colorScheme.background
+    if (darkChrome()) MobbyColors.Dark.Conversation.canvas else MobbyColors.Light.Conversation.canvas
 
 @Composable internal fun conversationInk(): Color =
-    if (darkChrome()) MobbyColors.Dark.Conversation.ink else MaterialTheme.colorScheme.onSurface
+    if (darkChrome()) MobbyColors.Dark.Conversation.ink else MobbyColors.Light.Conversation.ink
 
 @Composable internal fun toolCallSurface(): Color =
     if (darkChrome()) MobbyColors.Dark.Conversation.canvas else raisedColor()
 
 @Composable internal fun toolCallInk(): Color =
-    if (darkChrome()) MobbyColors.Dark.Conversation.toolInk else MaterialTheme.colorScheme.onSurfaceVariant
+    if (darkChrome()) MobbyColors.Dark.Conversation.toolInk else MobbyColors.Light.Conversation.toolInk
 
 @Composable internal fun userBubbleColor(): Color =
-    if (darkChrome()) MobbyColors.Dark.Conversation.userBubble else MaterialTheme.colorScheme.surfaceVariant
+    if (darkChrome()) MobbyColors.Dark.Conversation.userBubble else MobbyColors.Light.Conversation.userBubble
 
 @Composable internal fun userBubbleInk(): Color =
-    if (darkChrome()) MobbyColors.Dark.Conversation.userInk else MaterialTheme.colorScheme.onSurface
+    if (darkChrome()) MobbyColors.Dark.Conversation.userInk else MobbyColors.Light.Conversation.ink
 
 @Composable internal fun replyActionColor(): Color =
     if (darkChrome()) MobbyColors.Dark.Conversation.replyAction else onButtonColor()
