@@ -93,6 +93,7 @@ internal object MobbyColors {
             val toolInk = Color(0xFF686868)
             val toolBorder = Color(0xFFDFDFDF)
             val userBubble = Color(0xFFF5F5F5)
+            val composerShadow = Color(0x03000000)
         }
     }
 }
