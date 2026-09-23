@@ -19,6 +19,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.github.ytlog.mobby.android.interaction.domain.*
 
+private val LocalToolCodeActionScale = staticCompositionLocalOf { 1f }
+
 internal fun ProgressNotice.label() = when (this) {
     ProgressNotice.OUTPUT_TRUNCATED -> "输出超过保留上限，后续正文已截断"
 }
@@ -94,9 +96,10 @@ internal fun stepKindIcon(kind: String): AppGlyph = when (kind.lowercase()) {
             Row(Modifier.fillMaxWidth().padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(title.take(30), Modifier.weight(1f), style = MaterialTheme.typography.labelMedium, color = titleInk)
                 val actionTint = if (darkChrome()) content else Color.Unspecified
-                ActionIcon("复制原始代码", { clipboard.setText(AnnotatedString(text)) }, AppIcons.Copy, tint = actionTint)
-                ActionIcon(if (wrap) "关闭代码换行" else "代码自动换行", { wrap = !wrap }, AppIcons.Wrap, tint = actionTint)
-                ActionIcon("放大代码", { read(title, text) }, AppIcons.Expand, tint = actionTint)
+                val actionScale = LocalToolCodeActionScale.current
+                ActionIcon("复制原始代码", { clipboard.setText(AnnotatedString(text)) }, AppIcons.Copy, tint = actionTint, buttonSize = ToolbarControl * actionScale, glyphSize = 22.dp * actionScale)
+                ActionIcon(if (wrap) "关闭代码换行" else "代码自动换行", { wrap = !wrap }, AppIcons.Wrap, tint = actionTint, buttonSize = ToolbarControl * actionScale, glyphSize = 22.dp * actionScale)
+                ActionIcon("放大代码", { read(title, text) }, AppIcons.Expand, tint = actionTint, buttonSize = ToolbarControl * actionScale, glyphSize = 22.dp * actionScale)
             }
             SelectionContainer {
                 Text(text, modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp).verticalScroll(rememberScrollState())
@@ -112,6 +115,7 @@ internal fun stepKindIcon(kind: String): AppGlyph = when (kind.lowercase()) {
     val cardCursor = turn.activityMark() == ActivityMark.CARD
     val thinkingCursor = cardCursor && steps.any { it is Step.Thinking && it.outcome == null }
     val ink = toolCallInk()
+    CompositionLocalProvider(LocalToolCodeActionScale provides 2f / 3f) {
     Surface(
         Modifier.fillMaxWidth().testTag("execution-card"),
         shape = RoundedCornerShape(16.dp),
@@ -187,6 +191,7 @@ internal fun stepKindIcon(kind: String): AppGlyph = when (kind.lowercase()) {
             }
             }
         }
+    }
     }
 }
 

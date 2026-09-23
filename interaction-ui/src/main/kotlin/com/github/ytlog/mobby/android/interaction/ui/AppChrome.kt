@@ -28,18 +28,19 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 internal val ToolbarControl = 44.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable internal fun ActionIcon(label: String, onClick: () -> Unit, icon: AppGlyph, enabled: Boolean = true, filled: Boolean = false, tint: Color = Color.Unspecified) {
+@Composable internal fun ActionIcon(label: String, onClick: () -> Unit, icon: AppGlyph, enabled: Boolean = true, filled: Boolean = false, tint: Color = Color.Unspecified, buttonSize: Dp = ToolbarControl, glyphSize: Dp = 22.dp) {
     val ink = if (tint == Color.Unspecified) onButtonColor() else tint
     CompositionLocalProvider(LocalMinimumInteractiveComponentEnforcement provides false) {
-    IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.size(ToolbarControl)) {
+    IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.size(buttonSize)) {
         if (filled) Box(Modifier.size(32.dp).background(if (darkChrome()) buttonColor() else MaterialTheme.colorScheme.onSurface, CircleShape), contentAlignment = Alignment.Center) {
             AppIcon(icon, label, Modifier.size(16.dp), tint = if (darkChrome()) ink else MaterialTheme.colorScheme.surface)
-        } else AppIcon(icon, label, Modifier.size(22.dp), tint = if (enabled) ink else ink.copy(alpha = 0.38f))
+        } else AppIcon(icon, label, Modifier.size(glyphSize), tint = if (enabled) ink else ink.copy(alpha = 0.38f))
     }
     }
 }

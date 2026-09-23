@@ -262,13 +262,13 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
 @Composable private fun ConversationDrawer(state: InteractionState, vm: ConversationViewModel, onSelect: (Conversation) -> Unit, onNew: () -> Unit, onSettings: () -> Unit, onProjects: () -> Unit, modifier: Modifier) {
     var query by rememberSaveable { mutableStateOf("") }
     val control = drawerControlColor()
-    Surface(modifier, color = drawerColor()) {
+    Surface(modifier, color = drawerColor(), contentColor = conversationInk()) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("mobby", Modifier.weight(1f), style = MaterialTheme.typography.headlineSmall)
+                Text("mobby", Modifier.weight(1f), color = conversationInk(), style = MaterialTheme.typography.headlineSmall)
                 DrawerPill(onNew, control, Modifier.testTag("drawer-new")) {
-                    AppIcon(AppIcons.New, null, Modifier.size(16.dp))
-                    Spacer(Modifier.width(6.dp))
+                    AppIcon(AppIcons.New, null, Modifier.size(22.dp))
+                    Spacer(Modifier.width(8.dp))
                     Text("新对话", style = MaterialTheme.typography.titleMedium)
                 }
             }
@@ -300,7 +300,7 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                     if (visible.isEmpty()) item(key = "empty") { EmptyPlaceholder("没有匹配的会话", "换个关键词，或新建一个对话") }
                 }
             }
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 DrawerSearch(query, { query = it }, control, Modifier.weight(1f).testTag("drawer-search"))
                 DrawerCircle("设置", onSettings, control, AppIcons.Settings)
             }
@@ -313,23 +313,27 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
 }
 
 @Composable private fun DrawerEntry(title: String, onClick: () -> Unit) {
-    Box(Modifier.fillMaxWidth().height(DrawerRowHeight).clickable(onClick = onClick), contentAlignment = Alignment.CenterStart) {
-        Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    Box(Modifier.fillMaxWidth().height(DrawerRowHeight).clickable(onClick = onClick).padding(horizontal = 12.dp), contentAlignment = Alignment.CenterStart) {
+        Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, color = LocalContentColor.current)
     }
 }
 
 @Composable private fun DrawerConversation(item: ConversationSummary, state: InteractionState, onSelect: (Conversation) -> Unit) {
-    Surface(color = if (state.selected?.conversation?.id == item.conversation.id) MaterialTheme.colorScheme.surfaceVariant else Color.Transparent, shape = RoundedCornerShape(14.dp)) {
+    val selected = state.selected?.conversation?.id == item.conversation.id
+    Surface(
+        color = if (selected) buttonColor() else Color.Transparent,
+        contentColor = if (selected) onButtonColor() else conversationInk(),
+        shape = RoundedCornerShape(14.dp),
+    ) {
         DrawerEntry(item.conversation.title) { onSelect(item.conversation) }
     }
 }
 
-private val DrawerControlHeight = 36.dp
-private val DrawerRowHeight = 32.dp
+private val DrawerRowHeight = 40.dp
 
 @Composable private fun DrawerPill(onClick: () -> Unit, color: Color, modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
     Row(
-        modifier.height(DrawerControlHeight).clip(CircleShape).background(color).clickable(onClick = onClick).padding(horizontal = 14.dp),
+        modifier.height(ToolbarControl).clip(CircleShape).background(color).clickable(onClick = onClick).padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         val row = this
@@ -338,17 +342,17 @@ private val DrawerRowHeight = 32.dp
 }
 
 @Composable private fun DrawerCircle(label: String, onClick: () -> Unit, color: Color, icon: AppGlyph) {
-    Box(Modifier.size(DrawerControlHeight).clip(CircleShape).background(color).clickable(onClick = onClick).semantics { contentDescription = label }, contentAlignment = Alignment.Center) {
-        AppIcon(icon, null, Modifier.size(18.dp), tint = onButtonColor())
+    Box(Modifier.size(ToolbarControl).clip(CircleShape).background(color).clickable(onClick = onClick).semantics { contentDescription = label }, contentAlignment = Alignment.Center) {
+        AppIcon(icon, null, Modifier.size(22.dp), tint = onButtonColor())
     }
 }
 
 @Composable private fun drawerControlElevation() = 0.dp
 
 @Composable private fun DrawerSearch(query: String, onQuery: (String) -> Unit, color: Color, modifier: Modifier = Modifier) {
-    Surface(modifier.height(DrawerControlHeight), shape = CircleShape, color = color, shadowElevation = drawerControlElevation(), tonalElevation = 0.dp) {
+    Surface(modifier.height(ToolbarControl), shape = CircleShape, color = color, contentColor = onButtonColor(), shadowElevation = drawerControlElevation(), tonalElevation = 0.dp) {
         Row(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-            AppIcon(AppIcons.Search, null, Modifier.size(18.dp), tint = onButtonColor())
+            AppIcon(AppIcons.Search, null, Modifier.size(22.dp), tint = onButtonColor())
             Spacer(Modifier.width(8.dp))
             BasicTextField(
                 value = query,
@@ -356,7 +360,7 @@ private val DrawerRowHeight = 32.dp
                 modifier = Modifier.weight(1f).semantics { contentDescription = "搜索会话" },
                 singleLine = true,
                 textStyle = MaterialTheme.typography.bodyLarge.copy(color = onButtonColor()),
-                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                cursorBrush = SolidColor(onButtonColor()),
                 decorationBox = { inner ->
                     Box {
                         if (query.isEmpty()) Text("搜索", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge)
