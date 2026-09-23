@@ -14,6 +14,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -29,11 +30,17 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
-@Composable internal fun ActionIcon(label: String, onClick: () -> Unit, icon: AppGlyph, enabled: Boolean = true, filled: Boolean = false) {
-    IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.size(48.dp)) {
-        if (filled) Box(Modifier.size(32.dp).background(MaterialTheme.colorScheme.onSurface, CircleShape), contentAlignment = Alignment.Center) {
-            AppIcon(icon, label, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.surface)
-        } else AppIcon(icon, label, Modifier.size(22.dp))
+internal val ToolbarControl = 44.dp
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable internal fun ActionIcon(label: String, onClick: () -> Unit, icon: AppGlyph, enabled: Boolean = true, filled: Boolean = false, tint: Color = Color.Unspecified) {
+    val ink = if (tint == Color.Unspecified) onButtonColor() else tint
+    CompositionLocalProvider(LocalMinimumInteractiveComponentEnforcement provides false) {
+    IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.size(ToolbarControl)) {
+        if (filled) Box(Modifier.size(32.dp).background(if (darkChrome()) buttonColor() else MaterialTheme.colorScheme.onSurface, CircleShape), contentAlignment = Alignment.Center) {
+            AppIcon(icon, label, Modifier.size(16.dp), tint = if (darkChrome()) ink else MaterialTheme.colorScheme.surface)
+        } else AppIcon(icon, label, Modifier.size(22.dp), tint = if (enabled) ink else ink.copy(alpha = 0.38f))
+    }
     }
 }
 
@@ -63,7 +70,7 @@ import androidx.compose.ui.unit.dp
         onClick = onClick,
         modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
         enabled = enabled,
-        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),
+        colors = textButtonColors(onButtonColor()),
     ) {
         AppIcon(icon, null, Modifier.size(22.dp))
         Spacer(Modifier.width(12.dp))
@@ -116,7 +123,7 @@ import androidx.compose.ui.unit.dp
         onClick = onClick, enabled = enabled, modifier = Modifier.fillMaxWidth(),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
         colors = ButtonDefaults.textButtonColors(
-            contentColor = MaterialTheme.colorScheme.onSurface,
+            contentColor = onButtonColor(),
             disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
         ),
     ) { Text(text, Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodyLarge) }
@@ -124,7 +131,7 @@ import androidx.compose.ui.unit.dp
 
 @Composable internal fun SettingsItem(title: String, onClick: () -> Unit, detail: String? = null) {
     TextButton(onClick = onClick, modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
-        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurface)) {
+        colors = textButtonColors(onButtonColor())) {
         Column(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
             Text(title, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
             if (detail != null) Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -166,9 +173,9 @@ import androidx.compose.ui.unit.dp
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(20.dp),
-        color = if (selected) cardColor() else Color.Transparent,
-        border = if (selected) BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.28f)) else null,
-        contentColor = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+        color = if (selected) buttonColor() else Color.Transparent,
+        border = if (selected) BorderStroke(1.dp, onButtonColor().copy(alpha = 0.28f)) else null,
+        contentColor = if (selected) onButtonColor() else MaterialTheme.colorScheme.onSurfaceVariant,
     ) {
         Text(label, Modifier.padding(horizontal = 14.dp, vertical = 7.dp), style = MaterialTheme.typography.bodyMedium)
     }
@@ -205,14 +212,14 @@ import androidx.compose.ui.unit.dp
                 onClick = onAction,
                 enabled = actionEnabled,
                 shape = RoundedCornerShape(18.dp),
-                color = Color.Transparent,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = if (actionEnabled) 0.28f else 0.12f)),
+                color = if (darkChrome()) buttonColor() else Color.Transparent,
+                border = BorderStroke(1.dp, onButtonColor().copy(alpha = if (actionEnabled) 0.28f else 0.12f)),
             ) {
                 Text(
                     action,
                     Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (actionEnabled) 1f else 0.38f),
+                    color = onButtonColor().copy(alpha = if (actionEnabled) 1f else 0.38f),
                 )
             }
         }

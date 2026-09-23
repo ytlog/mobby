@@ -93,9 +93,10 @@ internal fun stepKindIcon(kind: String): AppGlyph = when (kind.lowercase()) {
         Column {
             Row(Modifier.fillMaxWidth().padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(title.take(30), Modifier.weight(1f), style = MaterialTheme.typography.labelMedium, color = titleInk)
-                ActionIcon("复制原始代码", { clipboard.setText(AnnotatedString(text)) }, AppIcons.Copy)
-                ActionIcon(if (wrap) "关闭代码换行" else "代码自动换行", { wrap = !wrap }, AppIcons.Wrap)
-                ActionIcon("放大代码", { read(title, text) }, AppIcons.Expand)
+                val actionTint = if (darkChrome()) content else Color.Unspecified
+                ActionIcon("复制原始代码", { clipboard.setText(AnnotatedString(text)) }, AppIcons.Copy, tint = actionTint)
+                ActionIcon(if (wrap) "关闭代码换行" else "代码自动换行", { wrap = !wrap }, AppIcons.Wrap, tint = actionTint)
+                ActionIcon("放大代码", { read(title, text) }, AppIcons.Expand, tint = actionTint)
             }
             SelectionContainer {
                 Text(text, modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp).verticalScroll(rememberScrollState())
@@ -215,8 +216,8 @@ internal fun stepKindIcon(kind: String): AppGlyph = when (kind.lowercase()) {
             else if (busy) Text("正在提交决定…")
             else if (!connected) Text("连接中断，恢复连接后再确认")
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedButton(onClick = { decide(false) }, enabled = enabled) { Text("拒绝") }
-                Button(onClick = { decide(true) }, enabled = enabled) { Text("仅允许这一次") }
+                OutlinedButton(onClick = { decide(false) }, enabled = enabled, colors = outlinedButtonColors()) { Text("拒绝") }
+                Button(onClick = { decide(true) }, enabled = enabled, colors = filledButtonColors()) { Text("仅允许这一次") }
             }
         }
     }

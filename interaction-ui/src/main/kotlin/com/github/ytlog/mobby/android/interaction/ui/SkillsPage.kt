@@ -79,7 +79,7 @@ private val skillCatalogTabs = listOf("已添加", "精选", "用户技能", "CL
                 Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text("编辑状态未恢复。若刚才执行过保存，请先到技能目录核对。")
-                Button(onClick = { vm.loadSkills(agent); back() }) { Text("返回技能目录") }
+                Button(onClick = { vm.loadSkills(agent); back() }, colors = filledButtonColors()) { Text("返回技能目录") }
             }
             "detail" -> Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 val skill = skills.firstOrNull { it.ref == selectedRef }
@@ -91,7 +91,7 @@ private val skillCatalogTabs = listOf("已添加", "精选", "用户技能", "CL
                     Text(content.description)
                     val bound = conversation?.creator != null && conversation.creator == skill?.ref
                     val chosen = conversation?.draft?.capabilities?.contains(skill?.ref) == true
-                    Button(onClick = { if (conversation != null && skill != null) vm.enqueue { vm.report(vm.actions.setSkill(conversation.id, skill, !chosen)) } }, enabled = conversation != null && skill?.available == true && !bound) { Text(if (bound) "已绑定此创建会话" else if (chosen) "移除" else "使用") }
+                    Button(onClick = { if (conversation != null && skill != null) vm.enqueue { vm.report(vm.actions.setSkill(conversation.id, skill, !chosen)) } }, enabled = conversation != null && skill?.available == true && !bound, colors = filledButtonColors()) { Text(if (bound) "已绑定此创建会话" else if (chosen) "移除" else "使用") }
                     ReplyContent(content.body, streaming = false, read = { _, _ -> })
                 }
                 if (detail == null && detailError == null) CircularProgressIndicator()
@@ -169,7 +169,7 @@ private val skillCatalogTabs = listOf("已添加", "精选", "用户技能", "CL
             preview.issues.forEach { Text(it, color = MaterialTheme.colorScheme.error) }
             androidx.compose.foundation.text.selection.SelectionContainer { ReplyContent(preview.body, streaming = false, read = { _, _ -> }) }
             TextButton(onClick = { change(editor.copy(preview = null)) }, enabled = !editor.busy) { Text("返回修改") }
-            Button(onClick = vm::saveSkillEditor, enabled = !editor.busy && preview.issues.isEmpty()) { Text("保存技能") }
+            Button(onClick = vm::saveSkillEditor, enabled = !editor.busy && preview.issues.isEmpty(), colors = filledButtonColors()) { Text("保存技能") }
         } else {
             if (editor.manual) {
                 OutlinedTextField(editor.name, { change(editor.copy(name = it)) }, Modifier.fillMaxWidth(), label = { Text("名称（小写英文、数字、连字符）") }, singleLine = true, enabled = !editor.busy)
@@ -180,7 +180,7 @@ private val skillCatalogTabs = listOf("已添加", "精选", "用户技能", "CL
                 OutlinedTextField(editor.markdown, { change(editor.copy(markdown = it)) }, Modifier.fillMaxWidth(), label = { Text("SKILL.md 原文") }, minLines = 6, maxLines = 14, enabled = !editor.busy)
                 if (!editor.markdown.removePrefix("\uFEFF").trimStart().startsWith("---")) TextButton(onClick = { change(editor.copy(manual = true, body = editor.markdown)) }, enabled = !editor.busy) { Text("为普通 Markdown 补全元信息") }
             }
-            Button(onClick = vm::validateSkillEditor, enabled = !editor.busy) { Text("校验并预览") }
+            Button(onClick = vm::validateSkillEditor, enabled = !editor.busy, colors = filledButtonColors()) { Text("校验并预览") }
         }
         Text("同名技能不会覆盖。保存不会启动任务；技能会进入 Agent 的本机技能目录。", style = MaterialTheme.typography.bodySmall)
     }

@@ -30,7 +30,8 @@ internal object MobbyColors {
         val menuScrim = Color(0x99141416)
         val menuStroke = Color.White.copy(alpha = 0.14f)
         val drawer = Color(0xFF1F1F1F)
-        val drawerControl = Color(0xFF2A2A2A)
+        val button = Color(0xFF292929)
+        val onButton = Color(0xFFDADADA)
         val voiceWash = Color(0xFF1A2A44)
         val voiceCancel = Color(0xFF3A2226)
         val catalog = listOf(
@@ -48,6 +49,7 @@ internal object MobbyColors {
             val toolBorder = Color(0xFF3A3A3A)
             val userBubble = Color(0xFF292929)
             val userInk = Color(0xFFDBDBDB)
+            val replyAction = Color(0xFF757575)
         }
     }
 
@@ -144,7 +146,41 @@ internal val MobbyLightScheme: ColorScheme = lightColorScheme(
 
 @Composable internal fun drawerColor(): Color = if (darkChrome()) MobbyColors.Dark.drawer else MobbyColors.Light.drawer
 
-@Composable internal fun drawerControlColor(): Color = if (darkChrome()) MobbyColors.Dark.drawerControl else MobbyColors.Light.drawerControl
+@Composable internal fun drawerControlColor(): Color = if (darkChrome()) MobbyColors.Dark.button else MobbyColors.Light.drawerControl
+
+@Composable internal fun buttonColor(): Color = if (darkChrome()) MobbyColors.Dark.button else cardColor()
+
+@Composable internal fun onButtonColor(): Color = if (darkChrome()) MobbyColors.Dark.onButton else MaterialTheme.colorScheme.onSurface
+
+@Composable internal fun filledButtonColors(
+    container: Color = if (darkChrome()) MobbyColors.Dark.button else MaterialTheme.colorScheme.primary,
+    content: Color = if (darkChrome()) MobbyColors.Dark.onButton else MaterialTheme.colorScheme.onPrimary,
+) = androidx.compose.material3.ButtonDefaults.buttonColors(
+    containerColor = container,
+    contentColor = content,
+    disabledContainerColor = container.copy(alpha = 0.38f),
+    disabledContentColor = content.copy(alpha = 0.38f),
+)
+
+@Composable internal fun textButtonColors(
+    content: Color = if (darkChrome()) MobbyColors.Dark.onButton else MaterialTheme.colorScheme.primary,
+) = androidx.compose.material3.ButtonDefaults.textButtonColors(
+    contentColor = content,
+    disabledContentColor = content.copy(alpha = 0.38f),
+)
+
+@Composable internal fun tonalButtonColors() = androidx.compose.material3.ButtonDefaults.filledTonalButtonColors(
+    containerColor = buttonColor(),
+    contentColor = onButtonColor(),
+    disabledContainerColor = buttonColor().copy(alpha = 0.38f),
+    disabledContentColor = onButtonColor().copy(alpha = 0.38f),
+)
+
+@Composable internal fun outlinedButtonColors() = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+    containerColor = if (darkChrome()) MobbyColors.Dark.button else Color.Transparent,
+    contentColor = if (darkChrome()) MobbyColors.Dark.onButton else MaterialTheme.colorScheme.primary,
+    disabledContentColor = (if (darkChrome()) MobbyColors.Dark.onButton else MaterialTheme.colorScheme.primary).copy(alpha = 0.38f),
+)
 
 @Composable internal fun conversationCanvas(): Color =
     if (darkChrome()) MobbyColors.Dark.Conversation.canvas else MaterialTheme.colorScheme.background
@@ -163,3 +199,6 @@ internal val MobbyLightScheme: ColorScheme = lightColorScheme(
 
 @Composable internal fun userBubbleInk(): Color =
     if (darkChrome()) MobbyColors.Dark.Conversation.userInk else MaterialTheme.colorScheme.onSurface
+
+@Composable internal fun replyActionColor(): Color =
+    if (darkChrome()) MobbyColors.Dark.Conversation.replyAction else onButtonColor()

@@ -24,6 +24,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -165,7 +169,7 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                                     state.selected == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                             EmptyPlaceholder("还没有对话", "新建一个对话，从具体任务开始")
-                                            Button(onClick = { dialog = "new" }) { Text("新建对话") }
+                                            Button(onClick = { dialog = "new" }, colors = filledButtonColors()) { Text("新建对话") }
                                         }
                                     }
                                     else -> {
@@ -327,13 +331,15 @@ private val DrawerRowHeight = 32.dp
     Row(
         modifier.height(DrawerControlHeight).clip(CircleShape).background(color).clickable(onClick = onClick).padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
-        content = content,
-    )
+    ) {
+        val row = this
+        CompositionLocalProvider(LocalContentColor provides onButtonColor()) { row.content() }
+    }
 }
 
 @Composable private fun DrawerCircle(label: String, onClick: () -> Unit, color: Color, icon: AppGlyph) {
     Box(Modifier.size(DrawerControlHeight).clip(CircleShape).background(color).clickable(onClick = onClick).semantics { contentDescription = label }, contentAlignment = Alignment.Center) {
-        AppIcon(icon, null, Modifier.size(18.dp))
+        AppIcon(icon, null, Modifier.size(18.dp), tint = onButtonColor())
     }
 }
 
@@ -342,14 +348,14 @@ private val DrawerRowHeight = 32.dp
 @Composable private fun DrawerSearch(query: String, onQuery: (String) -> Unit, color: Color, modifier: Modifier = Modifier) {
     Surface(modifier.height(DrawerControlHeight), shape = CircleShape, color = color, shadowElevation = drawerControlElevation(), tonalElevation = 0.dp) {
         Row(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-            AppIcon(AppIcons.Search, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            AppIcon(AppIcons.Search, null, Modifier.size(18.dp), tint = onButtonColor())
             Spacer(Modifier.width(8.dp))
             BasicTextField(
                 value = query,
                 onValueChange = onQuery,
                 modifier = Modifier.weight(1f).semantics { contentDescription = "搜索会话" },
                 singleLine = true,
-                textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
+                textStyle = MaterialTheme.typography.bodyLarge.copy(color = onButtonColor()),
                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                 decorationBox = { inner ->
                     Box {
@@ -362,19 +368,27 @@ private val DrawerRowHeight = 32.dp
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable private fun ConversationToolbar(c: Conversation?, vm: ConversationViewModel, onMenu: () -> Unit, onNew: () -> Unit, onMore: (String) -> Unit, onAnchor: (IntRect) -> Unit = {}, modifier: Modifier = Modifier) {
     var config by remember { mutableStateOf(false) }
     var more by remember { mutableStateOf(false) }
     var chip by remember { mutableStateOf(IntRect.Zero) }
     var actions by remember { mutableStateOf(IntRect.Zero) }
-    Row(modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Surface(shape = CircleShape, color = cardColor(), shadowElevation = floatingElevation(), tonalElevation = 0.dp) { ActionIcon("打开会话抽屉", onMenu, AppIcons.Menu) }
+    Row(modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Surface(Modifier.size(ToolbarControl), shape = CircleShape, color = buttonColor(), contentColor = onButtonColor(), shadowElevation = floatingElevation(), tonalElevation = 0.dp) { ActionIcon("打开会话抽屉", onMenu, AppIcons.Menu) }
             Box(Modifier.padding(horizontal = 6.dp).onGloballyPositioned { coordinates ->
                 val origin = coordinates.positionInWindow()
                 chip = IntRect(origin.x.roundToInt(), origin.y.roundToInt(), origin.x.roundToInt() + coordinates.size.width, origin.y.roundToInt() + coordinates.size.height)
             }) {
-                Surface(shape = RoundedCornerShape(26.dp), color = cardColor(), shadowElevation = floatingElevation(), tonalElevation = 0.dp) {
-                    TextButton(onClick = { config = true; vm.enqueue { vm.refresh() } }, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurface)) { Text(c?.config?.agent?.label() ?: "选择 Agent") }
+                Surface(shape = RoundedCornerShape(26.dp), color = buttonColor(), contentColor = onButtonColor(), shadowElevation = floatingElevation(), tonalElevation = 0.dp) {
+                    CompositionLocalProvider(LocalMinimumInteractiveComponentEnforcement provides false) {
+                    TextButton(
+                        onClick = { config = true; vm.enqueue { vm.refresh() } },
+                        modifier = Modifier.height(ToolbarControl),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
+                        colors = textButtonColors(onButtonColor()),
+                    ) { Text(c?.config?.agent?.label() ?: "选择 Agent") }
+                    }
                 }
                 if (c != null) AgentConfigMenu(config, { config = false }, c, vm, chip)
             }
@@ -385,8 +399,8 @@ private val DrawerRowHeight = 32.dp
                 actions = rect
                 onAnchor(rect)
             }) {
-                Surface(shape = RoundedCornerShape(26.dp), color = cardColor(), shadowElevation = floatingElevation(), tonalElevation = 0.dp) {
-                    Row {
+                Surface(Modifier.height(ToolbarControl), shape = RoundedCornerShape(26.dp), color = buttonColor(), contentColor = onButtonColor(), shadowElevation = floatingElevation(), tonalElevation = 0.dp) {
+                    Row(Modifier.height(ToolbarControl)) {
                         ActionIcon("新建对话", onNew, AppIcons.New)
                         ActionIcon("更多会话操作", { more = true }, AppIcons.More, c != null)
                     }
@@ -490,7 +504,7 @@ private val DrawerRowHeight = 32.dp
     LaunchedEffect(detail.conversation.id) { capture.error = null }
     LaunchedEffect(micAvailable, stop) { if (!micAvailable || stop) voiceMode = false }
     Column(modifier.fillMaxWidth()) {
-        Column(Modifier.padding(start = 12.dp, end = 12.dp, top = 10.dp)) {
+        Column(Modifier.padding(horizontal = 12.dp)) {
             if (unavailable) Text("此对话已归档或删除，请先在设置中恢复", style = MaterialTheme.typography.bodySmall)
             if (state.occupied != null && active == null) Text("${state.occupied!!.conversation.title} 正在执行，本轮草稿可继续编辑", style = MaterialTheme.typography.bodySmall)
             if (system.diagnosticBusy) Text("Shell 诊断正在占用运行环境", style = MaterialTheme.typography.bodySmall)
@@ -554,7 +568,8 @@ private val DrawerRowHeight = 32.dp
                     composer.value, vm::edit,
                     Modifier.weight(1f).heightIn(min = 48.dp).padding(vertical = 12.dp).focusRequester(focusRequester),
                     enabled = !unavailable, maxLines = 5,
-                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = onButtonColor()),
+                    cursorBrush = SolidColor(onButtonColor()),
                     decorationBox = { inner -> Box { if (composer.value.text.isEmpty()) Text("描述任务，或添加上下文", color = MaterialTheme.colorScheme.onSurfaceVariant); inner() } },
                 )
             },
@@ -595,11 +610,11 @@ internal fun Turn.showsSeparateActivity(): Boolean = activityMark() == ActivityM
         contentColor = userBubbleInk(),
         modifier = Modifier.widthIn(max = 360.dp).testTag("user-bubble"),
     ) {
-        Column(Modifier.padding(16.dp), content = content)
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), content = content)
     }
 }
 
-@Composable private fun Timeline(detail: ConversationDetail, vm: ConversationViewModel, modifier: Modifier, contentPadding: PaddingValues = PaddingValues(horizontal = 16.dp, vertical = 12.dp), followPadding: PaddingValues = PaddingValues(12.dp), read: (String, String) -> Unit, hostActions: InteractionHostActions, proposal: (SkillProposal) -> Unit) {
+@Composable private fun Timeline(detail: ConversationDetail, vm: ConversationViewModel, modifier: Modifier, contentPadding: PaddingValues = PaddingValues(start = 16.dp, top = ConversationEdgeFade, end = 16.dp, bottom = ConversationEdgeFade), followPadding: PaddingValues = PaddingValues(12.dp), read: (String, String) -> Unit, hostActions: InteractionHostActions, proposal: (SkillProposal) -> Unit) {
     val keys = buildList {
         if (detail.hasEarlier) add("earlier")
         detail.turns.forEach { t ->
@@ -653,7 +668,7 @@ internal fun Turn.showsSeparateActivity(): Boolean = activityMark() == ActivityM
         }
     }
     Box(modifier.fillMaxWidth()) {
-        LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = contentPadding, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        LazyColumn(state = list, modifier = Modifier.fillMaxSize().conversationEdgeFade(conversationCanvas()), contentPadding = contentPadding, verticalArrangement = Arrangement.spacedBy(16.dp)) {
             if (detail.hasEarlier) item(key = "earlier") {
                 TextButton(onClick = { follow = false; vm.enqueue { vm.actions.loadEarlier(detail.conversation.id) } }, modifier = Modifier.fillMaxWidth()) { Text("加载更早的消息") }
             }
@@ -680,8 +695,8 @@ internal fun Turn.showsSeparateActivity(): Boolean = activityMark() == ActivityM
                                     val reply = entry.message.text
                                     Row {
                                         val clipboard = LocalClipboardManager.current
-                                        ActionIcon("复制回复", { clipboard.setText(AnnotatedString(reply)) }, AppIcons.Copy)
-                                        ActionIcon("分享回复", { hostActions.share(reply) }, AppIcons.Share)
+                                        ActionIcon("复制回复", { clipboard.setText(AnnotatedString(reply)) }, AppIcons.Copy, tint = replyActionColor())
+                                        ActionIcon("分享回复", { hostActions.share(reply) }, AppIcons.Share, tint = replyActionColor())
                                     }
                                 }
                             }
@@ -715,9 +730,45 @@ internal fun Turn.showsSeparateActivity(): Boolean = activityMark() == ActivityM
             onClick = { follow = true; scope.launch { if (keys.isNotEmpty()) list.animateScrollToItem(keys.lastIndex, Int.MAX_VALUE) } },
             modifier = Modifier.align(Alignment.BottomEnd).padding(followPadding).size(48.dp),
             shape = CircleShape,
+            colors = tonalButtonColors(),
             contentPadding = PaddingValues(0.dp),
-        ) { AppIcon(AppIcons.ArrowDown, "最新消息", Modifier.size(22.dp)) }
+        ) { AppIcon(AppIcons.ArrowDown, "最新消息", Modifier.size(22.dp), tint = onButtonColor()) }
     }
+}
+
+private val ConversationEdgeFade = 28.dp
+
+/** Softens the list where it meets the toolbar buttons and the input, without covering the jump button. */
+private fun Modifier.conversationEdgeFade(color: Color) = drawWithContent {
+    drawContent()
+    val fade = ConversationEdgeFade.toPx()
+    val clear = color.copy(alpha = 0f)
+    drawRect(
+        brush = Brush.verticalGradient(
+            0f to color,
+            0.22f to color.copy(alpha = 0.72f),
+            0.5f to color.copy(alpha = 0.28f),
+            0.78f to color.copy(alpha = 0.06f),
+            1f to clear,
+            startY = 0f,
+            endY = fade,
+        ),
+        size = Size(size.width, fade),
+    )
+    val top = size.height - fade
+    drawRect(
+        brush = Brush.verticalGradient(
+            0f to clear,
+            0.22f to color.copy(alpha = 0.06f),
+            0.5f to color.copy(alpha = 0.28f),
+            0.78f to color.copy(alpha = 0.72f),
+            1f to color,
+            startY = top,
+            endY = size.height,
+        ),
+        topLeft = Offset(0f, top),
+        size = Size(size.width, fade),
+    )
 }
 
 internal fun capabilityLabel(ref: String) = when (ref.removePrefix("plugin:device:")) {

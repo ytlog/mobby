@@ -9,6 +9,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Matrix
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -90,7 +91,12 @@ internal fun AppIcon(
                     addPath(icon.path)
                     transform(Matrix().apply { scale(scale, scale) })
                 }
-                val style = Stroke(width = IconStroke.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+                val style = Stroke(
+                    width = IconStroke.toPx(),
+                    cap = StrokeCap.Round,
+                    join = StrokeJoin.Round,
+                    pathEffect = PathEffect.cornerPathEffect(2.4.dp.toPx()),
+                )
                 onDrawBehind {
                     if (icon.filled) drawPath(scaled, tint) else drawPath(scaled, tint, style = style)
                 }

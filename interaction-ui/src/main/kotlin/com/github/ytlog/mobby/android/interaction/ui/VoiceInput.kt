@@ -426,10 +426,11 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectVo
     Box(Modifier.fillMaxWidth()) {
         if (recording) VoiceRecordingOverlay(cancelArmed, level, Modifier.align(Alignment.BottomCenter))
         Surface(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp).alpha(if (recording) 0f else 1f).align(Alignment.BottomCenter)
+            Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 10.dp).alpha(if (recording) 0f else 1f).align(Alignment.BottomCenter)
                 .then(if (recording) Modifier.clearAndSetSemantics {} else Modifier),
             shape = RoundedCornerShape(28.dp),
-            color = cardColor(),
+            color = buttonColor(),
+            contentColor = onButtonColor(),
             shadowElevation = floatingElevation(),
             tonalElevation = 0.dp,
         ) {
@@ -467,13 +468,13 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectVo
     onHoldEnd: (Boolean) -> Unit,
 ) {
     Box(
-        Modifier.size(48.dp).testTag(tag).voiceHold(enabled, onTap, onHoldStart, onHoldMove, onHoldEnd).semantics {
+        Modifier.size(ToolbarControl).testTag(tag).voiceHold(enabled, onTap, onHoldStart, onHoldMove, onHoldEnd).semantics {
             role = Role.Button
             contentDescription = label
             if (enabled) onClick(label) { onTap(); true }
         },
         contentAlignment = Alignment.Center,
     ) {
-        AppIcon(icon, null, Modifier.size(22.dp), tint = if (enabled) LocalContentColor.current else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f))
+        AppIcon(icon, null, Modifier.size(22.dp), tint = onButtonColor().copy(alpha = if (enabled) 1f else 0.38f))
     }
 }

@@ -134,7 +134,7 @@ import kotlinx.coroutines.*
             },
             modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 20.dp).heightIn(min = 48.dp),
             shape = RoundedCornerShape(22.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = menuAccent(), contentColor = MobbyColors.onAccent),
+            colors = filledButtonColors(if (darkChrome()) MobbyColors.Dark.button else menuAccent(), if (darkChrome()) MobbyColors.Dark.onButton else MobbyColors.onAccent),
             elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp, pressedElevation = 0.dp, focusedElevation = 0.dp, hoveredElevation = 0.dp),
         ) { Text("应用", fontWeight = FontWeight.SemiBold) }
     }
@@ -205,7 +205,7 @@ import kotlinx.coroutines.*
             enabled = canCreate,
             modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 20.dp).heightIn(min = 48.dp),
             shape = RoundedCornerShape(22.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = menuAccent(), contentColor = MobbyColors.onAccent, disabledContainerColor = menuAccent().copy(alpha = 0.38f), disabledContentColor = MobbyColors.onAccentDisabled),
+            colors = filledButtonColors(if (darkChrome()) MobbyColors.Dark.button else menuAccent(), if (darkChrome()) MobbyColors.Dark.onButton else MobbyColors.onAccent),
             elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp, pressedElevation = 0.dp, focusedElevation = 0.dp, hoveredElevation = 0.dp),
         ) { Text("创建", fontWeight = FontWeight.SemiBold) }
     }
@@ -410,7 +410,7 @@ import kotlinx.coroutines.*
                         Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                             Text(row.conversation.title, Modifier.weight(1f), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodyLarge)
                             TextButton(onClick = { vm.enqueue { vm.report(if (row.conversation.deleted) vm.actions.delete(row.conversation.id, false) else vm.actions.archive(row.conversation.id, false)) } },
-                                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurface)) { Text("恢复", style = MaterialTheme.typography.bodyLarge) }
+                                colors = textButtonColors(onButtonColor())) { Text("恢复", style = MaterialTheme.typography.bodyLarge) }
                         }
                     }
                 }

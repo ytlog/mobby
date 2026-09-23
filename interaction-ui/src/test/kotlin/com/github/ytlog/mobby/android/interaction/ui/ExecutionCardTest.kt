@@ -93,7 +93,10 @@ class ExecutionCardTest {
         assertEquals(Color(0xFF3A3A3A), conversation.toolBorder)
         assertEquals(Color(0xFF292929), conversation.userBubble)
         assertEquals(Color(0xFFDBDBDB), conversation.userInk)
-        val seen = arrayOfNulls<Color>(6)
+        assertEquals(Color(0xFF292929), MobbyColors.Dark.button)
+        assertEquals(Color(0xFFDADADA), MobbyColors.Dark.onButton)
+        assertEquals(Color(0xFF757575), conversation.replyAction)
+        val seen = arrayOfNulls<Color>(7)
         compose.setContent {
             MaterialTheme(colorScheme = MobbyDarkScheme) {
                 seen[0] = conversationCanvas()
@@ -102,6 +105,7 @@ class ExecutionCardTest {
                 seen[3] = toolCallInk()
                 seen[4] = userBubbleColor()
                 seen[5] = userBubbleInk()
+                seen[6] = replyActionColor()
             }
         }
         compose.waitForIdle()
@@ -111,6 +115,7 @@ class ExecutionCardTest {
         assertEquals(conversation.toolInk, seen[3])
         assertEquals(conversation.userBubble, seen[4])
         assertEquals(conversation.userInk, seen[5])
+        assertEquals(conversation.replyAction, seen[6])
     }
 
     @Test fun `zero step completion does not render an empty process card`() {
