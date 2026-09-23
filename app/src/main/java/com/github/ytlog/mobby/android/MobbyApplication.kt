@@ -76,10 +76,11 @@ class MobbyApplication : Application() {
         })
     }
 
-    private fun openConversation(id: ConversationId) {
-        startActivity(Intent(this, MainActivity::class.java)
+    private fun openConversation(id: ConversationId?) {
+        val intent = Intent(this, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-            .putExtra("conversationId", id.value))
+        if (id != null) intent.putExtra("conversationId", id.value)
+        startActivity(intent)
     }
 
     private fun syncPet() {

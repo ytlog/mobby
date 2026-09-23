@@ -24,6 +24,47 @@ import org.robolectric.annotation.Config
 class PetOverlayTest {
     private val context: Context get() = ApplicationProvider.getApplicationContext()
 
+    @Test fun `idle background pet appears and returns to app without selecting a conversation`() {
+        val window = MemoryWindow()
+        val prefs = context.getSharedPreferences("pet-idle", Context.MODE_PRIVATE)
+        prefs.edit().clear().commit()
+        var opened = false
+        val pet = DesktopPet(context, window, prefs, { error("No idle task to stop") }, { opened = true; assertNull(it) })
+        val idle = InteractionState(loading = false)
+        pet.update(idle, foreground = false, enabled = true, permitted = true)
+        assertTrue("Enabled idle pet must be visible outside app", window.attached)
+        window.view!!.described("任务悬浮球")!!.performClick()
+        assertNull(window.view!!.described("停止当前任务"))
+        window.view!!.described("返回应用")!!.performClick()
+        assertTrue(opened)
+        window.view!!.described("任务悬浮球")!!.performClick()
+        window.view!!.described("收起悬浮球")!!.performClick()
+        pet.update(idle, foreground = false, enabled = true, permitted = true)
+        assertFalse(window.attached)
+        pet.update(idle, foreground = true, enabled = true, permitted = true)
+        assertFalse(window.attached)
+        pet.update(idle, foreground = false, enabled = true, permitted = true)
+        assertTrue(window.attached)
+        pet.update(idle, foreground = false, enabled = false, permitted = true)
+        assertFalse(window.attached)
+        pet.update(idle, foreground = false, enabled = true, permitted = false)
+        assertFalse(window.attached)
+    }
+
+    @Test fun `completed background task becomes idle without removing the ball`() {
+        val window = MemoryWindow()
+        val prefs = context.getSharedPreferences("pet-completion", Context.MODE_PRIVATE)
+        prefs.edit().clear().commit()
+        val pet = DesktopPet(context, window, prefs, {}, {})
+        pet.update(running("run"), foreground = false, enabled = true, permitted = true)
+        assertTrue(window.attached)
+        pet.update(InteractionState(loading = false), foreground = false, enabled = true, permitted = true)
+        assertTrue("Completion must retain idle pet", window.attached)
+        window.view!!.described("任务悬浮球")!!.performClick()
+        assertNotNull(window.view!!.described("返回应用"))
+        assertNull(window.view!!.described("停止当前任务"))
+    }
+
     @Test fun `pet stays inside the screen and keeps the ball beside the tray`() {
         assertEquals(PetFrame(0, 0, 56, 56, true), petFrame(-20, -5, false, 400, 800, 56, 196, 128))
         assertEquals(PetFrame(344, 744, 56, 56, true), petFrame(999, 999, false, 400, 800, 56, 196, 128))
@@ -37,14 +78,12 @@ class PetOverlayTest {
         assertTrue(left.y >= 0 && left.y + left.height <= 800)
     }
 
-    @Test fun `pet is shown only outside the app for an occupied run that is not tucked`() {
-        val target = PetTarget(ConversationId("c"), "整理相册", ExecutionId("run"), ExecutionPhase.RUNNING)
-        assertFalse(petShouldShow(target, foreground = true, enabled = true, permitted = true, tuckedExecution = null))
-        assertFalse(petShouldShow(target, false, false, true, null))
-        assertFalse(petShouldShow(target, false, true, false, null))
-        assertFalse(petShouldShow(null, false, true, true, null))
-        assertFalse(petShouldShow(target, false, true, true, "run"))
-        assertTrue(petShouldShow(target, false, true, true, null))
+    @Test fun `pet is shown outside the app when enabled and not tucked`() {
+        assertFalse(petShouldShow(foreground = true, enabled = true, permitted = true, tucked = false))
+        assertFalse(petShouldShow(false, false, true, false))
+        assertFalse(petShouldShow(false, true, false, false))
+        assertFalse(petShouldShow(false, true, true, true))
+        assertTrue(petShouldShow(false, true, true, false))
         assertEquals("停止中", petStatus(ExecutionPhase.CANCELLING))
         assertEquals("等待确认", petStatus(ExecutionPhase.AWAITING_APPROVAL))
         assertEquals("正在执行", petStatus(ExecutionPhase.FAILED))
@@ -67,7 +106,7 @@ class PetOverlayTest {
         pet.update(running("run"), foreground = false, enabled = true, permitted = false)
         assertFalse(window.attached)
         pet.update(running(null), foreground = false, enabled = true, permitted = true)
-        assertFalse(window.attached)
+        assertTrue(window.attached)
         pet.update(running("run"), foreground = false, enabled = true, permitted = true)
         val ballSize = petPx(PET_BALL_DP, context.resources.displayMetrics.density).coerceAtLeast(1)
         assertEquals(100, window.frame?.x)

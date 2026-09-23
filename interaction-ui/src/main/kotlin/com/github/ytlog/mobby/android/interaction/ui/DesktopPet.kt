@@ -97,9 +97,9 @@ class DesktopPet internal constructor(
     private val window: PetWindow,
     private val prefs: android.content.SharedPreferences,
     private val stopRun: (ExecutionId) -> Unit,
-    private val openConversation: (ConversationId) -> Unit,
+    private val openConversation: (ConversationId?) -> Unit,
 ) {
-    constructor(context: Context, onStop: (ExecutionId) -> Unit, onOpen: (ConversationId) -> Unit) : this(
+    constructor(context: Context, onStop: (ExecutionId) -> Unit, onOpen: (ConversationId?) -> Unit) : this(
         context.applicationContext,
         SystemPetWindow(context.applicationContext),
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE),
@@ -144,7 +144,6 @@ class DesktopPet internal constructor(
     private fun refresh() = update(lastState, lastForeground, lastEnabled, lastPermitted)
 
     private fun showFrame() {
-        val target = target ?: return
         val metrics = metrics()
         if (metrics.screenW < metrics.ball || metrics.screenH < metrics.ball) {
             window.detach()
@@ -153,7 +152,7 @@ class DesktopPet internal constructor(
             return
         }
         val frame = session.place(metrics.screenW, metrics.screenH, metrics.ball, metrics.trayW, metrics.trayH)
-        val key = RenderKey(target.execution.value, target.phase, session.expanded, frame.ballOnRight, target.title)
+        val key = RenderKey(target?.execution?.value, target?.phase, session.expanded, frame.ballOnRight, target?.title)
         if (rendered == key && window.attached) {
             if (applied != frame) {
                 applied = frame
@@ -166,8 +165,8 @@ class DesktopPet internal constructor(
         }
     }
 
-    private fun petContent(target: PetTarget, frame: PetFrame, metrics: PetMetrics): View {
-        val ball = PetBallView(context, target.phase).apply {
+    private fun petContent(target: PetTarget?, frame: PetFrame, metrics: PetMetrics): View {
+        val ball = PetBallView(context, target?.phase).apply {
             contentDescription = "任务悬浮球"
             onTap = {
                 session.expanded = !session.expanded
@@ -212,7 +211,7 @@ class DesktopPet internal constructor(
         layoutParams = LinearLayout.LayoutParams(width, 1)
     }
 
-    private fun tray(target: PetTarget, width: Int, density: Float): View {
+    private fun tray(target: PetTarget?, width: Int, density: Float): View {
         val pad = petPx(12, density)
         return LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -222,23 +221,22 @@ class DesktopPet internal constructor(
                 cornerRadius = 16 * density
             }
             layoutParams = LinearLayout.LayoutParams(width, ViewGroup.LayoutParams.MATCH_PARENT)
-            addView(label(target.title, MobbyColors.Dark.ink.toArgb(), 15f, bold = true))
-            addView(label(petStatus(target.phase), MobbyColors.Dark.muted.toArgb(), 13f, bold = false))
+            addView(label(target?.title ?: "mobby", MobbyColors.Dark.ink.toArgb(), 15f, bold = true))
+            addView(label(if (target == null) "暂无执行中的任务" else petStatus(target.phase), MobbyColors.Dark.muted.toArgb(), 13f, bold = false))
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
-                val stopEnabled = petCanStop(target.phase)
-                addView(action("停止", "停止当前任务", stopEnabled) {
+                if (target != null) addView(action("停止", "停止当前任务", petCanStop(target.phase)) {
                     session.expanded = false
                     stopRun(target.execution)
                     refresh()
                 })
-                addView(action("打开", "回到对话", true) {
+                addView(action(if (target == null) "返回应用" else "打开", if (target == null) "返回应用" else "回到对话", true) {
                     session.expanded = false
-                    openConversation(target.conversation)
+                    openConversation(target?.conversation)
                     refresh()
                 })
                 addView(action("收起", "收起悬浮球", true) {
-                    session.tuck(target.execution.value)
+                    session.tuck(target?.execution?.value)
                     refresh()
                 })
             })
@@ -272,7 +270,7 @@ class DesktopPet internal constructor(
     }
 
     private data class PetMetrics(val screenW: Int, val screenH: Int, val density: Float, val ball: Int, val trayW: Int, val trayH: Int)
-    private data class RenderKey(val execution: String, val phase: ExecutionPhase?, val expanded: Boolean, val ballOnRight: Boolean, val title: String)
+    private data class RenderKey(val execution: String?, val phase: ExecutionPhase?, val expanded: Boolean, val ballOnRight: Boolean, val title: String?)
 
     companion object {
         const val PREFS = "pet-overlay"

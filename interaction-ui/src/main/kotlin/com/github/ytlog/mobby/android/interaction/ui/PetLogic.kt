@@ -41,12 +41,11 @@ internal fun petStatus(phase: ExecutionPhase?): String = when (phase) {
 internal fun petCanStop(phase: ExecutionPhase?) = phase != ExecutionPhase.CANCELLING
 
 internal fun petShouldShow(
-    target: PetTarget?,
     foreground: Boolean,
     enabled: Boolean,
     permitted: Boolean,
-    tuckedExecution: String?,
-): Boolean = target != null && !foreground && enabled && permitted && tuckedExecution != target.execution.value
+    tucked: Boolean,
+): Boolean = !foreground && enabled && permitted && !tucked
 
 internal fun petFrame(
     ballX: Int,
@@ -84,7 +83,8 @@ internal fun ballOrigin(frame: PetFrame, ball: Int): Pair<Int, Int> {
 }
 
 internal class PetSession {
-    var tuckedExecution: String? = null
+    private var tucked = false
+    private var tuckedExecution: String? = null
     var expanded: Boolean = false
     var ballX: Int? = null
     var ballY: Int? = null
@@ -92,9 +92,8 @@ internal class PetSession {
         private set
 
     fun visible(target: PetTarget?, foreground: Boolean, enabled: Boolean, permitted: Boolean): Boolean {
-        if (target == null) tuckedExecution = null
-        else if (tuckedExecution != null && tuckedExecution != target.execution.value) tuckedExecution = null
-        val show = petShouldShow(target, foreground, enabled, permitted, tuckedExecution)
+        if (tucked && (tuckedExecution != target?.execution?.value || foreground || !enabled)) tucked = false
+        val show = petShouldShow(foreground, enabled, permitted, tucked)
         if (!show) {
             expanded = false
             frame = null
@@ -130,7 +129,8 @@ internal class PetSession {
         return moved
     }
 
-    fun tuck(execution: String) {
+    fun tuck(execution: String?) {
+        tucked = true
         tuckedExecution = execution
         expanded = false
         frame = null

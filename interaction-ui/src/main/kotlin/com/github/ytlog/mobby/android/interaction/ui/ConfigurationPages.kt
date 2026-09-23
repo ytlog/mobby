@@ -250,7 +250,7 @@ import kotlinx.coroutines.*
             SettingsGroup {
                 SettingsToggle("桌面悬浮球", petEnabled, setPet)
             }
-            SettingsCaption("离开应用且任务还在执行时，桌面上会出现一只小宠物。点开后可以停止任务或回到对话，拖动可以换位置。")
+            SettingsCaption("离开应用后显示悬浮球。点按可返回应用；有任务执行时可停止任务或回到对话，拖动可调整位置。")
             if (petEnabled && !petPermitted) SettingsCaption("需要允许显示在其他应用的上层。", error = true)
             SettingsGroup {
                 SettingsItem("已归档与最近删除", { navigate("archived") })
