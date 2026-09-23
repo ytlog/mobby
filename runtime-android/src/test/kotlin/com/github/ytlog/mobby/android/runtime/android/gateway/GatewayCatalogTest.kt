@@ -1,4 +1,4 @@
-package com.github.ytlog.mobby.android.runtime.android
+package com.github.ytlog.mobby.android.runtime.android.gateway
 
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*

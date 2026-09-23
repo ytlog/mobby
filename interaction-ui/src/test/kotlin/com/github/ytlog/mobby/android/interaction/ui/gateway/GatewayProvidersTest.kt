@@ -1,4 +1,6 @@
-package com.github.ytlog.mobby.android.interaction.ui
+package com.github.ytlog.mobby.android.interaction.ui.gateway
+
+import com.github.ytlog.mobby.android.interaction.ui.*
 
 import com.github.ytlog.mobby.android.interaction.domain.AgentId
 import org.junit.Assert.assertEquals

@@ -1,4 +1,4 @@
-package com.github.ytlog.mobby.android.interaction.ui
+package com.github.ytlog.mobby.android.interaction.ui.gateway
 
 import com.github.ytlog.mobby.android.interaction.domain.AgentId
 

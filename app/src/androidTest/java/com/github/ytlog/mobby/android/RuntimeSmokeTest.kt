@@ -2,9 +2,9 @@ package com.github.ytlog.mobby.android
 
 import com.github.ytlog.mobby.android.runtime.engine.AgentMode
 import com.github.ytlog.mobby.android.runtime.android.RuntimeEnvironment
-import com.github.ytlog.mobby.android.runtime.android.GatewayStore
-import com.github.ytlog.mobby.android.runtime.android.GatewayConfig
-import com.github.ytlog.mobby.android.runtime.android.GatewayProtocol
+import com.github.ytlog.mobby.android.runtime.android.gateway.GatewayStore
+import com.github.ytlog.mobby.android.runtime.android.gateway.GatewayConfig
+import com.github.ytlog.mobby.android.runtime.android.gateway.GatewayProtocol
 
 import androidx.test.platform.app.InstrumentationRegistry
 import com.libtermux.executor.OutputLine

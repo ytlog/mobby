@@ -1,4 +1,6 @@
-package com.github.ytlog.mobby.android.interaction.ui
+package com.github.ytlog.mobby.android.interaction.ui.gateway
+
+import com.github.ytlog.mobby.android.interaction.ui.*
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.*

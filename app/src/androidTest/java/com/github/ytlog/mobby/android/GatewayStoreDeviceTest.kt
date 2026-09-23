@@ -4,9 +4,9 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.content.SharedPreferences
 import androidx.test.platform.app.InstrumentationRegistry
-import com.github.ytlog.mobby.android.runtime.android.GatewayChoice
-import com.github.ytlog.mobby.android.runtime.android.GatewayRecord
-import com.github.ytlog.mobby.android.runtime.android.GatewayStore
+import com.github.ytlog.mobby.android.runtime.android.gateway.GatewayChoice
+import com.github.ytlog.mobby.android.runtime.android.gateway.GatewayRecord
+import com.github.ytlog.mobby.android.runtime.android.gateway.GatewayStore
 import com.github.ytlog.mobby.android.runtime.engine.AgentMode
 import org.junit.Assert.*
 import org.junit.Test

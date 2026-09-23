@@ -65,6 +65,10 @@ Claude 使用双向 stream-json 控制通道。手机上的执行边界是应用
 
 OpenCode 的内置 `openai` provider 固定走 Responses。桥接把 `OPENAI_API_KEY` 设为本地令牌，并用 `OPENCODE_CONFIG_CONTENT` 把 `baseURL` 指到本地桥接的 `/v1`；上游地址和密钥不会交给 CLI。设备门槛 `android-codex-network.cjs` 仍只覆盖 Codex 与 Claude Code，不能当作 OpenCode 的手机验收。
 
+## 代码位置
+
+`runtime-android` 的 `gateway` 包管理加密存储、网关管理接口、模型目录与连接检查；`interaction-ui` 的 `gateway` 包管理服务预设、网关列表和编辑界面。跨模块的请求与摘要类型仍由现有 `runtime-api`、`interaction-domain` 契约提供。
+
 ## 验证命令
 
 - `node --test runtime/gateway-tests/bridge.test.cjs`：同协议字段/流完整性、辅助接口、鉴权、拒绝转换、输入限制、取消、断流与错误脱敏。

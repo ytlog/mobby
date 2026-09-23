@@ -1,4 +1,4 @@
-package com.github.ytlog.mobby.android.runtime.android
+package com.github.ytlog.mobby.android.runtime.android.gateway
 
 import org.junit.Assert.*
 import org.junit.Test
