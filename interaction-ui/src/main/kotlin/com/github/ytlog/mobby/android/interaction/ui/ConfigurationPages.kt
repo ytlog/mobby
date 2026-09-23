@@ -204,7 +204,7 @@ import kotlinx.coroutines.*
     }
 }
 @Composable internal fun PageHeader(title: String, back: () -> Unit, trailing: @Composable () -> Unit = {}) {
-    Box(Modifier.fillMaxWidth().heightIn(min = 56.dp)) {
+    Box(Modifier.fillMaxWidth().heightIn(min = 56.dp), contentAlignment = Alignment.CenterStart) {
         ActionIcon("返回", back, AppIcons.Back)
         Text(title, Modifier.align(Alignment.Center).padding(horizontal = 48.dp), style = MaterialTheme.typography.titleMedium)
         Box(Modifier.align(Alignment.CenterEnd)) { trailing() }
