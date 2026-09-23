@@ -314,8 +314,8 @@ import kotlinx.coroutines.*
                 }
             }
             if (notice.isNotBlank()) SettingsCaption(notice, error = notice.contains("未能"))
-            if (missing.isNotEmpty()) SettingsGroup { SettingsAction("添加网关") { open(missing.first()) } }
-            SettingsCaption("每个 Agent 保存一个网关。点按网关可用于当前会话，并设为新会话默认；右侧可编辑地址、模型和密钥。")
+            SettingsGroup { SettingsAction("添加网关") { open(missing.firstOrNull() ?: AgentId.CODEX) } }
+            SettingsCaption("目前每个 Agent 保存一个活动网关。创建时可勾选多个 Agent，一次写入各自的原生协议地址；已配置的 Agent 会被更新。点按列表项可用于当前会话和新会话。")
         }
     }
 }
@@ -327,7 +327,7 @@ internal fun modelMenuLabel(id: String, names: Map<String, String>): String {
 
 private fun gatewaySummary(profile: GatewayProfile): String {
     val providerId = GatewayProviders.match(profile.agent, profile.endpoint)
-    val provider = GatewayProviders.forAgent(profile.agent).firstOrNull { it.id == providerId }?.label
+    val provider = GatewayProviders.find(providerId)?.label
         ?: runCatching { java.net.URI(profile.endpoint).host }.getOrNull()
         ?: "自定义"
     val catalog = when {
@@ -343,6 +343,7 @@ private fun gatewaySummary(profile: GatewayProfile): String {
     check: suspend (GatewayProfile) -> DataResult<GatewayCheckReport>, initial: AgentId = AgentId.CODEX,
     onSaved: ((String) -> Unit)? = null) {
     var agent by rememberSaveable { mutableStateOf(initial) }
+    var selectedAgents by remember { mutableStateOf(setOf(initial)) }
     var providerId by remember { mutableStateOf(GatewayProviders.CUSTOM) }
     var endpoint by remember { mutableStateOf("") }
     var model by remember { mutableStateOf("") }
@@ -363,7 +364,7 @@ private fun gatewaySummary(profile: GatewayProfile): String {
     val protocolSupported = protocol == nativeProtocol
     var connectionNotice by remember(profile, endpoint, model, protocol, keyEdited) { mutableStateOf("") }
     LaunchedEffect(agent) { notice = "" }
-    LaunchedEffect(agent, profile) {
+    LaunchedEffect(initial) {
         endpoint = profile?.endpoint.orEmpty()
         providerId = GatewayProviders.match(agent, endpoint)
         model = profile?.model.orEmpty()
@@ -373,21 +374,19 @@ private fun gatewaySummary(profile: GatewayProfile): String {
     Column(Modifier.fillMaxSize()) {
         PageHeader(if (profile?.endpoint?.isNotBlank() == true) "编辑网关" else "添加网关", back)
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            SettingsGroup {
-                AgentId.values().forEachIndexed { index, value ->
-                    if (index > 0) GroupDivider()
-                    ChoiceRow(value.label(), agent == value, { agent = value }, enabled = !busy, icon = value.glyph())
-                }
-            }
-            SettingsCaption("${agent.label()} 使用 $nativeLabel，通过本地桥接连接网关。")
-            val providers = GatewayProviders.forAgent(agent)
+            SettingsCaption("选择服务后可勾选支持的 Agent。Codex / OpenCode 使用 Responses，Claude Code 使用 Messages。")
+            val providers = GatewayProviders.all
             SettingsGroup("服务") {
                 providers.forEachIndexed { index, provider ->
                     if (index > 0) GroupDivider()
                     ChoiceRow(provider.label, providerId == provider.id, {
                         if (providerId != provider.id) {
                             providerId = provider.id
-                            endpoint = provider.endpoint
+                            val next = selectedAgents.intersect(provider.agents).ifEmpty { setOf(provider.agents.first()) }
+                            selectedAgents = next
+                            agent = next.first()
+                            protocol = if (agent == AgentId.CLAUDE_CODE) "MESSAGES" else "RESPONSES"
+                            endpoint = provider.endpoint(agent).orEmpty()
                             notice = ""
                         }
                     }, enabled = !busy)
@@ -401,7 +400,26 @@ private fun gatewaySummary(profile: GatewayProfile): String {
                     }
                 }, enabled = !busy)
             }
-            SettingsCaption("切换服务只更新地址，请确认模型和密钥仍属于该服务。Google Gemini 目前没有 Responses 或 Messages 接口，不能直接选择。")
+            val availableAgents = GatewayProviders.find(providerId)?.agents ?: AgentId.values().toSet()
+            SettingsGroup("支持的 Agent") {
+                AgentId.values().forEachIndexed { index, value ->
+                    if (index > 0) GroupDivider()
+                    Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).clickable(enabled = !busy && value in availableAgents) {
+                        selectedAgents = if (value in selectedAgents) selectedAgents - value else selectedAgents + value
+                        if (agent !in selectedAgents) agent = selectedAgents.firstOrNull() ?: value
+                        protocol = if (agent == AgentId.CLAUDE_CODE) "MESSAGES" else "RESPONSES"
+                        if (providerId != GatewayProviders.CUSTOM) endpoint = GatewayProviders.find(providerId)?.endpoint(agent).orEmpty()
+                        notice = ""
+                    }.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(value in selectedAgents, null, enabled = !busy && value in availableAgents)
+                        Spacer(Modifier.width(8.dp))
+                        Text(value.label(), color = if (value in availableAgents) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            if (selectedAgents.size > 1 && providerId != GatewayProviders.CUSTOM) SettingsCaption(
+                selectedAgents.joinToString(" · ") { "${it.label()}: ${GatewayProviders.find(providerId)?.endpoint(it)}" })
+            SettingsCaption("切换服务只更新地址，请确认模型和密钥仍属于该服务。仅勾选服务提供原生接口的 Agent。")
             if (!protocolSupported) {
                 SettingsCaption("当前保存的协议不适用于此 Agent；暂不提供协议转换。", error = true)
                 SettingsGroup { SettingsAction("改用 $nativeLabel", enabled = !busy) { protocol = nativeProtocol; notice = "" } }
@@ -419,26 +437,38 @@ private fun gatewaySummary(profile: GatewayProfile): String {
                 }
             }
             SettingsCaption("凭据加密保存在设备。保存后会拉取模型列表，供会话里切换模型；保存成功不代表连通性验证通过。")
+            if (selectedAgents.size > 1 && !keyEdited) SettingsCaption("同时配置多个 Agent 时请填写 API Key；各 Agent 的凭据分别加密保存。")
             if (endpoint.trim().startsWith("http://", ignoreCase = true)) SettingsCaption("HTTP 会明文传输密钥和内容，仅用于可信网络；建议使用 HTTPS。", error = true)
             SettingsGroup {
-                SettingsAction("保存当前配置", enabled = !busy && protocolSupported) {
-                    val edit = GatewayEdit(agent, endpoint.trim(), model.trim(), protocol, if (keyEdited) key.toCharArray() else null)
+                SettingsAction("保存当前配置", enabled = !busy && selectedAgents.isNotEmpty() &&
+                    (selectedAgents.size > 1 || protocolSupported) && (selectedAgents.size == 1 || keyEdited)) {
                     saving = true; notice = ""
                     submit {
                         var leave: String? = null
                         try {
-                            when (val result = save(edit)) {
-                                is GatewaySaveResult.Saved -> {
-                                    key = ""; keyEdited = false; refresh()
-                                    leave = when {
+                            var completed = 0
+                            for (target in AgentId.values().filter { it in selectedAgents }) {
+                                val native = if (target == AgentId.CLAUDE_CODE) "MESSAGES" else "RESPONSES"
+                                val targetEndpoint = GatewayProviders.find(providerId)?.endpoint(target) ?: endpoint.trim()
+                                val edit = GatewayEdit(target, targetEndpoint, model.trim(),
+                                    if (selectedAgents.size == 1) protocol else native,
+                                    if (keyEdited) key.toCharArray() else null)
+                                val result = try { save(edit) } finally { edit.credential?.fill('\u0000') }
+                                when (result) {
+                                    is GatewaySaveResult.Saved -> { completed++; leave = when {
                                         result.catalogError != null -> "配置已保存，模型列表未能拉取。${result.catalogError}"
                                         result.models.isNotEmpty() -> "配置已保存，已拉取 ${result.models.size} 个模型，尚未测试连接"
                                         else -> "配置已保存，尚未测试连接"
-                                    }
+                                    } }
+                                    is GatewaySaveResult.Failed -> { notice = if (completed > 0) "已保存 $completed 个 Agent，${target.label()} 保存失败：${result.message}" else result.message; break }
                                 }
-                                is GatewaySaveResult.Failed -> notice = result.message
                             }
-                        } finally { edit.credential?.fill('\u0000'); saving = false }
+                            if (completed > 0) {
+                                key = ""; keyEdited = false; refresh()
+                                if (notice.isBlank() && completed > 1) leave = "已为 $completed 个 Agent 保存配置，尚未测试连接"
+                                if (notice.isNotBlank()) leave = null
+                            }
+                        } finally { saving = false }
                         leave?.let { message -> if (onSaved != null) onSaved(message) else notice = message }
                     }
                 }

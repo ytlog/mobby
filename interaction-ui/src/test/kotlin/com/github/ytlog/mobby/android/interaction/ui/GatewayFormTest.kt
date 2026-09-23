@@ -18,13 +18,13 @@ class GatewayFormTest {
     @get:Rule val compose = createComposeRule()
     private val profile = GatewayProfile(AgentId.CODEX, "CODEX", 1, "https://gateway.invalid/v1", "test-model", "RESPONSES", true)
     private fun field(label: String) = compose.onNode(hasSetTextAction() and hasText(label))
-    @Test fun `switch to unconfigured agent clears previous input and secret`() {
+    @Test fun `checking another agent retains unsaved fields and requires a shared key`() {
         compose.setContent { MaterialTheme { GatewayForm(listOf(profile), {}, { GatewaySaveResult.Saved(emptyList(), null) }, {}, {}, { DataResult.Failed("unused") }) } }
         field("已保存密钥，输入可替换").performScrollTo().performTextReplacement("synthetic-test-secret")
         compose.onNodeWithText("Claude Code").performScrollTo().performClick()
-        field("网关地址").assertTextEquals("网关地址", "")
-        field("模型名称").assertTextEquals("模型名称", "")
-        field("API Key（无鉴权可留空）").assertTextEquals("API Key（无鉴权可留空）", "")
+        field("网关地址").assertTextEquals("网关地址", "https://gateway.invalid/v1")
+        field("模型名称").assertTextEquals("模型名称", "test-model")
+        field("API Key（无鉴权可留空）").assertExists()
     }
     @Test fun `saving freezes all fields and reports result for the submitted agent only`() {
         var pending: (suspend () -> Unit)? = null
@@ -142,16 +142,33 @@ class GatewayFormTest {
         field("网关地址").assertTextEquals("网关地址", "https://openrouter.ai/api/v1")
     }
 
-    @Test fun `claude code lists only messages services`() {
+    @Test fun `provider limits unsupported agent checkboxes`() {
         compose.setContent { MaterialTheme { GatewayForm(listOf(profile), {}, { GatewaySaveResult.Saved(emptyList(), null) }, {}, {}, { DataResult.Failed("unused") }) } }
-        compose.onNodeWithText("Claude Code").performScrollTo().performClick()
-        compose.onNodeWithText("Anthropic").assertExists()
+        compose.onNodeWithText("OpenAI").performScrollTo().performClick()
+        compose.onNodeWithText("Claude Code").assertIsNotEnabled()
         compose.onNodeWithText("DeepSeek").assertExists()
+        compose.onNodeWithText("Anthropic").assertExists()
         compose.onNodeWithText("OpenRouter").assertExists()
-        compose.onNodeWithText("OpenAI").assertDoesNotExist()
-        compose.onNodeWithText("xAI").assertDoesNotExist()
-        compose.onNodeWithText("Groq").assertDoesNotExist()
         compose.onNodeWithText("自定义").assertExists()
+    }
+
+    @Test fun `one preset saves separate native routes for every selected agent`() {
+        val requests = mutableListOf<Triple<AgentId, String, String>>()
+        compose.setContent { MaterialTheme { GatewayForm(emptyList(), { runBlocking { it() } }, { edit ->
+            requests += Triple(edit.agent, edit.endpoint, edit.protocol)
+            GatewaySaveResult.Saved(emptyList(), null)
+        }, {}, {}, { DataResult.Failed("unused") }) } }
+        compose.onNodeWithText("DeepSeek").performScrollTo().performClick()
+        field("模型名称").performScrollTo().performTextReplacement("deepseek-flash")
+        field("API Key（无鉴权可留空）").performScrollTo().performTextReplacement("fake-key")
+        compose.onNodeWithText("Claude Code").performScrollTo().performClick()
+        compose.onNodeWithText("OpenCode").performScrollTo().performClick()
+        compose.onNodeWithText("保存当前配置").performScrollTo().performClick()
+        assertEquals(listOf(
+            Triple(AgentId.CODEX, "https://api.deepseek.com", "RESPONSES"),
+            Triple(AgentId.CLAUDE_CODE, "https://api.deepseek.com/anthropic/v1", "MESSAGES"),
+            Triple(AgentId.OPEN_CODE, "https://api.deepseek.com", "RESPONSES")
+        ), requests)
     }
 
     @Test fun `saved catalog tells how many models were stored`() {

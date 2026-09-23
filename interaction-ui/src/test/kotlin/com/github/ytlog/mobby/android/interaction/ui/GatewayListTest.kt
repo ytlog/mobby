@@ -92,7 +92,7 @@ class GatewayListTest {
         compose.onNodeWithText("添加网关").performClick()
         compose.onNodeWithText("添加网关").assertExists()
         compose.onNodeWithText("模型名称").assertExists()
-        compose.onNodeWithText("Codex 使用 Responses，通过本地桥接连接网关。").assertExists()
+        compose.onNodeWithText("选择服务后可勾选支持的 Agent。Codex / OpenCode 使用 Responses，Claude Code 使用 Messages。").assertExists()
     }
 
     @Test fun `catalog failure is shown on the configured row`() {
