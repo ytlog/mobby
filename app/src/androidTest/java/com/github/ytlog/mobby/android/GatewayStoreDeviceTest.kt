@@ -7,6 +7,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.github.ytlog.mobby.android.runtime.android.gateway.GatewayChoice
 import com.github.ytlog.mobby.android.runtime.android.gateway.GatewayRecord
 import com.github.ytlog.mobby.android.runtime.android.gateway.GatewayStore
+import com.github.ytlog.mobby.android.runtime.android.gateway.GatewayProtocol
 import com.github.ytlog.mobby.android.runtime.engine.AgentMode
 import org.junit.Assert.*
 import org.junit.Test
@@ -26,9 +27,9 @@ class GatewayStoreDeviceTest {
             val firstId = UUID.randomUUID().toString()
             val secondId = UUID.randomUUID().toString()
             val first = store.save(GatewayRecord(firstId, 0, mapOf(
-                AgentMode.CODEX to "https://one.test/v1",
-                AgentMode.CLAUDE to "https://one.test/anthropic/v1"), "shared", "synthetic-key"))
-            val second = store.save(GatewayRecord(secondId, 0, mapOf(AgentMode.CODEX to "https://two.test/v1"), "other", ""))
+                GatewayProtocol.RESPONSES to "https://one.test/v1",
+                GatewayProtocol.MESSAGES to "https://one.test/anthropic/v1"), "shared", "synthetic-key"))
+            val second = store.save(GatewayRecord(secondId, 0, mapOf(GatewayProtocol.RESPONSES to "https://two.test/v1"), "other", ""))
             assertEquals(2, store.list().size)
             assertEquals("https://one.test/anthropic/v1", store.load(firstId).config(AgentMode.CLAUDE).endpoint)
             assertThrows(IllegalArgumentException::class.java) { store.load(secondId).config(AgentMode.CLAUDE) }

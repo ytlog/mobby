@@ -1,5 +1,7 @@
 package com.github.ytlog.mobby.android.runtime.android
 
+import com.github.ytlog.mobby.android.runtime.api.gateway.*
+
 import com.github.ytlog.mobby.android.runtime.android.gateway.*
 
 import android.app.*
@@ -190,6 +192,7 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
     private val gatewayAdmin by lazy { GatewayAdmin(this) }
     override suspend fun validateGateway(profile: GatewayProfileRef, agent: AgentId) = gatewayAdmin.validateGateway(profile, agent)
     override suspend fun listGatewayProfiles() = gatewayAdmin.listGatewayProfiles()
+    override suspend fun inspectGateway(request: InspectGatewayRequest) = gatewayAdmin.inspectGateway(request)
     override suspend fun defaultGateway() = gatewayAdmin.defaultGateway()
     override suspend fun selectDefaultGateway(selection: GatewaySelection) = gatewayAdmin.selectDefaultGateway(selection)
     override suspend fun saveGatewayProfile(request: SaveGatewayRequest) = gatewayAdmin.saveGatewayProfile(request)

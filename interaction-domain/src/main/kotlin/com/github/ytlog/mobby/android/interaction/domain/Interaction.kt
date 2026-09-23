@@ -1,5 +1,7 @@
 package com.github.ytlog.mobby.android.interaction.domain
 
+import com.github.ytlog.mobby.android.interaction.domain.gateway.*
+
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
@@ -85,17 +87,6 @@ data class InteractionState(
     val occupied: ConversationSummary? get() = conversations.firstOrNull { it.occupied }
 }
 data class AgentOption(val agent: AgentId, val models: Map<String, Set<String>>, val unavailable: String?, val resume: Boolean, val skills: Set<String>, val resources: Boolean = false, val images: Boolean = false, val approvals: Boolean = false, val modelNames: Map<String, String> = emptyMap())
-data class GatewayModel(val id: String, val name: String)
-data class GatewayProfile(val agent: AgentId, val id: String, val version: Long, val endpoint: String, val model: String, val protocol: String, val hasCredential: Boolean, val models: List<GatewayModel> = emptyList(), val catalogError: String? = null)
-data class GatewayDefault(val agent: AgentId, val id: String, val version: Long)
-data class GatewayCheckReport(val passed: Boolean, val message: String)
-sealed interface GatewaySaveResult {
-    data class Saved(val models: List<GatewayModel>, val catalogError: String?) : GatewaySaveResult
-    data class Failed(val message: String) : GatewaySaveResult
-}
-class GatewayEdit(val id: String?, val endpoints: Map<AgentId, String>, val model: String, val credential: CharArray?) {
-    override fun toString() = "GatewayEdit(id=$id, agents=${endpoints.keys})"
-}
 data class SystemStatus(val ready: Boolean = false, val connected: Boolean = false, val message: String = "连接中", val diagnosticBusy: Boolean = false)
 data class DiagnosticOutput(val phase: ExecutionPhase?, val lines: List<String>)
 sealed interface OperationResult {
@@ -147,6 +138,7 @@ interface SystemPort {
     suspend fun checkGateway(profile: GatewayProfile): DataResult<GatewayCheckReport>
     suspend fun gateways(): List<GatewayProfile>
     suspend fun saveGateway(edit: GatewayEdit): GatewaySaveResult
+    suspend fun inspectGateway(edit: GatewayEdit): DataResult<GatewayInspectionResult> = DataResult.Failed("当前运行环境不支持网关探测")
     suspend fun defaultGateway(): GatewayDefault?
     suspend fun selectDefaultGateway(profile: GatewayProfile): OperationResult
     suspend fun deleteGateway(id: String): OperationResult
@@ -313,6 +305,7 @@ class InteractionUseCases(
         if (result is GatewaySaveResult.Saved) system.gateways().filter { it.id == edit.id }.forEach { repository.updateGateway(it) }
         return result
     }
+    suspend fun inspectGateway(edit: GatewayEdit) = system.inspectGateway(edit)
     suspend fun initialize() = system.initialize()
     suspend fun shell(command: String) = system.shell(command)
     suspend fun stopShell() = system.stopShell()

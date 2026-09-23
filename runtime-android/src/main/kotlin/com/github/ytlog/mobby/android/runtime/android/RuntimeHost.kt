@@ -1,5 +1,7 @@
 package com.github.ytlog.mobby.android.runtime.android
 
+import com.github.ytlog.mobby.android.runtime.api.gateway.*
+
 import android.app.PendingIntent
 import android.content.*
 import android.os.IBinder

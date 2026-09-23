@@ -7,14 +7,15 @@ import com.github.ytlog.mobby.android.runtime.engine.AgentMode
 class GatewayConfigTest {
     @Test fun `one gateway stores separate native endpoints and roundtrips without losing credentials`() {
         val original = GatewayRecord("e1335130-8548-4c86-935c-b10918180006", 3,
-            mapOf(AgentMode.CODEX to "https://example.test/v1", AgentMode.CLAUDE to "https://example.test/anthropic/v1"),
+            mapOf(GatewayProtocol.RESPONSES to "https://example.test/v1", GatewayProtocol.MESSAGES to "https://example.test/anthropic/v1"),
             "shared-model", "synthetic-key", listOf(GatewayModel("shared-model", "Shared")))
         original.validate()
         val restored = GatewayRecord.parse(original.json())
         assertEquals(original, restored)
         assertEquals(GatewayProtocol.RESPONSES, restored.config(AgentMode.CODEX).protocol)
         assertEquals(GatewayProtocol.MESSAGES, restored.config(AgentMode.CLAUDE).protocol)
-        assertThrows(IllegalArgumentException::class.java) { restored.config(AgentMode.OPEN_CODE) }
+        assertEquals("https://example.test/v1", restored.config(AgentMode.OPEN_CODE).endpoint)
+        assertEquals(setOf(AgentMode.CODEX, AgentMode.OPEN_CODE, AgentMode.CLAUDE), restored.modes().toSet())
     }
     @Test fun roundtripKeepsProtocolAndLiteralValues() {
         val original = GatewayConfig("https://example.com/v1", "model-name", "key-with-quote\"", GatewayProtocol.RESPONSES)

@@ -1,34 +1,14 @@
 package com.github.ytlog.mobby.android.runtime.api
 
 import kotlinx.coroutines.flow.StateFlow
+import com.github.ytlog.mobby.android.runtime.api.gateway.*
 
 enum class EnvironmentPhase { INITIALIZING, READY, FAILED }
 data class EnvironmentSnapshot(val phase: EnvironmentPhase, val summary: String, val error: RuntimeError? = null)
-enum class GatewayProtocol { RESPONSES, MESSAGES }
-data class GatewayModelSummary(val id: String, val name: String)
-data class GatewayProfileSummary(
-    val ref: GatewayProfileRef, val agent: AgentId, val endpoint: String, val model: String,
-    val protocol: GatewayProtocol, val hasCredential: Boolean,
-    val models: List<GatewayModelSummary> = emptyList(), val catalogError: String? = null,
-)
-/** Short-lived memory only; never include in a DTO toString, journal, Flow, or SavedState. */
-class SecretInput(value: CharArray) {
-    private val chars = value.copyOf()
-    fun consume(): CharArray = chars.copyOf().also { chars.fill('\u0000') }
-    override fun toString() = "[redacted]"
-}
-data class GatewaySelection(val agent: AgentId, val profile: GatewayProfileRef)
-class SaveGatewayRequest(val id: String?, val endpoints: Map<AgentId, String>, val model: String,
-    val credential: SecretInput? = null) {
-    override fun toString() = "SaveGatewayRequest(id=$id, agents=${endpoints.keys})"
-}
 sealed interface AdminResult<out T> {
     data class Success<T>(val value: T) : AdminResult<T>
     data class Failed(val error: RuntimeError) : AdminResult<Nothing>
 }
-enum class GatewayCheckOutcome { SUCCEEDED, HTTP_ERROR, INCOMPLETE_RESPONSE, INVALID_RESPONSE, RESPONSE_TOO_LARGE, DNS_ERROR, TLS_ERROR, TIMEOUT, CONNECTION_ERROR }
-/** Contains no response body, endpoint or credential. A small protocol request is not a CLI acceptance test. */
-data class GatewayCheck(val profile: GatewayProfileRef, val outcome: GatewayCheckOutcome, val httpStatus: Int? = null)
 data class EventHistorySettings(val retentionDays: Int = 30, val budgetMiB: Int = 32, val outputRetentionDays: Int = 30, val outputBudgetMiB: Int = 256, val attachmentBudgetMiB: Int = 512) {
     init { require(retentionDays in 1..3650 && budgetMiB in 1..1024 && outputRetentionDays in 1..3650 && outputBudgetMiB in 1..4096 && attachmentBudgetMiB in 1..8192) }
 }
@@ -52,6 +32,7 @@ interface RuntimeAdminClient {
     suspend fun saveManualSkill(request: ManualSkillRequest): AdminResult<SkillSummary>
     suspend fun initialize(): AdminResult<Unit>
     suspend fun listGatewayProfiles(): AdminResult<List<GatewayProfileSummary>>
+    suspend fun inspectGateway(request: InspectGatewayRequest): AdminResult<GatewayInspectionSummary> = AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
     suspend fun saveGatewayProfile(request: SaveGatewayRequest): AdminResult<GatewayProfileSummary>
     suspend fun defaultGateway(): AdminResult<GatewaySelection?> = AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
     suspend fun selectDefaultGateway(selection: GatewaySelection): AdminResult<Unit> = AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))

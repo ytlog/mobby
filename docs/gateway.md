@@ -1,10 +1,10 @@
 # 网关接入
 
-「网关设置」按网关列出已经保存的配置，一个网关可勾选一个或多个 Agent；同一 Agent 也可使用多个网关。点按网关下的 Agent 会把这组网关与 Agent 用于当前会话的下一轮，并设为新建会话的默认组合。编辑、删除作用于整个网关。密钥可留空以连接无鉴权网关。默认选择与网关配置一起加密保存在设备上。已有任务的执行配置不会改变，保存成功只代表设备配置已保存。
+「网关设置」按网关列出已经保存的配置。应用探测网关的原生协议后自动生成可用 Agent；同一网关可能支持多个 Agent，同一 Agent 也可使用多个网关。点按网关下的 Agent 会把这组网关与 Agent 用于当前会话的下一轮，并设为新建会话的默认组合。新建会话时选择网关也会确定 Agent。编辑、删除作用于整个网关。密钥可留空以连接无鉴权网关。默认选择与网关配置一起加密保存在设备上。已有任务的执行配置不会改变。
 
-新建或编辑时，一个网关只保存一次模型和密钥，支持的 Agent 分别保存原生接口基址。预设服务根据接口支持范围启用复选框；自定义服务可为每个 Agent 分别填写地址。保存后生成独立网关 ID，后续编辑增加版本；已有会话引用旧版本时仍按当时的地址、模型与密钥运行。删除网关会删除其加密版本及默认选择，引用该网关的会话需要重新选择网关。旧版按 Agent 命名的配置槽位不参与新的列表或执行路径，需要重新创建网关。
+新建或编辑时，一个网关保存一次默认模型、密钥和用户筛选的模型列表，分别记录通过探测的 Responses 与 Messages 地址。预设服务填入候选地址；自定义服务可分别填写两种协议的地址。先探测，再保存；保存前重新探测，只有完整返回成功的原生协议才会写入可执行路由。保存后生成独立网关 ID，后续编辑增加版本；已有会话引用旧版本时仍按当时的地址、模型与密钥运行。删除网关会删除其加密版本及默认选择，引用该网关的会话需要重新选择网关。开发阶段直接采用当前存储结构，旧网关配置需要重新创建。
 
-保存之后，应用用同一地址和密钥请求 `GET {基址}/models`。Messages 会按 `has_more` 分页，最多四页。只保存模型 id 和显示名，不保存响应正文，也不把密钥写进列表。拉取失败时，网关配置仍然保留，模型切换暂时只有填写的默认模型，界面说明原因。成功后，会话里的模型菜单使用这份列表；下一轮把所选模型交给本地桥接，已保存的默认模型和密钥不变。模型列表接口通常不提供思考程度，因此这些模型仍显示为未开放调整。
+探测时应用请求 `GET {基址}/models`，Messages 会按 `has_more` 分页，最多四页。用户可搜索并勾选要在会话中使用的模型；默认模型始终保留。若模型列表不可用，可手动填写模型并探测协议。只保存所选模型的 id 和显示名，不保存响应正文，也不把密钥写进列表。下一轮把所选模型交给本地桥接。模型列表接口通常不提供思考程度，因此这些模型仍显示为未开放调整。
 
 | Agent | 唯一支持的协议 | 上游接口 |
 | --- | --- | --- |
@@ -12,25 +12,25 @@
 | OpenCode | Responses | `/responses` |
 | Claude Code | Messages | `/messages` |
 
-模型请求统一经过本地 Node 桥接，暂不提供任何协议转换。Chat Completions 不再作为可选协议；协议由 Agent 决定，用户只需勾选网关确实支持的 Agent。网关本身必须支持对应接口。
+模型请求统一经过本地 Node 桥接，暂不提供任何协议转换。Chat Completions 不作为可选协议；协议由 Agent 决定，用户无需手动指定网关支持的 Agent。探测会发送小型原生请求，可能产生少量费用；探测成功仅证明当前地址、密钥和模型可完成该协议请求。
 
 地址可为基础路径或完整接口路径，例如 `https://host/v1`、`https://host/v1/messages`；无路径时使用 `/v1`。自定义路径会保留，例如 `https://host/api/v2` 会追加原生接口。
 
 ## 服务选择
 
-服务预设列在一个表单中；选择后只允许勾选它有原生接口的 Agent。选择服务填入各 Agent 的基址，不替换模型或已保存密钥。再次打开时，地址与基址一致（忽略末尾斜线以及 `/responses`、`/messages`）就选中该服务；其余地址保持自定义。
+服务预设列在一个表单中，提供候选地址，不预先宣称 Agent 支持情况。选择服务填入 Responses 与 Messages 候选基址，不替换模型或已保存密钥。再次打开时，地址与基址一致（忽略末尾斜线以及 `/responses`、`/messages`）就选中该服务；其余地址保持自定义。
 
-| 服务 | Agent | 基址 |
+| 服务 | 候选协议 | 基址 |
 | --- | --- | --- |
-| OpenRouter | Codex、OpenCode、Claude Code | `https://openrouter.ai/api/v1` |
-| OpenAI | Codex、OpenCode | `https://api.openai.com/v1` |
-| xAI | Codex、OpenCode | `https://api.x.ai/v1` |
-| Groq | Codex、OpenCode | `https://api.groq.com/openai/v1` |
-| Anthropic | Claude Code | `https://api.anthropic.com/v1` |
-| DeepSeek | Codex、OpenCode；Claude Code | `https://api.deepseek.com`；`https://api.deepseek.com/anthropic/v1` |
-| 小米 MiMo | Codex、OpenCode；Claude Code | `https://api.xiaomimimo.com/v1`；`https://api.xiaomimimo.com/anthropic/v1` |
-| Kimi | Codex、OpenCode；Claude Code | `https://api.moonshot.ai/v1`；`https://api.moonshot.ai/anthropic/v1` |
-| 智谱 GLM | Codex、OpenCode；Claude Code | `https://open.bigmodel.cn/api/v1`；`https://open.bigmodel.cn/api/anthropic/v1` |
+| OpenRouter | Responses、Messages | `https://openrouter.ai/api/v1` |
+| OpenAI | Responses、Messages | `https://api.openai.com/v1` |
+| xAI | Responses、Messages | `https://api.x.ai/v1` |
+| Groq | Responses、Messages | `https://api.groq.com/openai/v1` |
+| Anthropic | Responses、Messages | `https://api.anthropic.com/v1` |
+| DeepSeek | Responses、Messages | `https://api.deepseek.com`；`https://api.deepseek.com/anthropic/v1` |
+| 小米 MiMo | Responses、Messages | `https://api.xiaomimimo.com/v1`；`https://api.xiaomimimo.com/anthropic/v1` |
+| Kimi | Responses、Messages | `https://api.moonshot.ai/v1`；`https://api.moonshot.ai/anthropic/v1` |
+| 智谱 GLM | Responses、Messages | `https://open.bigmodel.cn/api/v1`；`https://open.bigmodel.cn/api/anthropic/v1` |
 
 Google Gemini 目前提供的是 Chat Completions 和 Interactions，没有 Responses 或 Messages，因此不列入可执行选项。需要 Gemini 时，使用 OpenRouter 上的对应模型，或在自定义中填写已经提供上述原生接口的网关。Messages 基址必须包含服务要求的 `/v1`，桥接会在其后追加 `/messages`。
 
@@ -67,7 +67,7 @@ OpenCode 的内置 `openai` provider 固定走 Responses。桥接把 `OPENAI_API
 
 ## 代码位置
 
-`runtime-android` 的 `gateway` 包管理加密存储、网关管理接口、模型目录与连接检查；`interaction-ui` 的 `gateway` 包管理服务预设、网关列表和编辑界面。跨模块的请求与摘要类型仍由现有 `runtime-api`、`interaction-domain` 契约提供。
+`runtime-android` 的 `gateway` 包管理加密存储、协议探测、模型目录与连接检查；`interaction-ui` 的 `gateway` 包管理服务预设、网关列表和编辑界面；`runtime-api` 与 `interaction-domain` 各自的 `gateway` 包提供跨层契约。网关涉及 Android Keystore、HTTP、业务契约和 Compose 界面，按职责保留在现有模块中，不另建一个混合所有层的 Gradle 模块。
 
 ## 验证命令
 

@@ -96,9 +96,11 @@ class GatewayCatalogTest {
         }
     }
 
-    @Test fun `default model stays first when the catalog omits it`() {
-        val merged = mergeCatalog("typed", listOf(GatewayModel("other", "Other")))
-        assertEquals(listOf(GatewayModel("typed", "typed"), GatewayModel("other", "Other")), merged)
-        assertEquals("Named", mergeCatalog("typed", listOf(GatewayModel("typed", "Named"), GatewayModel("other", "Other"))).first().name)
+    @Test fun `user selection keeps the default and only selected catalog models`() {
+        val fetched = listOf(GatewayModel("first", "First"), GatewayModel("other", "Other"))
+        assertEquals(listOf(GatewayModel("typed", "typed"), GatewayModel("other", "Other")),
+            selectedCatalog("typed", fetched, setOf("other")))
+        assertEquals(listOf(GatewayModel("first", "First")), selectedCatalog("first", fetched, emptySet()))
+        assertThrows(IllegalArgumentException::class.java) { selectedCatalog("first", fetched, setOf("forged")) }
     }
 }

@@ -1,7 +1,9 @@
 package com.github.ytlog.mobby.android.runtime.android.gateway
 
-import com.github.ytlog.mobby.android.runtime.api.GatewayCheck
-import com.github.ytlog.mobby.android.runtime.api.GatewayCheckOutcome
+import com.github.ytlog.mobby.android.runtime.api.gateway.*
+
+import com.github.ytlog.mobby.android.runtime.api.gateway.GatewayCheck
+import com.github.ytlog.mobby.android.runtime.api.gateway.GatewayCheckOutcome
 import com.github.ytlog.mobby.android.runtime.api.GatewayProfileRef
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runInterruptible

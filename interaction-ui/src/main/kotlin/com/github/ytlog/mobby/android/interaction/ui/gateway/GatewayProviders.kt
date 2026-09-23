@@ -1,22 +1,22 @@
 package com.github.ytlog.mobby.android.interaction.ui.gateway
 
 import com.github.ytlog.mobby.android.interaction.domain.AgentId
+import com.github.ytlog.mobby.android.interaction.domain.gateway.GatewayAddresses
 
-/** Only advertise native protocol endpoints documented by the provider. */
-internal data class GatewayProvider(val id: String, val label: String, val endpoints: Map<AgentId, String>) {
-    fun endpoint(agent: AgentId): String? = endpoints[agent]
-    val agents: Set<AgentId> get() = endpoints.keys
+/** Preset URLs are protocol candidates, never a claim that a particular Agent works. */
+internal data class GatewayProvider(val id: String, val label: String, val responses: String? = null, val messages: String? = null) {
+    fun candidates(): GatewayAddresses {
+        val primary = responses ?: requireNotNull(messages)
+        return GatewayAddresses(primary, messages ?: primary)
+    }
+    fun listedAddress(agent: AgentId): String? = if (agent == AgentId.CLAUDE_CODE) messages else responses
 }
 
 internal object GatewayProviders {
     const val CUSTOM = "custom"
 
-    private val RESPONSES = listOf(AgentId.CODEX, AgentId.OPEN_CODE)
     private fun provider(id: String, label: String, responses: String? = null, messages: String? = null) =
-        GatewayProvider(id, label, buildMap {
-            if (responses != null) RESPONSES.forEach { put(it, responses) }
-            if (messages != null) put(AgentId.CLAUDE_CODE, messages)
-        })
+        GatewayProvider(id, label, responses, messages)
 
     val all = listOf(
         provider("openrouter", "OpenRouter", "https://openrouter.ai/api/v1", "https://openrouter.ai/api/v1"),
@@ -29,7 +29,6 @@ internal object GatewayProviders {
         provider("xai", "xAI", "https://api.x.ai/v1"),
         provider("groq", "Groq", "https://api.groq.com/openai/v1"),
     )
-    fun forAgent(agent: AgentId): List<GatewayProvider> = all.filter { agent in it.agents }
     fun find(id: String): GatewayProvider? = all.firstOrNull { it.id == id }
 
     /** True when [endpoint] is a known base, ignoring a trailing slash or native API suffix. */
@@ -38,7 +37,7 @@ internal object GatewayProviders {
     fun match(agent: AgentId, endpoint: String): String {
         val normalized = normalize(endpoint)
         if (normalized.isEmpty()) return CUSTOM
-        return forAgent(agent).firstOrNull { normalize(it.endpoint(agent).orEmpty()) == normalized }?.id ?: CUSTOM
+        return all.firstOrNull { normalize(it.listedAddress(agent).orEmpty()) == normalized }?.id ?: CUSTOM
     }
 
     private fun normalize(value: String): String =

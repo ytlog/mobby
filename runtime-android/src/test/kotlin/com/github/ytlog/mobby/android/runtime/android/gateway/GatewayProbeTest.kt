@@ -1,5 +1,7 @@
 package com.github.ytlog.mobby.android.runtime.android.gateway
 
+import com.github.ytlog.mobby.android.runtime.api.gateway.*
+
 import com.github.ytlog.mobby.android.runtime.api.*
 import kotlinx.coroutines.*
 import kotlinx.serialization.json.*

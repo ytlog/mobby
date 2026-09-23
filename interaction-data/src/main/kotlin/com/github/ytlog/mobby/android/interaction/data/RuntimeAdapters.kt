@@ -1,5 +1,9 @@
 package com.github.ytlog.mobby.android.interaction.data
 
+import com.github.ytlog.mobby.android.interaction.domain.gateway.*
+
+import com.github.ytlog.mobby.android.runtime.api.gateway.*
+
 import com.github.ytlog.mobby.android.interaction.domain.*
 import com.github.ytlog.mobby.android.runtime.api.*
 import com.github.ytlog.mobby.android.interaction.domain.AgentId as DomainAgent
@@ -221,12 +225,28 @@ internal class RuntimeSystemAdapter(private val context: android.content.Context
     override suspend fun selectDefaultGateway(profile: GatewayProfile): OperationResult =
         admin.selectDefaultGateway(GatewaySelection(RuntimeAgent.valueOf(profile.agent.name), GatewayProfileRef(profile.id, profile.version))).operation()
     override suspend fun deleteGateway(id: String): OperationResult = admin.deleteGatewayProfile(id).operation()
+    override suspend fun inspectGateway(edit: GatewayEdit): DataResult<GatewayInspectionResult> {
+        val secret = edit.credential?.let(::SecretInput)
+        edit.credential?.fill('\u0000')
+        return when (val result = admin.inspectGateway(InspectGatewayRequest(edit.id,
+            GatewayCandidateAddresses(edit.addresses.responses, edit.addresses.messages), edit.model, secret))) {
+            is AdminResult.Success -> DataResult.Loaded(GatewayInspectionResult(result.value.model,
+                result.value.models.map { GatewayModel(it.id, it.name) },
+                result.value.supportedAgents.map { DomainAgent.valueOf(it.name) }.toSet(), result.value.catalogError))
+            is AdminResult.Failed -> DataResult.Failed(result.error.message())
+        }
+    }
     override suspend fun saveGateway(edit: GatewayEdit): GatewaySaveResult {
         val secret = edit.credential?.let(::SecretInput)
         edit.credential?.fill('\u0000')
         return when (val result = admin.saveGatewayProfile(SaveGatewayRequest(edit.id,
-            edit.endpoints.mapKeys { RuntimeAgent.valueOf(it.key.name) }, edit.model, secret))) {
-            is AdminResult.Success -> GatewaySaveResult.Saved(result.value.models.map { GatewayModel(it.id, it.name) }, result.value.catalogError)
+            GatewayCandidateAddresses(edit.addresses.responses, edit.addresses.messages), edit.model, secret, edit.selectedModels))) {
+            is AdminResult.Success -> {
+                val saved = admin.listGatewayProfiles()
+                val agents = (saved as? AdminResult.Success)?.value?.filter { it.ref.id == result.value.ref.id }
+                    ?.map { DomainAgent.valueOf(it.agent.name) }?.toSet().orEmpty()
+                GatewaySaveResult.Saved(result.value.models.map { GatewayModel(it.id, it.name) }, result.value.catalogError, agents)
+            }
             is AdminResult.Failed -> GatewaySaveResult.Failed(result.error.message())
         }
     }

@@ -1,5 +1,7 @@
 package com.github.ytlog.mobby.android.interaction.ui
 
+import com.github.ytlog.mobby.android.interaction.domain.gateway.*
+
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.*
@@ -88,7 +90,7 @@ class WorkspacePickerTest {
         var submitted: NextTurnConfig? = null
         val restoration = StateRestorationTester(compose)
         restoration.setContent { MaterialTheme { ConfigDialog(vm, null, {}, { config, _ -> submitted = config }) } }
-        compose.onNodeWithText("Claude Code").performScrollTo().performClick()
+        compose.onNodeWithText("Claude Code ·", substring = true).performScrollTo().performClick()
         compose.onNodeWithText("claude-fixture").performScrollTo().performClick()
         compose.onNodeWithText("Project B").performScrollTo().performClick()
         restoration.emulateSavedInstanceStateRestore()
@@ -150,7 +152,7 @@ class WorkspacePickerTest {
         compose.setContent { MaterialTheme { AgentConfigMenu(true, {}, conversation, vm) } }
         compose.onNodeWithText("新建并使用此配置").assertDoesNotExist()
         compose.onNodeWithText("应用").assertExists()
-        compose.onNodeWithText("Claude Code").performScrollTo().performClick()
+        compose.onNodeWithText("Claude Code ·", substring = true).performScrollTo().performClick()
         compose.onNodeWithText("仍在当前对话中继续", substring = true).assertExists()
         compose.onNodeWithText("应用").assertExists()
     }

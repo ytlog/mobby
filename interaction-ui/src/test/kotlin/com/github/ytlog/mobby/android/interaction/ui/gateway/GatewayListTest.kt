@@ -1,5 +1,7 @@
 package com.github.ytlog.mobby.android.interaction.ui.gateway
 
+import com.github.ytlog.mobby.android.interaction.domain.gateway.*
+
 import com.github.ytlog.mobby.android.interaction.ui.*
 
 import androidx.compose.material3.MaterialTheme
@@ -60,13 +62,13 @@ class GatewayListTest {
 
     @Test fun `gateway page lists a configured gateway and opens its editor`() {
         page(listOf(profile))
-        compose.onNodeWithText("模型名称").assertDoesNotExist()
+        compose.onNodeWithText("探测模型（可先留空）").assertDoesNotExist()
         compose.onNodeWithText("OpenRouter · openai/gpt-test · 2 个模型").assertExists()
         compose.onNodeWithContentDescription("编辑网关").performClick()
         compose.onNodeWithText("编辑网关").assertExists()
-        compose.onNodeWithText("模型名称").assertExists()
+        compose.onNodeWithText("探测模型（可先留空）").assertExists()
         compose.onNodeWithContentDescription("返回").performClick()
-        compose.onNodeWithText("模型名称").assertDoesNotExist()
+        compose.onNodeWithText("探测模型（可先留空）").assertDoesNotExist()
         compose.onNodeWithText("已配置").assertExists()
     }
 
@@ -105,8 +107,8 @@ class GatewayListTest {
         compose.onNodeWithText("还没有配置网关").assertExists()
         compose.onNodeWithText("添加网关").performClick()
         compose.onNodeWithText("添加网关").assertExists()
-        compose.onNodeWithText("模型名称").assertExists()
-        compose.onNodeWithText("选择服务后可勾选支持的 Agent。Codex / OpenCode 使用 Responses，Claude Code 使用 Messages。").assertExists()
+        compose.onNodeWithText("探测模型（可先留空）").assertExists()
+        compose.onNodeWithText("填写地址和密钥后探测。", substring = true).assertExists()
     }
 
     @Test fun `catalog failure is shown on the configured row`() {

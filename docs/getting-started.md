@@ -25,7 +25,7 @@ APK：`app/build/outputs/apk/debug/app-debug.apk`，仅 ARM64，Android 8.0 及�
 
 打开 App 后自动安装 Git、Node.js、npm、Claude Code、Codex、OpenCode，并逐项执行版本检查、初始化 Git 工作区。安装包自带依赖，首次安装不需要手机联网下载。已有工作区和 HOME 中的认证文件保留。OpenCode 启动失败时，Claude Code 与 Codex 仍可使用。
 
-从会话抽屉进入设置，可使用 Shell 诊断页；使用 Agent 时，先打开设置中的「网关设置」。这里列出已配置的网关，点按一项可用于当前会话并设为新会话默认，右侧按钮进入编辑；添加时分别为 Claude Code、Codex、OpenCode 保存地址、默认模型和 API Key。保存后会拉取该网关的模型列表，供会话里切换模型。Claude Code 使用 Messages，Codex 与 OpenCode 使用 Responses；模型请求统一走本地桥接，暂不提供协议转换。网关配置可稍后填写，不需要官方账号登录。依赖异常时可重试初始化。
+从会话抽屉进入设置，可使用 Shell 诊断页；使用 Agent 时，先打开设置中的「网关设置」。填写网关地址和 API Key 后探测，应用根据实际通过的 Responses、Messages 请求自动生成可用 Agent，并读取模型列表供搜索和筛选；选择默认模型后保存。网关列表中点按 Agent 可用于当前会话并设为新会话默认，新建会话中选择网关也会确定 Agent。Claude Code 使用 Messages，Codex 与 OpenCode 使用 Responses；模型请求统一走本地桥接，暂不提供协议转换。网关配置可稍后填写，不需要官方账号登录。依赖异常时可重试初始化。
 加号中的技能页支持手动创建和导入 `.md`，先校验预览再保存；选中的技能属于当前会话草稿，发送时重新校验。当前 Agent 提供 Skill Creator 时可另建创建会话，生成的技能草稿需在会话中校验并明确保存。
 加号中的插件页按手机、沟通、文件列出设备能力。把插件加入本轮草稿即授权这一轮使用；未加入时不启动对应命令通道。屏幕需先在系统无障碍设置中开启「屏幕」服务，存储需选择一个目录树，其他危险权限在开启时由系统对话框授予。发送短信、修改通讯录、修改日历和写入剪贴板是单独的引用，默认关闭。已加入后，Claude 的每次操作确认由应用自动允许，不再逐次弹出卡片。运行时只把本轮启用的动作写进 `mobby-<能力>/SKILL.md`，脚本经 `127.0.0.1` 调用应用；技能装进当前 Agent 的技能目录（Codex：`~/.agents/skills`，Claude Code：`~/.claude/skills`，OpenCode：`~/.config/opencode/skills`）。提示只给出 `$mobby-<能力>` 或 `/mobby-<能力>` 和技能文件路径。若用户已有同名非临时技能，这一轮失败且不覆盖该文件。不改写用户 `config.toml` 或 Claude 配置，结束后移除本次技能。切换 Agent 时保留 `plugin:device:` 引用，技能选择仍按 Agent 清除。说明见 [设备插件方案](design/device-plugins.md)。
 对话生成技能使用 CLI 原生结构化输出，由应用生成有效的 SKILL.md；模型未返回合规结构时会明确失败，不把普通回复登记为技能。Codex 已在真机验证生成、确认保存、重新发现与新会话实际调用。

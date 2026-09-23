@@ -1,5 +1,9 @@
 package com.github.ytlog.mobby.android.interaction.data
 
+import com.github.ytlog.mobby.android.interaction.domain.gateway.*
+
+import com.github.ytlog.mobby.android.runtime.api.gateway.*
+
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.room.withTransaction

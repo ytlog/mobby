@@ -118,9 +118,3 @@ internal class GatewayCatalog(
         data class Failed(val message: String) : Page
     }
 }
-
-internal fun mergeCatalog(defaultModel: String, fetched: List<GatewayModel>): List<GatewayModel> {
-    val name = fetched.firstOrNull { it.id == defaultModel }?.name ?: defaultModel
-    val rest = fetched.filter { it.id != defaultModel }
-    return (listOf(GatewayModel(defaultModel, name)) + rest).take(400)
-}
