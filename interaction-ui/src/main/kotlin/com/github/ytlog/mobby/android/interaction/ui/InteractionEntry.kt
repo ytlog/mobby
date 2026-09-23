@@ -596,7 +596,7 @@ private val DrawerRowHeight = 40.dp
             textField = {
                 androidx.compose.foundation.text.BasicTextField(
                     composer.value, vm::edit,
-                    Modifier.weight(1f).heightIn(min = 48.dp).padding(vertical = 12.dp).focusRequester(focusRequester),
+                    Modifier.weight(1f).heightIn(min = ToolbarControl).padding(vertical = 10.dp).focusRequester(focusRequester),
                     enabled = !unavailable, maxLines = 5,
                     textStyle = MaterialTheme.typography.bodyLarge.copy(color = onButtonColor()),
                     cursorBrush = SolidColor(onButtonColor()),
