@@ -127,7 +127,7 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                 motion.width = pixels
                 val swipe = Modifier.drawerSwipe(motion, with(LocalDensity.current) { DrawerSwipeEdge.toPx() })
                 Surface(
-                    Modifier.requiredWidth(fullWidth).fillMaxHeight().offset { IntOffset((pixels * progress).roundToInt(), 0) }.then(swipe)
+                    Modifier.requiredWidth(fullWidth).fillMaxHeight().offset { IntOffset((pixels * progress).roundToInt(), 0) }
                         .then(if (drawer) Modifier.clearAndSetSemantics {} else Modifier),
                     color = MaterialTheme.colorScheme.background,
                     shadowElevation = 0.dp,
@@ -142,7 +142,7 @@ class InteractionHostActions(val share: (String) -> Unit, val shortcut: (String,
                         "archived" -> ArchivedPage(state, vm) { route = "settings" }
                         "skills" -> SkillsPage(vm, onBack = { route = "add" }, onConversation = { route = "conversation" })
                         "plugins" -> PluginPage(vm) { route = "add" }
-                        else -> Column(Modifier.fillMaxSize()) {
+                        else -> Column(Modifier.fillMaxSize().then(swipe)) {
                             ConversationToolbar(
                                 state.selected?.conversation, vm,
                                 modifier = Modifier.fillMaxWidth().testTag("conversation-toolbar"),
