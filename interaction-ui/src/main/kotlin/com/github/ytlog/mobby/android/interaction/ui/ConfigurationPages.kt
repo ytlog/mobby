@@ -44,21 +44,29 @@ import kotlinx.coroutines.*
     var name by rememberSaveable { mutableStateOf("") }
     LaunchedEffect(Unit) { vm.loadWorkspaces() }
     LaunchedEffect(created, enabled) { if (enabled) created?.takeIf { it.owner == owner }?.let { select(it.workspace.ref); adding = false; name = ""; vm.consumeWorkspaceCreated(it) } }
-    Text("工作区", style = MaterialTheme.typography.labelLarge)
-    if (!enabled) Text(workspaces.firstOrNull { it.ref == selected }?.name ?: selected, style = MaterialTheme.typography.bodySmall)
-    else {
-        workspaces.forEach { workspace -> ChoiceRow(workspace.name, selected == workspace.ref, { select(workspace.ref) }, enabled = !creating) }
-        if (workspaces.none { it.ref == selected }) Text("当前工作区尚不可用，请刷新或选择其他工作区", style = MaterialTheme.typography.bodySmall)
-        TextButton(onClick = { adding = !adding }, enabled = !creating) { Text("新建工作区") }
-        if (adding) {
-            OutlinedTextField(name, { name = it }, label = { Text("工作区名称") }, singleLine = true, enabled = !creating)
-            Text("在应用本机目录中创建独立文件夹。", style = MaterialTheme.typography.bodySmall)
-            TextButton(onClick = { vm.createWorkspace(name, owner) }, enabled = !creating && name.isNotBlank() && name.length <= 80) { Text("创建工作区") }
+    val current = workspaces.firstOrNull { it.ref == selected }?.name ?: selected
+    if (!enabled) SettingsGroup("工作区") {
+        Text(current, Modifier.padding(horizontal = 16.dp, vertical = 14.dp), style = MaterialTheme.typography.bodyLarge)
+    } else {
+        SettingsGroup("工作区") {
+            workspaces.forEachIndexed { index, workspace ->
+                if (index > 0) GroupDivider()
+                ChoiceRow(workspace.name, selected == workspace.ref, { select(workspace.ref) }, enabled = !creating)
+            }
+            if (workspaces.isNotEmpty()) GroupDivider()
+            SettingsAction(if (adding) "收起新建工作区" else "新建工作区", enabled = !creating) { adding = !adding }
+            if (adding) {
+                SettingsField(name, { name = it }, "工作区名称", enabled = !creating)
+                Text("在应用本机目录中创建独立文件夹。", Modifier.padding(horizontal = 16.dp, vertical = 4.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                SettingsAction("创建工作区", enabled = !creating && name.isNotBlank() && name.length <= 80) { vm.createWorkspace(name, owner) }
+            }
+            if (creating) LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp))
+            GroupDivider()
+            SettingsAction("刷新工作区", enabled = !creating, onClick = vm::loadWorkspaces)
         }
-        if (creating) LinearProgressIndicator(Modifier.fillMaxWidth())
+        if (workspaces.none { it.ref == selected }) SettingsCaption("当前工作区尚不可用，请刷新或选择其他工作区")
+        error?.let { SettingsCaption(it, error = true) }
     }
-    error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-    TextButton(onClick = vm::loadWorkspaces) { Text("刷新工作区") }
 }
 @Composable internal fun AgentConfigMenu(expanded: Boolean, dismiss: () -> Unit, c: Conversation, vm: ConversationViewModel, anchor: IntRect = IntRect.Zero) {
     if (!expanded) return

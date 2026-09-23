@@ -41,28 +41,28 @@ internal data class ProjectEditor(val name: String, val workspace: String, val e
     LaunchedEffect(Unit) { vm.loadWorkspaces() }
     Column(Modifier.fillMaxSize()) {
         PageHeader("项目管理", back)
-        Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("项目默认工作区用于新建对话；修改默认值不会移动已有对话。")
-            state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-            if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-            Button(onClick = { vm.openProject(null) }, enabled = !state.loading && state.error == null) { Text("新建项目") }
-            state.projects.forEach { project -> Surface(onClick = { vm.openProject(project) }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), color = raisedColor()) {
-                Column(Modifier.padding(16.dp)) {
-                    Text(project.name, style = MaterialTheme.typography.titleMedium)
-                    Text("默认工作区：${workspaces.firstOrNull { it.ref == project.defaultWorkspace }?.name ?: "暂不可用"}")
-                    Text("点击修改默认工作区", style = MaterialTheme.typography.bodySmall)
+        Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            SettingsCaption("项目默认工作区用于新建对话。修改默认值不会移动已有对话。")
+            state.error?.let { SettingsCaption(it, error = true) }
+            if (state.loading) SettingsCaption("正在读取项目…")
+            SettingsGroup {
+                SettingsAction("新建项目", enabled = !state.loading && state.error == null) { vm.openProject(null) }
+                state.projects.forEach { project ->
+                    GroupDivider()
+                    val workspace = workspaces.firstOrNull { it.ref == project.defaultWorkspace }?.name ?: "暂不可用"
+                    SettingsItem(project.name, { vm.openProject(project) }, "默认工作区：$workspace")
                 }
-            } }
+            }
             if (state.projects.isEmpty() && !state.loading && state.error == null) EmptyPlaceholder("尚无项目", "新建项目后，对话可以按工作区分组")
         }
     }
-    editor?.let { current -> AlertDialog(onDismissRequest = vm::dismissProject, containerColor = raisedColor(), shape = RoundedCornerShape(24.dp),
-        title = { Text(if (current.existing) "项目默认工作区" else "新建项目") }, text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (current.existing) Text(current.name)
-                else OutlinedTextField(current.name, { vm.editProject(current.copy(name = it)) }, label = { Text("项目名称") }, singleLine = true, enabled = !current.busy)
+    editor?.let { current -> AlertDialog(onDismissRequest = vm::dismissProject, containerColor = MaterialTheme.colorScheme.background, shape = RoundedCornerShape(24.dp), tonalElevation = 0.dp,
+        title = { Text(if (current.existing) current.name else "新建项目", style = MaterialTheme.typography.titleMedium) }, text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                SettingsCaption(if (current.existing) "修改默认工作区不会移动已有对话。" else "这个工作区用于项目里新建的对话。")
+                if (!current.existing) SettingsGroup { SettingsField(current.name, { vm.editProject(current.copy(name = it)) }, "项目名称", enabled = !current.busy) }
                 WorkspacePicker(vm, current.workspace, "project:${current.operation}", !current.busy) { vm.editProject(current.copy(workspace = it)) }
-                current.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                current.error?.let { SettingsCaption(it, error = true) }
                 if (current.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             }
         }, confirmButton = { TextButton(onClick = vm::saveProject,
