@@ -3,12 +3,13 @@ package com.github.ytlog.mobby.android.runtime.engine
 import com.github.ytlog.mobby.android.runtime.api.*
 import kotlinx.serialization.json.*
 
-/** Public CLI messages and tool output. Reasoning text stays private; a collapsed thinking step marks that it happened. */
+/** Public CLI messages, tool output, and reasoning text. Reasoning stays on its thinking step. A reasoning block that is only a misplaced final answer is shown as the reply. */
 sealed interface AgentFact {
     data class Session(val id: String) : AgentFact
     data class Text(val messageId: String, val text: String) : AgentFact
     data class Proposal(val markdown: String) : AgentFact
-    data class Tool(val id: String, val kind: String, val summary: String, val output: String? = null, val outcome: ToolOutcome? = null) : AgentFact
+    /** `body` is null when a later result must not replace the step's type. */
+    data class Tool(val id: String, val body: StepBody?, val output: String? = null, val outcome: ToolOutcome? = null) : AgentFact
     data class Diagnostic(val kind: String, val text: String) : AgentFact
     data class Completed(val success: Boolean, val error: ErrorCode? = null) : AgentFact
     data class Approval(val id: String, val action: String, val scope: String) : AgentFact
@@ -25,6 +26,11 @@ class ProtocolDecoder(private val agent: AgentId, private val requestedOutput: R
     private val streamedParts = sortedMapOf<Int, StringBuilder>()
     private val startedTools = mutableSetOf<String>()
     private val codexText = mutableMapOf<String, String>()
+    private val reasoningText = mutableMapOf<String, String>()
+    private val thinkingText = mutableMapOf<String, String>()
+    private val toolOutput = mutableMapOf<String, String>()
+    private val commands = mutableMapOf<String, String>()
+    private val inputCaptured = mutableSetOf<String>()
     private var thinkingStep: String? = null
     fun decode(line: String): List<AgentFact> {
         val controlRequest = agent == AgentId.CLAUDE_CODE && Regex("""^\s*\{\s*"type"\s*:\s*"control_request"""").containsMatchIn(line)
@@ -58,16 +64,16 @@ class ProtocolDecoder(private val agent: AgentId, private val requestedOutput: R
                 } else add(AgentFact.Text(id, text))
             }
             "reasoning" -> {
-                val id = (value["part"] as? JsonObject)?.text("id") ?: "thinking-${fallbackId++}"
-                add(AgentFact.Tool(id, "thinking", "思考", outcome = ToolOutcome.SUCCEEDED))
+                val part = value["part"] as? JsonObject
+                val id = part?.text("id") ?: "thinking-${fallbackId++}"
+                add(AgentFact.Tool(id, StepBody.Thinking, part?.text("text")?.takeIf { it.isNotEmpty() }, ToolOutcome.SUCCEEDED))
             }
             "tool_use" -> {
                 val part = value["part"] as? JsonObject
                 if (part == null) { add(AgentFact.Diagnostic("invalid-tool", line)); return@buildList }
                 val state = part["state"] as? JsonObject
                 val id = part.text("id") ?: part.text("callID") ?: "tool-${fallbackId++}"
-                val kind = part.text("tool") ?: "tool"
-                val summary = state?.get("input")?.let { input -> if (input is JsonPrimitive) input.content else input.toString() }.orEmpty().ifBlank { kind }
+                val name = part.text("tool") ?: "tool"
                 val output = when (val raw = state?.get("output") ?: state?.get("error")) {
                     null -> null
                     is JsonPrimitive -> raw.contentOrNull
@@ -78,7 +84,7 @@ class ProtocolDecoder(private val agent: AgentId, private val requestedOutput: R
                     "error" -> ToolOutcome.FAILED
                     else -> null
                 }
-                add(AgentFact.Tool(id, kind, summary, output, outcome))
+                add(toolFact(id, name, state?.get("input"), output, outcome))
             }
             "step_finish" -> {
                 val reason = (value["part"] as? JsonObject)?.text("reason")
@@ -106,14 +112,7 @@ class ProtocolDecoder(private val agent: AgentId, private val requestedOutput: R
             val id = item.text("id") ?: "item-${fallbackId++}"
             val completed = value.text("type") == "item.completed"
             when (type) {
-                "reasoning" -> {
-                    val first = startedTools.add(id)
-                    when {
-                        completed -> listOf(AgentFact.Tool(id, "thinking", "思考", outcome = ToolOutcome.SUCCEEDED))
-                        first -> listOf(AgentFact.Tool(id, "thinking", "思考"))
-                        else -> emptyList()
-                    }
-                }
+                "reasoning" -> reasoningFacts(id, item.text("text").orEmpty(), completed)
                 "agent_message" -> {
                     val text = item.text("text").orEmpty()
                     if (requestedOutput == RequestedOutput.SKILL_PROPOSAL) {
@@ -142,12 +141,20 @@ class ProtocolDecoder(private val agent: AgentId, private val requestedOutput: R
                 "command_execution", "file_change", "mcp_tool_call", "web_search", "todo_list" -> {
                     val outcome = if (!completed) null else if (item.text("status") == "failed" || item.text("status") == "declined" ||
                         (item["exit_code"] as? JsonPrimitive)?.intOrNull?.let { it != 0 } == true) ToolOutcome.FAILED else ToolOutcome.SUCCEEDED
-                    val kind = if (type == "mcp_tool_call") item.text("tool") ?: type else type
-                    val summary = item.text("command") ?: item["arguments"]?.toString()?.takeIf { it != "{}" }
-                        ?: item.text("tool") ?: item.text("query") ?: type
-                    val output = if (completed) item.text("aggregated_output") ?: item["changes"]?.toString()
-                        ?: item.text("result") ?: item["error"]?.toString() ?: item["items"]?.toString() else null
-                    listOf(AgentFact.Tool(id, kind, summary, output, outcome))
+                    when (type) {
+                        "command_execution" -> {
+                            val command = unwrapShell(commands[id] ?: commandText(item["command"]))
+                            if (command.isNotBlank()) commands[id] = command
+                            listOf(AgentFact.Tool(id, StepBody.Command(commands[id] ?: command), freshOutput(id, commandOutput(item)), outcome))
+                        }
+                        "file_change" -> {
+                            val (body, diff) = fileChange(item["changes"])
+                            listOf(AgentFact.Tool(id, body, freshOutput(id, diff), outcome))
+                        }
+                        "mcp_tool_call" -> listOf(toolFact(id, item.text("tool") ?: "mcp_tool_call", item["arguments"], commandOutput(item), outcome))
+                        "web_search" -> listOf(AgentFact.Tool(id, StepBody.Action("web_search", item.text("query").orEmpty().fit()), freshOutput(id, commandOutput(item)), outcome))
+                        else -> listOf(AgentFact.Tool(id, StepBody.Action("todo_list", actionDetail(item["items"])), freshOutput(id, commandOutput(item)), outcome))
+                    }
                 }
                 else -> listOf(AgentFact.Diagnostic(type, line))
             }
@@ -203,20 +210,19 @@ class ProtocolDecoder(private val agent: AgentId, private val requestedOutput: R
                             rememberAssistantText(textId, index, text) { add(it) }
                         }
                     }
-                    "tool_use" -> {
-                        val toolId = block.text("id") ?: "tool-${fallbackId++}"
-                        val summary = block["input"]?.toString().orEmpty()
-                        if (startedTools.add(toolId) || summary.isNotBlank()) add(AgentFact.Tool(toolId, block.text("name") ?: "tool", summary))
+                    "tool_use" -> add(toolFact(block.text("id") ?: "tool-${fallbackId++}", block.text("name") ?: "tool", block["input"], null, null))
+                    "tool_result" -> {
+                        val toolId = block.text("tool_use_id") ?: "tool-${fallbackId++}"
+                        val raw = block["content"]?.let { content -> if (content is JsonPrimitive) content.contentOrNull else content.toString() }
+                        val outcome = if ((block["is_error"] as? JsonPrimitive)?.booleanOrNull == true) ToolOutcome.FAILED else ToolOutcome.SUCCEEDED
+                        add(AgentFact.Tool(toolId, null, if (toolId in inputCaptured) null else freshOutput(toolId, raw), outcome))
                     }
-                    "tool_result" -> add(AgentFact.Tool(block.text("tool_use_id") ?: "tool-${fallbackId++}", "tool", "",
-                        block["content"]?.let { content -> if (content is JsonPrimitive) content.content else content.toString() },
-                        if ((block["is_error"] as? JsonPrimitive)?.booleanOrNull == true) ToolOutcome.FAILED else ToolOutcome.SUCCEEDED))
                     "image" -> add(AgentFact.Diagnostic("image", "图片输入（内容不写入诊断日志）"))
                     "thinking", "redacted_thinking" -> {
                         val thinkingId = "thinking:$id#$index"
                         startedTools.add(thinkingId)
                         if (thinkingStep == thinkingId) thinkingStep = null
-                        add(AgentFact.Tool(thinkingId, "thinking", "思考", outcome = ToolOutcome.SUCCEEDED))
+                        add(thinkingUpdate(thinkingId, block.text("thinking").orEmpty(), ToolOutcome.SUCCEEDED))
                     }
                     else -> add(AgentFact.Diagnostic(block.text("type") ?: "unknown-content", block.toString()))
                     }
@@ -255,7 +261,7 @@ class ProtocolDecoder(private val agent: AgentId, private val requestedOutput: R
                     "tool_use" -> {
                         val toolId = block.text("id") ?: return finishThinking()
                         val name = block.text("name") ?: "tool"
-                        val tool = if (startedTools.add(toolId)) listOf(AgentFact.Tool(toolId, name, name)) else emptyList()
+                        val tool = if (startedTools.add(toolId)) listOf(toolFact(toolId, name, block["input"], null, null)) else emptyList()
                         finishThinking() + tool
                     }
                     "thinking", "redacted_thinking" -> finishThinking() + beginThinking("thinking:$messageId#$index")
@@ -264,6 +270,11 @@ class ProtocolDecoder(private val agent: AgentId, private val requestedOutput: R
             }
             "content_block_delta" -> {
                 val delta = event["delta"] as? JsonObject ?: return emptyList()
+                if (delta.text("type") == "thinking_delta") {
+                    val id = thinkingStep ?: return emptyList()
+                    val text = delta.text("thinking").orEmpty()
+                    return if (text.isEmpty()) emptyList() else listOf(thinkingUpdate(id, text, null))
+                }
                 if (delta.text("type") != "text_delta") return emptyList()
                 val text = delta.text("text").orEmpty()
                 if (text.isEmpty()) return finishThinking()
@@ -278,15 +289,186 @@ class ProtocolDecoder(private val agent: AgentId, private val requestedOutput: R
             else -> emptyList()
         }
     }
+    private fun commandOutput(item: JsonObject): String? {
+        val aggregated = item.text("aggregated_output")
+        if (!aggregated.isNullOrEmpty()) return aggregated
+        val combined = listOf(item.text("stdout"), item.text("stderr")).filter { !it.isNullOrEmpty() }.joinToString("\n")
+        if (combined.isNotEmpty()) return combined
+        if (aggregated != null) return null
+        return item.text("result") ?: item["error"]?.toString()?.takeIf { it != "null" } ?: item["items"]?.toString()?.takeIf { it != "null" }
+    }
+    private fun fileChange(changes: JsonElement?): Pair<StepBody.FileDiff, String?> {
+        val array = changes as? JsonArray ?: return StepBody.FileDiff(emptyList()) to null
+        val parsed = array.mapNotNull { element ->
+            val obj = element as? JsonObject ?: return@mapNotNull null
+            val path = obj.text("path") ?: obj.text("file_path") ?: return@mapNotNull null
+            path.fit() to obj.text("diff").orEmpty()
+        }
+        val text = parsed.joinToString("\n\n") { (path, diff) -> if (parsed.size == 1) diff else "$path\n$diff" }.ifBlank { null }
+        return StepBody.FileDiff(parsed.map { it.first }) to text
+    }
+    private fun toolFact(id: String, name: String, input: JsonElement?, output: String?, outcome: ToolOutcome?): AgentFact.Tool {
+        val body = conversationBody(name, input)
+        val captured = capturedText(body, input)
+        if (captured != null) inputCaptured += id
+        val text = when {
+            captured != null -> captured
+            id in inputCaptured -> null
+            else -> output
+        }
+        return AgentFact.Tool(id, body, freshOutput(id, text), outcome)
+    }
+    private fun conversationBody(name: String, input: JsonElement?): StepBody {
+        val key = name.substringAfterLast("__").lowercase()
+        val obj = input as? JsonObject
+        val path = field(obj, "file_path", "path", "file", "notebook_path").fit()
+        return when (key) {
+            "thinking", "redacted_thinking" -> StepBody.Thinking
+            "bash", "shell", "command_execution" -> StepBody.Command(unwrapShell(field(obj, "command", "cmd").ifBlank { (input as? JsonPrimitive)?.contentOrNull.orEmpty() }).fit())
+            "read" -> StepBody.FileRead(path)
+            "write" -> StepBody.FileWrite(path)
+            "edit", "editnotebook", "apply_patch" -> StepBody.FileDiff(listOf(path).filter { it.isNotEmpty() })
+            else -> StepBody.Action(name.ifBlank { "tool" }.take(256), actionDetail(input))
+        }
+    }
+    private fun capturedText(body: StepBody, input: JsonElement?): String? {
+        val obj = input as? JsonObject ?: return null
+        return when (body) {
+            is StepBody.FileWrite -> field(obj, "content").ifBlank { null }
+            is StepBody.FileDiff -> {
+                val old = field(obj, "old_string", "old_str")
+                val new = field(obj, "new_string", "new_str")
+                if (old.isBlank() && new.isBlank()) null else snippetDiff(body.paths.firstOrNull().orEmpty(), old, new)
+            }
+            else -> null
+        }
+    }
+    private fun actionDetail(input: JsonElement?): String = when (input) {
+        null -> ""
+        is JsonPrimitive -> input.contentOrNull.orEmpty().fit()
+        is JsonArray -> input.mapNotNull { textOf(it) }.joinToString("\n").ifBlank { input.toString() }.fit()
+        is JsonObject -> {
+            val preferred = listOf("query", "pattern", "glob", "url", "description", "prompt", "text", "command", "cmd")
+            val picked = preferred.mapNotNull { key -> textOf(input[key]) }
+            when {
+                picked.size == 1 && input.size == 1 -> picked.single().fit()
+                picked.isNotEmpty() -> picked.joinToString("\n").fit()
+                else -> input.entries.mapNotNull { (key, value) -> textOf(value)?.let { "$key\n$it" } }.joinToString("\n\n").fit()
+            }
+        }
+    }
+    private fun field(obj: JsonObject?, vararg keys: String): String {
+        if (obj == null) return ""
+        return keys.firstNotNullOfOrNull { key -> textOf(obj[key]) }.orEmpty()
+    }
+    private fun textOf(value: JsonElement?): String? = when (value) {
+        is JsonPrimitive -> value.contentOrNull?.takeIf { it.isNotBlank() }
+        is JsonArray -> value.mapNotNull { textOf(it) }.joinToString(" ").takeIf { it.isNotBlank() }
+        else -> null
+    }
+    private fun commandText(value: JsonElement?): String = when (value) {
+        is JsonArray -> value.joinToString(" ") { (it as? JsonPrimitive)?.contentOrNull.orEmpty() }.trim()
+        is JsonPrimitive -> value.contentOrNull.orEmpty()
+        else -> ""
+    }
+    private fun unwrapShell(command: String): String {
+        val matched = Regex("""^(?:\S*/)?(?:bash|sh)\s+-lc\s+([\s\S]*)$""").find(command.trim()) ?: return command.trim()
+        return unquote(matched.groupValues[1].trim())
+    }
+    private fun unquote(value: String): String {
+        if (value.length < 2 || value.first() != value.last() || value.first() !in listOf('\'', '"')) return value
+        val inner = value.substring(1, value.length - 1)
+        return if (value.first() == '"') inner.replace("\\n", "\n").replace("\\\"", "\"") else inner
+    }
+    private fun snippetDiff(path: String, old: String, new: String): String = buildString {
+        val name = path.ifBlank { "file" }
+        append("--- ").append(name).append('\n')
+        append("+++ ").append(name).append('\n')
+        old.lines().forEach { append("- ").append(it).append('\n') }
+        new.lines().forEach { append("+ ").append(it).append('\n') }
+    }.trimEnd()
+    private fun String.fit() = if (length <= 65536) this else take(65536) + "\n…已截断"
+    private fun freshOutput(id: String, incoming: String?): String? {
+        if (incoming.isNullOrEmpty()) return null
+        val previous = toolOutput[id].orEmpty()
+        val delta = when {
+            incoming == previous -> return null
+            previous.isEmpty() -> incoming
+            incoming.startsWith(previous) -> incoming.removePrefix(previous)
+            else -> return null
+        }
+        toolOutput[id] = incoming
+        return delta
+    }
+    private fun reasoningFacts(id: String, incoming: String, completed: Boolean): List<AgentFact> {
+        val previous = reasoningText[id].orEmpty()
+        val full = when {
+            incoming.isEmpty() -> previous
+            previous.isEmpty() || incoming.startsWith(previous) -> incoming
+            previous.startsWith(incoming) -> previous
+            else -> previous + incoming
+        }
+        reasoningText[id] = full
+        val answer = reasoningAnswer(full)
+        val openedAnswer = full.trimStart().let { it.startsWith("<arg_value>") || it.isNotEmpty() && "<arg_value>".startsWith(it) }
+        if (!completed && openedAnswer) return emptyList()
+        if (answer != null) return textDelta(id, answer)
+        val shown = thinkingText[id].orEmpty()
+        val delta = when {
+            full == shown -> ""
+            shown.isEmpty() || full.startsWith(shown) -> full.removePrefix(shown)
+            else -> full
+        }
+        if (delta.isNotEmpty()) thinkingText[id] = if (shown.isEmpty() || full.startsWith(shown)) full else shown + delta
+        if (delta.isEmpty() && !completed && id in startedTools) return emptyList()
+        startedTools.add(id)
+        return listOf(AgentFact.Tool(id, StepBody.Thinking, delta.ifEmpty { null }, if (completed) ToolOutcome.SUCCEEDED else null))
+    }
+    private fun textDelta(id: String, full: String): List<AgentFact> {
+        val previous = codexText[id].orEmpty()
+        val delta = when {
+            full.isEmpty() -> ""
+            previous.isEmpty() -> full
+            full.startsWith(previous) -> full.removePrefix(previous)
+            previous.startsWith(full) -> ""
+            else -> full
+        }
+        codexText[id] = when {
+            full.isEmpty() -> previous
+            previous.isEmpty() || full.startsWith(previous) -> full
+            previous.startsWith(full) -> previous
+            else -> previous + full
+        }
+        return if (delta.isEmpty()) emptyList() else listOf(AgentFact.Text(id, delta))
+    }
+    private fun reasoningAnswer(text: String): String? {
+        val trimmed = text.trimStart()
+        val open = "<arg_value>"
+        if (!trimmed.startsWith(open)) return null
+        val body = trimmed.removePrefix(open).removeSuffix("</arg_value>").trimEnd()
+        return body.ifEmpty { null }
+    }
+    private fun thinkingUpdate(id: String, incoming: String, outcome: ToolOutcome?): AgentFact.Tool {
+        val previous = thinkingText[id].orEmpty()
+        val full = when {
+            incoming.isEmpty() -> previous
+            previous.isEmpty() || incoming.startsWith(previous) -> incoming
+            previous.startsWith(incoming) -> previous
+            else -> previous + incoming
+        }
+        val delta = if (full.startsWith(previous)) full.removePrefix(previous) else ""
+        thinkingText[id] = full
+        return AgentFact.Tool(id, StepBody.Thinking, delta.ifEmpty { null }, outcome)
+    }
     private fun beginThinking(id: String): List<AgentFact> {
         if (!startedTools.add(id)) return emptyList()
         thinkingStep = id
-        return listOf(AgentFact.Tool(id, "thinking", "思考"))
+        return listOf(AgentFact.Tool(id, StepBody.Thinking))
     }
     private fun finishThinking(): List<AgentFact> {
         val id = thinkingStep ?: return emptyList()
         thinkingStep = null
-        return listOf(AgentFact.Tool(id, "thinking", "思考", outcome = ToolOutcome.SUCCEEDED))
+        return listOf(AgentFact.Tool(id, StepBody.Thinking, outcome = ToolOutcome.SUCCEEDED))
     }
     private fun rememberAssistantText(textId: String, index: Int, text: String, emit: (AgentFact) -> Unit) {
         val known = streamedParts.values.joinToString("\n") { it.toString() }

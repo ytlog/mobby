@@ -596,9 +596,9 @@ class RoomInteractionRepositoryTest {
         runtime.snapshots[turn.turnId.value] = runtime.snapshots.getValue(turn.turnId.value).copy(phase = RunPhase.RUNNING,
             outputSegments = listOf(OutputSegment("first", 0, first), OutputSegment("second", 3, second)),
             steps = listOf(
-                ToolSnapshot("s1", "snapshot", "snapshot", ToolOutcome.SUCCEEDED, listOf(OutputSegment("tool:s1", 1, shot))),
-                ToolSnapshot("s2", "click", "click", ToolOutcome.SUCCEEDED, listOf(OutputSegment("tool:s2", 2, tap))),
-                ToolSnapshot("s3", "recents", "recents")))
+                ToolSnapshot("s1", StepBody.Action("snapshot", ""), ToolOutcome.SUCCEEDED, listOf(OutputSegment("tool:s1", 1, shot))),
+                ToolSnapshot("s2", StepBody.Action("click", ""), ToolOutcome.SUCCEEDED, listOf(OutputSegment("tool:s2", 2, tap))),
+                ToolSnapshot("s3", StepBody.Action("recents"))))
         repository.recordSubmission(turn, Submission.Accepted(ExecutionId(turn.turnId.value)))
         val projected = state { it.selected?.turns?.singleOrNull()?.steps?.size == 3 }.selected!!.turns.single().transcript()
         assertEquals("先看屏幕", (projected[0] as TranscriptEntry.Reply).message.text)

@@ -46,22 +46,28 @@ internal fun Turn.diagnosticsActionVisible(): Boolean = diagnostics.isNotEmpty()
     ExecutionPhase.FAILED, ExecutionPhase.TIMED_OUT, ExecutionPhase.INTERRUPTED, ExecutionPhase.OUTCOME_UNKNOWN,
 ))
 internal fun toolGroupKey(steps: List<Step>) = "tools:${steps.first().id}"
-internal fun Turn.toolGroupExpanded(steps: List<Step>): Boolean {
-    val busy = occupied && steps.any { it.outcome == null } &&
-        phase in setOf(null, ExecutionPhase.ACCEPTED, ExecutionPhase.RUNNING, ExecutionPhase.AWAITING_APPROVAL, ExecutionPhase.CANCELLING)
-    return busy || toolGroupKey(steps) in expandedSteps
-}
+/** The tool list stays open for the whole turn. It collapses only after execution has finished. */
+internal fun Turn.toolsLive(): Boolean = occupied && phase in setOf(
+    null, ExecutionPhase.ACCEPTED, ExecutionPhase.RUNNING, ExecutionPhase.AWAITING_APPROVAL, ExecutionPhase.CANCELLING,
+)
+internal fun Turn.toolGroupExpanded(steps: List<Step>): Boolean = toolsLive() || toolGroupKey(steps) in expandedSteps
 internal fun Turn.executionHeadline(steps: List<Step> = this.steps): String {
     val count = steps.size
-    val busy = occupied && steps.any { it.outcome == null } &&
-        phase in setOf(null, ExecutionPhase.ACCEPTED, ExecutionPhase.RUNNING, ExecutionPhase.AWAITING_APPROVAL)
     return when {
         phase == ExecutionPhase.CANCELLING -> "停止中"
-        busy -> "执行中"
+        toolsLive() -> "执行中"
         phase == ExecutionPhase.SUCCEEDED || phase == ExecutionPhase.RUNNING || phase == ExecutionPhase.ACCEPTED || phase == null ->
-            if (steps.isNotEmpty() && steps.all { it.kind == "thinking" }) "已思考" else "已完成 ${count} 个步骤"
+            if (steps.isNotEmpty() && steps.all { it is Step.Thinking }) "已思考" else "已完成 ${count} 个步骤"
         else -> "${phase.label()} · ${count} 个步骤"
     }
+}
+internal fun Step.glyphKind(): String = when (this) {
+    is Step.Thinking -> "thinking"
+    is Step.Command -> "command_execution"
+    is Step.FileRead -> "read"
+    is Step.FileWrite -> "write"
+    is Step.FileDiff -> "file_change"
+    is Step.Action -> name
 }
 internal fun stepKindIcon(kind: String): AppGlyph = when (kind.lowercase()) {
     "websearch", "web_search", "grep", "glob" -> AppIcons.Search
@@ -116,20 +122,19 @@ internal fun stepKindIcon(kind: String): AppGlyph = when (kind.lowercase()) {
             }
             if (expanded) {
             val scroll = rememberScrollState()
-            LaunchedEffect(steps.size, steps.lastOrNull()?.id, steps.lastOrNull()?.summary, scroll.maxValue) {
+            LaunchedEffect(steps.size, steps.lastOrNull(), scroll.maxValue) {
                 if (running) scroll.scrollTo(scroll.maxValue)
             }
             Column(Modifier.then(if (running) Modifier.heightIn(max = 168.dp).verticalScroll(scroll) else Modifier).padding(start = 2.dp, end = 8.dp, bottom = 8.dp)) {
                 if (showExtras) turn.progress?.let { Text(it, Modifier.padding(horizontal = 12.dp, vertical = 2.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 steps.forEach { step ->
-                    val thinking = step.kind == "thinking"
-                    val open = !thinking && step.id in turn.expandedSteps
-                    val view = remember(step.kind, step.summary, step.output) { ToolPresentation.step(step.kind, step.summary, step.output) }
-                    Row(Modifier.fillMaxWidth().then(if (thinking) Modifier else Modifier.clickable { vm.enqueue {
+                    val open = step.id in turn.expandedSteps
+                    val view = remember(step) { ToolPresentation.present(step) }
+                    Row(Modifier.fillMaxWidth().clickable { vm.enqueue {
                         vm.actions.stepExpansion(turn.id, step.id, !open)
                         if (!open) vm.actions.expansion(turn.id, true)
-                    } }).heightIn(min = 40.dp).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        StepGlyph(step.kind, step.outcome, turn.phase, running && step.outcome == null)
+                    } }.heightIn(min = 40.dp).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        StepGlyph(step.glyphKind(), step.outcome, turn.phase, running && step.outcome == null)
                         Text(
                             view.title,
                             Modifier.weight(1f).padding(horizontal = 10.dp),
@@ -138,9 +143,9 @@ internal fun stepKindIcon(kind: String): AppGlyph = when (kind.lowercase()) {
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        if (!thinking) AppIcon(if (open) AppIcons.ChevronDown else AppIcons.ChevronRight, if (open) "已展开" else "已收起", Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        AppIcon(if (open) AppIcons.ChevronDown else AppIcons.ChevronRight, if (open) "已展开" else "已收起", Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    if (open && !thinking) {
+                    if (open) {
                         val body = view.detail.ifBlank { "尚无输出" }
                         Column(Modifier.fillMaxWidth().padding(start = 40.dp, end = 8.dp, bottom = 8.dp)) {
                             when {

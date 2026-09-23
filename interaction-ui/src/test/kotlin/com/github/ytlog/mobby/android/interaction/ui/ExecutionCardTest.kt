@@ -19,7 +19,7 @@ import java.lang.reflect.Proxy
 class ExecutionCardTest {
     @get:Rule val compose = createComposeRule()
     private val empty = Turn(TurnId("t"), "请检查超时", null, ExecutionPhase.SUCCEEDED)
-    private val step = Step("s1", "bash", """{"command":"ls"}""", "ok", "SUCCEEDED")
+    private val step = Step.Command("s1", "ls", "ok", "SUCCEEDED")
     private inline fun <reified T> stub(crossinline body: (String) -> Any?): T =
         Proxy.newProxyInstance(T::class.java.classLoader, arrayOf(T::class.java)) { _, method, _ -> body(method.name) } as T
     private fun vm(): ConversationViewModel = ConversationViewModel(
@@ -60,8 +60,10 @@ class ExecutionCardTest {
     @Test fun `completed headline uses the step count and running stays compact`() {
         assertEquals("已完成 2 个步骤", empty.copy(steps = listOf(step, step.copy(id = "s2"))).executionHeadline())
         assertEquals("执行中", empty.copy(phase = ExecutionPhase.RUNNING, occupied = true, steps = listOf(step.copy(outcome = null))).executionHeadline())
-        assertEquals("已思考", empty.copy(steps = listOf(Step("t", "thinking", "思考", "", "SUCCEEDED"))).executionHeadline())
-        assertEquals("已完成 1 个步骤", empty.copy(phase = ExecutionPhase.RUNNING, occupied = true, steps = listOf(step)).executionHeadline())
+        assertEquals("已思考", empty.copy(steps = listOf(Step.Thinking("t", "", "SUCCEEDED"))).executionHeadline())
+        val between = empty.copy(phase = ExecutionPhase.RUNNING, occupied = true, steps = listOf(step))
+        assertEquals("执行中", between.executionHeadline())
+        assertTrue(between.toolGroupExpanded(between.steps))
         assertEquals("失败 · 1 个步骤", empty.copy(phase = ExecutionPhase.FAILED, steps = listOf(step)).executionHeadline())
     }
 
@@ -99,7 +101,7 @@ class ExecutionCardTest {
 
     @Test fun `thinking hides routine diagnostics and a failed turn still offers them`() {
         val log = listOf(Message("d", "cli stderr"))
-        val thinking = Step("think", "thinking", "思考", "", null)
+        val thinking = Step.Thinking("think", "", null)
         val running = empty.copy(phase = ExecutionPhase.RUNNING, occupied = true, steps = listOf(thinking), diagnostics = log)
         assertFalse(running.diagnosticsActionVisible())
         val finished = running.copy(occupied = false, phase = ExecutionPhase.SUCCEEDED, steps = listOf(thinking.copy(outcome = "SUCCEEDED")), expandedSteps = setOf("tools:think"))
@@ -114,14 +116,17 @@ class ExecutionCardTest {
         compose.onNodeWithText("查看诊断（1）").assertExists()
     }
 
-    @Test fun `thinking stays collapsed and its private text stays off the card`() {
+    @Test fun `thinking stays collapsed until opened and then shows its text`() {
         val running = empty.copy(phase = ExecutionPhase.RUNNING, occupied = true, steps = listOf(
             step.copy(outcome = null),
-            Step("think", "thinking", "思考", "private", null)))
-        compose.setContent { MaterialTheme { ExecutionCard(running, vm()) { _, _ -> } } }
+            Step.Thinking("think", "private", null)))
+        val shown = mutableStateOf(running)
+        compose.setContent { MaterialTheme { ExecutionCard(shown.value, vm()) { _, _ -> } } }
         compose.onNodeWithText("执行中").assertExists()
         compose.onNodeWithText("思考").assertExists()
         compose.onNodeWithText("private").assertDoesNotExist()
         compose.onNodeWithText("运行 ls").assertExists()
+        compose.runOnIdle { shown.value = running.copy(expandedSteps = setOf("think")) }
+        compose.onNodeWithText("private").assertExists()
     }
 }

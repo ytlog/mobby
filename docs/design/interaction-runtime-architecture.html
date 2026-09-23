@@ -121,7 +121,7 @@ interface ExecutionPort {
 ConnectionState 只表达连接情况，不覆盖 RunPhase。</pre><p>所有非终态均可因启动失败、系统中断或协议错误结束。一个 run 只写入一次终态，由串行状态机决定竞态：若完成已落盘，后续取消返回 AlreadyTerminal；若取消请求先被接纳，则不能再因一个迟到的成功片段宣布成功。成功要求 Agent 协议成功终态及进程退出证据一致；普通 stderr 不直接等于失败。未获得进程退出证据时显示停止中或 OutcomeUnknown，不显示已停止。</p><div class="table"><table><thead><tr><th>事件</th><th>负载与展示投影</th></tr></thead><tbody>
 <tr><td>RunAccepted / RunStarted</td><td>冻结配置、时间和 sessionRef；展示开始状态</td></tr>
 <tr><td>ProgressSummary</td><td>Agent 提供的公开进度摘要，不暴露私有推理内容</td></tr>
-<tr><td>ToolStarted / ToolOutput / ToolFinished</td><td>stepId、toolKind、脱敏摘要、输出 chunkIndex 或 artifactRef、明确工具终态；生成可折叠步骤</td></tr>
+<tr><td>ToolStarted / ToolOutput / ToolFinished</td><td>stepId、固定的 StepBody、输出分段、明确工具终态。StepBody 只有 thinking、command、file_read、file_write、file_diff、action。command 带 command；file_read / file_write 带 path；file_diff 带 paths；action 带 name 与纯文本 detail。输出分段依次是思考原文、命令结果、文件内容、unified diff 或动作结果。回复是 AssistantDelta / AssistantCompleted，不是步骤。上层按这些类型读取，不再从工具 JSON 猜测字段</td></tr>
 <tr><td>AssistantDelta / AssistantCompleted</td><td>messageId、chunkIndex、文本增量 / 完成标记；消息完成不是 run 成功的替代信号</td></tr>
 <tr><td>ApprovalRequired / ApprovalResolved</td><td>approvalId、动作摘要、范围、版本；待审批进入快照，重连后仍可见</td></tr>
 <tr><td>ArtifactAvailable / RunFinished</td><td>受控产物引用 / 终态、退出码、错误码、证据摘要；UI 自行决定折叠和操作</td></tr>

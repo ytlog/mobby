@@ -2,34 +2,44 @@ package com.github.ytlog.mobby.android.interaction.ui
 
 import org.json.JSONArray
 import org.json.JSONObject
+import com.github.ytlog.mobby.android.interaction.domain.Step
 
 /**
- * Conversation-flow presentation for tool calls. Raw protocol JSON stays in the domain
- * snapshot; this only decides what the timeline shows.
+ * Timeline labels for a conversation step. The step's fields are already typed.
+ * Approval scope is a separate payload and is formatted here.
  */
 internal data class ToolView(val title: String, val detail: String, val terminal: Boolean)
 
 internal object ToolPresentation {
-    fun step(kind: String, summary: String, output: String): ToolView {
-        val input = present(summary)
-        val result = present(output)
-        val title = title(kind, input.headline.ifBlank { summary }.ifBlank { kind })
-        val detail = linkedMapOf<String, String>().apply {
-            putAll(input.fields)
-            if (result.body.isNotBlank()) put("输出", result.body)
-            result.fields.forEach { (key, value) -> putIfAbsent(key, value) }
+    fun present(step: Step): ToolView = when (step) {
+        is Step.Thinking -> ToolView("思考", step.text.trim(), false)
+        is Step.Command -> {
+            val command = step.command.trim()
+            val body = buildString {
+                if (command.isNotBlank()) append("命令\n").append(command)
+                if (isNotEmpty()) append("\n\n")
+                append("结果\n").append(step.result.ifBlank { "无输出" })
+            }
+            ToolView(title("command_execution", command.lineSequence().firstOrNull().orEmpty()), body, true)
         }
-        val body = when {
-            detail.isEmpty() -> result.body.ifBlank { input.body }
-            result.body.isBlank() && input.fields.isEmpty() && input.body.isBlank() -> ""
-            else -> buildString {
-                detail.forEach { (key, value) ->
+        is Step.FileRead -> ToolView(title("read", step.path), step.content.trim(), step.content.isNotBlank())
+        is Step.FileWrite -> ToolView(title("write", step.path), step.content.trim(), step.content.isNotBlank())
+        is Step.FileDiff -> {
+            val path = step.paths.firstOrNull().orEmpty().substringAfterLast('/').ifBlank { step.paths.firstOrNull().orEmpty() }
+            ToolView(title("file_change", path), step.diff.trim(), step.diff.isNotBlank())
+        }
+        is Step.Action -> {
+            val focus = step.detail.lineSequence().firstOrNull()?.trim().orEmpty()
+            val extra = step.detail.trim()
+            val body = buildString {
+                if (extra.isNotBlank() && extra != focus) append(extra)
+                if (step.result.isNotBlank()) {
                     if (isNotEmpty()) append("\n\n")
-                    if (key == "输出") append(value) else append(key).append('\n').append(value)
+                    append(step.result.trim())
                 }
             }
+            ToolView(title(step.name, focus), body.trim(), false)
         }
-        return ToolView(title, body.trim(), terminal = kind in TERMINAL_KINDS || input.terminal || result.terminal)
     }
 
     fun permission(action: String, scope: String): ToolView {
@@ -164,5 +174,4 @@ internal object ToolPresentation {
         "description", "old_string", "new_string", "content", "offset", "limit",
     )
     private val HIDDEN_KEYS = setOf("type", "id", "tool_use_id", "is_error", "name")
-    private val TERMINAL_KINDS = setOf("bash", "shell", "command_execution")
 }

@@ -22,6 +22,10 @@ class CodexAppServerSession(private val cwd: String, private val model: String, 
     private var finished = false
     private var sessionId: String? = null
     private val messageText = mutableMapOf<String, String>()
+    private val reasoningSummary = mutableMapOf<String, String>()
+    private val reasoningContent = mutableMapOf<String, String>()
+    private val commandOutput = mutableMapOf<String, String>()
+    private val commands = mutableMapOf<String, String>()
     init {
         require(cwd.startsWith("/") && '\u0000' !in cwd && model.isNotBlank() && '\u0000' !in model)
         require(resumeThreadId == null || resumeThreadId.matches(Regex("[A-Za-z0-9-]{1,100}")))
@@ -90,7 +94,25 @@ class CodexAppServerSession(private val cwd: String, private val model: String, 
             }
             "item/reasoning/textDelta", "item/reasoning/summaryTextDelta", "item/reasoning/summaryPartAdded" -> {
                 val itemId = params?.text("itemId") ?: return emptyList()
-                listOf(event("item.started") { putJsonObject("item") { put("id", itemId); put("type", "reasoning") } })
+                val delta = params.text("delta").orEmpty()
+                when (method) {
+                    "item/reasoning/summaryTextDelta" -> reasoningSummary[itemId] = reasoningSummary[itemId].orEmpty() + delta
+                    "item/reasoning/textDelta" -> reasoningContent[itemId] = reasoningContent[itemId].orEmpty() + delta
+                    else -> if (reasoningSummary[itemId].orEmpty().isNotEmpty()) reasoningSummary[itemId] = reasoningSummary[itemId].orEmpty() + "\n\n"
+                }
+                val text = joinReasoning(reasoningSummary[itemId].orEmpty(), reasoningContent[itemId].orEmpty())
+                if (text.isEmpty()) emptyList() else listOf(reasoningEvent(itemId, text))
+            }
+            "item/commandExecution/outputDelta" -> {
+                val itemId = params?.text("itemId") ?: return emptyList()
+                val delta = params.text("delta") ?: params.text("output") ?: return emptyList()
+                if (delta.isEmpty()) return emptyList()
+                val text = commandOutput.getOrDefault(itemId, "") + delta
+                commandOutput[itemId] = text
+                listOf(event("item.updated") { putJsonObject("item") {
+                    put("id", itemId); put("type", "command_execution"); put("aggregated_output", text)
+                    commands[itemId]?.let { put("command", it) }
+                } })
             }
             "item/started", "item/completed" -> item?.let { listOf(event(if (method == "item/completed") "item.completed" else "item.started") { put("item", unifiedItem(it)) }) }.orEmpty()
             else -> emptyList()
@@ -133,10 +155,25 @@ class CodexAppServerSession(private val cwd: String, private val model: String, 
         put("id", item.text("id") ?: "item")
         when (item.text("type")) {
             "agentMessage" -> { put("type", "agent_message"); put("text", item.text("text").orEmpty()) }
-            "reasoning" -> put("type", "reasoning")
+            "reasoning" -> {
+                put("type", "reasoning")
+                val id = item.text("id") ?: "item"
+                val summary = partsText(item["summary"])
+                val content = partsText(item["content"])
+                if (summary.isNotEmpty()) reasoningSummary[id] = longer(reasoningSummary[id].orEmpty(), summary)
+                if (content.isNotEmpty()) reasoningContent[id] = longer(reasoningContent[id].orEmpty(), content)
+                put("text", joinReasoning(reasoningSummary[id].orEmpty(), reasoningContent[id].orEmpty()))
+            }
             "commandExecution" -> {
-                put("type", "command_execution"); put("command", item.text("command") ?: "command")
-                item["aggregatedOutput"]?.let { put("aggregated_output", it) }
+                val id = item.text("id") ?: "item"
+                val command = commandText(item["command"]).ifBlank { commands[id].orEmpty() }
+                commands[id] = command
+                put("type", "command_execution"); put("command", command)
+                val output = commandResult(item)
+                if (output.isNotEmpty()) {
+                    commandOutput[id] = longer(commandOutput[id].orEmpty(), output)
+                    put("aggregated_output", commandOutput[id].orEmpty())
+                } else item["aggregatedOutput"]?.let { put("aggregated_output", it) }
                 item["exitCode"]?.let { put("exit_code", it) }
                 item["status"]?.let { put("status", it) }
             }
@@ -147,9 +184,39 @@ class CodexAppServerSession(private val cwd: String, private val model: String, 
                 item["status"]?.let { put("status", it) }
             }
             "fileChange" -> { put("type", "file_change"); item["changes"]?.let { put("changes", it) }; item["status"]?.let { put("status", it) } }
-            "webSearch" -> { put("type", "web_search"); put("query", item.text("query") ?: "web_search") }
+            "webSearch" -> { put("type", "web_search"); put("query", item.text("query").orEmpty()) }
             else -> { put("type", item.text("type") ?: "unknown"); put("raw", item) }
         }
+    }
+    private fun reasoningEvent(id: String, text: String) = event("item.updated") {
+        putJsonObject("item") { put("id", id); put("type", "reasoning"); put("text", text) }
+    }
+    private fun joinReasoning(summary: String, content: String) = when {
+        summary.isBlank() -> content
+        content.isBlank() -> summary
+        else -> summary.trimEnd() + "\n\n" + content.trimStart()
+    }
+    private fun longer(current: String, incoming: String) = when {
+        incoming.startsWith(current) || current.isEmpty() -> incoming
+        current.startsWith(incoming) -> current
+        else -> incoming
+    }
+    private fun commandText(value: JsonElement?): String = when (value) {
+        is JsonArray -> value.joinToString(" ") { element -> (element as? JsonPrimitive)?.contentOrNull.orEmpty() }.trim()
+        is JsonPrimitive -> value.contentOrNull.orEmpty()
+        else -> ""
+    }
+    private fun commandResult(item: JsonObject): String {
+        val aggregated = (item["aggregatedOutput"] as? JsonPrimitive)?.contentOrNull.orEmpty()
+        if (aggregated.isNotEmpty()) return aggregated
+        return listOf("stdout", "stderr").map { (item[it] as? JsonPrimitive)?.contentOrNull.orEmpty() }.filter { it.isNotEmpty() }.joinToString("\n")
+    }
+    private fun partsText(value: JsonElement?): String = when (value) {
+        null, JsonNull -> ""
+        is JsonPrimitive -> value.contentOrNull.orEmpty()
+        is JsonArray -> value.joinToString("\n\n") { partsText(it) }.trim()
+        is JsonObject -> value.text("text") ?: value.text("summary") ?: ""
+        else -> ""
     }
     private fun event(type: String, body: JsonObjectBuilder.() -> Unit = {}): String = buildJsonObject { put("type", type); body() }.toString()
     private fun send(id: String, method: String, params: JsonObject) {

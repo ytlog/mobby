@@ -94,9 +94,9 @@ class ConversationRulesTest {
         val turn = Turn(TurnId("t"), "打开应用商店", null, ExecutionPhase.RUNNING, occupied = true,
             messages = listOf(Message("a", "先看屏幕", 0), Message("b", "再打开商店", 3)),
             steps = listOf(
-                Step("s1", "snapshot", "snapshot", "ok", "SUCCEEDED", 1),
-                Step("s2", "click", "click", "ok", "SUCCEEDED", 2),
-                Step("s3", "recents", "recents", "", null, 4)))
+                Step.Action("s1", "snapshot", "", "ok", "SUCCEEDED", 1),
+                Step.Action("s2", "click", "", "ok", "SUCCEEDED", 2),
+                Step.Action("s3", "recents", "", "", null, 4)))
         val entries = turn.transcript()
         assertEquals("先看屏幕", (entries[0] as TranscriptEntry.Reply).message.text)
         assertEquals(listOf("s1", "s2"), (entries[1] as TranscriptEntry.ToolRun).steps.map { it.id })
@@ -107,7 +107,7 @@ class ConversationRulesTest {
     @Test fun `last reply in the turn is the only place for reply actions`() {
         val turn = Turn(TurnId("t"), "任务", null, ExecutionPhase.SUCCEEDED,
             messages = listOf(Message("a", "中间说明", 0), Message("b", "最终回复", 2)),
-            steps = listOf(Step("s1", "bash", "ls", "ok", "SUCCEEDED", 1)))
+            steps = listOf(Step.Command("s1", "ls", "ok", "SUCCEEDED", 1)))
         val replies = turn.transcript().filterIsInstance<TranscriptEntry.Reply>()
         assertEquals(listOf("a", "b"), replies.map { it.message.id })
         assertEquals("b", replies.last().message.id)
@@ -118,9 +118,9 @@ class ConversationRulesTest {
         val turn = Turn(TurnId("t"), "任务", null, ExecutionPhase.SUCCEEDED,
             messages = listOf(Message("a", "中间说明", 0), Message("b", "最终回复", 4)),
             steps = listOf(
-                Step("s1", "snapshot", "snapshot", "ok", "SUCCEEDED", 1),
-                Step("think", "thinking", "思考", "", "SUCCEEDED", 2),
-                Step("s2", "click", "click", "ok", "SUCCEEDED", 3)))
+                Step.Action("s1", "snapshot", "", "ok", "SUCCEEDED", 1),
+                Step.Thinking("think", "", "SUCCEEDED", 2),
+                Step.Action("s2", "click", "", "ok", "SUCCEEDED", 3)))
         val shown = turn.visibleTranscript()
         assertEquals(listOf("s1", "think", "s2"), (shown[0] as TranscriptEntry.ToolRun).steps.map { it.id })
         assertEquals("最终回复", (shown[1] as TranscriptEntry.Reply).message.text)

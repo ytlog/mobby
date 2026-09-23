@@ -924,3 +924,13 @@ OpenCode 运行包里的 `libstdc++.so.6` 是指向 `libstdc++.so.6.0.33` 的符
 
 `:device-plugins:testDebugUnitTest`、`:interaction-domain:test`、`:interaction-ui:testDebugUnitTest`、`:runtime-android:testDebugUnitTest` 和 `python3 -m unittest discover -s runtime -p 'test_*.py'` 通过。`:interaction-data:testDebugUnitTest` 中插件草稿引用回归通过；全套在本机并行负载下偶发 10 秒状态等待超时，单独重跑对应用例可以通过，尚未当作插件逻辑缺陷。没有在手机上逐项验收无障碍、短信、相机、麦克风或存储授权。模拟与单元测试不能代替这些验收。
 
+## 工具列表在整轮结束前保持展开，思考可以打开（2026-09-23）
+
+工具列表不再在当前步骤都有结果时先收起、下一工具开始时再展开。这一轮还在执行时，列表保持展开，标题仍是「执行中」；整轮结束后才收成「已完成 N 个步骤」。点开「思考」可以看到推理原文。Codex、Claude Code 与 OpenCode 都把推理原文记在这个步骤上，不另写进回复。
+
+Codex 若把最终回复只放进推理、并以 `<arg_value>` 开头，这段文字改作回复显示，不再只留在思考里。真机上「编写一个冒泡排序算法」这一轮就是这样：会话记录里没有 agent message，说明写在最后一条 reasoning 的 content 中，所以界面当时只有工具调用。已经结束的那一轮没有保存这段原文，不会自动补出来。
+
+展开单条步骤时，命令显示实际执行的命令和结果；读取显示文件内容，写入显示写入的正文，编辑和文件修改显示 diff。Codex 的命令输出按增量追加，完成时不再把同一段结果写第二遍。
+
+Runtime 对外的对话消息现在是固定类型。回复仍是 `AssistantDelta` / `AssistantCompleted`。步骤是 `StepBody`：`thinking`、`command`（command）、`file_read` / `file_write`（path）、`file_diff`（paths）、`action`（name、detail）。长正文留在输出分段里，含义由类型决定。协议解码时就把 CLI 载荷拆进这些字段；交互层只按类型投影，不再解析工具 JSON。早先快照没有 `body` 时按通用动作 `tool` 读取，回复正文仍在原输出分段里。审批请求仍保留原始 scope，不属于这组对话类型。
+

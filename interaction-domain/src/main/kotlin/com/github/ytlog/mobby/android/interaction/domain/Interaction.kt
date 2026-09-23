@@ -5,7 +5,26 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
 
 data class Message(val id: String, val text: String, val order: Long = Long.MAX_VALUE)
-data class Step(val id: String, val kind: String, val summary: String, val output: String, val outcome: String?, val order: Long = Long.MAX_VALUE)
+/** Conversation step. Reply text stays on [Message]. Body text is already joined from output segments. */
+sealed interface Step {
+    val id: String
+    val outcome: String?
+    val order: Long
+    data class Thinking(override val id: String, val text: String, override val outcome: String?, override val order: Long = Long.MAX_VALUE) : Step
+    data class Command(override val id: String, val command: String, val result: String, override val outcome: String?, override val order: Long = Long.MAX_VALUE) : Step
+    data class FileRead(override val id: String, val path: String, val content: String, override val outcome: String?, override val order: Long = Long.MAX_VALUE) : Step
+    data class FileWrite(override val id: String, val path: String, val content: String, override val outcome: String?, override val order: Long = Long.MAX_VALUE) : Step
+    data class FileDiff(override val id: String, val paths: List<String>, val diff: String, override val outcome: String?, override val order: Long = Long.MAX_VALUE) : Step
+    data class Action(override val id: String, val name: String, val detail: String, val result: String, override val outcome: String?, override val order: Long = Long.MAX_VALUE) : Step
+    fun displayedText(): String = when (this) {
+        is Thinking -> text
+        is Command -> command + result
+        is FileRead -> content
+        is FileWrite -> content
+        is FileDiff -> diff
+        is Action -> detail + result
+    }
+}
 data class SkillProposal(val ref: String, val markdown: String, val agent: AgentId)
 data class Turn(
     val id: TurnId, val userText: String, val execution: ExecutionId?, val phase: ExecutionPhase?,

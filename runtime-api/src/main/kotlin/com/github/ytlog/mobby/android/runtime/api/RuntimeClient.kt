@@ -1,5 +1,6 @@
 package com.github.ytlog.mobby.android.runtime.api
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
@@ -154,8 +155,52 @@ data class TerminalEvidence(val protocolSucceeded: Boolean?, val exitCode: Int?,
 data class PendingApproval(val approvalId: String, val revision: Long, val actionSummary: String, val scopeSummary: String)
 @Serializable
 data class OutputSegment(val messageId: String, val chunkIndex: Long, val ref: ResourceRef)
+/**
+ * One conversation step. Upper layers switch on this type.
+ * The step's output segments are the body text for that type:
+ * thinking text, command result, file content, unified diff, or action result.
+ * A missing body on previously stored snapshots reads as [Action] with name `tool`.
+ */
 @Serializable
-data class ToolSnapshot(val stepId: String, val toolKind: String, val summary: String,
+sealed interface StepBody {
+    @Serializable
+    @SerialName("thinking")
+    data object Thinking : StepBody
+    /** `command` is the shell text after a `bash -lc` / `sh -lc` wrapper is removed. */
+    @Serializable
+    @SerialName("command")
+    data class Command(val command: String) : StepBody
+    @Serializable
+    @SerialName("file_read")
+    data class FileRead(val path: String) : StepBody
+    @Serializable
+    @SerialName("file_write")
+    data class FileWrite(val path: String) : StepBody
+    /** One tool call may change several files. Output segments are the unified diff. */
+    @Serializable
+    @SerialName("file_diff")
+    data class FileDiff(val paths: List<String>) : StepBody
+    /** Any other tool. `detail` is plain text, already taken out of the CLI payload. */
+    @Serializable
+    @SerialName("action")
+    data class Action(val name: String, val detail: String = "") : StepBody
+}
+
+/** A later tool event replaces the step only when the new body fills in a blank or longer identity field. */
+fun StepBody.supersedes(previous: StepBody): Boolean = when {
+    this == previous -> false
+    previous is StepBody.Action && previous.detail.isBlank() && this !is StepBody.Action -> true
+    this is StepBody.Command && previous is StepBody.Command -> command.length > previous.command.length
+    this is StepBody.FileRead && previous is StepBody.FileRead -> path.length > previous.path.length
+    this is StepBody.FileWrite && previous is StepBody.FileWrite -> path.length > previous.path.length
+    this is StepBody.FileDiff && previous is StepBody.FileDiff ->
+        paths.isNotEmpty() && paths != previous.paths && (previous.paths.isEmpty() || paths.joinToString().length > previous.paths.joinToString().length)
+    this is StepBody.Action && previous is StepBody.Action ->
+        detail.length > previous.detail.length || (name.isNotBlank() && previous.name == "tool" && name != "tool")
+    else -> false
+}
+@Serializable
+data class ToolSnapshot(val stepId: String, val body: StepBody = StepBody.Action("tool", ""),
     val outcome: ToolOutcome? = null, val output: List<OutputSegment> = emptyList(), val order: Long = -1)
 @Serializable
 data class RunSnapshot(
@@ -190,7 +235,7 @@ sealed interface RuntimeEvent {
     @Serializable
     data class ProgressSummary(val text: String) : RuntimeEvent
     @Serializable
-    data class ToolStarted(val stepId: String, val toolKind: String, val summary: String, val order: Long = -1) : RuntimeEvent
+    data class ToolStarted(val stepId: String, val body: StepBody, val order: Long = -1) : RuntimeEvent
     @Serializable
     data class ToolOutput(val stepId: String, val segment: OutputSegment) : RuntimeEvent
     @Serializable

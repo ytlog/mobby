@@ -15,7 +15,7 @@ class ConversationSearchTest {
         val c = Conversation(ConversationId("conversation"), NextTurnConfig(AgentId.CODEX, "model", null, "default", "CODEX"))
         val turns = listOf(Turn(TurnId("one"), "Find Needle", null, null,
             messages = listOf(Message("reply", "needle found")), diagnostics = listOf(Message("log", "needle secret")),
-            steps = listOf(Step("step", "tool", "needle", "needle", null))))
+            steps = listOf(Step.Action("step", "tool", "needle", "needle", null))))
         val matches = ConversationSearch.find(ConversationDetail(c, turns), "NEEDLE")
         assertEquals(2, matches.size)
         assertNull(matches[0].messageId)

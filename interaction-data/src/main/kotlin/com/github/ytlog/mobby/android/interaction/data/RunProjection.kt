@@ -18,7 +18,7 @@ internal object RunProjection {
             is RuntimeEvent.ToolStarted -> {
                 val previous = current.steps.firstOrNull { it.stepId == payload.stepId }
                 val order = if (payload.order >= 0) payload.order else previous?.order ?: -1
-                val tool = ToolSnapshot(payload.stepId, payload.toolKind, payload.summary, previous?.outcome, previous?.output ?: emptyList(), order)
+                val tool = ToolSnapshot(payload.stepId, payload.body, previous?.outcome, previous?.output ?: emptyList(), order)
                 current.copy(steps = current.steps.filterNot { it.stepId == payload.stepId } + tool)
             }
             is RuntimeEvent.ToolOutput -> current.copy(steps = current.steps.map { if (it.stepId == payload.stepId) it.copy(output = it.output + payload.segment) else it })

@@ -381,7 +381,16 @@ internal class RoomInteractionRepository(
                 if (snapshot?.artifacts?.any { content[it.value]?.expired == true } == true) listOf(Message("retained-artifact-notice", "技能草稿已按保留策略清理")) else emptyList(),
             snapshot?.steps?.map { step ->
                 val order = if (step.order >= 0) step.order else step.output.minOfOrNull { it.chunkIndex } ?: nextOrder++
-                Step(step.stepId, step.toolKind, step.summary, step.output.render("\n"), step.outcome?.name, order)
+                val text = step.output.render("\n")
+                val outcome = step.outcome?.name
+                when (val body = step.body) {
+                    StepBody.Thinking -> Step.Thinking(step.stepId, text, outcome, order)
+                    is StepBody.Command -> Step.Command(step.stepId, body.command, text, outcome, order)
+                    is StepBody.FileRead -> Step.FileRead(step.stepId, body.path, text, outcome, order)
+                    is StepBody.FileWrite -> Step.FileWrite(step.stepId, body.path, text, outcome, order)
+                    is StepBody.FileDiff -> Step.FileDiff(step.stepId, body.paths, text, outcome, order)
+                    is StepBody.Action -> Step.Action(step.stepId, body.name, body.detail, text, outcome, order)
+                }
             }.orEmpty(),
             snapshot?.outputSegments?.filter { it.messageId.startsWith("diagnostic:") }?.messages().orEmpty(),
             if (error == OutputCache.VERIFICATION_WARNING) listOfNotNull(snapshot?.terminalEvidence?.error?.message(), error).joinToString("\n")

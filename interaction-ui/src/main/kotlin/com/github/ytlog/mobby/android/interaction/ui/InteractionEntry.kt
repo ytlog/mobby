@@ -621,7 +621,7 @@ internal fun Turn.replyActionsVisible() = !occupied && !pending
     LaunchedEffect(list) {
         snapshotFlow { list.layoutInfo.totalItemsCount > 0 && !list.isScrollInProgress && !list.canScrollForward }.collect { if (it) follow = true }
     }
-    val outputVersion = detail.turns.map { listOf(it.id, it.phase, it.permissions.map { p -> p.id to p.revision }, it.messages.map { m -> m.text.length }, it.steps.map { s -> s.output.length }) }
+    val outputVersion = detail.turns.map { listOf(it.id, it.phase, it.permissions.map { p -> p.id to p.revision }, it.messages.map { m -> m.text.length }, it.steps.map { s -> s.displayedText().length }) }
     LaunchedEffect(outputVersion) { if (follow && !list.isScrollInProgress && keys.isNotEmpty()) list.scrollToItem(keys.lastIndex) }
     LaunchedEffect(list) {
         snapshotFlow { list.layoutInfo.visibleItemsInfo.firstOrNull()?.key?.toString() to list.firstVisibleItemScrollOffset }.debounce(250).collect { (key, offset) ->

@@ -40,10 +40,10 @@ class RunProjectionTest {
         assertTrue(complete.pendingApprovals.isEmpty())
     }
     @Test fun `a tool keeps the order of its first output slot when the summary arrives later`() {
-        val started = RunProjection.apply(initial, event(2, RuntimeEvent.ToolStarted("t", "snapshot", "snapshot", 4)))!!
-        val described = RunProjection.apply(started, event(3, RuntimeEvent.ToolStarted("t", "snapshot", """{"cmd":"shot"}""", 4)))!!
+        val started = RunProjection.apply(initial, event(2, RuntimeEvent.ToolStarted("t", StepBody.Action("snapshot", ""), 4)))!!
+        val described = RunProjection.apply(started, event(3, RuntimeEvent.ToolStarted("t", StepBody.Action("snapshot", "shot"), 4)))!!
         assertEquals(4, described.steps.single().order)
-        assertEquals("""{"cmd":"shot"}""", described.steps.single().summary)
+        assertEquals(StepBody.Action("snapshot", "shot"), described.steps.single().body)
         val output = RunProjection.apply(described, event(4, RuntimeEvent.ToolOutput("t", OutputSegment("tool:t", 9, ResourceRef("r/9")))))!!
         assertEquals(4, output.steps.single().order)
         assertEquals(1, output.steps.single().output.size)
