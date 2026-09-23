@@ -33,6 +33,7 @@ class ConversationLinkNavigationTest {
             "getDiagnostic" -> flowOf(DiagnosticOutput(null, emptyList()))
             "agents" -> emptyList<AgentOption>()
             "gateways" -> emptyList<GatewayProfile>()
+            "defaultGatewayAgent" -> AgentId.CODEX
             "capture" -> DataResult.Loaded<CameraCapture?>(null)
             else -> error(name)
         } }

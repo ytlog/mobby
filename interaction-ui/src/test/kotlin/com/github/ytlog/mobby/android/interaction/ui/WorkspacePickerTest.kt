@@ -29,6 +29,7 @@ class WorkspacePickerTest {
     private var creations = 0
     private var projectReply: CompletableDeferred<OperationResult>? = null
     private val savedProjects = mutableListOf<Project>()
+    private var gatewayDefault = AgentId.CODEX
     private inline fun <reified T> stub(crossinline body: (String, Array<out Any?>) -> Any?): T =
         Proxy.newProxyInstance(T::class.java.classLoader, arrayOf(T::class.java)) { _, m, a -> body(m.name, a ?: emptyArray()) } as T
     private fun vm(): ConversationViewModel {
@@ -37,6 +38,7 @@ class WorkspacePickerTest {
             "getDiagnostic" -> flowOf(DiagnosticOutput(null, emptyList()))
             "agents" -> listOf(AgentOption(AgentId.CLAUDE_CODE, mapOf("claude-fixture" to emptySet()), null, true, emptySet()))
             "gateways" -> emptyList<GatewayProfile>()
+            "defaultGatewayAgent" -> gatewayDefault
             "workspaces" -> DataResult.Loaded(options.toList())
             "createWorkspace" -> {
                 creations++
@@ -68,6 +70,16 @@ class WorkspacePickerTest {
             stub<PreferencePort> { name, _ -> error(name) })).also { store.put("vm", it) }
     }
     @After fun cleanup() { compose.runOnIdle { store.clear(); scope.cancel() } }
+    @Test fun `new conversation uses the selected default gateway`() {
+        gatewayDefault = AgentId.CLAUDE_CODE
+        val vm = vm()
+        compose.waitForIdle()
+        var submitted: NextTurnConfig? = null
+        val current = Conversation(ConversationId("current"), NextTurnConfig(AgentId.CODEX, "old", null, "default", "CODEX"))
+        compose.setContent { MaterialTheme { ConfigDialog(vm, current, {}, { config, _ -> submitted = config }) } }
+        compose.onNodeWithText("创建").performClick()
+        Assert.assertEquals(AgentId.CLAUDE_CODE, submitted?.agent)
+    }
     @Test fun `selected workspace survives page recreation and reaches new conversation config`() {
         val vm = vm()
         var submitted: NextTurnConfig? = null

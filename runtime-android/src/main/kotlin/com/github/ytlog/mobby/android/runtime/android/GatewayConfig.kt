@@ -110,23 +110,35 @@ class GatewayStore(context: Context) {
                 .setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE).build())
         }.generateKey()
     }
+    private fun encrypt(value: String): String {
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, encryptionKey())
+        return Base64.encodeToString(cipher.iv + cipher.doFinal(value.toByteArray(Charsets.UTF_8)), Base64.NO_WRAP)
+    }
+    private fun decrypt(encoded: String): String {
+        val bytes = Base64.decode(encoded, Base64.NO_WRAP)
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.DECRYPT_MODE, encryptionKey(), GCMParameterSpec(128, bytes.copyOfRange(0, 12)))
+        return String(cipher.doFinal(bytes.copyOfRange(12, bytes.size)), Charsets.UTF_8)
+    }
     fun version(mode: AgentMode): Long = prefs.getLong("${mode.name}.version", 0)
     fun load(mode: AgentMode, version: Long = version(mode)): GatewayConfig {
         val storageKey = if (version == version(mode)) mode.name else "${mode.name}:$version"
         val encoded = prefs.getString(storageKey, null) ?: return GatewayConfig(protocol = mode.gatewayProtocol())
-        val bytes = Base64.decode(encoded, Base64.NO_WRAP)
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.DECRYPT_MODE, encryptionKey(), GCMParameterSpec(128, bytes.copyOfRange(0, 12)))
-        return GatewayConfig.parse(String(cipher.doFinal(bytes.copyOfRange(12, bytes.size)), Charsets.UTF_8))
+        return GatewayConfig.parse(decrypt(encoded))
+    }
+    fun defaultMode(): AgentMode = prefs.getString("defaultAgent", null)?.let { encoded ->
+        AgentMode.valueOf(decrypt(encoded)).also { require(it != AgentMode.SHELL) }
+    } ?: AgentMode.CODEX
+    fun selectDefault(mode: AgentMode) = synchronized(writeLock) {
+        require(mode != AgentMode.SHELL)
+        check(prefs.edit().putString("defaultAgent", encrypt(mode.name)).commit()) { "保存默认网关失败" }
     }
     fun snapshot(mode: AgentMode): Pair<Long, GatewayConfig> = synchronized(writeLock) { version(mode) to load(mode) }
     fun save(mode: AgentMode, config: GatewayConfig) = synchronized(writeLock) {
         config.validateFor(mode)
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.ENCRYPT_MODE, encryptionKey())
-        val encrypted = cipher.iv + cipher.doFinal(config.json().toByteArray(Charsets.UTF_8))
         val oldVersion = version(mode)
-        val encoded = Base64.encodeToString(encrypted, Base64.NO_WRAP)
+        val encoded = encrypt(config.json())
         val edit = prefs.edit()
         prefs.getString(mode.name, null)?.let { edit.putString("${mode.name}:$oldVersion", it) }
         check(edit.putString(mode.name, encoded).putLong("${mode.name}.version", oldVersion + 1).commit()) { "保存网关失败" }

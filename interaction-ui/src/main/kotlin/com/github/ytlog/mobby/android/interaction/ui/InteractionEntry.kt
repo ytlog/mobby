@@ -12,6 +12,7 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitHorizontalTouchSlopOrCancellation
 import androidx.compose.foundation.gestures.horizontalDrag
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
@@ -277,7 +278,7 @@ class InteractionHostActions(
     val control = drawerControlColor()
     Surface(modifier, color = drawerColor(), contentColor = conversationInk()) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().padding(bottom = if (darkChrome()) 0.dp else 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("mobby", Modifier.weight(1f), color = conversationInk(), style = MaterialTheme.typography.headlineSmall)
                 DrawerPill(onNew, control, Modifier.testTag("drawer-new")) {
                     AppIcon(AppIcons.New, null, Modifier.size(22.dp))
@@ -313,7 +314,7 @@ class InteractionHostActions(
                     if (visible.isEmpty()) item(key = "empty") { EmptyPlaceholder("没有匹配的会话", "换个关键词，或新建一个对话") }
                 }
             }
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(Modifier.fillMaxWidth().padding(top = if (darkChrome()) 0.dp else 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 DrawerSearch(query, { query = it }, control, Modifier.weight(1f).testTag("drawer-search"))
                 DrawerCircle("设置", onSettings, control, AppIcons.Settings)
             }
@@ -353,7 +354,7 @@ private val DrawerRowHeight = 40.dp
 
 @Composable private fun DrawerPill(onClick: () -> Unit, color: Color, modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
     Row(
-        modifier.height(ToolbarControl).clip(CircleShape).background(color).clickable(onClick = onClick).padding(horizontal = 16.dp),
+        modifier.height(ToolbarControl).then(drawerControlShadow()).clip(CircleShape).background(color).clickable(onClick = onClick).padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         val row = this
@@ -362,15 +363,16 @@ private val DrawerRowHeight = 40.dp
 }
 
 @Composable private fun DrawerCircle(label: String, onClick: () -> Unit, color: Color, icon: AppGlyph) {
-    Box(Modifier.size(ToolbarControl).clip(CircleShape).background(color).clickable(onClick = onClick).semantics { contentDescription = label }, contentAlignment = Alignment.Center) {
+    Box(Modifier.size(ToolbarControl).then(drawerControlShadow()).clip(CircleShape).background(color).clickable(onClick = onClick).semantics { contentDescription = label }, contentAlignment = Alignment.Center) {
         AppIcon(icon, null, Modifier.size(22.dp), tint = onButtonColor())
     }
 }
 
-@Composable private fun drawerControlElevation() = 0.dp
+@Composable private fun drawerControlShadow() = if (darkChrome()) Modifier else Modifier.shadow(floatingElevation(), CircleShape)
 
 @Composable private fun DrawerSearch(query: String, onQuery: (String) -> Unit, color: Color, modifier: Modifier = Modifier) {
-    Surface(modifier.height(ToolbarControl), shape = CircleShape, color = color, contentColor = onButtonColor(), shadowElevation = drawerControlElevation(), tonalElevation = 0.dp) {
+    Surface(modifier.height(ToolbarControl).then(if (darkChrome()) Modifier else Modifier.lightInputShadow(ToolbarControl / 2)),
+        shape = CircleShape, color = color, contentColor = onButtonColor(), shadowElevation = 0.dp, tonalElevation = 0.dp) {
         Row(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
             AppIcon(AppIcons.Search, null, Modifier.size(22.dp), tint = onButtonColor())
             Spacer(Modifier.width(8.dp))
@@ -695,7 +697,14 @@ internal fun Turn.showsSeparateActivity(): Boolean = activityMark() == ActivityM
         snapshotFlow { list.layoutInfo.totalItemsCount > 0 && !list.isScrollInProgress && !list.canScrollForward }.collect { if (it) follow = true }
     }
     val outputVersion = detail.turns.map { listOf(it.id, it.phase, it.permissions.map { p -> p.id to p.revision }, it.messages.map { m -> m.text.length }, it.steps.map { s -> s.displayedText().length }) }
-    LaunchedEffect(outputVersion, keys) { if (follow && !list.isScrollInProgress && keys.isNotEmpty()) list.scrollToItem(keys.lastIndex, Int.MAX_VALUE) }
+    LaunchedEffect(outputVersion, keys) { if (follow && !list.isScrollInProgress && keys.isNotEmpty()) list.scrollToBottom(keys.lastIndex) }
+    LaunchedEffect(list, follow) {
+        if (follow) snapshotFlow { list.layoutInfo.visibleItemsInfo.lastOrNull()?.let { it.key to it.size } }
+            .distinctUntilChanged()
+            .collect {
+                if (!list.isScrollInProgress && list.layoutInfo.totalItemsCount > 0) list.scrollToBottom(list.layoutInfo.totalItemsCount - 1)
+            }
+    }
     LaunchedEffect(list) {
         snapshotFlow { list.layoutInfo.visibleItemsInfo.firstOrNull()?.key?.toString() to list.firstVisibleItemScrollOffset }.debounce(250).collect { (key, offset) ->
             if (key != null && key != "earlier") vm.enqueue { vm.actions.anchor(detail.conversation.id, key, offset) }
@@ -777,7 +786,7 @@ internal fun Turn.showsSeparateActivity(): Boolean = activityMark() == ActivityM
             }
         }
         if (!follow && detail.turns.isNotEmpty()) FilledTonalButton(
-            onClick = { follow = true; scope.launch { if (keys.isNotEmpty()) list.animateScrollToItem(keys.lastIndex, Int.MAX_VALUE) } },
+            onClick = { follow = true; scope.launch { if (keys.isNotEmpty()) list.scrollToBottom(keys.lastIndex) } },
             modifier = Modifier.align(Alignment.BottomEnd)
                 .padding(if (darkChrome()) followPadding else PaddingValues(20.dp))
                 .shadow(if (darkChrome()) 0.dp else floatingElevation(), CircleShape)
@@ -786,6 +795,14 @@ internal fun Turn.showsSeparateActivity(): Boolean = activityMark() == ActivityM
             colors = tonalButtonColors(),
             contentPadding = PaddingValues(0.dp),
         ) { AppIcon(AppIcons.ArrowDown, "最新消息", Modifier.size(22.dp), tint = onButtonColor()) }
+    }
+}
+
+private suspend fun LazyListState.scrollToBottom(lastIndex: Int) {
+    scrollToItem(lastIndex, Int.MAX_VALUE)
+    while (canScrollForward) {
+        val distance = layoutInfo.viewportSize.height.toFloat()
+        if (distance <= 0f || scrollBy(distance) < 0.5f) break
     }
 }
 

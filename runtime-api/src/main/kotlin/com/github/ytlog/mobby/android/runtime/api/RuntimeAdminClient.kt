@@ -52,6 +52,8 @@ interface RuntimeAdminClient {
     suspend fun initialize(): AdminResult<Unit>
     suspend fun listGatewayProfiles(): AdminResult<List<GatewayProfileSummary>>
     suspend fun saveGatewayProfile(request: SaveGatewayRequest): AdminResult<GatewayProfileSummary>
+    suspend fun defaultGatewayAgent(): AdminResult<AgentId> = AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
+    suspend fun selectDefaultGatewayAgent(agent: AgentId): AdminResult<Unit> = AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
 }
 
 /** Internal diagnostics, deliberately separate from the product Agent enum and conversation API. */

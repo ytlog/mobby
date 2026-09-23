@@ -33,6 +33,7 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
     val composer = MutableStateFlow(ComposerState())
     val agents = MutableStateFlow<List<AgentOption>>(emptyList())
     val gateways = MutableStateFlow<List<GatewayProfile>>(emptyList())
+    val defaultGateway = MutableStateFlow(AgentId.CODEX)
     val skills = MutableStateFlow<List<Skill>>(emptyList())
     val skillsError = MutableStateFlow<String?>(null)
     val skillsLoading = MutableStateFlow(false)
@@ -343,7 +344,20 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
         val result = actions.stop(id)
         if (result is StopResult.Rejected) feedback.send(failure(result.reason))
     }
-    suspend fun refresh() { gateways.value = actions.gateways(); agents.value = actions.agents() }
+    suspend fun refresh() {
+        gateways.value = actions.gateways()
+        defaultGateway.value = actions.defaultGatewayAgent()
+        agents.value = actions.agents()
+    }
+    fun chooseGateway(profile: GatewayProfile) = enqueue {
+        state.value.selected?.conversation?.let { conversation ->
+            actions.configure(conversation.id, NextTurnConfig(profile.agent, profile.model, null, conversation.config.workspace, profile.id, profile.version))
+        }
+        when (val result = actions.selectDefaultGatewayAgent(profile.agent)) {
+            OperationResult.Done -> defaultGateway.value = profile.agent
+            is OperationResult.Failed -> report(result)
+        }
+    }
     fun report(result: OperationResult) { if (result is OperationResult.Failed) feedback.trySend(result.message) }
     private suspend fun safe(action: suspend () -> Unit) {
         try { action() } catch (e: CancellationException) { throw e }

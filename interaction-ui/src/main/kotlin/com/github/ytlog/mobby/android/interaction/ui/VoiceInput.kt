@@ -26,7 +26,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -429,7 +428,7 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectVo
         if (recording) VoiceRecordingOverlay(cancelArmed, level, Modifier.align(Alignment.BottomCenter))
         Surface(
             Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = if (dark) 0.dp else 12.dp, bottom = 10.dp)
-                .then(if (dark) Modifier else Modifier.uniformComposerShadow())
+                .then(if (dark) Modifier else Modifier.lightInputShadow(28.dp))
                 .alpha(if (recording) 0f else 1f).align(Alignment.BottomCenter)
                 .then(if (recording) Modifier.clearAndSetSemantics {} else Modifier),
             shape = RoundedCornerShape(28.dp),
@@ -458,20 +457,6 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectVo
                 }
             }
         }
-    }
-}
-
-private fun Modifier.uniformComposerShadow(): Modifier = drawBehind {
-    val spread = 7.dp.toPx()
-    val corner = 28.dp.toPx()
-    for (layer in 8 downTo 1) {
-        val distance = spread * layer / 8f
-        drawRoundRect(
-            color = MobbyColors.Light.Conversation.composerShadow,
-            topLeft = Offset(-distance, -distance),
-            size = Size(size.width + 2 * distance, size.height + 2 * distance),
-            cornerRadius = CornerRadius(corner + distance),
-        )
     }
 }
 

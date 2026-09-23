@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -19,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.IntRect
@@ -147,9 +149,10 @@ import kotlinx.coroutines.*
     var project by rememberSaveable { mutableStateOf(c?.project) }
     val agents by vm.agents.collectAsStateWithLifecycle()
     val profiles by vm.gateways.collectAsStateWithLifecycle()
-    var agent by rememberSaveable { mutableStateOf(c?.config?.agent ?: AgentId.CODEX) }
-    var model by rememberSaveable { mutableStateOf(c?.config?.model.orEmpty()) }
-    var reasoning by rememberSaveable { mutableStateOf(c?.config?.reasoning) }
+    val defaultGateway by vm.defaultGateway.collectAsStateWithLifecycle()
+    var agent by rememberSaveable { mutableStateOf(defaultGateway) }
+    var model by rememberSaveable { mutableStateOf(profiles.firstOrNull { it.agent == defaultGateway }?.model.orEmpty()) }
+    var reasoning by rememberSaveable { mutableStateOf<String?>(null) }
     var workspace by rememberSaveable { mutableStateOf(state.projects.firstOrNull { it.name == project }?.defaultWorkspace ?: c?.config?.workspace ?: "default") }
     val workspaceOwner = rememberSaveable { java.util.UUID.randomUUID().toString() }
     val workspaces by vm.workspaces.collectAsStateWithLifecycle()
@@ -260,11 +263,14 @@ import kotlinx.coroutines.*
 }
 @Composable internal fun GatewayPage(vm: ConversationViewModel, back: () -> Unit) {
     val profiles by vm.gateways.collectAsStateWithLifecycle()
+    val state by vm.state.collectAsStateWithLifecycle()
+    val defaultGateway by vm.defaultGateway.collectAsStateWithLifecycle()
     var editing by rememberSaveable { mutableStateOf<String?>(null) }
     var notice by rememberSaveable { mutableStateOf("") }
     LaunchedEffect(Unit) { vm.enqueue { vm.refresh() } }
     val agent = editing?.let { runCatching { AgentId.valueOf(it) }.getOrNull() }
-    if (agent == null) GatewayList(profiles, notice, back) { editing = it.name; notice = "" }
+    if (agent == null) GatewayList(profiles, notice, defaultGateway, state.selected?.conversation?.config?.agent, back,
+        select = vm::chooseGateway, open = { editing = it.name; notice = "" })
     else key(agent) {
         GatewayForm(profiles, vm::enqueue, vm.actions::saveGateway, vm::refresh, { editing = null }, vm.actions::checkGateway, agent) { message ->
             notice = message
@@ -273,7 +279,8 @@ import kotlinx.coroutines.*
     }
 }
 
-@Composable internal fun GatewayList(profiles: List<GatewayProfile>, notice: String, back: () -> Unit, open: (AgentId) -> Unit) {
+@Composable internal fun GatewayList(profiles: List<GatewayProfile>, notice: String, defaultGateway: AgentId, currentAgent: AgentId?,
+    back: () -> Unit, select: (GatewayProfile) -> Unit, open: (AgentId) -> Unit) {
     val configured = profiles.filter { it.endpoint.isNotBlank() }
     val missing = AgentId.values().filter { agent -> configured.none { it.agent == agent } }
     Column(Modifier.fillMaxSize()) {
@@ -283,12 +290,32 @@ import kotlinx.coroutines.*
             else SettingsGroup("已配置") {
                 configured.forEachIndexed { index, profile ->
                     if (index > 0) GroupDivider()
-                    SettingsItem(profile.agent.label(), { open(profile.agent) }, gatewaySummary(profile), profile.agent.glyph())
+                    val selected = defaultGateway == profile.agent
+                    val current = currentAgent == profile.agent
+                    val nativeProtocol = if (profile.agent == AgentId.CLAUDE_CODE) "MESSAGES" else "RESPONSES"
+                    val usable = profile.model.isNotBlank() && profile.protocol == nativeProtocol
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Row(Modifier.weight(1f).heightIn(min = 68.dp).selectable(selected = selected, enabled = usable, role = Role.RadioButton) { select(profile) }
+                            .padding(start = 16.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            AppIcon(profile.agent.glyph(), null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurface)
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(profile.agent.label(), style = MaterialTheme.typography.bodyLarge)
+                                Text(gatewaySummary(profile), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                val status = listOfNotNull(if (current) "当前会话" else null, if (selected) "新会话默认" else null).joinToString(" · ")
+                                if (status.isNotEmpty()) Text(status, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                                if (!usable) Text("配置不可用，请编辑网关", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+                            }
+                            if (selected) AppIcon(AppIcons.Check, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+                        }
+                        ActionIcon("编辑${profile.agent.label()}网关", { open(profile.agent) }, AppIcons.Edit, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.width(8.dp))
+                    }
                 }
             }
             if (notice.isNotBlank()) SettingsCaption(notice, error = notice.contains("未能"))
             if (missing.isNotEmpty()) SettingsGroup { SettingsAction("添加网关") { open(missing.first()) } }
-            SettingsCaption("每个 Agent 保存一个网关。点按一项可修改地址、默认模型和密钥。再次保存会重新拉取模型列表。")
+            SettingsCaption("每个 Agent 保存一个网关。点按网关可用于当前会话，并设为新会话默认；右侧可编辑地址、模型和密钥。")
         }
     }
 }

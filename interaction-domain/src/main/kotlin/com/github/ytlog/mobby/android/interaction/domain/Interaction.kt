@@ -146,6 +146,8 @@ interface SystemPort {
     suspend fun checkGateway(profile: GatewayProfile): DataResult<GatewayCheckReport>
     suspend fun gateways(): List<GatewayProfile>
     suspend fun saveGateway(edit: GatewayEdit): GatewaySaveResult
+    suspend fun defaultGatewayAgent(): AgentId
+    suspend fun selectDefaultGatewayAgent(agent: AgentId): OperationResult
     suspend fun initialize(): OperationResult
     suspend fun shell(command: String): OperationResult
     suspend fun stopShell(): OperationResult
@@ -301,6 +303,8 @@ class InteractionUseCases(
     suspend fun agents() = system.agents()
     suspend fun checkGateway(profile: GatewayProfile) = system.checkGateway(profile)
     suspend fun gateways() = system.gateways()
+    suspend fun defaultGatewayAgent() = system.defaultGatewayAgent()
+    suspend fun selectDefaultGatewayAgent(agent: AgentId) = system.selectDefaultGatewayAgent(agent)
     suspend fun saveGateway(edit: GatewayEdit): GatewaySaveResult {
         val result = system.saveGateway(edit)
         if (result is GatewaySaveResult.Saved) system.gateways().firstOrNull { it.agent == edit.agent }?.let { repository.updateGateway(it) }

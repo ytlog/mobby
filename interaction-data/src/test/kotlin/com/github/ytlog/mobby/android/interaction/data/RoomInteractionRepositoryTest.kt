@@ -1,5 +1,6 @@
 package com.github.ytlog.mobby.android.interaction.data
 
+import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.room.withTransaction
 import com.github.ytlog.mobby.android.interaction.domain.*
@@ -53,11 +54,16 @@ class RoomInteractionRepositoryTest {
         override suspend fun agents() = emptyList<AgentOption>()
         override suspend fun gateways() = listOf(GatewayProfile(DomainAgent.CODEX, "CODEX", 0, "", "test-model", "RESPONSES", false))
         override suspend fun saveGateway(edit: GatewayEdit) = GatewaySaveResult.Saved(emptyList(), null)
+        override suspend fun defaultGatewayAgent() = DomainAgent.CODEX
+        override suspend fun selectDefaultGatewayAgent(agent: DomainAgent) = OperationResult.Done
         override suspend fun initialize() = OperationResult.Done
         override suspend fun shell(command: String) = OperationResult.Done
         override suspend fun stopShell() = OperationResult.Done
     }
-    @Before fun setUp() { start() }
+    @Before fun setUp() {
+        ApplicationProvider.getApplicationContext<Context>().deleteDatabase("interaction.db")
+        start()
+    }
     private fun start() {
         db = InteractionDatabase.open(ApplicationProvider.getApplicationContext())
         scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)

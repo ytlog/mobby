@@ -214,6 +214,12 @@ internal class RuntimeSystemAdapter(private val context: android.content.Context
         is AdminResult.Success -> result.value.map { GatewayProfile(DomainAgent.valueOf(it.agent.name), it.ref.id, it.ref.version, it.endpoint, it.model, it.protocol.name, it.hasCredential, it.models.map { model -> GatewayModel(model.id, model.name) }, it.catalogError) }
         is AdminResult.Failed -> throw IllegalStateException(result.error.message())
     }
+    override suspend fun defaultGatewayAgent(): DomainAgent = when (val result = admin.defaultGatewayAgent()) {
+        is AdminResult.Success -> DomainAgent.valueOf(result.value.name)
+        is AdminResult.Failed -> throw IllegalStateException(result.error.message())
+    }
+    override suspend fun selectDefaultGatewayAgent(agent: DomainAgent): OperationResult =
+        admin.selectDefaultGatewayAgent(RuntimeAgent.valueOf(agent.name)).operation()
     override suspend fun saveGateway(edit: GatewayEdit): GatewaySaveResult {
         val secret = edit.credential?.let(::SecretInput)
         edit.credential?.fill('\u0000')

@@ -22,25 +22,36 @@ class GatewayListTest {
     private val profile = GatewayProfile(AgentId.CODEX, "CODEX", 2, "https://openrouter.ai/api/v1", "openai/gpt-test", "RESPONSES", true,
         listOf(GatewayModel("openai/gpt-test", "GPT Test"), GatewayModel("other", "Other")))
 
-    private inline fun <reified T> stub(crossinline body: (String) -> Any?): T =
-        Proxy.newProxyInstance(T::class.java.classLoader, arrayOf(T::class.java)) { _, method, _ -> body(method.name) } as T
+    private inline fun <reified T> stub(crossinline body: (String, Array<out Any?>?) -> Any?): T =
+        Proxy.newProxyInstance(T::class.java.classLoader, arrayOf(T::class.java)) { _, method, args -> body(method.name, args) } as T
 
-    private fun page(profiles: List<GatewayProfile>) {
-        val repository = stub<InteractionRepository> { name -> when (name) {
-            "getState" -> MutableStateFlow(InteractionState(loading = false))
+    private fun page(profiles: List<GatewayProfile>, current: Conversation? = null,
+        configured: (NextTurnConfig) -> Unit = {}, selectedDefault: (AgentId) -> Unit = {}): ConversationViewModel {
+        val state = MutableStateFlow(InteractionState(loading = false, selected = current?.let { ConversationDetail(it, emptyList()) }))
+        val repository = stub<InteractionRepository> { name, args -> when {
+            name == "getState" -> state
+            name.startsWith("configure") -> {
+                val config = args!![1] as NextTurnConfig
+                configured(config)
+                state.value = state.value.copy(selected = state.value.selected?.copy(conversation = current!!.copy(config = config)))
+                current!!.id.value
+            }
             else -> error(name)
         } }
-        val system = stub<SystemPort> { name -> when (name) {
+        val system = stub<SystemPort> { name, args -> when (name) {
             "getStatus" -> flowOf(SystemStatus(true, true))
             "getDiagnostic" -> flowOf(DiagnosticOutput(null, emptyList()))
             "agents" -> emptyList<AgentOption>()
             "gateways" -> profiles
+            "defaultGatewayAgent" -> AgentId.CODEX
+            "selectDefaultGatewayAgent" -> { selectedDefault(args!![0] as AgentId); OperationResult.Done }
             else -> error(name)
         } }
-        val actions = InteractionUseCases(repository, stub<ExecutionPort> { error(it) }, system, { "id" }, scope,
-            stub<PreferencePort> { error(it) })
+        val actions = InteractionUseCases(repository, stub<ExecutionPort> { name, _ -> error(name) }, system, { "id" }, scope,
+            stub<PreferencePort> { name, _ -> error(name) })
         val vm = ConversationViewModel(actions).also { store.put("vm", it) }
         compose.setContent { MaterialTheme { GatewayPage(vm) {} } }
+        return vm
     }
 
     @After fun cleanup() { compose.runOnIdle { store.clear() }; scope.cancel() }
@@ -49,12 +60,30 @@ class GatewayListTest {
         page(listOf(profile))
         compose.onNodeWithText("模型名称").assertDoesNotExist()
         compose.onNodeWithText("OpenRouter · openai/gpt-test · 2 个模型").assertExists()
-        compose.onNodeWithText("Codex").performClick()
+        compose.onNodeWithContentDescription("编辑Codex网关").performClick()
         compose.onNodeWithText("编辑网关").assertExists()
         compose.onNodeWithText("模型名称").assertExists()
         compose.onNodeWithContentDescription("返回").performClick()
         compose.onNodeWithText("模型名称").assertDoesNotExist()
         compose.onNodeWithText("已配置").assertExists()
+    }
+
+    @Test fun `selecting a gateway applies it to current conversation and future conversations`() {
+        val claude = GatewayProfile(AgentId.CLAUDE_CODE, "CLAUDE", 4, "https://example.com/v1", "claude-model", "MESSAGES", true)
+        val current = Conversation(ConversationId("current"), NextTurnConfig(AgentId.CODEX, "old", "high", "workspace", "CODEX", 2))
+        var configured: NextTurnConfig? = null
+        var selectedDefault: AgentId? = null
+        val vm = page(listOf(profile, claude), current, { configured = it }, { selectedDefault = it })
+        compose.waitUntil(5_000) { vm.state.value.selected != null }
+        compose.onNodeWithText("Claude Code").performClick()
+        compose.waitUntil(5_000) { configured != null && selectedDefault != null }
+        Assert.assertEquals(AgentId.CLAUDE_CODE, configured?.agent)
+        Assert.assertEquals("claude-model", configured?.model)
+        Assert.assertEquals("workspace", configured?.workspace)
+        Assert.assertEquals("CLAUDE", configured?.gatewayProfile)
+        Assert.assertEquals(4L, configured?.gatewayVersion)
+        Assert.assertEquals(AgentId.CLAUDE_CODE, selectedDefault)
+        compose.onNodeWithText("当前会话 · 新会话默认").assertExists()
     }
 
     @Test fun `empty gateway page offers add and a failed catalog stays visible on the row`() {

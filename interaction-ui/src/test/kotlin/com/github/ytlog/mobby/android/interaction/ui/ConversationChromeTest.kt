@@ -1,6 +1,7 @@
 package com.github.ytlog.mobby.android.interaction.ui
 
 import androidx.compose.ui.test.*
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
 import com.github.ytlog.mobby.android.interaction.domain.*
@@ -15,6 +16,8 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.lang.reflect.Proxy
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], qualifiers = "w360dp-h640dp")
@@ -41,6 +44,7 @@ class ConversationChromeTest {
             "getDiagnostic" -> flowOf(DiagnosticOutput(null, emptyList()))
             "agents" -> emptyList<AgentOption>()
             "gateways" -> emptyList<GatewayProfile>()
+            "defaultGatewayAgent" -> AgentId.CODEX
             "capture" -> DataResult.Loaded<CameraCapture?>(null)
             else -> error(name)
         } }
@@ -54,7 +58,17 @@ class ConversationChromeTest {
             else -> error(name)
         } }
         val actions = InteractionUseCases(repository, stub<ExecutionPort> { error(it) }, system, { "fixture" }, scope, preferences)
-        compose.setContent { InteractionEntry(actions, InteractionHostActions({}, { _, _ -> }, {})) }
+        val finalParsingStarted = CountDownLatch(1)
+        val releaseFinalReply = CountDownLatch(1)
+        compose.setContent {
+            CompositionLocalProvider(LocalReplyParser provides { source ->
+                if (source.startsWith("transcript-line reply 12")) {
+                    finalParsingStarted.countDown()
+                    releaseFinalReply.await(30, TimeUnit.SECONDS)
+                }
+                ReplyMarkdown.parse(source)
+            }) { InteractionEntry(actions, InteractionHostActions({}, { _, _ -> }, {})) }
+        }
         compose.waitForIdle()
 
         assertAgentChipHasNoArrow("Claude Code")
@@ -71,6 +85,12 @@ class ConversationChromeTest {
         assertTranscriptClearOfChrome()
         assertTrue("latest jump overlaps the composer", jump.bottom <= composerBounds().top + 1.dp)
         assertTrue("latest jump overlaps the toolbar", jump.top + 1.dp >= toolbarBounds().bottom)
+
+        compose.onNodeWithContentDescription("最新消息").performClick()
+        compose.waitUntil(10_000) { finalParsingStarted.count == 0L }
+        releaseFinalReply.countDown()
+        compose.waitForIdle()
+        compose.onNodeWithText("END OF FINAL REPLY").assertIsDisplayed()
 
         compose.onNode(hasScrollToIndexAction()).performScrollToIndex(10)
         compose.waitForIdle()
@@ -113,7 +133,7 @@ class ConversationChromeTest {
                 "transcript-line $index",
                 null,
                 ExecutionPhase.SUCCEEDED,
-                messages = listOf(Message("m$index", "transcript-line reply $index", 1)),
+                messages = listOf(Message("m$index", if (index == 12) "transcript-line reply $index\n\n" + "A long final reply.\n\n".repeat(80) + "END OF FINAL REPLY" else "transcript-line reply $index", 1)),
             )
         }
         return ConversationDetail(

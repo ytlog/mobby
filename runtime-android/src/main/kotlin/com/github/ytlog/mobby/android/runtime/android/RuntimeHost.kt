@@ -80,5 +80,7 @@ class RuntimeHost(context: Context, notification: () -> PendingIntent) {
         override suspend fun validateGateway(profile: GatewayProfileRef) = connected()?.validateGateway(profile) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
         override suspend fun listGatewayProfiles() = connected()?.listGatewayProfiles() ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
         override suspend fun saveGatewayProfile(request: SaveGatewayRequest) = connected()?.saveGatewayProfile(request) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
+        override suspend fun defaultGatewayAgent() = connected()?.defaultGatewayAgent() ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
+        override suspend fun selectDefaultGatewayAgent(agent: AgentId) = connected()?.selectDefaultGatewayAgent(agent) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
     }
 }

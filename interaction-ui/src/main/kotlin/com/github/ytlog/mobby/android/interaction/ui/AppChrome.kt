@@ -21,6 +21,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -32,6 +36,20 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 internal val ToolbarControl = 44.dp
+
+internal fun Modifier.lightInputShadow(corner: Dp): Modifier = drawBehind {
+    val spread = 7.dp.toPx()
+    val radius = corner.toPx()
+    for (layer in 8 downTo 1) {
+        val distance = spread * layer / 8f
+        drawRoundRect(
+            color = MobbyColors.Light.Conversation.inputShadow,
+            topLeft = Offset(-distance, -distance),
+            size = Size(size.width + 2 * distance, size.height + 2 * distance),
+            cornerRadius = CornerRadius(radius + distance),
+        )
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable internal fun ActionIcon(label: String, onClick: () -> Unit, icon: AppGlyph, enabled: Boolean = true, filled: Boolean = false, tint: Color = Color.Unspecified, buttonSize: Dp = ToolbarControl, glyphSize: Dp = 22.dp) {

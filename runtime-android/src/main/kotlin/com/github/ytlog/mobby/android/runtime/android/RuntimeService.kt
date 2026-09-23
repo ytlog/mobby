@@ -209,6 +209,19 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
         try { AdminResult.Success(AgentMode.values().filter { it != AgentMode.SHELL }.map { summary(it) }) }
         catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.INVALID_CONFIG)) }
     }
+    override suspend fun defaultGatewayAgent(): AdminResult<AgentId> = withContext(Dispatchers.IO) {
+        try { AdminResult.Success(GatewayStore(this@RuntimeService).defaultMode().productAgent()) }
+        catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.INVALID_CONFIG)) }
+    }
+    override suspend fun selectDefaultGatewayAgent(agent: AgentId): AdminResult<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val mode = agent.launchMode()
+            GatewayStore(this@RuntimeService).load(mode).validateFor(mode)
+            GatewayStore(this@RuntimeService).selectDefault(mode)
+            AdminResult.Success(Unit)
+        } catch (_: IllegalArgumentException) { AdminResult.Failed(RuntimeError(ErrorCode.INVALID_CONFIG)) }
+        catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.STORAGE_FULL, true)) }
+    }
     private fun summary(mode: AgentMode): GatewayProfileSummary {
         val store = GatewayStore(this)
         val (version, config) = store.snapshot(mode)
