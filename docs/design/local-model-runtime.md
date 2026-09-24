@@ -1,6 +1,6 @@
 # 本地模型 Gradle 模块、独立进程与 HTTP API 设计
 
-状态：设计提案 v2，尚未实现。资料核对：2026-09-24。
+状态：设计提案 v3，尚未实现。资料核对：2026-09-24。
 
 交付目标：一个可独立接入的 Android Library **`:local-model`**，在 **`:local_model` 专用进程**运行 HTTP 服务、协议适配、调度及模型推理，供 mobby 和其他 Agent 通过标准模型接口访问。端侧引擎目录覆盖微软、Google、Meta、阿里、腾讯等项目，详见[引擎调研与接入目录](local-model-engines.md)。
 
@@ -185,7 +185,7 @@ AIDL 只提供 `getSnapshot`、`start/configure`、`requestStop`、`registerObse
 
 - 停止服务：关闭新准入，活动 HTTP 请求收到适当失败/取消事件，停止 native 生成，确认释放模型后关闭 listener、令牌、通知与 Service。排空限时结束仍未停止，进入强制停止路径。
 - 主进程 Binder death recipient 检测服务死亡：标记实例失效、关闭已持有 lease、通知 Runtime 当前 Agent 请求失败。HTTP 连接自然中断，不合成成功、不重发 prompt。
-- 服务进程是任务/安装/协议状态的唯一写入者；重启时将未终结操作恢复为 INTERRUPTED，并轮换 instanceId/端口/令牌。已安装文件仍有效，KV 和内存 response ID 失效。
+- 服务进程是任务/安装/协议状态的唯一写入者；重启时将未终结推理/加载操作恢复为 INTERRUPTED、可恢复下载标记为暂停，并轮换 instanceId/端口/令牌。已安装文件仍有效，KV 和内存 response ID 失效。
 - 主进程被系统回收时，用户主动启动的前台 HTTP 服务可继续；UI 重新绑定读取服务状态。只绑定、未用户启动的临时模式在最后一个 lease 丢失后停止。不得在 Binder death 时无条件停止所有外部 Agent 任务。
 - `START_NOT_STICKY`；不承诺系统回收后自动复活。重启由用户或仍有效的宿主控制流程明确触发，只恢复空闲服务，不自动重放失败任务。
 - native 卡死时，主进程控制器持有 Binder 握手确认的专用进程 PID 与实例；停止期限届满后仅在仍绑定同实例、验证 PID/UID/进程身份后终止它。Binder 已死亡则不杀可能被复用的 PID；禁止按名字杀进程。无主进程时可由进程内独立 watchdog 终止自身，不能阻塞在推理线程上等待。
@@ -200,9 +200,11 @@ HTTP 与 JNI 同进程意味着 native 崩溃会断开所有该实例连接，�
 
 ## 5. 模型包与安装 API
 
+支持按引擎从 Hugging Face 发现并下载适配模型，以引擎官方发布源和已验证镜像作为备选。完整来源、筛选、版本锁定、鉴权、断点续传与 API 契约见[模型匹配与多源下载](local-model-downloads.md)。
+
 ### 5.1 不可变模型身份
 
-用 `ModelRef(id, revision)` 引用安装版本，revision 是完整规范化 manifest 的 SHA-256。下载后重新计算所有文件哈希，不能仅相信文件名或远端 ETag。一个模型的 GGUF 和 MLC 包是两个 artifact，可共用展示名称，但不是可互换的安装版本。
+用 `ModelRef(id, revision)` 引用安装版本，revision 是规范化内容 manifest 的 SHA-256；可变镜像列表、临时 URL 和凭据放在独立来源记录，不参与内容身份。下载后重新计算所有文件哈希，不能仅相信文件名或远端 ETag。一个模型的 GGUF 和 MLC 包是两个 artifact，可共用展示名称，但不是可互换的安装版本。
 
 Manifest v1 必须包含：
 
@@ -230,6 +232,8 @@ interface LocalModelManager {
     suspend fun install(planId: String): LmResult<InstallId>
     fun observeInstall(id: InstallId): Flow<InstallSnapshot>
     suspend fun cancelInstall(id: InstallId): LmResult<Unit>
+    suspend fun pauseInstall(id: InstallId): LmResult<Unit>
+    suspend fun resumeInstall(id: InstallId): LmResult<Unit>
     suspend fun evaluate(model: ModelRef, options: LoadOptions): LmResult<LoadPlan>
     suspend fun load(planId: String): LmResult<LoadId>
     fun observeLoad(id: LoadId): Flow<LoadSnapshot>
@@ -239,9 +243,9 @@ interface LocalModelManager {
 }
 ```
 
-`ModelSource` 为目录条目或 Android 导入句柄对应的受控引用；不向纯 Kotlin API 暴露 `Context`。`InstallPlan` 固定 manifest、来源、字节数、磁盘需求和过期时间。`LoadPlan` 固定模型 revision、实际后端/设备、上下文及内存预算。执行时重新校验当前资源；计划不等于预留成功。
+`ModelSource` 为目录条目或 Android 导入句柄对应的受控引用；不向纯 Kotlin API 暴露 `Context`。`InstallPlan` 固定内容 manifest、解析后的源版本、逐文件哈希、允许的等价来源及切换策略、字节数、磁盘需求和过期时间。`LoadPlan` 固定模型 revision、实际后端/设备、上下文及内存预算。执行时重新校验当前资源；计划不等于预留成功。
 
-安装状态：`QUEUED → DOWNLOADING/IMPORTING → VERIFYING → INSTALLED`，可结束为 `CANCELLED` 或 `FAILED`。缺少任何文件都不可发布为 INSTALLED。先 staging，全部验证后原子发布；崩溃恢复清扫 staging，保留已安装版本。Range 续传须核对对象标识和偏移，不支持则重新下载；取消保留的分片进入有界缓存并可清理。
+安装前先解析候选并生成计划；接受安装后状态为 `QUEUED → DOWNLOADING/IMPORTING → VERIFYING → INSTALLED`，下载可暂停为 `PAUSED_NETWORK/PAUSED_USER/ACCESS_REQUIRED`，可结束为 `CANCELLED` 或 `FAILED`。缺少任何文件都不可发布为 INSTALLED。先 staging，全部验证后原子发布；崩溃恢复保留有有效 checkpoint 的下载 staging 并标记暂停，清理无归属或过期 staging，保留已安装版本。Range 续传须核对对象标识和偏移，不支持则重新下载；取消保留的分片进入有界缓存并可清理。
 
 `remove` 在模型存在活动租约、加载或生成时返回 `MODEL_IN_USE`，用户须先停止并卸载；按 blob 引用计数回收文件。磁盘预算包含分片、临时文件、旧版本和余量。升级不替换正在运行的 revision。
 
@@ -462,7 +466,7 @@ Messages/Chat/Gemini 的基础 profile 由客户端发送完整历史；服务�
 | `GET /local/v1/health` | 返回 instanceId、LISTENING/DRAINING、资源摘要；无敏感路径与凭据 |
 | `GET /local/v1/engines` | backend ID、研究/打包/设备状态和不可用原因；调研条目不等于已实现 |
 | `GET /local/v1/models`、`GET /local/v1/models/{id}/capabilities` | 安装状态、实际 profile、模型 revision、预算、状态保留期 |
-| `POST /local/v1/install-plans` | `{sourceRef}` → 安装计划、字节、许可、过期时间；sourceRef 来自受控目录/导入，非任意下载 URL |
+| `POST /local/v1/install-plans` | `{sourceRef}` → 安装计划、字节、许可、过期时间；sourceRef 来自受控 HF/官方源候选、镜像配方或导入，非任意下载 URL；发现/源管理/暂停续传接口见[下载设计](local-model-downloads.md) |
 | `POST /local/v1/installs` | `{planId}` → 202 `{operationId,statusUrl}` |
 | `POST /local/v1/load-plans` | `{model,backend,device,contextTokens}` → 资源计划 |
 | `POST /local/v1/loads` | `{planId}` → 202 operation；准入时重新核对资源 |
@@ -517,7 +521,7 @@ Ollama 同时有两种含义：第 8.2 节的 **Ollama HTTP 前端**允许 Ollam
 | 阶段 | 交付 | 退出条件 |
 | --- | --- | --- |
 | P0 模块与进程 | Gradle api/core/http/facade、AIDL、Manifest、服务状态机、fake backend | 子进程运行、主进程无 JNI、端口鉴权、停止/死亡/恢复、跨进程单写测试通过 |
-| P1 首个完整服务 | llama CPU、模型安装、Responses/Chat/Messages 基础与函数工具 profile、管理 API | 真机断网文本与工具循环、SSE、count_tokens、取消/卸载；不支持字段明确拒绝 |
+| P1 首个完整服务 | llama CPU、HF 适配模型下载/官方备用源、Responses/Chat/Messages 基础与函数工具 profile、管理 API | 真机断网文本与工具循环、SSE、count_tokens、取消/卸载；不支持字段明确拒绝 |
 | P2 多 Agent 协议 | Gemini/Ollama 前端、Responses 续接与 CLI 所需扩展 | 五组协议合同通过；内置三种 CLI 与选定外部 SDK/Agent 验收，按报告启用 |
 | P3 主流引擎 | LiteRT-LM、ONNX GenAI、MNN、MLC、ExecuTorch 逐个接入 | 每个固定版本通过相同 Backend 合同、真机资源和 HTTP 测试；不以 fake 代替 |
 | P4 目录扩展 | MLLM/PowerServe/FastLLM/BitNet、通用推理与 Ollama 服务适配 | 按引擎目录各自门槛验收；未通过仍列候选，不显示可执行 |
@@ -543,4 +547,4 @@ python3 -m unittest discover -s runtime -p 'test_*.py'
 
 ## 10. 本次交付边界
 
-本次交付 Gradle 模块结构、独立进程设计、Kotlin/Binder/HTTP 契约、五组协议兼容方案及 18 项引擎调研。尚未修改生产构建、运行服务、下载模型或接入任何 native 引擎。实施从 P0 开始，所有代码片段均为设计规格，不能把文档中的路径或接口当作已经存在的实现。
+本次交付 Gradle 模块结构、独立进程设计、Kotlin/Binder/HTTP 契约、五组协议兼容方案、18 项引擎调研及按引擎匹配的 HF/官方源/镜像下载设计。尚未修改生产构建、运行服务、下载模型或接入任何 native 引擎。实施从 P0 开始，所有代码片段均为设计规格，不能把文档中的路径或接口当作已经存在的实现。

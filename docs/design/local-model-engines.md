@@ -57,6 +57,8 @@ A/B 是本项目的工程优先级，不是性能排名。GPU/NPU 都须绑定�
 
 本轮覆盖 18 个主要/相关运行时条目，另列平台边界；这是有官方证据的可维护目录，不宣称穷尽所有项目。今后新增后端遵守同一个 SPI 和状态机，不增加新的协议入口。
 
+模型权重下载按引擎 recipe 选择 HF 适配变体，并支持官方备用源及内容一致的镜像；具体入口、文件选择和换源规则见[模型匹配与多源下载](local-model-downloads.md)。
+
 ## 5. 构建注册与上线门槛
 
 每个目录条目分开记录 `researchStatus`、`packaged`、`deviceCompatible`、`modelVerified`、`protocolProfiles`。本次所有 `packaged/modelVerified=false`；UI 不把调研条目显示为可选择运行的引擎。
