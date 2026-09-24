@@ -75,7 +75,7 @@ class WorkspacePickerTest {
             stub<PreferencePort> { name, _ -> error(name) })).also { store.put("vm", it) }
     }
     @After fun cleanup() { compose.runOnIdle { store.clear(); scope.cancel() } }
-    @Test fun `new conversation uses the selected default gateway`() {
+    @Test fun `new conversation reuses the current agent gateway and model`() {
         gatewayDefault = AgentId.CLAUDE_CODE
         val vm = vm()
         compose.waitForIdle()
@@ -83,15 +83,32 @@ class WorkspacePickerTest {
         val current = Conversation(ConversationId("current"), NextTurnConfig(AgentId.CODEX, "old", null, "default", "CODEX"))
         compose.setContent { MaterialTheme { ConfigDialog(vm, current, {}, { config, _ -> submitted = config }) } }
         compose.onNodeWithText("创建").performClick()
-        Assert.assertEquals(AgentId.CLAUDE_CODE, submitted?.agent)
+        Assert.assertEquals(AgentId.CODEX, submitted?.agent)
+        Assert.assertEquals("CODEX", submitted?.gatewayProfile)
+        Assert.assertEquals("old", submitted?.model)
+        compose.onNodeWithText("网关与 Agent").assertDoesNotExist()
+        compose.onNodeWithText("模型").assertDoesNotExist()
+    }
+    @Test fun `switching agents reuses that agents most recent gateway and model`() {
+        val current = Conversation(ConversationId("current"), NextTurnConfig(AgentId.CODEX, "codex-old", null, "default", "CODEX"), updatedAt = 20)
+        val recentClaude = Conversation(ConversationId("claude"), NextTurnConfig(AgentId.CLAUDE_CODE, "claude-last", "high", "second", "CLAUDE"), updatedAt = 30)
+        val profiles = listOf(
+            GatewayProfile(AgentId.CODEX, "CODEX", 1, "https://example.test/v1", "codex-default", "RESPONSES", true),
+            GatewayProfile(AgentId.CLAUDE_CODE, "CLAUDE", 1, "https://example.test/v1", "claude-default", "MESSAGES", true),
+        )
+        val previous = rememberedNewConversationConfig(AgentId.CLAUDE_CODE, current, listOf(ConversationSummary(recentClaude)), profiles, GatewayDefault(AgentId.CODEX, "CODEX", 1))
+        Assert.assertEquals("CLAUDE", previous?.gatewayProfile)
+        Assert.assertEquals("claude-last", previous?.model)
+        Assert.assertEquals("high", previous?.reasoning)
+        val firstUse = rememberedNewConversationConfig(AgentId.OPEN_CODE, current, emptyList(), profiles, GatewayDefault(AgentId.CODEX, "CODEX", 1))
+        Assert.assertNull(firstUse)
     }
     @Test fun `selected workspace survives page recreation and reaches new conversation config`() {
         val vm = vm()
         var submitted: NextTurnConfig? = null
         val restoration = StateRestorationTester(compose)
         restoration.setContent { MaterialTheme { ConfigDialog(vm, null, {}, { config, _ -> submitted = config }) } }
-        compose.onNodeWithText("Claude Code ·", substring = true).performScrollTo().performClick()
-        compose.onNodeWithText("claude-fixture").performScrollTo().performClick()
+        compose.onNodeWithText("Claude Code").performScrollTo().performClick()
         compose.onNodeWithText("Project B").performScrollTo().performClick()
         restoration.emulateSavedInstanceStateRestore()
         compose.onNodeWithText("创建").performClick()

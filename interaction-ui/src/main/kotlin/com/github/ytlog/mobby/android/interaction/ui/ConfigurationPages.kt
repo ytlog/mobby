@@ -34,6 +34,8 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.github.ytlog.mobby.android.interaction.domain.*
 import com.github.ytlog.mobby.android.interaction.ui.gateway.gatewaySummary
+import com.github.ytlog.mobby.android.interaction.domain.gateway.GatewayProfile
+import com.github.ytlog.mobby.android.interaction.domain.gateway.GatewayDefault
 import kotlinx.coroutines.*
 
 @Composable internal fun TextEditDialog(title: String, initial: String, dismiss: () -> Unit, save: (String) -> Unit) {
@@ -162,16 +164,29 @@ import kotlinx.coroutines.*
         ) { Text(AppStrings.apply, fontWeight = FontWeight.SemiBold) }
     }
 }
+/** Reuse the last configuration for this Agent; fall back to its saved gateway default. */
+internal fun rememberedNewConversationConfig(
+    agent: AgentId, current: Conversation?, conversations: List<ConversationSummary>,
+    profiles: List<GatewayProfile>, defaultGateway: GatewayDefault?,
+): NextTurnConfig? {
+    val recent = (listOfNotNull(current) + conversations.map { it.conversation })
+        .filter { !it.deleted && it.config.agent == agent }
+        .maxByOrNull { it.updatedAt }
+        ?.config
+    if (recent != null && profiles.any { it.agent == agent && it.id == recent.gatewayProfile }) return recent
+    val gateway = profiles.firstOrNull { it.agent == agent && it.id == defaultGateway?.id && defaultGateway.agent == agent }
+        ?: profiles.firstOrNull { it.agent == agent }
+        ?: return null
+    return NextTurnConfig(agent, gateway.model, null, "default", gateway.id, gateway.version)
+}
+
 @Composable internal fun ConfigDialog(vm: ConversationViewModel, c: Conversation?, onDismiss: () -> Unit, onApply: (NextTurnConfig, String?) -> Unit, anchor: IntRect = IntRect.Zero) {
     val state by vm.state.collectAsStateWithLifecycle()
     var project by rememberSaveable { mutableStateOf(c?.project) }
-    val agents by vm.agents.collectAsStateWithLifecycle()
     val profiles by vm.gateways.collectAsStateWithLifecycle()
     val defaultGateway by vm.defaultGateway.collectAsStateWithLifecycle()
-    var agent by rememberSaveable { mutableStateOf(defaultGateway?.agent ?: AgentId.CODEX) }
-    var gatewayId by rememberSaveable { mutableStateOf(defaultGateway?.id.orEmpty()) }
-    var model by rememberSaveable { mutableStateOf(profiles.firstOrNull { it.id == gatewayId && it.agent == agent }?.model.orEmpty()) }
-    var reasoning by rememberSaveable { mutableStateOf<String?>(null) }
+    var agent by rememberSaveable { mutableStateOf(c?.config?.agent ?: state.conversations.maxByOrNull { it.conversation.updatedAt }?.conversation?.config?.agent ?: defaultGateway?.agent ?: AgentId.CODEX) }
+    var agentChosen by rememberSaveable { mutableStateOf(false) }
     var workspace by rememberSaveable { mutableStateOf(state.projects.firstOrNull { it.name == project }?.defaultWorkspace ?: c?.config?.workspace ?: "default") }
     val workspaceOwner = rememberSaveable { java.util.UUID.randomUUID().toString() }
     val workspaces by vm.workspaces.collectAsStateWithLifecycle()
@@ -180,16 +195,17 @@ import kotlinx.coroutines.*
     val created by vm.workspaceCreated.collectAsStateWithLifecycle()
     var adding by rememberSaveable { mutableStateOf(false) }
     var name by rememberSaveable { mutableStateOf("") }
-    val option = agents.firstOrNull { it.agent == agent }
-    val levels = option?.models?.get(model).orEmpty()
-    val canCreate = !creating && profiles.any { it.agent == agent && it.id == gatewayId } && model.isNotBlank() &&
+    val remembered = rememberedNewConversationConfig(agent, c, state.conversations, profiles, defaultGateway)
+    val canCreate = !creating && remembered != null &&
         workspaces.any { it.ref == workspace } && (project == null || state.projects.any { it.name == project })
     LaunchedEffect(Unit) { vm.enqueue { vm.refresh() }; vm.loadWorkspaces() }
-    LaunchedEffect(defaultGateway, profiles) {
-        if (profiles.none { it.agent == agent && it.id == gatewayId }) {
-            val target = profiles.firstOrNull { it.id == defaultGateway?.id && it.agent == defaultGateway?.agent }
-                ?: profiles.firstOrNull { it.agent == agent } ?: profiles.firstOrNull()
-            if (target != null) { agent = target.agent; gatewayId = target.id; model = target.model }
+    LaunchedEffect(defaultGateway, profiles, state.conversations) {
+        if (!agentChosen && c == null) {
+            agent = state.conversations.maxByOrNull { it.conversation.updatedAt }?.conversation?.config?.agent
+                ?: defaultGateway?.agent ?: agent
+        }
+        if (profiles.isNotEmpty() && profiles.none { it.agent == agent }) {
+            agent = defaultGateway?.agent?.takeIf { candidate -> profiles.any { it.agent == candidate } } ?: profiles.first().agent
         }
     }
     LaunchedEffect(created) { created?.takeIf { it.owner == workspaceOwner }?.let { workspace = it.workspace.ref; adding = false; name = ""; vm.consumeWorkspaceCreated(it) } }
@@ -201,28 +217,11 @@ import kotlinx.coroutines.*
                 state.projects.forEach { item -> MenuOption(item.name, project == item.name, enabled = !creating) { project = item.name; workspace = item.defaultWorkspace } }
                 if (state.projects.isEmpty()) MenuCaption(AppStrings.createProjectsInProjectManagementInTheConversationDrawer)
             }
-            MenuSection(AppStrings.gatewayAgent) {
-                profiles.forEach { gateway ->
-                    MenuOption("${gateway.agent.label()} · ${gatewaySummary(gateway)}", gatewayId == gateway.id && agent == gateway.agent) {
-                        agent = gateway.agent; gatewayId = gateway.id; model = gateway.model; reasoning = null
-                    }
+            MenuSection(AppStrings.agentLabel) {
+                AgentId.values().forEach { value ->
+                    MenuOption(value.label(), agent == value, icon = value.glyph(), enabled = !creating && profiles.any { it.agent == value }) { agent = value; agentChosen = true }
                 }
-                if (profiles.isEmpty()) MenuCaption(AppStrings.noGatewayAvailableOpenGatewaySettings)
-            }
-            MenuSection(AppStrings.model) {
-                val gateway = profiles.firstOrNull { it.agent == agent && it.id == gatewayId }
-                if (gateway?.models.isNullOrEmpty()) MenuCaption(AppStrings.noModelsConfiguredOpenGatewaySettings)
-                val names = option?.modelNames.orEmpty()
-                gateway?.models?.forEach { item -> MenuOption(modelMenuLabel(item.id, names), model == item.id) { model = item.id; reasoning = null } }
-                val known = gateway?.models?.map { it.id }.orEmpty().toSet()
-                if (known.isNotEmpty() && model.isNotBlank() && model !in known) MenuCaption(AppStrings.currentModelIsNotInTheSavedListSelect)
-            }
-            MenuSection(AppStrings.reasoningEffort) {
-                if (levels.isEmpty()) MenuCaption(AppStrings.thisModelDoesNotOfferAdjustment)
-                else {
-                    MenuOption(AppStrings.default, reasoning == null) { reasoning = null }
-                    levels.forEach { level -> MenuOption(level, reasoning == level) { reasoning = level } }
-                }
+                if (profiles.none { it.agent == agent }) MenuCaption(AppStrings.noGatewayAvailableOpenGatewaySettings)
             }
             HorizontalDivider(Modifier.padding(horizontal = 20.dp, vertical = 8.dp), color = menuInk().copy(alpha = 0.08f))
             MenuSection(AppStrings.workspace) {
@@ -241,8 +240,8 @@ import kotlinx.coroutines.*
         }
         Button(
             onClick = {
-                val p = profiles.firstOrNull { it.agent == agent && it.id == gatewayId } ?: return@Button
-                onApply(NextTurnConfig(agent, model.ifBlank { p.model }, reasoning, workspace, p.id, p.version), project)
+                val config = remembered ?: return@Button
+                onApply(config.copy(workspace = workspace), project)
             },
             enabled = canCreate,
             modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 20.dp).heightIn(min = 48.dp),
