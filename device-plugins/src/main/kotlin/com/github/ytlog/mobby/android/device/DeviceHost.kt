@@ -69,12 +69,13 @@ object DeviceHost {
     private fun allowed(context: Context, permission: String) =
         context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
 
-    fun start(context: Context, root: File, inbox: File, workspace: File, node: String, refs: Set<String>): DeviceSession =
+    fun start(context: Context, root: File, inbox: File, workspace: File, node: String, refs: Set<String>, isCancelled: () -> Boolean = { false }): DeviceSession =
         openDeviceSession(refs, ScreenAccessService::stay) {
             val token = DeviceCommands.token()
             val allow = DeviceCatalog.allow(refs)
-            val actions = DeviceActions(context, inbox, workspace)
-            val bridge = DeviceBridge(token, allow) { plugin, action, args -> actions.perform(plugin, action, args) }
+            val gate = DeviceActionGate(isCancelled)
+            val actions = DeviceActions(context, inbox, workspace, gate)
+            val bridge = DeviceBridge(token, allow, gate) { plugin, action, args -> actions.perform(plugin, action, args) }
             try {
                 bridge to DeviceSkillPack.write(root, node, bridge.port, token, refs)
             } catch (error: Throwable) {
@@ -118,26 +119,42 @@ class DeviceSession internal constructor(
 internal class DeviceBridge(
     token: String,
     allow: Map<String, Set<String>>,
+    private val gate: DeviceActionGate = DeviceActionGate(),
     performer: DevicePerformer,
 ) : AutoCloseable {
     private val running = AtomicBoolean(true)
     private val server = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1"))
     val port: Int = server.localPort
+    private val socketLock = Any()
+    private var accepted: java.net.Socket? = null
     private val worker = thread(name = "device-bridge", isDaemon = true) {
         while (running.get()) {
-            val socket = runCatching { server.accept() }.getOrNull() ?: continue
-            socket.soTimeout = 15_000
-            socket.use { active ->
-                val line = BufferedReader(InputStreamReader(active.getInputStream())).readLine() ?: return@use
-                active.soTimeout = 120_000
-                val response = DeviceCommands.handle(line, token, allow, performer)
-                active.getOutputStream().write((response + "\n").toByteArray())
+            val socket = try { server.accept() } catch (_: java.io.IOException) { continue }
+            synchronized(socketLock) {
+                if (running.get()) accepted = socket else socket.close()
+            }
+            try {
+                socket.use { active ->
+                    active.soTimeout = 15_000
+                    val line = BufferedReader(InputStreamReader(active.getInputStream())).readLine() ?: return@use
+                    val response = DeviceCommands.handle(line, token, allow) { plugin, action, args ->
+                        gate.checkActive()
+                        performer.perform(plugin, action, args)
+                    }
+                    active.getOutputStream().write((response + "\n").toByteArray())
+                }
+            } catch (_: java.io.IOException) {
+                // A disconnected or cancelled client must not kill the command server.
+            } finally {
+                synchronized(socketLock) { if (accepted === socket) accepted = null }
             }
         }
     }
     override fun close() {
+        gate.close()
         running.set(false)
-        runCatching { server.close() }
-        worker.join(500)
+        server.close()
+        synchronized(socketLock) { accepted?.close() }
+        // An already dispatched Android gesture completes through its callback; do not block main.
     }
 }

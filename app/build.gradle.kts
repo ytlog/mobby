@@ -25,6 +25,7 @@ dependencies {
     implementation(project(":interaction-domain"))
     implementation(project(":interaction-data"))
     implementation(project(":runtime-api"))
+    implementation(project(":device-plugins"))
     androidTestImplementation(project(":runtime-engine"))
     implementation(project(":runtime-android"))
     androidTestImplementation(project(":termux-core"))

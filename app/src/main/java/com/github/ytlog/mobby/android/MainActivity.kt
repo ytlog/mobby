@@ -29,6 +29,10 @@ class MainActivity : ComponentActivity() {
     private var petEnabled by mutableStateOf(false)
     private var petPermitted by mutableStateOf(false)
     private var pendingPet = false
+    private val taskNotificationPermission = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
+    ) { }
+
     private val actions get() = (application as MobbyApplication).interaction
     private val app get() = application as MobbyApplication
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -68,6 +72,14 @@ class MainActivity : ComponentActivity() {
             }
         })
         setContent { InteractionEntry(actions, host, conversationNavigation, petEnabled, petPermitted) }
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            val notice = getPreferences(MODE_PRIVATE)
+            if (!notice.getBoolean("task-notification-requested", false) &&
+                checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                notice.edit().putBoolean("task-notification-requested", true).apply()
+                taskNotificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
     }
     override fun onStart() {
         super.onStart()

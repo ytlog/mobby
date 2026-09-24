@@ -13,6 +13,24 @@ import java.io.File
 class DevicePluginTest {
     @get:Rule val temporary = TemporaryFolder()
 
+    @Test fun `closing bridge rejects a command already waiting on its socket`() {
+        val performed = java.util.concurrent.CountDownLatch(1)
+        val bridge = DeviceBridge("fixture", mapOf("screen" to setOf("snapshot"))) { _, _, _ ->
+            performed.countDown()
+            "screen"
+        }
+        java.net.Socket("127.0.0.1", bridge.port).use { socket ->
+            // Complete only part of a line so the worker has an accepted, pending request.
+            socket.getOutputStream().write("{\"token\":\"fixture\",".toByteArray())
+            Thread.sleep(150)
+            bridge.close()
+            runCatching {
+                socket.getOutputStream().write("\"plugin\":\"screen\",\"action\":\"snapshot\"}\n".toByteArray())
+            }
+            assertFalse("No device action may start after close", performed.await(500, java.util.concurrent.TimeUnit.MILLISECONDS))
+        }
+    }
+
     @Test fun `bridge allowlist rejects actions from plugins that were not enabled`() {
         val allow = DeviceCatalog.allow(setOf("plugin:device:sms"))
         val denied = json(DeviceCommands.handle("""{"token":"ok","plugin":"camera","action":"photo","args":{}}""", "ok", allow) { _, _, _ -> error("should not run") })

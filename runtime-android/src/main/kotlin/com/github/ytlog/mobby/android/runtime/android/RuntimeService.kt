@@ -49,6 +49,8 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
                     mutableEnvironment.value = EnvironmentSnapshot(EnvironmentPhase.FAILED, AppStrings.outputCleanupIncompleteRecheckRuntime, RuntimeError(ErrorCode.STORAGE_FULL, true))
                     return@withLock SubmitResult.Rejected(RuntimeError(ErrorCode.STORAGE_FULL, true))
                 }
+                if (request.capabilityRefs.any { it.value == "plugin:device:screen" } && !RuntimeTaskNotification.canShow(this@RuntimeService))
+                    return@withLock SubmitResult.Rejected(RuntimeError(ErrorCode.PERMISSION_DENIED, true))
                 try { withContext(Dispatchers.Main) { beginForeground() } }
                 catch (_: Exception) { return@withLock SubmitResult.Rejected(RuntimeError(ErrorCode.PERMISSION_DENIED, true)) }
                 coordinator.submit(request).also { if (coordinator.active.value == null) endForeground() }
@@ -63,7 +65,7 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
         ports = AndroidRuntimePorts(this, runtime, environment, registry, scope)
         outputStore = OutputStore(this, journal::outputExpired, EventHistorySettingsStore(this)::outputPolicy)
         coordinator = RunCoordinator(scope, ports, ports, journal, outputStore)
-        getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel("runtime", AppStrings.taskExecution, NotificationManager.IMPORTANCE_LOW))
+        RuntimeTaskNotification.createChannel(this)
         scope.launch { combine(coordinator.active, ports.live) { _, _ -> Unit }.collect { submission.withLock {
             val running = coordinator.active.value != null
             val holding = ports.live.value
@@ -83,7 +85,18 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
         startInitialization()
     }
     override fun onBind(intent: Intent): IBinder = LocalBinder()
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int) = START_NOT_STICKY
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        RuntimeTaskNotification.stopTarget(intent)?.let { runId ->
+            scope.launch { stopFromNotification(runId) }
+        }
+        return START_NOT_STICKY
+    }
+
+    internal open suspend fun stopFromNotification(runId: RunId) {
+        // Bind the action to the run displayed in the notification, never a newer task.
+        if (runId == shellId || coordinator.active.value != runId) return
+        coordinator.requestStop(runId, StopCause.USER)
+    }
     private fun startInitialization() {
         if (initialization?.isActive == true || coordinator.active.value != null) return
         // Reserve readiness before releasing admission; initialization uses the same boundary
@@ -263,9 +276,9 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
     private fun showForeground(text: String) {
         check(environment.value.phase == EnvironmentPhase.READY)
         startService(Intent(this, RuntimeService::class.java))
-        val notification = Notification.Builder(this, "runtime").setSmallIcon(android.R.drawable.stat_notify_sync)
-            .setContentTitle(AppStrings.mobbyIsRunningATask).setContentText(text)
-            .setContentIntent(RuntimeHost.notificationIntent?.invoke()).setOngoing(true).build()
+        // Shell diagnostics reuse a fixed ID, so only Agent runs have a run-specific stop action.
+        val stopTarget = coordinator.active.value?.takeUnless { it == shellId }
+        val notification = RuntimeTaskNotification.build(this, text, stopTarget, RuntimeHost.notificationIntent?.invoke())
         if (android.os.Build.VERSION.SDK_INT >= 34) startForeground(1, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         else if (android.os.Build.VERSION.SDK_INT >= 29) startForeground(1, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_NONE)
         else startForeground(1, notification)

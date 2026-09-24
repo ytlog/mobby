@@ -131,6 +131,7 @@ internal class AndroidRuntimePorts(
     }
     private suspend fun start(request: RunRequest, config: GatewayConfig, stop: StateFlow<StopCause?>, output: suspend (String, Boolean) -> Unit): ProcessResult {
         val workingDirectory = requireNotNull(runtime.workspaces.resolve(request.workspaceRef))
+        val deviceStop = AtomicReference<StateFlow<StopCause?>?>(stop)
         var session: DeviceSession? = null
         var bridgeDir: File? = null
         var inbox: File? = null
@@ -155,7 +156,7 @@ internal class AndroidRuntimePorts(
                 inbox = File(runtime.sdk.vfs.homeDir, "mobby-plugin-inbox/${request.requestId.value}")
                 inbox!!.mkdirs()
                 val node = File(runtime.sdk.vfs.binDir, "node").absolutePath
-                session = DeviceHost.start(context, bridgeDir!!, inbox!!, workingDirectory, node, deviceRefs)
+                session = DeviceHost.start(context, bridgeDir!!, inbox!!, workingDirectory, node, deviceRefs) { deviceStop.get()?.let { it.value != null } ?: true }
                 for (skill in session!!.skills) {
                     val name = skill.parentFile.name
                     val installed = skills.stage(request.agentId, name, skill)
@@ -170,7 +171,7 @@ internal class AndroidRuntimePorts(
             val ready = assemble(request, extras)
             prepared = ready
             val connection = AgentSessions.connect(request, runtime.executable(mode(request.agentId)), workingDirectory.absolutePath, ready.turn)
-            val agent = LiveAgent(request, connection.session, extras)
+            val agent = LiveAgent(request, connection.session, extras, deviceStop)
             control = connection.session
             val exit = AtomicReference<Int?>(null)
             agent.job = scope.launch(Dispatchers.IO) {
@@ -225,6 +226,7 @@ private class LiveAgent(
     request: RunRequest,
     val session: AgentSession,
     val extras: List<Pair<String, File>>,
+    private val deviceStop: AtomicReference<StateFlow<StopCause?>?>,
 ) {
     val inbox = kotlinx.coroutines.channels.Channel<OutputLine>(kotlinx.coroutines.channels.Channel.UNLIMITED)
     lateinit var job: Job
@@ -235,22 +237,28 @@ private class LiveAgent(
     private val anchor = request
     fun accepts(request: RunRequest) = alive && ::job.isInitialized && job.isActive && binding?.accepts(request) == true
     fun shutdown(force: Boolean) {
+        deviceStop.set(null)
         if (!::job.isInitialized) return
         if (force) job.cancel() else session.release()
     }
     suspend fun run(turn: AgentTurn, stop: StateFlow<StopCause?>, submit: Boolean, output: suspend (String, Boolean) -> Unit): ProcessResult {
-        if (submit) session.submit(turn)
-        while (true) {
-            if (stop.value != null) return finish(retain = false, force = true)
-            val line = inbox.receiveCatching().getOrNull() ?: return finish(retain = false, force = false)
-            when (line) {
-                is OutputLine.Stdout -> {
-                    session.onStdout(line.text, autoAllow = true).forEach { output(it, false) }
-                    if (session.takeTurnEnded()) return finish(retain = stop.value == null && session.sessionId() != null, force = false, acceptProtocolExit = session.abandonAfterTurn())
+        deviceStop.set(stop)
+        try {
+            if (submit) session.submit(turn)
+            while (true) {
+                if (stop.value != null) return finish(retain = false, force = true)
+                val line = inbox.receiveCatching().getOrNull() ?: return finish(retain = false, force = false)
+                when (line) {
+                    is OutputLine.Stdout -> {
+                        session.onStdout(line.text, autoAllow = true).forEach { output(it, false) }
+                        if (session.takeTurnEnded()) return finish(retain = stop.value == null && session.sessionId() != null, force = false, acceptProtocolExit = session.abandonAfterTurn())
+                    }
+                    is OutputLine.Stderr -> output(line.text, true)
+                    is OutputLine.Exit -> return finish(retain = false, force = false)
                 }
-                is OutputLine.Stderr -> output(line.text, true)
-                is OutputLine.Exit -> return finish(retain = false, force = false)
             }
+        } finally {
+            deviceStop.set(null)
         }
     }
     private suspend fun finish(retain: Boolean, force: Boolean, acceptProtocolExit: Boolean = false): ProcessResult {

@@ -71,12 +71,10 @@ internal class SystemPetWindow(context: Context) : PetWindow {
 
     override fun detach() {
         val view = view ?: return
+        wm.removeViewImmediate(view)
+        check(!view.isAttachedToWindow) { "Floating window is still attached" }
         this.view = null
         params = null
-        try {
-            wm.removeView(view)
-        } catch (_: RuntimeException) {
-        }
     }
 
     private fun layout(frame: PetFrame) = WindowManager.LayoutParams(
@@ -113,6 +111,7 @@ class DesktopPet internal constructor(
     private var target: PetTarget? = null
     private var rendered: RenderKey? = null
     private var applied: PetFrame? = null
+    private var screenOperations = 0
     private var dragging = false
     private var dragFrameX = 0
     private var dragFrameY = 0
@@ -132,7 +131,8 @@ class DesktopPet internal constructor(
         lastEnabled = enabled
         lastPermitted = permitted
         target = petTarget(state)
-        if (!session.visible(target, foreground, enabled, permitted)) {
+        val visible = session.visible(target, foreground, enabled, permitted)
+        if (!visible || screenOperations > 0) {
             dragging = false
             rendered = null
             applied = null
@@ -141,6 +141,27 @@ class DesktopPet internal constructor(
         }
         if (dragging) return
         showFrame()
+    }
+
+    /** Detach synchronously before the screen service reads or acts on the underlying window. */
+    fun hideForScreenOperation(): AutoCloseable {
+        check(android.os.Looper.myLooper() == android.os.Looper.getMainLooper())
+        screenOperations++
+        try {
+            refresh()
+        } catch (error: Throwable) {
+            screenOperations--
+            throw error
+        }
+        var released = false
+        return AutoCloseable {
+            check(android.os.Looper.myLooper() == android.os.Looper.getMainLooper())
+            if (!released) {
+                released = true
+                screenOperations--
+                refresh()
+            }
+        }
     }
 
     private fun refresh() = update(lastState, lastForeground, lastEnabled, lastPermitted)

@@ -14,6 +14,9 @@ import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityNodeInfo
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeout
+import kotlin.coroutines.resume
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
@@ -30,23 +33,28 @@ class ScreenAccessService : AccessibilityService() {
         super.onDestroy()
     }
 
-    internal fun operate(action: String, args: Map<String, String>): String = when (action) {
-        "tap" -> tap(args["x"]?.toFloatOrNull(), args["y"]?.toFloatOrNull())
-        else -> onMain {
+    internal fun operate(action: String, args: Map<String, String>, checkActive: () -> Unit = {}): String =
+        ScreenOperation.run(checkActive) {
+            // Each operation obtains fresh nodes only after the application overlay is detached.
             when (action) {
                 "snapshot" -> snapshot()
                 "click" -> click(args["query"].orEmpty())
                 "type" -> type(args["text"].orEmpty())
-                "back" -> if (performGlobalAction(GLOBAL_ACTION_BACK)) AppStrings.wentBack else AppStrings.couldNotGoBack
-                "home" -> if (performGlobalAction(GLOBAL_ACTION_HOME)) AppStrings.returnedToHomeScreen else AppStrings.couldNotReturnToHomeScreen
-                "recents" -> if (performGlobalAction(GLOBAL_ACTION_RECENTS)) AppStrings.openedRecentApps else AppStrings.couldNotOpenRecentApps
+                "tap" -> tap(args["x"]?.toFloatOrNull(), args["y"]?.toFloatOrNull())
+                "back" -> global(GLOBAL_ACTION_BACK, AppStrings.wentBack, AppStrings.couldNotGoBack)
+                "home" -> global(GLOBAL_ACTION_HOME, AppStrings.returnedToHomeScreen, AppStrings.couldNotReturnToHomeScreen)
+                "recents" -> global(GLOBAL_ACTION_RECENTS, AppStrings.openedRecentApps, AppStrings.couldNotOpenRecentApps)
                 else -> error(AppStrings.unsupportedOperation2(action))
             }
         }
+
+    private fun global(action: Int, success: String, failure: String): String {
+        check(performGlobalAction(action)) { failure }
+        return success
     }
 
     private fun snapshot(): String {
-        val root = rootInActiveWindow ?: return AppStrings.noReadableWindowMakeSureAccessibilityIsEnabledAnd
+        val root = rootInActiveWindow ?: error(AppStrings.noReadableWindowMakeSureAccessibilityIsEnabledAnd)
         return try { buildString { dump(root, 0, 0) } } finally { root.recycle() }
     }
 
@@ -75,7 +83,8 @@ class ScreenAccessService : AccessibilityService() {
         val match = find(root, query)
         val clicked = match != null && match.performAction(AccessibilityNodeInfo.ACTION_CLICK)
         root.recycle(); match?.recycle()
-        return if (clicked) AppStrings.clicked(query) else AppStrings.noClickableFound(query)
+        check(clicked) { AppStrings.noClickableFound(query) }
+        return AppStrings.clicked(query)
     }
 
     private fun type(text: String): String {
@@ -85,23 +94,37 @@ class ScreenAccessService : AccessibilityService() {
         val bundle = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text) }
         val ok = focused != null && focused.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, bundle)
         root.recycle(); focused?.recycle()
-        return if (ok) AppStrings.enteredCharacters(text.length) else AppStrings.noFocusedInputFound
+        check(ok) { AppStrings.noFocusedInputFound }
+        return AppStrings.enteredCharacters(text.length)
     }
 
-    private fun tap(x: Float?, y: Float?): String {
+    private suspend fun tap(x: Float?, y: Float?): String {
+        if (x == null || y == null || !x.isFinite() || !y.isFinite() || x !in 0f..1f || y !in 0f..1f)
+            throw IllegalArgumentException(AppStrings.coordinatesMustBeProportionsBetweenAnd)
+        // Refresh the active window after detach; never retain accessibility nodes across actions.
+        val root = rootInActiveWindow ?: error(AppStrings.noWindowAvailableToClick)
+        val refreshed = root.refresh()
+        root.recycle()
+        check(refreshed) { AppStrings.noWindowAvailableToClick }
         val width = resources.displayMetrics.widthPixels.toFloat()
         val height = resources.displayMetrics.heightPixels.toFloat()
-        if (x == null || y == null || x !in 0f..1f || y !in 0f..1f) throw IllegalArgumentException(AppStrings.coordinatesMustBeProportionsBetweenAnd)
-        val path = Path().apply { moveTo(x * width, y * height) }
+        val path = Path().apply { moveTo((x * width).coerceAtMost(width - 1), (y * height).coerceAtMost(height - 1)) }
         val gesture = GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, 80)).build()
-        val done = CountDownLatch(1)
-        val ok = AtomicReference(false)
-        dispatchGesture(gesture, object : GestureResultCallback() {
-            override fun onCompleted(gestureDescription: GestureDescription?) { ok.set(true); done.countDown() }
-            override fun onCancelled(gestureDescription: GestureDescription?) { done.countDown() }
-        }, null)
-        done.await(2, TimeUnit.SECONDS)
-        return if (ok.get()) AppStrings.tappedScreenPosition else AppStrings.gestureDidNotComplete
+        val ok = withTimeout(2_000) {
+            suspendCancellableCoroutine<Boolean> { continuation ->
+                val accepted = dispatchGesture(gesture, object : GestureResultCallback() {
+                    override fun onCompleted(gestureDescription: GestureDescription?) {
+                        if (continuation.isActive) continuation.resume(true)
+                    }
+                    override fun onCancelled(gestureDescription: GestureDescription?) {
+                        if (continuation.isActive) continuation.resume(false)
+                    }
+                }, Handler(Looper.getMainLooper()))
+                if (!accepted && continuation.isActive) continuation.resume(false)
+            }
+        }
+        check(ok) { AppStrings.gestureDidNotComplete }
+        return AppStrings.tappedScreenPosition
     }
 
     private fun find(node: AccessibilityNodeInfo, query: String): AccessibilityNodeInfo? {

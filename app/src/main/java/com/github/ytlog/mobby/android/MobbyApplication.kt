@@ -70,6 +70,7 @@ class MobbyApplication : Application() {
                 if (result is StopResult.Rejected) Toast.makeText(this@MobbyApplication, AppStrings.couldNotStopTheCurrentTask, Toast.LENGTH_SHORT).show()
             }
         }, onOpen = { id -> openConversation(id) })
+        com.github.ytlog.mobby.android.device.ScreenOperation.hideOverlay = pet::hideForScreenOperation
         petScope.launch { interaction.state.collect { latest = it; syncPet() } }
         registerComponentCallbacks(object : ComponentCallbacks2 {
             override fun onConfigurationChanged(newConfig: Configuration) = syncPet()

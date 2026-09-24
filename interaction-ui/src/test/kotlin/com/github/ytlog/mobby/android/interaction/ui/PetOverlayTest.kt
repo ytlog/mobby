@@ -24,6 +24,40 @@ import org.robolectric.annotation.Config
 class PetOverlayTest {
     private val context: Context get() = ApplicationProvider.getApplicationContext()
 
+    @Test fun `system window is detached before hide returns`() {
+        val view = View(context)
+        val window = SystemPetWindow(context)
+        window.attach(view, PetFrame(0, 0, 56, 56, true))
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+        assertTrue(view.isAttachedToWindow)
+        window.detach()
+        assertFalse(window.attached)
+        assertFalse(view.isAttachedToWindow)
+    }
+
+    @Test fun `screen operations remove ball and tray until all operations finish`() {
+        val window = MemoryWindow()
+        val pet = DesktopPet(context, window, context.getSharedPreferences("pet-screen", Context.MODE_PRIVATE), {}, {})
+        pet.update(running("run"), false, true, true)
+        window.view!!.described("任务悬浮球")!!.performClick()
+        assertNotNull(window.view!!.described("停止当前任务"))
+        val first = pet.hideForScreenOperation()
+        assertFalse(window.attached)
+        val second = pet.hideForScreenOperation()
+        pet.update(running("run"), false, true, true)
+        assertFalse("State updates must not reattach during screen input", window.attached)
+        first.close()
+        first.close()
+        assertFalse(window.attached)
+        second.close()
+        assertTrue(window.attached)
+        assertNotNull(window.view!!.described("停止当前任务"))
+        val hidden = pet.hideForScreenOperation()
+        pet.update(running("run"), false, false, true)
+        hidden.close()
+        assertFalse("Restoring must respect settings changed while hidden", window.attached)
+    }
+
     @Test fun `idle background pet appears and returns to app without selecting a conversation`() {
         val window = MemoryWindow()
         val prefs = context.getSharedPreferences("pet-idle", Context.MODE_PRIVATE)

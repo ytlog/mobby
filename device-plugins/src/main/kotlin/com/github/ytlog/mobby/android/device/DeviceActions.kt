@@ -30,8 +30,9 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
-internal class DeviceActions(private val context: Context, private val inbox: File, private val workspace: File) {
+internal class DeviceActions(private val context: Context, private val inbox: File, private val workspace: File, private val gate: DeviceActionGate = DeviceActionGate()) {
     fun perform(plugin: String, action: String, args: Map<String, String>): String {
+        gate.checkActive()
         val spec = DeviceCatalog.all.first { it.id == plugin }
         val ref = if (action in spec.grant?.actions.orEmpty()) spec.grantRef!! else spec.ref
         if (!DeviceHost.granted(context, ref)) error(DeviceHost.reason(context, ref) ?: AppStrings.permissionWasRevoked)
@@ -54,7 +55,7 @@ internal class DeviceActions(private val context: Context, private val inbox: Fi
 
     private fun screen(action: String, args: Map<String, String>): String {
         val service = ScreenAccessService.instance ?: error(AppStrings.accessibilityIsOffEnableMobbySScreenServiceIn)
-        return service.operate(action, args)
+        return service.operate(action, args, gate::checkActive)
     }
 
     private fun sms(action: String, args: Map<String, String>): String = when (action) {
