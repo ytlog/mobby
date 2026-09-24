@@ -12,7 +12,7 @@
 | OpenCode | Responses | `/responses` |
 | Claude Code | Messages | `/messages` |
 
-本页仅描述现有 mobby App 的远端网关。其模型请求统一经过本地 Node 桥接，暂不提供任何协议转换；独立安装的本地模型服务有自己的 HTTP 协议适配，见[设计文档](design/local-model-runtime.md)，不属于此网关实现。Chat Completions 不作为可选协议；协议由 Agent 决定，用户无需手动指定网关支持的 Agent。探测会发送小型原生请求，可能产生少量费用；探测成功仅证明当前地址、密钥和模型能收到该协议的有效响应，不保证完整生成或 Agent 执行成功。
+本页仅描述现有 mobby App 的远端网关。其模型请求统一经过本地 Node 桥接，暂不提供任何协议转换；同 APK、独立进程的本地模型服务有自己的 HTTP 协议适配，见[设计文档](design/local-model-runtime.md)，当前不接入此网关执行路径。Chat Completions 不作为可选协议；协议由 Agent 决定，用户无需手动指定网关支持的 Agent。探测会发送小型原生请求，可能产生少量费用；探测成功仅证明当前地址、密钥和模型能收到该协议的有效响应，不保证完整生成或 Agent 执行成功。
 
 界面只要求 Base 地址，例如 `https://host/v1`。粘贴完整接口路径时会去掉末尾的 `/responses` 或 `/messages`；无路径时使用 `/v1`。自定义路径会保留，例如 `https://host/api/v2` 会追加所探测接口的路径。
 
