@@ -13,6 +13,8 @@ android {
     }
 }
 dependencies {
+    implementation(project(":device-interaction-ui"))
+    implementation(project(":device-interaction"))
     implementation(project(":localization"))
     implementation("org.commonmark:commonmark:0.30.0")
     implementation("org.commonmark:commonmark-ext-gfm-tables:0.30.0")

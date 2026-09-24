@@ -5,6 +5,7 @@ import com.github.ytlog.mobby.android.runtime.android.gateway.*
 import android.content.Context
 import com.libtermux.executor.OutputLine
 import com.github.ytlog.mobby.android.runtime.api.*
+import com.github.ytlog.mobby.android.deviceinteraction.model.*
 import com.github.ytlog.mobby.android.device.DeviceCatalog
 import com.github.ytlog.mobby.android.device.DeviceHost
 import com.github.ytlog.mobby.android.device.DeviceSession
@@ -28,6 +29,8 @@ internal class AndroidRuntimePorts(
     private val liveState = MutableStateFlow(false)
     val live: StateFlow<Boolean> = liveState.asStateFlow()
     @Volatile private var control: AgentSession? = null
+    override fun offerDeviceResponse(request: DeviceInteractionResponse) =
+        com.github.ytlog.mobby.android.device.DeviceCapture.respond(request.operationId, request.response)
     override fun offerApproval(requestId: RequestId, approvalId: String, choice: ApprovalChoice) = control?.offer(requestId, approvalId, choice) == true
     suspend fun shutdownLive() {
         val current = gate.withLock { held.also { held = null } }
@@ -52,7 +55,7 @@ internal class AndroidRuntimePorts(
                     configs.isEmpty() -> RuntimeError(ErrorCode.INVALID_CONFIG)
                     else -> null
                 },
-                supportsResume = true, supportsApproval = agent == AgentId.CLAUDE_CODE, supportsResources = true, supportsImages = configs.isNotEmpty(), skillCapabilities = skills.list(agent).filter { it.available }.map { it.ref }.toSet())
+                supportsResume = true, supportsApproval = agent == AgentId.CLAUDE_CODE, supportsResources = true, supportsImages = configs.isNotEmpty(), supportsDeviceCards = true, skillCapabilities = skills.list(agent).filter { it.available }.map { it.ref }.toSet())
         }))
     }
     override suspend fun validate(request: RunRequest): RuntimeError? = withContext(Dispatchers.IO) {
@@ -86,7 +89,7 @@ internal class AndroidRuntimePorts(
         }.isSuccess
         if (valid) null else RuntimeError(ErrorCode.INVALID_CONFIG)
     }
-    override suspend fun execute(request: RunRequest, stop: StateFlow<StopCause?>, output: suspend (String, Boolean) -> Unit): ProcessResult {
+    override suspend fun execute(request: RunRequest, stop: StateFlow<StopCause?>, devices: DeviceOperationPort, output: suspend (String, Boolean) -> Unit): ProcessResult {
         val config = withContext(Dispatchers.IO) {
             val stored = gateways.load(request.gatewayProfileRef.id, request.gatewayProfileRef.version).config(mode(request.agentId))
             stored.validateFor(mode(request.agentId))
@@ -103,7 +106,7 @@ internal class AndroidRuntimePorts(
                 reusable.run(prepared.turn, stop, submit = true) { line, error -> output(sanitize(line, config), error) }
             } else {
                 shutdownLive()
-                start(request, config, stop) { line, error -> output(sanitize(line, config), error) }
+                start(request, config, stop, devices) { line, error -> output(sanitize(line, config), error) }
             }
         } catch (_: TimeoutCancellationException) {
             ProcessResult(null, false, ErrorCode.TIMEOUT)
@@ -129,7 +132,7 @@ internal class AndroidRuntimePorts(
         val schema = if (structured) Json.parseToJsonElement(SkillGeneration.schema) else null
         return PreparedTurn(AgentTurn(request.requestId, prompt, images, schema), files)
     }
-    private suspend fun start(request: RunRequest, config: GatewayConfig, stop: StateFlow<StopCause?>, output: suspend (String, Boolean) -> Unit): ProcessResult {
+    private suspend fun start(request: RunRequest, config: GatewayConfig, stop: StateFlow<StopCause?>, devices: DeviceOperationPort, output: suspend (String, Boolean) -> Unit): ProcessResult {
         val workingDirectory = requireNotNull(runtime.workspaces.resolve(request.workspaceRef))
         val deviceStop = AtomicReference<StateFlow<StopCause?>?>(stop)
         var session: DeviceSession? = null
@@ -156,7 +159,19 @@ internal class AndroidRuntimePorts(
                 inbox = File(runtime.sdk.vfs.homeDir, "mobby-plugin-inbox/${request.requestId.value}")
                 inbox!!.mkdirs()
                 val node = File(runtime.sdk.vfs.binDir, "node").absolutePath
-                session = DeviceHost.start(context, bridgeDir!!, inbox!!, workingDirectory, node, deviceRefs) { deviceStop.get()?.let { it.value != null } ?: true }
+                session = DeviceHost.start(context, bridgeDir!!, inbox!!, workingDirectory, node, deviceRefs, devices,
+                    registerResource = { file, type ->
+                        com.github.ytlog.mobby.android.device.DevicePaths.contained(listOf(workingDirectory, inbox!!), file)
+                        ResourceStore(File(context.filesDir, "input-resources"), EventHistorySettingsStore(context)::attachmentBudgetBytes)
+                            .saveDevice(file, request.workspaceRef, type).ref.value
+                    }, exportResource = { ref ->
+                        val store = ResourceStore(File(context.filesDir, "input-resources"))
+                        val resource = ResourceRef(ref)
+                        val summary = store.summary(resource, request.workspaceRef)
+                        val file = File(inbox, "${java.util.UUID.randomUUID()}-${com.github.ytlog.mobby.android.device.DevicePaths.safeName(summary.name)}")
+                        file.writeBytes(store.contentBytes(resource, request.workspaceRef))
+                        file.absolutePath
+                    }) { deviceStop.get()?.let { it.value != null } ?: true }
                 for (skill in session!!.skills) {
                     val name = skill.parentFile.name
                     val installed = skills.stage(request.agentId, name, skill)
@@ -171,7 +186,7 @@ internal class AndroidRuntimePorts(
             val ready = assemble(request, extras)
             prepared = ready
             val connection = AgentSessions.connect(request, runtime.executable(mode(request.agentId)), workingDirectory.absolutePath, ready.turn)
-            val agent = LiveAgent(request, connection.session, extras, deviceStop)
+            val agent = LiveAgent(request, connection.session, extras, deviceStop, session)
             control = connection.session
             val exit = AtomicReference<Int?>(null)
             agent.job = scope.launch(Dispatchers.IO) {
@@ -227,6 +242,7 @@ private class LiveAgent(
     val session: AgentSession,
     val extras: List<Pair<String, File>>,
     private val deviceStop: AtomicReference<StateFlow<StopCause?>?>,
+    private val deviceSession: DeviceSession?,
 ) {
     val inbox = kotlinx.coroutines.channels.Channel<OutputLine>(kotlinx.coroutines.channels.Channel.UNLIMITED)
     lateinit var job: Job
@@ -251,7 +267,10 @@ private class LiveAgent(
                 when (line) {
                     is OutputLine.Stdout -> {
                         session.onStdout(line.text, autoAllow = true).forEach { output(it, false) }
-                        if (session.takeTurnEnded()) return finish(retain = stop.value == null && session.sessionId() != null, force = false, acceptProtocolExit = session.abandonAfterTurn())
+                        if (session.takeTurnEnded()) {
+                            withContext(Dispatchers.IO) { deviceSession?.awaitIdle { if (stop.value != null) throw CancellationException() } }
+                            return finish(retain = deviceSession == null && stop.value == null && session.sessionId() != null, force = false, acceptProtocolExit = session.abandonAfterTurn())
+                        }
                     }
                     is OutputLine.Stderr -> output(line.text, true)
                     is OutputLine.Exit -> return finish(retain = false, force = false)

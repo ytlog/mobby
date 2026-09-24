@@ -1,5 +1,6 @@
 package com.github.ytlog.mobby.android.interaction.domain
 
+import com.github.ytlog.mobby.android.deviceinteraction.model.*
 import com.github.ytlog.mobby.android.localization.CatalogIds
 
 import com.github.ytlog.mobby.android.localization.AppStrings
@@ -39,11 +40,11 @@ data class Turn(
     val progress: ProgressNotice? = null, val pending: Boolean = false, val occupied: Boolean = false,
     val expanded: Boolean? = null, val expandedSteps: Set<String> = emptySet(),
     val skillProposals: List<SkillProposal> = emptyList(), val creatingSkill: Boolean = false, val proposalsLoading: Boolean = false, val attachments: List<String> = emptyList(),
-    val permissions: List<PermissionRequest> = emptyList()
+    val permissions: List<PermissionRequest> = emptyList(), val deviceOperations: List<DeviceRecord> = emptyList()
 ) {
     /** Replies stay where they were produced. Adjacent tool calls form one run and collapse after they finish. */
     fun transcript(): List<TranscriptEntry> {
-        val ordered = (messages.map { it.order to TranscriptPiece.Reply(it) } + steps.map { it.order to TranscriptPiece.Tool(it) })
+        val ordered = (messages.map { it.order to TranscriptPiece.Reply(it) } + steps.map { it.order to TranscriptPiece.Tool(it) } + deviceOperations.map { it.order to TranscriptPiece.Device(it) })
             .sortedWith(compareBy<Pair<Long, TranscriptPiece>>({ it.first }, { if (it.second is TranscriptPiece.Reply) 0 else 1 }))
         val result = mutableListOf<TranscriptEntry>()
         val run = mutableListOf<Step>()
@@ -56,6 +57,7 @@ data class Turn(
         for ((_, piece) in ordered) when (piece) {
             is TranscriptPiece.Reply -> { flush(); result += TranscriptEntry.Reply(piece.message) }
             is TranscriptPiece.Tool -> run += piece.step
+            is TranscriptPiece.Device -> { flush(); result += TranscriptEntry.Device(piece.record) }
         }
         flush()
         return result
@@ -63,25 +65,35 @@ data class Turn(
 
     /** Running turns keep text where it arrived. A finished turn keeps one activity group and the last reply. */
     fun visibleTranscript(): List<TranscriptEntry> {
-        val entries = transcript()
+        val raw = transcript()
+        val screens = raw.filterIsInstance<TranscriptEntry.Device>().filter { it.record.operation.displayType == "screen_control" }.map { it.record }
+        var screenAdded = false
+        val entries = raw.mapNotNull { entry ->
+            if (entry is TranscriptEntry.Device && entry.record.operation.displayType == "screen_control") {
+                if (screenAdded) null else { screenAdded = true; TranscriptEntry.Device(screens.last(), screens) }
+            } else entry
+        }
         if (occupied || pending) return entries
         val activity = entries.filterIsInstance<TranscriptEntry.ToolRun>().flatMap { it.steps }
         val reply = entries.filterIsInstance<TranscriptEntry.Reply>().lastOrNull { it.message.text.isNotBlank() }
         return buildList {
             if (activity.isNotEmpty()) add(TranscriptEntry.ToolRun(activity))
+            addAll(entries.filterIsInstance<TranscriptEntry.Device>())
             if (reply != null) add(reply)
         }
     }
 }
 private sealed interface TranscriptPiece {
+    data class Device(val record: DeviceRecord) : TranscriptPiece
     data class Reply(val message: Message) : TranscriptPiece
     data class Tool(val step: Step) : TranscriptPiece
 }
 sealed interface TranscriptEntry {
+    data class Device(val record: DeviceRecord, val history: List<DeviceRecord> = listOf(record)) : TranscriptEntry
     data class Reply(val message: Message) : TranscriptEntry
     data class ToolRun(val steps: List<Step>) : TranscriptEntry
 }
-data class ConversationSummary(val conversation: Conversation, val phase: ExecutionPhase? = null, val occupied: Boolean = false, val execution: ExecutionId? = null)
+data class ConversationSummary(val conversation: Conversation, val phase: ExecutionPhase? = null, val occupied: Boolean = false, val execution: ExecutionId? = null, val deviceOperation: com.github.ytlog.mobby.android.deviceinteraction.model.DeviceOperation? = null)
 data class ConversationDetail(val conversation: Conversation, val turns: List<Turn>, val hasEarlier: Boolean = false)
 data class Project(val name: String, val defaultWorkspace: String)
 data class InteractionState(
@@ -219,6 +231,7 @@ class InteractionUseCases(
         execution.submit(turn).also { repository.recordSubmission(turn, it) }
     }.await()
     suspend fun reconcile(id: ConversationId) = SubmitTurnUseCase(repository, execution).reconcile(id)
+    suspend fun respondToDevice(request: DeviceInteractionResponse) = execution.respondToDevice(request)
     suspend fun stop(id: ExecutionId) = StopRunUseCase(execution)(id)
     suspend fun resolvePermission(decision: PermissionDecision) = submissionScope.async { execution.resolvePermission(decision) }.await()
     suspend fun skills(agent: AgentId) = system.skills(agent)

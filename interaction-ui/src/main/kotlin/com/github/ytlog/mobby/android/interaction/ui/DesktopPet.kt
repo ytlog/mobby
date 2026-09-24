@@ -245,7 +245,7 @@ class DesktopPet internal constructor(
             }
             layoutParams = LinearLayout.LayoutParams(width, ViewGroup.LayoutParams.MATCH_PARENT)
             addView(label(target?.title ?: AppStrings.appName, MobbyColors.Dark.ink.toArgb(), 15f, bold = true))
-            addView(label(if (target == null) AppStrings.noRunningTasks else petStatus(target.phase), MobbyColors.Dark.muted.toArgb(), 13f, bold = false))
+            addView(label(if (target == null) AppStrings.noRunningTasks else (target.action ?: petStatus(target.phase)), MobbyColors.Dark.muted.toArgb(), 13f, bold = false))
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 if (target != null) addView(action(AppStrings.stop, AppStrings.stopCurrentTask, petCanStop(target.phase)) {

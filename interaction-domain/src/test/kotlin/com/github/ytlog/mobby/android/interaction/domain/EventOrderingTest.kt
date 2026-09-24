@@ -1,9 +1,21 @@
 package com.github.ytlog.mobby.android.interaction.domain
 
+import com.github.ytlog.mobby.android.deviceinteraction.model.*
+import kotlinx.serialization.json.JsonObject
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class EventOrderingTest {
+    @Test fun `screen actions share one card without losing earlier outcomes`() {
+        fun record(id: String, status: DeviceStatus, order: Long) = DeviceRecord(DeviceOperation(id, id, 1, "screen", "snapshot", "screen_control",
+            status, "snapshot", DeviceSubject(), JsonObject(emptyMap())), id, order)
+        val turn = Turn(TurnId("turn"), "look", ExecutionId("run"), ExecutionPhase.RUNNING, occupied = true,
+            deviceOperations = listOf(record("first", DeviceStatus.FAILED, 1), record("second", DeviceStatus.RUNNING, 3)))
+        val card = turn.visibleTranscript().filterIsInstance<TranscriptEntry.Device>().single()
+        assertEquals("second", card.record.operation.operationId)
+        assertEquals(listOf(DeviceStatus.FAILED, DeviceStatus.RUNNING), card.history.map { it.operation.status })
+        assertEquals("first", card.history.first().operation.operationId)
+    }
     @Test fun `duplicate and out of order output is not appended`() {
         val id = ExecutionId("run")
         var cursor = ProjectionCursor(id, 1)

@@ -1,5 +1,7 @@
 package com.github.ytlog.mobby.android.device
 
+import com.github.ytlog.mobby.android.deviceinteraction.model.*
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.jsonObject
@@ -13,35 +15,109 @@ import java.io.File
 class DevicePluginTest {
     @get:Rule val temporary = TemporaryFolder()
 
+    private class MemoryDevices : DeviceOperationPort {
+        val records = mutableMapOf<String, Pair<DeviceAdmission, DeviceOperation>>()
+        override suspend fun admit(request: DeviceAdmission): AdmittedDevice {
+            records[request.requestId]?.let {
+                if (it.first.fingerprint != request.fingerprint) deviceFailure(DeviceErrorCode.REQUEST_CONFLICT)
+                return AdmittedDevice(it.second, false)
+            }
+            val operation = DeviceOperation("op-${request.requestId}", request.requestId, 1, request.plugin, request.action,
+                request.displayType, DeviceStatus.QUEUED, "queued", request.subject, request.input)
+            records[request.requestId] = request to operation
+            return AdmittedDevice(operation, true)
+        }
+        override suspend fun update(operation: DeviceOperation): DeviceOperation {
+            val record = records.getValue(operation.requestId)
+            if (!DeviceOperationRules.advances(record.second, operation)) return record.second
+            records[operation.requestId] = record.first to operation
+            return operation
+        }
+        override suspend fun find(requestId: String) = records[requestId]?.second
+    }
+    private fun request(plugin: String = "screen", action: String = "snapshot", args: String = "{}", version: String = "1", token: String = "fixture", id: String = "request") =
+        """{"token":"$token","protocolVersion":$version,"requestId":"$id","plugin":"$plugin","action":"$action","args":$args}"""
+    private fun handle(line: String, port: DeviceOperationPort = MemoryDevices(), allow: Map<String, Set<String>> = mapOf("screen" to setOf("snapshot")),
+        performer: DevicePerformer = DevicePerformer { _, _, _, _ -> deviceText("screen") }): DeviceResponse =
+        DeviceJson.decodeFromString(DeviceCommands.handle(line, "fixture", allow, port, performer = performer))
+
+    @Test fun `unknown protocol version is rejected before any device action`() {
+        val port = MemoryDevices()
+        val response = handle(request(version = "2"), port, performer = DevicePerformer { _, _, _, _ -> error("must not dispatch") })
+        assertFalse(response.accepted)
+        assertEquals(DeviceErrorCode.INCOMPATIBLE_VERSION, response.error?.code)
+        assertTrue(port.records.isEmpty())
+    }
+    @Test fun `invalid argument types and unknown fields do not admit actions`() {
+        listOf("{\"surprise\":true}", "[]").forEach { args ->
+            val port = MemoryDevices()
+            assertFalse(handle(request(args = args), port).accepted)
+            assertTrue(port.records.isEmpty())
+        }
+    }
+    @Test fun `duplicate requests replay facts and conflicting content cannot execute`() {
+        val port = MemoryDevices(); var calls = 0
+        val performer = DevicePerformer { _, _, _, _ -> calls++; deviceText("value") }
+        val first = handle(request(), port, performer = performer)
+        assertEquals(first, handle(request(), port, performer = performer))
+        assertEquals(1, calls)
+        val conflict = handle(request(action = "home"), port, mapOf("screen" to setOf("home")), performer)
+        assertEquals(DeviceErrorCode.REQUEST_CONFLICT, conflict.error?.code)
+        assertEquals(1, calls)
+    }
+    @Test fun `submitted message without receipt is unconfirmed rather than successful`() {
+        val response = handle(request("sms", "send", "{\"to\":\"12345\",\"body\":\"fixture\"}"),
+            allow = mapOf("sms" to setOf("send")), performer = DevicePerformer { _, _, _, _ ->
+                deviceResult("message_receipt", fields("submitted" to true, "sent" to "unknown", "delivered" to "unknown"), EffectState.SUBMITTED)
+            })
+        assertTrue(response.accepted)
+        assertEquals(DeviceStatus.UNCONFIRMED, response.status)
+    }
+    @Test fun `bridge allowlist and token reject unauthorized commands`() {
+        val allow = DeviceCatalog.allow(setOf("plugin:device:sms"))
+        assertEquals(DeviceErrorCode.UNAUTHORIZED, handle(request("camera", "photo"), allow = allow).error?.code)
+        assertEquals(DeviceErrorCode.UNAUTHORIZED, handle(request("sms", "list", token = "wrong"), allow = allow).error?.code)
+        assertEquals(DeviceErrorCode.UNAUTHORIZED, handle(request("sms", "send"), allow = allow).error?.code)
+    }
     @Test fun `closing bridge rejects a command already waiting on its socket`() {
         val performed = java.util.concurrent.CountDownLatch(1)
-        val bridge = DeviceBridge("fixture", mapOf("screen" to setOf("snapshot"))) { _, _, _ ->
-            performed.countDown()
-            "screen"
-        }
+        val bridge = DeviceBridge { performed.countDown(); "unused" }
         java.net.Socket("127.0.0.1", bridge.port).use { socket ->
-            // Complete only part of a line so the worker has an accepted, pending request.
             socket.getOutputStream().write("{\"token\":\"fixture\",".toByteArray())
             Thread.sleep(150)
             bridge.close()
-            runCatching {
-                socket.getOutputStream().write("\"plugin\":\"screen\",\"action\":\"snapshot\"}\n".toByteArray())
-            }
-            assertFalse("No device action may start after close", performed.await(500, java.util.concurrent.TimeUnit.MILLISECONDS))
+            runCatching { socket.getOutputStream().write("}\n".toByteArray()) }
+            assertFalse(performed.await(500, java.util.concurrent.TimeUnit.MILLISECONDS))
         }
     }
 
-    @Test fun `bridge allowlist rejects actions from plugins that were not enabled`() {
-        val allow = DeviceCatalog.allow(setOf("plugin:device:sms"))
-        val denied = json(DeviceCommands.handle("""{"token":"ok","plugin":"camera","action":"photo","args":{}}""", "ok", allow) { _, _, _ -> error("should not run") })
-        assertFalse(denied["ok"]!!.jsonPrimitive.boolean)
-        assertEquals("未授权", denied["error"]!!.jsonPrimitive.content)
-        val wrongToken = json(DeviceCommands.handle("""{"token":"no","plugin":"sms","action":"list","args":{}}""", "ok", allow) { _, _, _ -> error("should not run") })
-        assertEquals("未授权", wrongToken["error"]!!.jsonPrimitive.content)
-        val listed = json(DeviceCommands.handle("""{"token":"ok","plugin":"sms","action":"list","args":{}}""", "ok", allow) { plugin, action, _ -> "$plugin:$action" })
-        assertEquals("sms:list", listed["result"]!!.jsonPrimitive.content)
-        val send = json(DeviceCommands.handle("""{"token":"ok","plugin":"sms","action":"send","args":{"to":"1"}}""", "ok", allow) { _, _, _ -> error("should not run") })
-        assertEquals("未授权", send["error"]!!.jsonPrimitive.content)
+    @Test fun `resource export requires a reference owned by the original operation`() {
+        val port = MemoryDevices()
+        handle(request(), port)
+        var exported = false
+        val response = DeviceJson.decodeFromString<DeviceResponse>(DeviceCommands.handle(
+            request("operation", "resource", "{\"requestId\":\"request\",\"resourceRef\":\"unowned\"}"), "fixture", emptyMap(), port,
+            exportResource = { exported = true; "/tmp/unused" }, performer = DevicePerformer { _, _, _, _ -> error("query cannot execute") }))
+        assertEquals(DeviceErrorCode.UNAUTHORIZED, response.error?.code)
+        assertFalse(exported)
+    }
+    @Test fun `generated helper runs against the actual protocol bridge`() {
+        val node = System.getenv("PATH").orEmpty().split(File.pathSeparator).map { File(it, "node") }.firstOrNull { it.canExecute() }?.absolutePath
+        org.junit.Assume.assumeTrue("Node is needed for CLI integration", node != null)
+        val port = MemoryDevices(); var calls = 0
+        val bridge = DeviceBridge { line -> DeviceCommands.handle(line, "fixture", mapOf("screen" to setOf("snapshot")), port,
+            performer = DevicePerformer { _, _, _, _ -> calls++; deviceText("observed") }) }
+        try {
+            val script = temporary.newFile("device.cjs").apply { writeText(DeviceSkillPack.script(bridge.port, "fixture", "screen")) }
+            repeat(2) {
+                val process = ProcessBuilder(node!!, script.absolutePath, "snapshot", "--request-id", "stable-request").start()
+                val response = process.inputStream.bufferedReader().readText()
+                assertTrue(process.waitFor(10, java.util.concurrent.TimeUnit.SECONDS))
+                assertEquals(0, process.exitValue())
+                assertEquals(DeviceStatus.SUCCEEDED, DeviceJson.decodeFromString<DeviceResponse>(response).status)
+            }
+            assertEquals(1, calls)
+        } finally { bridge.close() }
     }
 
     @Test fun `write grant is absent until its own ref is enabled`() {
@@ -54,7 +130,7 @@ class DevicePluginTest {
 
     @Test fun `a screen run keeps the display awake until the session closes`() {
         var holds = 0
-        val bridge = DeviceBridge("tok", emptyMap()) { _, _, _ -> error("unused") }
+        val bridge = DeviceBridge { error("unused") }
         val session = openDeviceSession(setOf("plugin:device:screen", "plugin:device:sms"), {
             holds += 1
             AutoCloseable { holds -= 1 }
@@ -67,7 +143,7 @@ class DevicePluginTest {
     }
 
     @Test fun `a run without the screen plugin does not keep the display awake`() {
-        val bridge = DeviceBridge("tok", emptyMap()) { _, _, _ -> error("unused") }
+        val bridge = DeviceBridge { error("unused") }
         val session = openDeviceSession(setOf("plugin:device:sms"), { error("should not hold") }) { bridge to emptyList() }
         session.close()
     }

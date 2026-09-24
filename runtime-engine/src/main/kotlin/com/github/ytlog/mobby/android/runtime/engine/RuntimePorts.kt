@@ -2,6 +2,7 @@ package com.github.ytlog.mobby.android.runtime.engine
 
 import com.github.ytlog.mobby.android.runtime.api.*
 import kotlinx.coroutines.flow.StateFlow
+import com.github.ytlog.mobby.android.deviceinteraction.model.DeviceOperationPort
 
 enum class StopCause { USER, TIMEOUT, HOST_STOP, STORAGE_FAILURE, PROTOCOL_FAILURE }
 data class ProcessResult(val exitCode: Int?, val terminationConfirmed: Boolean, val error: ErrorCode? = null, val retained: Boolean = false)
@@ -15,8 +16,9 @@ data class LiveSessionBinding(
         requestedOutput == request.requestedOutput && sessionId == request.sessionRef?.value
 }
 interface ProcessPort {
+    fun offerDeviceResponse(request: com.github.ytlog.mobby.android.deviceinteraction.model.DeviceInteractionResponse): Boolean = false
     /** Returns when the turn ends. A retained process stays open for a compatible follow-up; stop is explicit. */
-    suspend fun execute(request: RunRequest, stop: StateFlow<StopCause?>, output: suspend (String, Boolean) -> Unit): ProcessResult
+    suspend fun execute(request: RunRequest, stop: StateFlow<StopCause?>, devices: DeviceOperationPort, output: suspend (String, Boolean) -> Unit): ProcessResult
     /** Nonblocking handoff after durable acceptance. Never applies to another request or unknown approval.
      * True means queued, not executed. Delivery/write failure must fail execute; never replay after restart. */
     fun offerApproval(requestId: RequestId, approvalId: String, choice: ApprovalChoice): Boolean = false

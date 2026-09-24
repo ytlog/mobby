@@ -2,6 +2,8 @@ package com.github.ytlog.mobby.android.device
 
 import com.github.ytlog.mobby.android.localization.AppStrings
 
+import com.github.ytlog.mobby.android.deviceinteraction.model.*
+import kotlinx.serialization.json.*
 import android.Manifest
 import android.content.ContentProviderOperation
 import android.content.ContentUris
@@ -30,12 +32,12 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
-internal class DeviceActions(private val context: Context, private val inbox: File, private val workspace: File, private val gate: DeviceActionGate = DeviceActionGate()) {
-    fun perform(plugin: String, action: String, args: Map<String, String>): String {
+internal class DeviceActions(private val context: Context, private val inbox: File, private val workspace: File, private val gate: DeviceActionGate, private val resources: DeviceResourceRegistrar) {
+    fun perform(plugin: String, action: String, args: Map<String, String>, execution: DeviceExecution): DeviceResult {
         gate.checkActive()
         val spec = DeviceCatalog.all.first { it.id == plugin }
         val ref = if (action in spec.grant?.actions.orEmpty()) spec.grantRef!! else spec.ref
-        if (!DeviceHost.granted(context, ref)) error(DeviceHost.reason(context, ref) ?: AppStrings.permissionWasRevoked)
+        if (!DeviceHost.granted(context, ref)) deviceFailure(DeviceErrorCode.PERMISSION_REVOKED)
         return when (plugin) {
             "screen" -> screen(action, args)
             "sms" -> sms(action, args)
@@ -43,8 +45,8 @@ internal class DeviceActions(private val context: Context, private val inbox: Fi
             "calendar" -> calendar(action, args)
             "media" -> media(action, args)
             "storage" -> storage(action, args)
-            "camera" -> capture("photo", "jpg")
-            "microphone" -> capture("record", "m4a")
+            "camera" -> capture("photo", "jpg", execution)
+            "microphone" -> capture("record", "m4a", execution)
             "location" -> location()
             "sensors" -> sensors()
             "clipboard" -> clipboard(action, args)
@@ -53,45 +55,46 @@ internal class DeviceActions(private val context: Context, private val inbox: Fi
         }
     }
 
-    private fun screen(action: String, args: Map<String, String>): String {
+    private fun screen(action: String, args: Map<String, String>): DeviceResult {
         val service = ScreenAccessService.instance ?: error(AppStrings.accessibilityIsOffEnableMobbySScreenServiceIn)
-        return service.operate(action, args, gate::checkActive)
+        val observation = service.operate(action, args, gate::checkActive)
+        return deviceResult("screen_observation", fields("packageName" to observation.packageName,
+            "observedAtEpochMillis" to observation.observedAtEpochMillis, "observationRef" to null, "actionConfirmed" to (action != "snapshot"),
+            "text" to observation.text), if (action == "snapshot") EffectState.NONE else EffectState.CONFIRMED)
     }
 
-    private fun sms(action: String, args: Map<String, String>): String = when (action) {
+    private fun sms(action: String, args: Map<String, String>): DeviceResult = when (action) {
         "list" -> {
-            val rows = mutableListOf<String>()
-            context.contentResolver.query(Telephony.Sms.Inbox.CONTENT_URI, arrayOf("address", "date", "body"), null, null, "date DESC")?.use { cursor ->
+            val rows = mutableListOf<JsonObject>()
+            (context.contentResolver.query(Telephony.Sms.Inbox.CONTENT_URI, arrayOf("address", "date", "body"), null, null, "date DESC") ?: deviceFailure(DeviceErrorCode.UNAVAILABLE)).use { cursor ->
                 val address = cursor.getColumnIndex("address")
                 val date = cursor.getColumnIndex("date")
                 val body = cursor.getColumnIndex("body")
                 while (cursor.moveToNext() && rows.size < 20) {
                     val text = cursor.getString(body).orEmpty().replace("\n", " ").take(160)
-                    rows += "${cursor.getString(address).orEmpty()} ${cursor.getLong(date)} $text"
+                    rows += fields("itemId" to "sms-${rows.size}", "sender" to cursor.getString(address).orEmpty(), "time" to cursor.getLong(date), "body" to text)
                 }
             }
-            if (rows.isEmpty()) AppStrings.noMessagesInTheInbox else rows.joinToString("\n")
+            deviceList("message_list", rows, "sms.inbox.recent_20")
         }
         "send" -> {
             val to = args["to"]?.trim().orEmpty()
             val body = args["body"].orEmpty()
             if (!to.matches(Regex("[+0-9][0-9\\- ]{2,20}")) || body.isBlank() || body.length > 500) error(AppStrings.enterAValidNumberAndAMessageOfAt)
-            val manager = if (Build.VERSION.SDK_INT >= 31) context.getSystemService(SmsManager::class.java) else SmsManager.getDefault()
-            manager.sendTextMessage(to.filterNot { it.isWhitespace() || it == '-' }, null, body, null, null)
-            AppStrings.submittedForSending
+            SmsSendOperation(context, gate).send(to.filterNot { it.isWhitespace() || it == '-' }, body)
         }
         else -> error(AppStrings.unsupportedOperation)
     }
 
-    private fun contacts(action: String, args: Map<String, String>): String = when (action) {
+    private fun contacts(action: String, args: Map<String, String>): DeviceResult = when (action) {
         "list" -> {
-            val rows = mutableListOf<String>()
-            context.contentResolver.query(ContactsContract.Contacts.CONTENT_URI, arrayOf(ContactsContract.Contacts._ID, ContactsContract.Contacts.DISPLAY_NAME_PRIMARY), null, null, "${ContactsContract.Contacts.DISPLAY_NAME_PRIMARY} ASC")?.use { cursor ->
+            val rows = mutableListOf<JsonObject>()
+            (context.contentResolver.query(ContactsContract.Contacts.CONTENT_URI, arrayOf(ContactsContract.Contacts._ID, ContactsContract.Contacts.DISPLAY_NAME_PRIMARY), null, null, "${ContactsContract.Contacts.DISPLAY_NAME_PRIMARY} ASC") ?: deviceFailure(DeviceErrorCode.UNAVAILABLE)).use { cursor ->
                 val id = cursor.getColumnIndex(ContactsContract.Contacts._ID)
                 val name = cursor.getColumnIndex(ContactsContract.Contacts.DISPLAY_NAME_PRIMARY)
-                while (cursor.moveToNext() && rows.size < 50) rows += "${cursor.getLong(id)} ${cursor.getString(name).orEmpty().take(80)}"
+                while (cursor.moveToNext() && rows.size < 50) rows += fields("itemId" to "contact-${cursor.getLong(id)}", "recordId" to cursor.getLong(id).toString(), "name" to cursor.getString(name).orEmpty().take(80))
             }
-            if (rows.isEmpty()) AppStrings.noContacts else rows.joinToString("\n")
+            deviceList("file_items", rows, "contacts.first_50")
         }
         "create" -> {
             val name = args["name"]?.trim().orEmpty()
@@ -101,7 +104,7 @@ internal class DeviceActions(private val context: Context, private val inbox: Fi
                 ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI).withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, 0).withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE).withValue(ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME, name).build())
             if (phone.isNotBlank()) operations += ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI).withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, 0).withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE).withValue(ContactsContract.CommonDataKinds.Phone.NUMBER, phone.take(40)).withValue(ContactsContract.CommonDataKinds.Phone.TYPE, ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE).build()
             val result = context.contentResolver.applyBatch(ContactsContract.AUTHORITY, operations)
-            AppStrings.createdContact(result.first().uri?.lastPathSegment ?: "")
+            recordChange(action, result.first().uri?.lastPathSegment ?: error(AppStrings.operationFailed), fields("name" to name, "phone" to phone))
         }
         "update" -> {
             val id = numeric(args)
@@ -110,27 +113,27 @@ internal class DeviceActions(private val context: Context, private val inbox: Fi
             val updated = context.contentResolver.update(ContactsContract.Data.CONTENT_URI, android.content.ContentValues().apply {
                 put(ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME, name)
             }, "${ContactsContract.Data.CONTACT_ID}=? AND ${ContactsContract.Data.MIMETYPE}=?", arrayOf(id.toString(), ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE))
-            if (updated == 0) error(AppStrings.contactNotFound(id)) else AppStrings.updatedContact(id)
+            if (updated == 0) error(AppStrings.contactNotFound(id)) else recordChange(action, id.toString(), fields("name" to name))
         }
         "delete" -> {
             val id = numeric(args)
             val deleted = context.contentResolver.delete(ContactsContract.RawContacts.CONTENT_URI, "${ContactsContract.RawContacts.CONTACT_ID}=?", arrayOf(id.toString()))
-            if (deleted == 0) error(AppStrings.contactNotFound(id)) else AppStrings.deletedContact(id)
+            if (deleted == 0) error(AppStrings.contactNotFound(id)) else recordChange(action, id.toString())
         }
         else -> error(AppStrings.unsupportedOperation)
     }
 
-    private fun calendar(action: String, args: Map<String, String>): String = when (action) {
+    private fun calendar(action: String, args: Map<String, String>): DeviceResult = when (action) {
         "list" -> {
-            val rows = mutableListOf<String>()
-            val start = System.currentTimeMillis() - 86_400_000L
-            context.contentResolver.query(CalendarContract.Events.CONTENT_URI, arrayOf(CalendarContract.Events._ID, CalendarContract.Events.TITLE, CalendarContract.Events.DTSTART), "${CalendarContract.Events.DTSTART}>=?", arrayOf(start.toString()), "${CalendarContract.Events.DTSTART} ASC")?.use { cursor ->
+            val rows = mutableListOf<JsonObject>()
+            val start = System.currentTimeMillis()
+            (context.contentResolver.query(CalendarContract.Events.CONTENT_URI, arrayOf(CalendarContract.Events._ID, CalendarContract.Events.TITLE, CalendarContract.Events.DTSTART), "${CalendarContract.Events.DTSTART}>=?", arrayOf(start.toString()), "${CalendarContract.Events.DTSTART} ASC") ?: deviceFailure(DeviceErrorCode.UNAVAILABLE)).use { cursor ->
                 val id = cursor.getColumnIndex(CalendarContract.Events._ID)
                 val title = cursor.getColumnIndex(CalendarContract.Events.TITLE)
                 val whenStart = cursor.getColumnIndex(CalendarContract.Events.DTSTART)
-                while (cursor.moveToNext() && rows.size < 20) rows += "${cursor.getLong(id)} ${cursor.getLong(whenStart)} ${cursor.getString(title).orEmpty().take(80)}"
+                while (cursor.moveToNext() && rows.size < 20) rows += fields("itemId" to "event-${cursor.getLong(id)}", "recordId" to cursor.getLong(id).toString(), "name" to cursor.getString(title).orEmpty().take(80), "time" to cursor.getLong(whenStart))
             }
-            if (rows.isEmpty()) AppStrings.noUpcomingEvents else rows.joinToString("\n")
+            deviceList("file_items", rows, "calendar.upcoming_20")
         }
         "create" -> {
             val title = args["title"]?.trim().orEmpty()
@@ -145,19 +148,19 @@ internal class DeviceActions(private val context: Context, private val inbox: Fi
                 put(CalendarContract.Events.DTEND, end)
                 put(CalendarContract.Events.EVENT_TIMEZONE, java.util.TimeZone.getDefault().id)
             }) ?: error(AppStrings.noEventWasSaved)
-            AppStrings.createdEvent(uri.lastPathSegment)
+            recordChange(action, uri.lastPathSegment ?: error(AppStrings.noEventWasSaved), fields("title" to title, "start" to start, "end" to end, "timeZone" to java.util.TimeZone.getDefault().id))
         }
         "update" -> {
             val id = numeric(args)
             val title = args["title"]?.trim().orEmpty()
             if (title.isBlank() || title.length > 120) error(AppStrings.enterATitleOfAtMostCharacters)
             val updated = context.contentResolver.update(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, id), android.content.ContentValues().apply { put(CalendarContract.Events.TITLE, title) }, null, null)
-            if (updated == 0) error(AppStrings.eventNotFound(id)) else AppStrings.updatedEvent(id)
+            if (updated == 0) error(AppStrings.eventNotFound(id)) else recordChange(action, id.toString(), fields("title" to title))
         }
         "delete" -> {
             val id = numeric(args)
             val deleted = context.contentResolver.delete(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, id), null, null)
-            if (deleted == 0) error(AppStrings.eventNotFound(id)) else AppStrings.deletedEvent(id)
+            if (deleted == 0) error(AppStrings.eventNotFound(id)) else recordChange(action, id.toString())
         }
         else -> error(AppStrings.unsupportedOperation)
     }
@@ -166,19 +169,26 @@ internal class DeviceActions(private val context: Context, private val inbox: Fi
         if (cursor.moveToFirst()) cursor.getLong(0) else null
     }
 
-    private fun media(action: String, args: Map<String, String>): String = when (action) {
+    private fun media(action: String, args: Map<String, String>): DeviceResult = when (action) {
         "list" -> {
-            val rows = mutableListOf<String>()
+            val rows = mutableListOf<JsonObject>()
             mediaCollections().forEach { (kind, uri) ->
                 if (rows.size >= 30) return@forEach
-                context.contentResolver.query(uri, arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.SIZE), null, null, "${MediaStore.MediaColumns.DATE_ADDED} DESC")?.use { cursor ->
+                (context.contentResolver.query(uri, arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.SIZE), null, null, "${MediaStore.MediaColumns.DATE_ADDED} DESC") ?: deviceFailure(DeviceErrorCode.UNAVAILABLE)).use { cursor ->
                     val id = cursor.getColumnIndex(MediaStore.MediaColumns._ID)
                     val name = cursor.getColumnIndex(MediaStore.MediaColumns.DISPLAY_NAME)
                     val size = cursor.getColumnIndex(MediaStore.MediaColumns.SIZE)
-                    while (cursor.moveToNext() && rows.size < 30) rows += "$kind ${cursor.getLong(id)} ${cursor.getString(name).orEmpty().take(80)} ${cursor.getLong(size)}"
+                    while (cursor.moveToNext() && rows.size < 30) {
+                        val itemUri = ContentUris.withAppendedId(uri, cursor.getLong(id))
+                        val preview = if (kind in setOf("image", "video") && rows.size < 6) mediaPreview(itemUri) else null
+                        rows += fields("itemId" to "$kind-${cursor.getLong(id)}", "recordId" to cursor.getLong(id).toString(), "kind" to kind,
+                            "name" to cursor.getString(name).orEmpty().take(80), "sizeBytes" to cursor.getLong(size), "resourceRef" to preview)
+                    }
                 }
             }
-            if (rows.isEmpty()) AppStrings.noAccessibleMediaFiles else rows.joinToString("\n")
+            deviceList("media_items", rows, "media.authorized_30").copy(resourceRefs = rows.mapNotNull {
+                (it["resourceRef"] as? JsonPrimitive)?.contentOrNull
+            })
         }
         "copy" -> {
             val kind = args["kind"].orEmpty()
@@ -189,9 +199,21 @@ internal class DeviceActions(private val context: Context, private val inbox: Fi
             } ?: error(AppStrings.mediaNotFound(id))
             val dest = File(inbox, DevicePaths.safeName(name))
             context.contentResolver.openInputStream(ContentUris.withAppendedId(uri, id))?.use { DevicePaths.copyBounded(it, dest) } ?: error(AppStrings.cannotReadMedia(id))
-            dest.absolutePath
+            fileResult(dest, "application/octet-stream", "file_items")
         }
         else -> error(AppStrings.unsupportedOperation)
+    }
+
+    private fun mediaPreview(uri: Uri): String? {
+        // Thumbnails are optional evidence; failure never changes the result of listing the media.
+        if (Build.VERSION.SDK_INT < 29) return null
+        val bitmap = try { context.contentResolver.loadThumbnail(uri, android.util.Size(240, 240), null) }
+            catch (_: java.io.IOException) { return null }
+        val file = File(inbox, "preview-${java.util.UUID.randomUUID()}.jpg")
+        return try {
+            file.outputStream().use { check(bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, it)) }
+            resources.register(file, "image/jpeg")
+        } finally { bitmap.recycle(); file.delete() }
     }
 
     private fun mediaCollections(): Map<String, Uri> = buildMap {
@@ -202,17 +224,18 @@ internal class DeviceActions(private val context: Context, private val inbox: Fi
         if (legacy || allowed(Manifest.permission.READ_MEDIA_AUDIO)) put("audio", MediaStore.Audio.Media.EXTERNAL_CONTENT_URI)
     }
 
-    private fun storage(action: String, args: Map<String, String>): String {
+    private fun storage(action: String, args: Map<String, String>): DeviceResult {
         val tree = DeviceStorage.tree(context) ?: error(AppStrings.selectTheDirectoryAgain)
         val children = childDocuments(tree)
         return when (action) {
-            "list" -> children.take(100).joinToString("\n") { "${if (it.directory) "dir" else "file"} ${it.name.take(80)} ${it.size}" }.ifBlank { AppStrings.theSelectedDirectoryIsEmpty }
+            "list" -> deviceList("file_items", children.mapIndexed { index, child -> fields("itemId" to "file-$index", "name" to child.name,
+                "kind" to if (child.directory) "directory" else "file", "sizeBytes" to child.size) }, "storage.selected_directory_100")
             "copy" -> {
                 val name = DevicePaths.safeName(args["name"].orEmpty())
                 val child = children.firstOrNull { it.name == name && !it.directory } ?: error(AppStrings.notFound(name))
                 val dest = File(inbox, name)
                 context.contentResolver.openInputStream(child.uri)?.use { DevicePaths.copyBounded(it, dest) } ?: error(AppStrings.cannotRead(name))
-                dest.absolutePath
+                fileResult(dest, "application/octet-stream", "file_items")
             }
             "export" -> {
                 val name = DevicePaths.safeName(args["name"].orEmpty())
@@ -221,7 +244,7 @@ internal class DeviceActions(private val context: Context, private val inbox: Fi
                 val existing = children.firstOrNull { it.name == name && !it.directory }
                 val target = existing?.uri ?: DocumentsContract.createDocument(context.contentResolver, DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree)), "application/octet-stream", name) ?: error(AppStrings.cannotCreateInTheSelectedDirectory(name))
                 context.contentResolver.openOutputStream(target, "wt")?.use { out -> source.inputStream().use { it.copyTo(out) } } ?: error(AppStrings.cannotExport(name))
-                AppStrings.exported(name)
+                deviceResult("file_items", fields("items" to listOf(fields("itemId" to "export", "name" to name, "sizeBytes" to source.length())), "nextCursor" to null, "scope" to "storage.selected_directory"), EffectState.CONFIRMED)
             }
             else -> error(AppStrings.unsupportedOperation)
         }
@@ -249,14 +272,15 @@ internal class DeviceActions(private val context: Context, private val inbox: Fi
         return rows
     }
 
-    private fun capture(kind: String, extension: String): String {
+    private fun capture(kind: String, extension: String, execution: DeviceExecution): DeviceResult {
         if (!DeviceForeground.foreground()) error(AppStrings.returnToMobbyBeforeYou(if (kind == "photo") AppStrings.takePhoto else AppStrings.recordAudio))
         inbox.mkdirs()
         val dest = File(inbox, "$kind-${System.nanoTime()}.$extension")
-        return DeviceCapture.await(context, kind, dest)
+        DeviceCapture.await(context, kind, dest, execution, gate::checkActive)
+        return fileResult(dest, if (kind == "photo") "image/jpeg" else "audio/mp4", "capture_resource")
     }
 
-    private fun location(): String {
+    private fun location(): DeviceResult {
         if (!DeviceForeground.foreground()) error(AppStrings.returnToMobbyToGetYourLocation)
         val manager = context.getSystemService(LocationManager::class.java)
         val provider = when {
@@ -275,59 +299,75 @@ internal class DeviceActions(private val context: Context, private val inbox: Fi
         }
         if (!latch.await(20, TimeUnit.SECONDS)) error(AppStrings.noLocationReceived)
         val location = found.get() ?: error(AppStrings.noLocationReceived)
-        return "latitude=${location.latitude} longitude=${location.longitude} accuracy=${location.accuracy} time=${location.time}"
+        return deviceResult("measurement", fields("source" to provider, "samples" to listOf(
+            fields("name" to "latitude", "value" to location.latitude, "unit" to "°", "accuracy" to location.accuracy, "sampledAtEpochMillis" to location.time),
+            fields("name" to "longitude", "value" to location.longitude, "unit" to "°", "accuracy" to location.accuracy, "sampledAtEpochMillis" to location.time))))
     }
 
-    private fun sensors(): String {
+    private fun sensors(): DeviceResult {
         val manager = context.getSystemService(SensorManager::class.java)
         val types = listOf(Sensor.TYPE_ACCELEROMETER, Sensor.TYPE_GYROSCOPE, Sensor.TYPE_MAGNETIC_FIELD, Sensor.TYPE_LIGHT, Sensor.TYPE_PROXIMITY, Sensor.TYPE_PRESSURE)
-        val samples = linkedMapOf<String, String>()
+        val samples = java.util.concurrent.ConcurrentHashMap<Int, List<JsonObject>>()
         val latch = CountDownLatch(1)
         val listener = object : SensorEventListener {
             override fun onSensorChanged(event: SensorEvent) {
-                samples[event.sensor.name] = event.values.joinToString(",") { "%.3f".format(it) }
+                val unit = when (event.sensor.type) {
+                    Sensor.TYPE_ACCELEROMETER -> "m/s²"; Sensor.TYPE_GYROSCOPE -> "rad/s"; Sensor.TYPE_MAGNETIC_FIELD -> "μT"
+                    Sensor.TYPE_LIGHT -> "lx"; Sensor.TYPE_PROXIMITY -> "cm"; Sensor.TYPE_PRESSURE -> "hPa"; else -> ""
+                }
+                samples[event.sensor.type] = event.values.mapIndexed { index, value -> fields("name" to "${event.sensor.name}[$index]", "value" to value,
+                    "unit" to unit, "accuracy" to null, "sampledAtEpochMillis" to System.currentTimeMillis()) }
                 if (samples.size >= types.count { manager.getDefaultSensor(it) != null }) latch.countDown()
             }
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
         }
         val registered = types.mapNotNull { manager.getDefaultSensor(it) }
-        if (registered.isEmpty()) return AppStrings.thisDeviceHasNoAvailableMotionOrEnvironmentalSensors
+        if (registered.isEmpty()) deviceFailure(DeviceErrorCode.UNSUPPORTED_CAPABILITY)
         registered.forEach { manager.registerListener(listener, it, SensorManager.SENSOR_DELAY_NORMAL) }
         try { latch.await(3, TimeUnit.SECONDS) } finally { manager.unregisterListener(listener) }
         if (samples.isEmpty()) error(AppStrings.noSensorReadingsReceived)
-        return samples.entries.joinToString("\n") { "${it.key} ${it.value}" }
+        return deviceResult("measurement", fields("source" to "android.sensors", "samples" to samples.toSortedMap().values.flatten()))
     }
 
-    private fun clipboard(action: String, args: Map<String, String>): String {
+    private fun clipboard(action: String, args: Map<String, String>): DeviceResult {
         val manager = context.getSystemService(ClipboardManager::class.java)
         return when (action) {
             "read" -> {
                 if (!DeviceForeground.foreground()) error(AppStrings.returnToMobbyToReadTheClipboard)
                 val text = manager.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString().orEmpty()
-                if (text.isBlank()) AppStrings.theClipboardIsEmpty else text.take(4_000)
+                deviceText(text.take(4_000))
             }
             "write" -> {
                 val text = args["text"].orEmpty()
                 if (text.isEmpty() || text.length > 4_000) error(AppStrings.enterTextOfAtMostCharacters)
                 manager.setPrimaryClip(ClipData.newPlainText("mobby", text))
-                AppStrings.copiedToClipboard
+                recordChange(action, "clipboard", fields("text" to text))
             }
             else -> error(AppStrings.unsupportedOperation)
         }
     }
 
-    private fun office(action: String, args: Map<String, String>): String {
+    private fun office(action: String, args: Map<String, String>): DeviceResult {
         val file = DevicePaths.resolve(workspace, inbox, args["path"].orEmpty())
         return when (action) {
-            "inspect" -> OfficePackage.inspect(file)
-            "read" -> OfficePackage.read(file)
+            "inspect" -> deviceText(OfficePackage.inspect(file))
+            "read" -> deviceText(OfficePackage.read(file))
             "write" -> {
                 val text = args["text"] ?: error(AppStrings.missingText)
                 OfficePackage.write(file, text)
-                file.absolutePath
+                val ref = resources.register(file, "application/octet-stream")
+                deviceResult("record_change", fields("action" to "write", "after" to fields("name" to file.name, "sizeBytes" to file.length()), "previewText" to OfficePackage.read(file).take(4000)), EffectState.CONFIRMED, listOf(ref))
             }
             else -> error(AppStrings.unsupportedOperation)
         }
+    }
+
+    private fun fileResult(file: File, mediaType: String, kind: String): DeviceResult {
+        gate.checkActive()
+        val ref = resources.register(file, mediaType)
+        val data = if (kind == "capture_resource") fields("resourceRef" to ref, "mediaType" to mediaType, "durationMillis" to null)
+            else fields("items" to listOf(fields("itemId" to "resource", "name" to file.name, "sizeBytes" to file.length(), "resourceRef" to ref)), "nextCursor" to null, "scope" to "run.imported")
+        return deviceResult(kind, data, EffectState.CONFIRMED, listOf(ref))
     }
 
     private fun numeric(args: Map<String, String>): Long {

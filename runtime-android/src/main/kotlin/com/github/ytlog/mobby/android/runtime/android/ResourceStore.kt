@@ -20,6 +20,7 @@ import java.util.Base64
 internal class ResourceStore(private val root: File, private val budgetBytes: () -> Long = { DEFAULT_BUDGET_BYTES }) {
     @Serializable private data class Document(val name: String, val text: String, val workspace: String = "default")
     @Serializable private data class ImageDocument(val name: String, val mediaType: String, val base64: String, val workspace: String = "default")
+    @Serializable private data class BinaryDocument(val name: String, val mediaType: String, val base64: String, val workspace: String)
     class Image(val name: String, val mediaType: String, val bytes: ByteArray)
     class Prepared(val prompt: String, val images: List<Image>)
     private val json = Json
@@ -47,6 +48,9 @@ internal class ResourceStore(private val root: File, private val budgetBytes: ()
             prefix = "text"
             encoded = json.encodeToString(Document(request.name, text, request.workspaceRef.value)).toByteArray()
         }
+        persist(encoded, prefix, request.workspaceRef)
+    }
+    private fun persist(encoded: ByteArray, prefix: String, workspace: WorkspaceRef): ResourceSummary {
         val digest = hash(encoded)
         val target = File(directory(), digest)
         if (!target.exists()) {
@@ -65,7 +69,37 @@ internal class ResourceStore(private val root: File, private val budgetBytes: ()
                 Files.move(temporary.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE)
             } finally { temporary.delete() }
         }
-        summary(ResourceRef("$prefix:$digest"), request.workspaceRef)
+        return summary(ResourceRef("$prefix:$digest"), workspace)
+    }
+
+    /** Registers executor-owned material before its temporary inbox is removed. */
+    fun saveDevice(file: File, workspace: WorkspaceRef, mediaType: String): ResourceSummary = synchronized(importLock) {
+        require(file.isFile && file.length() in 1..(32L * 1024 * 1024))
+        val bytes = file.inputStream().use { input ->
+            val output = java.io.ByteArrayOutputStream()
+            val buffer = ByteArray(8192)
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                require(output.size() + count <= 32 * 1024 * 1024)
+                output.write(buffer, 0, count)
+            }
+            output.toByteArray()
+        }
+        require(bytes.size in 1..32 * 1024 * 1024)
+        if (imageType(bytes) != null || mediaType.startsWith("text/")) return@synchronized save(ImportResourceRequest(workspace, file.name, bytes))
+        require(WorkspaceStore.validRef(workspace.value))
+        val encoded = json.encodeToString(BinaryDocument(file.name, mediaType, Base64.getEncoder().encodeToString(bytes), workspace.value)).toByteArray()
+        persist(encoded, "binary", workspace)
+    }
+    fun contentBytes(ref: ResourceRef, workspace: WorkspaceRef): ByteArray = when {
+        ref.value.startsWith("binary:") -> {
+            val stored = json.decodeFromString<BinaryDocument>(encoded(ref, workspace, "binary", 48 * 1024 * 1024).toString(Charsets.UTF_8))
+            require(stored.workspace == workspace.value)
+            Base64.getDecoder().decode(stored.base64)
+        }
+        ref.value.startsWith("image:") -> image(ref, workspace).bytes
+        else -> read(ref, workspace).second.toByteArray()
     }
     private fun encoded(ref: ResourceRef, workspace: WorkspaceRef, prefix: String, limit: Int): ByteArray {
         require(WorkspaceStore.validRef(workspace.value))
@@ -95,12 +129,17 @@ internal class ResourceStore(private val root: File, private val budgetBytes: ()
         return Image(document.name, document.mediaType, bytes)
     }
     fun preview(ref: ResourceRef, workspace: WorkspaceRef, expanded: Boolean): ByteArray {
+        if (!ref.value.startsWith("image:")) return contentBytes(ref, workspace)
         val image = image(ref, workspace)
         return ImagePreview.render(image.bytes, if (expanded) 1024 else 256)
     }
     fun summary(ref: ResourceRef, workspace: WorkspaceRef): ResourceSummary = if (ref.value.startsWith("image:")) {
         val image = image(ref, workspace)
         ResourceSummary(ref, image.name, image.bytes.size, image.mediaType)
+    } else if (ref.value.startsWith("binary:")) {
+        val stored = json.decodeFromString<BinaryDocument>(encoded(ref, workspace, "binary", 48 * 1024 * 1024).toString(Charsets.UTF_8))
+        require(stored.workspace == workspace.value)
+        ResourceSummary(ref, stored.name, Base64.getDecoder().decode(stored.base64).size, stored.mediaType)
     } else read(ref, workspace).first
 
     fun prepare(parts: List<InputPart>, workspace: WorkspaceRef): Prepared {

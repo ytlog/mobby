@@ -45,7 +45,7 @@ object DeviceCatalog {
         ),
         DevicePluginSpec(
             "sms", AppStrings.sms, AppStrings.readMessagesEnableSendingSeparately, CatalogIds.COMMUNICATION,
-            "Read recent SMS, or send one when the send grant is enabled. Do not claim a message was sent unless the command succeeds.",
+            "Read recent SMS, or send one when the send grant is enabled. Only result.data.sent=succeeded confirms sending; submission does not confirm sending or delivery.",
             DeviceAccess.RUNTIME, listOf(android.Manifest.permission.READ_SMS),
             DeviceGrantSpec("send", AppStrings.send, listOf(android.Manifest.permission.SEND_SMS), setOf("send")),
             listOf(
@@ -98,13 +98,13 @@ object DeviceCatalog {
         ),
         DevicePluginSpec(
             "camera", AppStrings.camera, AppStrings.openTheViewfinderToTakeAPhoto, CatalogIds.PHONE,
-            "Take one photo. The user sees the shutter. The result is a file path in this run's inbox.",
+            "Take one photo. The user previews and confirms the capture. The result contains a durable resourceRef; use the resource command to obtain an inbox path.",
             DeviceAccess.RUNTIME, listOf(android.Manifest.permission.CAMERA),
             commands = listOf(DeviceCommand("photo", "photo")),
         ),
         DevicePluginSpec(
             "microphone", AppStrings.microphone, AppStrings.openTheRecorderToRecordAudio, CatalogIds.PHONE,
-            "Record from the microphone while the recording screen is visible. The result is a file path in this run's inbox.",
+            "Record while the capture panel is visible. The user can listen, record again, cancel, or confirm. The result contains a durable resourceRef; use the resource command to obtain an inbox path.",
             DeviceAccess.RUNTIME, listOf(android.Manifest.permission.RECORD_AUDIO),
             commands = listOf(DeviceCommand("record", "record", "The user stops the recording. It also stops after 60 seconds.")),
         ),

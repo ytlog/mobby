@@ -1,6 +1,7 @@
 package com.github.ytlog.mobby.android.device
 
 import com.github.ytlog.mobby.android.localization.AppStrings
+import com.github.ytlog.mobby.android.deviceinteraction.model.*
 
 import android.Manifest
 import android.content.Context
@@ -69,13 +70,15 @@ object DeviceHost {
     private fun allowed(context: Context, permission: String) =
         context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
 
-    fun start(context: Context, root: File, inbox: File, workspace: File, node: String, refs: Set<String>, isCancelled: () -> Boolean = { false }): DeviceSession =
+    fun start(context: Context, root: File, inbox: File, workspace: File, node: String, refs: Set<String>, operations: DeviceOperationPort, registerResource: (File, String) -> String, exportResource: (String) -> String, isCancelled: () -> Boolean = { false }): DeviceSession =
         openDeviceSession(refs, ScreenAccessService::stay) {
             val token = DeviceCommands.token()
             val allow = DeviceCatalog.allow(refs)
             val gate = DeviceActionGate(isCancelled)
-            val actions = DeviceActions(context, inbox, workspace, gate)
-            val bridge = DeviceBridge(token, allow, gate) { plugin, action, args -> actions.perform(plugin, action, args) }
+            val actions = DeviceActions(context, inbox, workspace, gate, DeviceResourceRegistrar(registerResource))
+            val bridge = DeviceBridge(gate::close) { line ->
+                DeviceCommands.handle(line, token, allow, operations, gate::checkActive, exportResource) { plugin, action, args, execution -> actions.perform(plugin, action, args, execution) }
+            }
             try {
                 bridge to DeviceSkillPack.write(root, node, bridge.port, token, refs)
             } catch (error: Throwable) {
@@ -106,6 +109,7 @@ class DeviceSession internal constructor(
     private val awake: AutoCloseable? = null,
 ) : AutoCloseable {
     private val closed = AtomicBoolean(false)
+    fun awaitIdle(checkActive: () -> Unit) = bridge.awaitIdle(checkActive)
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
         try {
@@ -117,10 +121,8 @@ class DeviceSession internal constructor(
 }
 
 internal class DeviceBridge(
-    token: String,
-    allow: Map<String, Set<String>>,
-    private val gate: DeviceActionGate = DeviceActionGate(),
-    performer: DevicePerformer,
+    private val onClose: () -> Unit = {},
+    private val handle: (String) -> String,
 ) : AutoCloseable {
     private val running = AtomicBoolean(true)
     private val server = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1"))
@@ -136,11 +138,16 @@ internal class DeviceBridge(
             try {
                 socket.use { active ->
                     active.soTimeout = 15_000
-                    val line = BufferedReader(InputStreamReader(active.getInputStream())).readLine() ?: return@use
-                    val response = DeviceCommands.handle(line, token, allow) { plugin, action, args ->
-                        gate.checkActive()
-                        performer.perform(plugin, action, args)
+                    val input = active.getInputStream()
+                    val bytes = java.io.ByteArrayOutputStream()
+                    while (true) {
+                        val byte = input.read()
+                        if (byte == -1 || byte == 10) break
+                        if (bytes.size() >= 65_536) throw java.io.IOException("Device request exceeds limit")
+                        bytes.write(byte)
                     }
+                    if (bytes.size() == 0 || !running.get()) return@use
+                    val response = handle(Charsets.UTF_8.newDecoder().decode(java.nio.ByteBuffer.wrap(bytes.toByteArray())).toString())
                     active.getOutputStream().write((response + "\n").toByteArray())
                 }
             } catch (_: java.io.IOException) {
@@ -150,8 +157,16 @@ internal class DeviceBridge(
             }
         }
     }
+    fun awaitIdle(checkActive: () -> Unit) {
+        val deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(125)
+        while (synchronized(socketLock) { accepted != null }) {
+            checkActive()
+            if (System.nanoTime() >= deadline) deviceFailure(DeviceErrorCode.TIMEOUT)
+            Thread.sleep(25)
+        }
+    }
     override fun close() {
-        gate.close()
+        onClose()
         running.set(false)
         server.close()
         synchronized(socketLock) { accepted?.close() }

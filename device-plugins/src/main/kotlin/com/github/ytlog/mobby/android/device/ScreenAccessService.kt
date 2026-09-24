@@ -33,10 +33,12 @@ class ScreenAccessService : AccessibilityService() {
         super.onDestroy()
     }
 
-    internal fun operate(action: String, args: Map<String, String>, checkActive: () -> Unit = {}): String =
+    internal data class Observation(val text: String, val packageName: String, val observedAtEpochMillis: Long)
+
+    internal fun operate(action: String, args: Map<String, String>, checkActive: () -> Unit = {}): Observation =
         ScreenOperation.run(checkActive) {
             // Each operation obtains fresh nodes only after the application overlay is detached.
-            when (action) {
+            val text = when (action) {
                 "snapshot" -> snapshot()
                 "click" -> click(args["query"].orEmpty())
                 "type" -> type(args["text"].orEmpty())
@@ -46,6 +48,8 @@ class ScreenAccessService : AccessibilityService() {
                 "recents" -> global(GLOBAL_ACTION_RECENTS, AppStrings.openedRecentApps, AppStrings.couldNotOpenRecentApps)
                 else -> error(AppStrings.unsupportedOperation2(action))
             }
+            val packageName = rootInActiveWindow?.let { root -> try { root.packageName?.toString().orEmpty() } finally { root.recycle() } }.orEmpty()
+            Observation(text, packageName, System.currentTimeMillis())
         }
 
     private fun global(action: Int, success: String, failure: String): String {

@@ -1,6 +1,7 @@
 plugins { kotlin("jvm"); kotlin("plugin.serialization") }
 kotlin { jvmToolchain(17) }
 dependencies {
+    implementation(project(":device-interaction"))
     implementation(project(":localization"))
     implementation("org.yaml:snakeyaml:2.3")
     implementation(project(":runtime-api"))

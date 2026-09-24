@@ -15,3 +15,5 @@ include(":runtime-engine", ":runtime-android")
 include(":interaction-data", ":interaction-ui", ":speech", ":device-plugins")
 
 include(":localization")
+
+include(":device-interaction", ":device-interaction-ui")

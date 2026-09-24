@@ -2,6 +2,7 @@ package com.github.ytlog.mobby.android.device
 
 import com.github.ytlog.mobby.android.localization.AppStrings
 
+import com.github.ytlog.mobby.android.deviceinteraction.model.*
 import android.Manifest
 import android.app.Activity
 import android.content.Context
@@ -25,34 +26,54 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import java.io.File
-import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicReference
 
 object DeviceCapture {
-    private val gate = Any()
-    private var waiter: ((Result<String>) -> Unit)? = null
-    fun await(context: Context, kind: String, dest: File): String {
-        val latch = CountDownLatch(1)
-        val outcome = AtomicReference<Result<String>>()
-        synchronized(gate) {
-            if (waiter != null) error(AppStrings.aPhotoOrAudioCaptureIsAlreadyInProgress)
-            waiter = { outcome.set(it); latch.countDown() }
-        }
-        val intent = Intent(context, DeviceCaptureActivity::class.java)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            .putExtra("kind", kind)
-            .putExtra("dest", dest.absolutePath)
-        context.startActivity(intent)
-        if (!latch.await(120, TimeUnit.SECONDS)) {
-            finish(Result.failure(IllegalStateException(AppStrings.operationTimedOut)))
-            error(AppStrings.operationTimedOut)
-        }
-        return outcome.get().getOrThrow()
+    internal class Request(val id: String, val kind: String, val dest: File) {
+        val events = java.util.concurrent.LinkedBlockingQueue<Any>()
+        val settled = java.util.concurrent.atomic.AtomicBoolean(false)
+        var activity: java.lang.ref.WeakReference<DeviceCaptureActivity>? = null
     }
-    internal fun finish(result: Result<String>) {
-        val callback = synchronized(gate) { waiter.also { waiter = null } } ?: return
-        callback(result)
+    private val gate = Any()
+    private var active: Request? = null
+    internal fun request(id: String): Request? = synchronized(gate) { active?.takeIf { it.id == id && !it.settled.get() } }
+    fun await(context: Context, kind: String, dest: File, execution: DeviceExecution, checkActive: () -> Unit): String {
+        val request = Request(execution.operationId, kind, dest)
+        synchronized(gate) {
+            check(active == null) { AppStrings.aPhotoOrAudioCaptureIsAlreadyInProgress }
+            active = request
+        }
+        try {
+            checkActive()
+            execution.waiting("capture.$kind", request.id)
+            context.startActivity(Intent(context, DeviceCaptureActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra("operationId", request.id))
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(120)
+            while (System.nanoTime() < deadline) {
+                checkActive()
+                when (val event = request.events.poll(100, TimeUnit.MILLISECONDS)) {
+                    is String -> execution.waiting(event, request.id)
+                    is CaptureOutcome -> return event.result.getOrThrow()
+                }
+            }
+            deviceFailure(DeviceErrorCode.TIMEOUT)
+        } finally {
+            synchronized(gate) { if (active === request) active = null }
+            Handler(Looper.getMainLooper()).post { request.activity?.get()?.finish() }
+        }
+    }
+    internal class CaptureOutcome(val result: Result<String>)
+    internal fun stage(id: String, phase: String) { request(id)?.events?.offer(phase) }
+    internal fun finish(id: String, result: Result<String>) {
+        val pending = request(id) ?: return
+        if (pending.settled.compareAndSet(false, true)) pending.events.offer(CaptureOutcome(result))
+    }
+    fun respond(operationId: String, response: String): Boolean {
+        val request = request(operationId) ?: return false
+        if (response != "cancel") return false
+        finish(operationId, Result.failure(DeviceFailure(DeviceError(DeviceErrorCode.CANCELLED))))
+        Handler(Looper.getMainLooper()).post { request.activity?.get()?.finish() }
+        return true
     }
 }
 
@@ -61,21 +82,22 @@ class DeviceCaptureActivity : Activity() {
     private var session: CameraCaptureSession? = null
     private var reader: ImageReader? = null
     private var recorder: MediaRecorder? = null
+    private var playback: android.media.MediaPlayer? = null
     private var thread: HandlerThread? = null
     private var handler: Handler? = null
     private var finished = false
     private lateinit var dest: File
+    private var operationId = ""
+    private var kind = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val kind = intent.getStringExtra("kind")
-        val path = intent.getStringExtra("dest")
-        val target = path?.let { File(it) }
-        if (target == null || !insideFiles(target) || (kind != "photo" && kind != "record")) {
-            complete(Result.failure(IllegalStateException(AppStrings.cannotOpenTheCaptureScreen)))
-            return
-        }
-        dest = target
+        operationId = intent.getStringExtra("operationId").orEmpty()
+        val request = DeviceCapture.request(operationId)
+        if (request == null) { finish(); return }
+        request.activity = java.lang.ref.WeakReference(this)
+        kind = request.kind
+        dest = request.dest
         dest.parentFile?.mkdirs()
         if (kind == "photo") showCamera() else showRecorder()
     }
@@ -88,7 +110,7 @@ class DeviceCaptureActivity : Activity() {
         val preview = SurfaceView(this)
         val shutter = button(AppStrings.takePhoto) { takePhoto() }
         shutter.isEnabled = false
-        setContentView(column(preview, shutter, button(AppStrings.cancel) { complete(Result.failure(IllegalStateException(AppStrings.photoCaptureCancelled))) }))
+        setContentView(column(preview, shutter, button(AppStrings.cancel) { complete(Result.failure(DeviceFailure(DeviceError(DeviceErrorCode.CANCELLED)))) }))
         thread = HandlerThread("device-camera").also { it.start() }
         handler = Handler(thread!!.looper)
         reader = ImageReader.newInstance(1280, 720, ImageFormat.JPEG, 2)
@@ -109,10 +131,12 @@ class DeviceCaptureActivity : Activity() {
         try {
             manager.openCamera(id, object : CameraDevice.StateCallback() {
                 override fun onOpened(device: CameraDevice) {
+                    if (DeviceCapture.request(operationId) == null || finished || reader == null) { device.close(); return }
                     camera = device
                     val surfaces = listOf(holder.surface, reader!!.surface)
                     device.createCaptureSession(surfaces, object : CameraCaptureSession.StateCallback() {
                         override fun onConfigured(capture: CameraCaptureSession) {
+                            if (DeviceCapture.request(operationId) == null || finished) { capture.close(); return }
                             session = capture
                             val request = device.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply { addTarget(holder.surface) }
                             capture.setRepeatingRequest(request.build(), null, handler)
@@ -144,8 +168,10 @@ class DeviceCaptureActivity : Activity() {
                 val buffer = image.planes[0].buffer
                 val bytes = ByteArray(buffer.remaining())
                 buffer.get(bytes)
-                dest.writeBytes(bytes)
-                complete(Result.success(dest.absolutePath))
+                if (!finished && DeviceCapture.request(operationId) != null) {
+                    dest.writeBytes(bytes)
+                    runOnUiThread { showConfirmation() }
+                }
             } catch (error: Exception) {
                 complete(Result.failure(IllegalStateException(error.message ?: AppStrings.cannotSavePhoto)))
             } finally { image.close() }
@@ -188,11 +214,41 @@ class DeviceCaptureActivity : Activity() {
         runCatching { active.release() }
         if (!save) {
             dest.delete()
-            complete(Result.failure(IllegalStateException(AppStrings.recordingCancelled)))
+            complete(Result.failure(DeviceFailure(DeviceError(DeviceErrorCode.CANCELLED))))
         } else if (!stopped || !dest.isFile || dest.length() == 0L) {
             dest.delete()
             complete(Result.failure(IllegalStateException(AppStrings.recordingIsTooShortOrWasNotSaved)))
-        } else complete(Result.success(dest.absolutePath))
+        } else showConfirmation()
+    }
+
+    private fun showConfirmation() {
+        if (finished || DeviceCapture.request(operationId) == null) return
+        session?.close(); session = null
+        camera?.close(); camera = null
+        reader?.close(); reader = null
+        thread?.quitSafely(); thread = null
+        DeviceCapture.stage(operationId, "capture.confirm")
+        val preview: View = if (kind == "photo") android.widget.ImageView(this).apply {
+            setImageBitmap(android.graphics.BitmapFactory.decodeFile(dest.absolutePath))
+            adjustViewBounds = true
+            contentDescription = AppStrings.photoPreview
+        } else button(com.github.ytlog.mobby.android.deviceinteraction.model.DeviceLabels.text("试听录音", "Play recording")) {
+            try {
+                playback?.release()
+                playback = android.media.MediaPlayer().apply { setDataSource(dest.absolutePath); prepare(); start() }
+            } catch (_: Exception) { complete(Result.failure(DeviceFailure(DeviceError(DeviceErrorCode.UNAVAILABLE)))) }
+        }
+        setContentView(column(preview,
+            button(AppStrings.useCapturedMaterial) {
+                if (!dest.isFile || dest.length() == 0L) complete(Result.failure(IllegalStateException(AppStrings.operationFailed)))
+                else complete(Result.success(dest.absolutePath))
+            },
+            button(AppStrings.captureAgain) {
+                playback?.release(); playback = null
+                dest.delete()
+                DeviceCapture.stage(operationId, "capture.$kind")
+                if (kind == "photo") showCamera() else showRecorder()
+            }, button(AppStrings.cancel) { complete(Result.failure(DeviceFailure(DeviceError(DeviceErrorCode.CANCELLED)))) }))
     }
 
     private fun button(label: String, click: () -> Unit) = Button(this).apply { text = label; setOnClickListener { click() } }
@@ -203,30 +259,30 @@ class DeviceCaptureActivity : Activity() {
         if (children.first() is SurfaceView) (children.first().layoutParams as LinearLayout.LayoutParams).weight = 1f
     }
 
-    private fun insideFiles(file: File): Boolean {
-        val base = filesDir.canonicalFile
-        val target = file.canonicalFile
-        return target.path == base.path || target.path.startsWith(base.path + File.separator)
-    }
-
     private fun complete(result: Result<String>) {
         if (Looper.myLooper() != Looper.getMainLooper()) {
             runOnUiThread { complete(result) }
             return
         }
         if (finished) return
+        playback?.release(); playback = null
         finished = true
-        DeviceCapture.finish(result)
+        if (result.isFailure && ::dest.isInitialized) dest.delete()
+        DeviceCapture.finish(operationId, result)
         finish()
     }
 
     override fun onDestroy() {
+        playback?.release(); playback = null
         session?.close()
         camera?.close()
         reader?.close()
         recorder?.runCatching { stop(); release() }
         thread?.quitSafely()
-        if (!finished) DeviceCapture.finish(Result.failure(IllegalStateException(AppStrings.captureScreenClosed)))
+        if (!finished) {
+            if (::dest.isInitialized) dest.delete()
+            DeviceCapture.finish(operationId, Result.failure(DeviceFailure(DeviceError(DeviceErrorCode.CANCELLED))))
+        }
         super.onDestroy()
     }
 }

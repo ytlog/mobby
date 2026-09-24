@@ -29,7 +29,7 @@ internal fun RuntimeError.message(): String = when (code) {
     ErrorCode.STORAGE_FULL -> AppStrings.storageWriteFailedCheckAvailableSpace
     ErrorCode.TIMEOUT -> AppStrings.taskTimedOut
     ErrorCode.INTERRUPTED -> AppStrings.executionInterruptedResultUnconfirmed
-    ErrorCode.STALE_APPROVAL -> AppStrings.thisApprovalRequestHasExpired
+    ErrorCode.STALE_APPROVAL, ErrorCode.STALE_INTERACTION -> AppStrings.thisApprovalRequestHasExpired
     ErrorCode.REQUEST_CONFLICT -> AppStrings.requestIdConflictExecutionWasNotRepeated
     ErrorCode.INCOMPATIBLE_VERSION -> AppStrings.incompatibleRuntimeApiUpdateTheApp
     ErrorCode.NOT_FOUND -> AppStrings.requestWasNotAcceptedYouCanSubmitItAgain
@@ -47,6 +47,11 @@ internal fun TurnExecution.request() = RunRequest(RequestId(turnId.value), Runti
     listOf(InputPart.Text(draft.text)) + draft.attachments.map { InputPart.Resource(ResourceRef(it)) }, config.model,
     GatewayProfileRef(config.gatewayProfile, config.gatewayVersion), config.reasoning, session?.let(::SessionRef), draft.capabilities.map(::CapabilityRef).toSet(), requestedOutput = if (creatingSkill) RequestedOutput.SKILL_PROPOSAL else RequestedOutput.TEXT)
 internal class RuntimeExecutionAdapter(private val client: RuntimeClient) : ExecutionPort {
+    override suspend fun respondToDevice(request: com.github.ytlog.mobby.android.deviceinteraction.model.DeviceInteractionResponse): OperationResult =
+        when (val result = client.respondToDevice(request)) {
+            CommandResult.Accepted, CommandResult.AlreadyTerminal -> OperationResult.Done
+            is CommandResult.Rejected -> OperationResult.Failed(result.error.message())
+        }
     override suspend fun resolvePermission(decision: PermissionDecision): OperationResult = when (val result = client.resolveApproval(
         ApprovalDecision(CommandId(decision.commandId), RunId(decision.key.execution.value), decision.key.approvalId,
             if (decision.allow) ApprovalChoice.ALLOW_ONCE else ApprovalChoice.DENY, decision.key.revision))) {

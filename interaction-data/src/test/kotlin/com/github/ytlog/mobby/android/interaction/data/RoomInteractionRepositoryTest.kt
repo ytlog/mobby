@@ -675,17 +675,19 @@ class RoomInteractionRepositoryTest {
         assertEquals(ApprovalChoice.DENY, runtime.decisions.last().choice)
     }
     private fun publish(turn: TurnExecution, session: String) {
-        runtime.admit(turn)
-        runtime.snapshots[turn.turnId.value] = runtime.snapshots.getValue(turn.turnId.value).copy(
+        // Publish one atomic baseline: observers must not capture an intermediate RUNNING snapshot
+        // from a fake that never emits a subsequent update.
+        runtime.snapshots[turn.turnId.value] = runtime.initialSnapshot(turn).copy(
             phase = RunPhase.SUCCEEDED, sessionRef = SessionRef(session), terminalEvidence = TerminalEvidence(true, 0))
     }
     private class TestRuntime : RuntimeClient {
         override val connection = MutableStateFlow(ConnectionState.CONNECTED)
         val snapshots = mutableMapOf<String, RunSnapshot>()
         var submissions = 0
-        fun admit(turn: TurnExecution) {
+        fun admit(turn: TurnExecution) { snapshots[turn.turnId.value] = initialSnapshot(turn) }
+        fun initialSnapshot(turn: TurnExecution): RunSnapshot {
             val request = turn.request()
-            snapshots[turn.turnId.value] = RunSnapshot(RunId(turn.turnId.value), RunPhase.RUNNING, 1, 1,
+            return RunSnapshot(RunId(turn.turnId.value), RunPhase.RUNNING, 1, 1,
                 RunConfigSnapshot(request.agentId, request.workspaceRef, request.modelId, request.reasoningLevel, request.gatewayProfileRef, request.capabilityRefs))
         }
         override suspend fun capabilities() = CapabilityResult.Available(RuntimeCapabilities("test", emptyList()))

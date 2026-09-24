@@ -1,4 +1,4 @@
-plugins { id("com.android.library"); kotlin("android") }
+plugins { id("com.android.library"); kotlin("android"); kotlin("plugin.serialization") }
 android {
     namespace = "com.github.ytlog.mobby.android.device"
     compileSdk = 35
@@ -11,6 +11,7 @@ android {
     }
 }
 dependencies {
+    implementation(project(":device-interaction"))
     implementation(project(":localization"))
     implementation(project(":runtime-api"))
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")

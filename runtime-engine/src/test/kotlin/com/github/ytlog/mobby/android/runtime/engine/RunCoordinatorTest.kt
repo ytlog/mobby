@@ -1,6 +1,7 @@
 package com.github.ytlog.mobby.android.runtime.engine
 
 import com.github.ytlog.mobby.android.runtime.api.*
+import com.github.ytlog.mobby.android.deviceinteraction.model.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.test.*
@@ -46,7 +47,46 @@ class RunCoordinatorTest {
         override suspend fun read(request: ArtifactReadRequest) = ArtifactReadResult.Unavailable(RuntimeError(ErrorCode.RESOURCE_MISSING))
     }
     private fun process(block: suspend (RunRequest, StateFlow<StopCause?>, suspend (String, Boolean) -> Unit) -> ProcessResult) = object : ProcessPort {
-        override suspend fun execute(request: RunRequest, stop: StateFlow<StopCause?>, output: suspend (String, Boolean) -> Unit) = block(request, stop, output)
+        override suspend fun execute(request: RunRequest, stop: StateFlow<StopCause?>, devices: DeviceOperationPort, output: suspend (String, Boolean) -> Unit) = block(request, stop, output)
+    }
+    @Test fun `device facts are durable before dispatch and duplicate admission never dispatches again`() = runTest {
+        val journal = MemoryJournal()
+        val process = object : ProcessPort {
+            override suspend fun execute(request: RunRequest, stop: StateFlow<StopCause?>, devices: DeviceOperationPort, output: suspend (String, Boolean) -> Unit): ProcessResult {
+                val admission = DeviceAdmission("device-request", "digest", "screen", "snapshot", "screen_control", DeviceSubject(), kotlinx.serialization.json.JsonObject(emptyMap()))
+                val admitted = devices.admit(admission)
+                assertTrue(admitted.dispatch)
+                assertEquals(admitted.operation, journal.states.values.single().deviceOperations.single().operation)
+                assertFalse(devices.admit(admission).dispatch)
+                val running = devices.update(admitted.operation.copy(revision = 2, status = DeviceStatus.RUNNING, phaseCode = "screen.snapshot"))
+                devices.update(running.copy(revision = 3, status = DeviceStatus.SUCCEEDED, phaseCode = "succeeded",
+                    availableActions = emptyList(), result = DeviceResult("screen_observation", EffectState.NONE, kotlinx.serialization.json.JsonObject(emptyMap()))))
+                output("""{"type":"turn.completed"}""", false)
+                return ProcessResult(0, true)
+            }
+        }
+        val runtime = RunCoordinator(backgroundScope, environment, process, journal, MemoryOutput())
+        runtime.recover()
+        val id = (runtime.submit(request()) as SubmitResult.Accepted).runId
+        runCurrent()
+        assertEquals(RunPhase.SUCCEEDED, journal.states.getValue(id).phase)
+        assertEquals(3, journal.events.count { it.payload is RuntimeEvent.DeviceOperationUpdated })
+        assertEquals(1, journal.states.getValue(id).deviceOperations.size)
+    }
+    @Test fun `CLI success cannot hide an unfinished device action`() = runTest {
+        val journal = MemoryJournal()
+        val runtime = RunCoordinator(backgroundScope, environment, object : ProcessPort {
+            override suspend fun execute(request: RunRequest, stop: StateFlow<StopCause?>, devices: DeviceOperationPort, output: suspend (String, Boolean) -> Unit): ProcessResult {
+                devices.admit(DeviceAdmission("capture", "digest", "camera", "photo", "capture", DeviceSubject(), kotlinx.serialization.json.JsonObject(emptyMap())))
+                output("""{"type":"turn.completed"}""", false)
+                return ProcessResult(0, true)
+            }
+        }, journal, MemoryOutput())
+        runtime.recover()
+        val id = (runtime.submit(request()) as SubmitResult.Accepted).runId
+        runCurrent()
+        assertEquals(RunPhase.OUTCOME_UNKNOWN, journal.states.getValue(id).phase)
+        assertEquals(DeviceStatus.INTERRUPTED, journal.states.getValue(id).deviceOperations.single().operation.status)
     }
     @Test fun `first completed tool beyond output budget preserves its result and terminal evidence`() = runTest {
         val journal = MemoryJournal(); val output = MemoryOutput()
@@ -97,7 +137,7 @@ class RunCoordinatorTest {
             val journal = MemoryJournal(); val deliveries = mutableListOf<Pair<String, ApprovalChoice>>()
             val gate = CompletableDeferred<Unit>()
             val port = object : ProcessPort {
-                override suspend fun execute(request: RunRequest, stop: StateFlow<StopCause?>, output: suspend (String, Boolean) -> Unit): ProcessResult {
+                override suspend fun execute(request: RunRequest, stop: StateFlow<StopCause?>, devices: DeviceOperationPort, output: suspend (String, Boolean) -> Unit): ProcessResult {
                     output(approvalLine(), false); output(approvalLine(), false) // Pending duplicate is idempotent.
                     output(approvalLine("approval-2"), false)
                     gate.await()
@@ -142,7 +182,7 @@ class RunCoordinatorTest {
             val journal = MemoryJournal(); var deliveries = 0
             val scope = CoroutineScope(backgroundScope.coroutineContext + SupervisorJob(backgroundScope.coroutineContext[Job]))
             val port = object : ProcessPort {
-                override suspend fun execute(request: RunRequest, stop: StateFlow<StopCause?>, output: suspend (String, Boolean) -> Unit): ProcessResult {
+                override suspend fun execute(request: RunRequest, stop: StateFlow<StopCause?>, devices: DeviceOperationPort, output: suspend (String, Boolean) -> Unit): ProcessResult {
                     output(approvalLine(), false); stop.filterNotNull().first(); return ProcessResult(143, true)
                 }
                 override fun offerApproval(requestId: RequestId, approvalId: String, choice: ApprovalChoice): Boolean { deliveries++; return false }
@@ -193,7 +233,7 @@ class RunCoordinatorTest {
             val journal = MemoryJournal(); val advance = CompletableDeferred<Unit>()
             val port = object : ProcessPort {
                 override fun offerApproval(requestId: RequestId, approvalId: String, choice: ApprovalChoice) = true
-                override suspend fun execute(request: RunRequest, stop: StateFlow<StopCause?>, output: suspend (String, Boolean) -> Unit): ProcessResult {
+                override suspend fun execute(request: RunRequest, stop: StateFlow<StopCause?>, devices: DeviceOperationPort, output: suspend (String, Boolean) -> Unit): ProcessResult {
                     output(approvalLine(), false)
                     advance.await()
                     if (scenario == "conflict") output(approvalLine(path = "/different"), false)

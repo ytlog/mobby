@@ -641,7 +641,7 @@ internal fun Turn.activityMark(): ActivityMark {
     if (replyActionsVisible()) return ActivityMark.NONE
     if (phase == ExecutionPhase.CANCELLING) return ActivityMark.STANDALONE
     if (occupied && messages.any { it.text.isNotBlank() }) return ActivityMark.REPLY
-    if (occupied && steps.isNotEmpty()) return ActivityMark.CARD
+    if (occupied && (steps.isNotEmpty() || deviceOperations.isNotEmpty())) return ActivityMark.CARD
     return ActivityMark.STANDALONE
 }
 
@@ -677,6 +677,7 @@ internal fun Turn.showsSeparateActivity(): Boolean = activityMark() == ActivityM
             add("user:${t.id.value}")
             t.visibleTranscript().forEach { entry ->
                 when (entry) {
+                    is TranscriptEntry.Device -> add("device:${t.id.value}:${entry.history.first().operation.operationId}")
                     is TranscriptEntry.Reply -> add("message:${t.id.value}:${entry.message.id}")
                     is TranscriptEntry.ToolRun -> add("tools:${t.id.value}:${entry.steps.first().id}")
                 }
@@ -716,7 +717,7 @@ internal fun Turn.showsSeparateActivity(): Boolean = activityMark() == ActivityM
     LaunchedEffect(list) {
         snapshotFlow { list.layoutInfo.totalItemsCount > 0 && !list.isScrollInProgress && !list.canScrollForward }.collect { if (it) follow = true }
     }
-    val outputVersion = detail.turns.map { listOf(it.id, it.phase, it.permissions.map { p -> p.id to p.revision }, it.messages.map { m -> m.text.length }, it.steps.map { s -> s.displayedText().length }) }
+    val outputVersion = detail.turns.map { listOf(it.id, it.phase, it.permissions.map { p -> p.id to p.revision }, it.messages.map { m -> m.text.length }, it.steps.map { s -> s.displayedText().length }, it.deviceOperations.map { d -> d.operation.operationId to d.operation.revision }) }
     LaunchedEffect(outputVersion, keys) { if (follow && !list.isScrollInProgress && keys.isNotEmpty()) list.scrollToBottom(keys.lastIndex) }
     LaunchedEffect(list, follow) {
         if (follow) snapshotFlow { list.layoutInfo.visibleItemsInfo.lastOrNull()?.let { it.key to it.size } }
@@ -748,6 +749,9 @@ internal fun Turn.showsSeparateActivity(): Boolean = activityMark() == ActivityM
                 item(key = "user:${turn.id.value}") { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { UserMessageBubble { androidx.compose.foundation.text.selection.SelectionContainer { Text(turn.userText) }; AttachmentList(turn.attachments, detail.conversation.config.workspace, vm) } } }
                 entries.forEach { entry ->
                     when (entry) {
+                        is TranscriptEntry.Device -> item(key = "device:${turn.id.value}:${entry.history.first().operation.operationId}") {
+                            com.github.ytlog.mobby.android.deviceinteraction.ConversationDeviceCard(entry.record.operation, turn, detail.conversation, vm, entry.history.map { it.operation })
+                        }
                         is TranscriptEntry.ToolRun -> item(key = "tools:${turn.id.value}:${entry.steps.first().id}") {
                             ExecutionCard(turn, vm, entry.steps, showExtras = entry.steps.first().id == lastTools, read)
                         }

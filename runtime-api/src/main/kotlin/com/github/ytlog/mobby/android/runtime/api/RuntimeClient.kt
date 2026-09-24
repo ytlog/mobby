@@ -1,5 +1,6 @@
 package com.github.ytlog.mobby.android.runtime.api
 
+import com.github.ytlog.mobby.android.deviceinteraction.model.DeviceRecord
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.coroutines.flow.Flow
@@ -24,6 +25,8 @@ interface RuntimeClient {
     suspend fun cancel(request: CancelRequest): CommandResult
     /** Match run, approval ID and revision. Closing UI never implicitly resolves an approval. */
     suspend fun resolveApproval(request: ApprovalDecision): CommandResult
+    suspend fun respondToDevice(request: com.github.ytlog.mobby.android.deviceinteraction.model.DeviceInteractionResponse): CommandResult =
+        CommandResult.Rejected(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
     suspend fun snapshot(runId: RunId): SnapshotResult
     fun observe(runId: RunId, after: EventCursor? = null): Flow<RuntimeUpdate>
     suspend fun readArtifact(request: ArtifactReadRequest): ArtifactReadResult
@@ -56,7 +59,7 @@ enum class ErrorCode {
     INPUT_TOO_LARGE,
     NOT_READY, BUSY, UNSUPPORTED_CAPABILITY, INVALID_CONFIG, PERMISSION_DENIED,
     PROTOCOL_ERROR, DISCONNECTED, RESOURCE_MISSING, STORAGE_FULL, RESOURCE_BUDGET_EXCEEDED, TIMEOUT,
-    INTERRUPTED, INCOMPATIBLE_VERSION, REQUEST_CONFLICT, STALE_APPROVAL, NOT_FOUND
+    INTERRUPTED, INCOMPATIBLE_VERSION, REQUEST_CONFLICT, STALE_APPROVAL, STALE_INTERACTION, NOT_FOUND
 }
 @Serializable
 data class RuntimeError(val code: ErrorCode, val retryable: Boolean = false, val diagnosticRef: ResourceRef? = null)
@@ -132,10 +135,10 @@ data class AgentCapability(
     val agentId: AgentId, val models: List<ModelCapability>, val unavailableReason: RuntimeError? = null,
     val supportsResume: Boolean = false, val supportsApproval: Boolean = false,
     val skillCapabilities: Set<CapabilityRef> = emptySet(),
-    val maxInputBytes: Int = 65536, val supportsResources: Boolean = false, val supportsImages: Boolean = false
+    val maxInputBytes: Int = 65536, val supportsResources: Boolean = false, val supportsImages: Boolean = false, val supportsDeviceCards: Boolean = false
 )
 @Serializable
-data class RuntimeCapabilities(val engineVersion: String, val agents: List<AgentCapability>, val apiMajor: Int = 1, val apiMinor: Int = 0)
+data class RuntimeCapabilities(val engineVersion: String, val agents: List<AgentCapability>, val apiMajor: Int = 1, val apiMinor: Int = 1)
 @Serializable
 sealed interface CapabilityResult {
     @Serializable
@@ -233,7 +236,8 @@ data class RunSnapshot(
     val acceptedConfig: RunConfigSnapshot, val sessionRef: SessionRef? = null,
     val pendingApprovals: List<PendingApproval> = emptyList(), val terminalEvidence: TerminalEvidence? = null,
     val artifacts: List<ResourceRef> = emptyList(), val outputSegments: List<OutputSegment> = emptyList(),
-    val steps: List<ToolSnapshot> = emptyList(), val progress: ProgressNotice? = null
+    val steps: List<ToolSnapshot> = emptyList(), val progress: ProgressNotice? = null,
+    val deviceOperations: List<DeviceRecord> = emptyList()
 )
 @Serializable
 sealed interface SnapshotResult {
@@ -247,12 +251,15 @@ data class EventCursor(val runId: RunId, val sequence: Long)
 @Serializable
 data class EventEnvelope(
     val eventId: String, val runId: RunId, val sequence: Long, val occurredAtEpochMillis: Long,
-    val payload: RuntimeEvent, val apiMajor: Int = 1, val apiMinor: Int = 0
+    val payload: RuntimeEvent, val apiMajor: Int = 1, val apiMinor: Int = 1
 )
 @Serializable
 enum class ToolOutcome { SUCCEEDED, FAILED, CANCELLED }
 @Serializable
 sealed interface RuntimeEvent {
+    @Serializable
+    @SerialName("DeviceOperationUpdated")
+    data class DeviceOperationUpdated(val record: DeviceRecord, val protocolVersion: Int = 1) : RuntimeEvent
     @Serializable
     data class RunAccepted(val config: RunConfigSnapshot) : RuntimeEvent
     @Serializable

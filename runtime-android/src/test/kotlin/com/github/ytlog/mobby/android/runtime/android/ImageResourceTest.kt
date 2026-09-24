@@ -16,6 +16,19 @@ class ImageResourceTest {
     @get:Rule val temporary = TemporaryFolder()
     private val workspace = WorkspaceRef("default")
     private val png = Base64.getDecoder().decode("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEUlEQVR4nGP4z8AARAxg8j8AG/ID/fPnS7EAAAAASUVORK5CYII=")
+    @Test fun `device audio remains readable after inbox deletion and rejects another workspace`() {
+        val root = temporary.newFolder()
+        val source = temporary.newFile("recording.m4a").apply { writeBytes(byteArrayOf(0, 1, 2, 3, 4)) }
+        val store = ResourceStore(root)
+        val summary = store.saveDevice(source, workspace, "audio/mp4")
+        source.delete()
+        val restored = ResourceStore(root)
+        assertEquals("audio/mp4", restored.summary(summary.ref, workspace).mediaType)
+        assertArrayEquals(byteArrayOf(0, 1, 2, 3, 4), restored.contentBytes(summary.ref, workspace))
+        assertThrows(IllegalArgumentException::class.java) { restored.contentBytes(summary.ref, WorkspaceRef("local-12345678-1234-1234-1234-123456789abc")) }
+        java.io.File(root, summary.ref.value.substringAfter(':')).writeText("corrupt")
+        assertThrows(IllegalArgumentException::class.java) { restored.contentBytes(summary.ref, workspace) }
+    }
     @Test fun `image attachments retain bytes and reject a different workspace`() {
         val store = ResourceStore(temporary.newFolder())
         val other = WorkspaceRef("local-12345678-1234-1234-1234-123456789abc")

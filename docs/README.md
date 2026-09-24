@@ -14,6 +14,7 @@
 | [本地模型模块与 HTTP API](design/local-model-runtime.md) | 独立 Gradle 模块与专用进程、五组 Agent 协议、模型管理、资源调度与验收；设计提案 |
 | [手机推理引擎调研](design/local-model-engines.md) | 微软、Google、Meta、阿里、腾讯等 18 项引擎目录，Android 接入证据、可选后端与限制 |
 | [模型匹配与多源下载](design/local-model-downloads.md) | 按引擎选择 Hugging Face 模型、官方备用源与镜像、版本和文件校验、断点续传与下载 API |
+| [设备交互卡片实施](device-interaction-implementation.md) | 独立协议与 Compose 模块、真实动作卡、取消恢复、资源归属与验收边界 |
 | [设备插件方案](design/device-plugins.md) | 设备能力插件：模块、引用、技能通道与权限隔离。旧的「使用当前手机」已替换 |
 | [界面语言](localization.md) | 中英文切换、文案维护与测试边界 |
 | [网关接入](gateway.md) | 协议路径、限制和联调范围 |

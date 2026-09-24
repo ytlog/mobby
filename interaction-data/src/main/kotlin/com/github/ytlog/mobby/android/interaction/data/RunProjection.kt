@@ -1,6 +1,7 @@
 package com.github.ytlog.mobby.android.interaction.data
 
 import com.github.ytlog.mobby.android.runtime.api.*
+import com.github.ytlog.mobby.android.deviceinteraction.model.*
 
 /** Data-owned projection. Gaps trigger snapshot replacement, never partial out-of-order append. */
 internal object RunProjection {
@@ -9,6 +10,13 @@ internal object RunProjection {
         if (event.sequence <= current.lastSequence) return current
         if (event.sequence != current.lastSequence + 1) return null
         val next = when (val payload = event.payload) {
+            is RuntimeEvent.DeviceOperationUpdated -> {
+                val previous = current.deviceOperations.firstOrNull { it.operation.operationId == payload.record.operation.operationId }
+                try { DeviceOperationRules.validate(payload.record.operation) } catch (_: IllegalArgumentException) { return null }
+                if (current.phase.terminal || payload.protocolVersion != 1 ||
+                    (previous != null && !runCatching { DeviceOperationRules.advances(previous.operation, payload.record.operation) }.getOrDefault(false))) current
+                else current.copy(deviceOperations = current.deviceOperations.filterNot { it.operation.operationId == payload.record.operation.operationId } + payload.record)
+            }
             is RuntimeEvent.RunAccepted -> current.copy(acceptedConfig = payload.config)
             is RuntimeEvent.RunStarted -> current.copy(sessionRef = payload.sessionRef ?: current.sessionRef,
                 phase = if (current.phase == RunPhase.CANCELLING || current.phase.terminal || current.pendingApprovals.isNotEmpty()) current.phase else RunPhase.RUNNING)
@@ -30,7 +38,7 @@ internal object RunProjection {
             }
             is RuntimeEvent.ArtifactAvailable -> current.copy(artifacts = current.artifacts + payload.ref)
             is RuntimeEvent.CancellationRequested -> current.copy(phase = RunPhase.CANCELLING, pendingApprovals = emptyList())
-            is RuntimeEvent.RunFinished -> if (current.phase.terminal) current else current.copy(phase = payload.phase, terminalEvidence = payload.evidence, pendingApprovals = emptyList())
+            is RuntimeEvent.RunFinished -> if (current.phase.terminal) current else current.copy(phase = payload.phase, terminalEvidence = payload.evidence, pendingApprovals = emptyList(), deviceOperations = current.deviceOperations.map { it.copy(operation = DeviceOperationRules.stopped(it.operation, payload.phase != RunPhase.CANCELLED)) })
             is RuntimeEvent.Unknown -> payload.diagnosticRef?.let { current.copy(outputSegments = current.outputSegments + OutputSegment("diagnostic:${payload.kind}", event.sequence, it)) } ?: current
         }
         return next.copy(lastSequence = event.sequence, revision = current.revision + 1)

@@ -1,6 +1,7 @@
 package com.github.ytlog.mobby.android.runtime.engine
 
 import com.github.ytlog.mobby.android.runtime.api.*
+import com.github.ytlog.mobby.android.deviceinteraction.model.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
@@ -37,7 +38,7 @@ class RunCoordinator(
                 if (old.phase.terminal) { journal.releaseRecoveredSlot(old.runId); continue }
                 val evidence = TerminalEvidence(null, null, RuntimeError(ErrorCode.INTERRUPTED))
                 append(old, RuntimeEvent.RunFinished(RunPhase.INTERRUPTED, evidence),
-                    old.copy(phase = RunPhase.INTERRUPTED, terminalEvidence = evidence, pendingApprovals = emptyList()))
+                    old.copy(phase = RunPhase.INTERRUPTED, terminalEvidence = evidence, pendingApprovals = emptyList(), deviceOperations = old.deviceOperations.map { it.copy(operation = DeviceOperationRules.stopped(it.operation, true)) }))
             }
             connected.value = ConnectionState.CONNECTED
         } catch (_: Exception) { failStorage() }
@@ -150,6 +151,38 @@ class RunCoordinator(
             } catch (_: Exception) { failStorage(); CommandResult.Rejected(RuntimeError(ErrorCode.STORAGE_FULL)) }
         }
     }
+    override suspend fun respondToDevice(request: DeviceInteractionResponse): CommandResult = withContext(NonCancellable) {
+        mutex.withLock {
+            try {
+                if (!healthy) return@withLock CommandResult.Rejected(RuntimeError(ErrorCode.STORAGE_FULL))
+                val fingerprint = Json.encodeToString(request)
+                val key = CommandId(request.commandId)
+                journal.command(key)?.let { return@withLock if (it.fingerprint == fingerprint) it.result else CommandResult.Rejected(RuntimeError(ErrorCode.REQUEST_CONFLICT)) }
+                val state = journal.snapshot(RunId(request.runId))
+                val record = state?.deviceOperations?.firstOrNull { it.operation.operationId == request.operationId }
+                val operation = record?.operation
+                val attention = operation?.requiresAttention
+                val valid = state != null && !state.phase.terminal && state.phase != RunPhase.CANCELLING && active.value == state.runId &&
+                    operation?.revision == request.expectedRevision && attention?.interactionId == request.interactionId &&
+                    request.response in attention.allowedResponses
+                val result = if (valid) CommandResult.Accepted else CommandResult.Rejected(RuntimeError(ErrorCode.STALE_INTERACTION))
+                val command = CommandRecord(key, fingerprint, result)
+                if (valid) {
+                    // Consume this wait point durably before delivery. Recovery must never replay a response.
+                    val consumed = record!!.copy(operation = operation!!.copy(revision = operation.revision + 1,
+                        status = DeviceStatus.RUNNING, phaseCode = "response.accepted", requiresAttention = null,
+                        availableActions = listOf(DeviceButton.STOP_RUN, DeviceButton.OPEN_CONVERSATION)))
+                    append(state!!, RuntimeEvent.DeviceOperationUpdated(consumed), state.copy(deviceOperations = state.deviceOperations.map {
+                        if (it.operation.operationId == request.operationId) consumed else it
+                    }), command)
+                    val delivered = try { process.offerDeviceResponse(request) } catch (_: Exception) { false }
+                    if (!delivered) stopLocked(state.runId, StopCause.PROTOCOL_FAILURE)
+                } else journal.recordCommand(command)
+                result
+            } catch (_: Exception) { failStorage(); CommandResult.Rejected(RuntimeError(ErrorCode.STORAGE_FULL)) }
+        }
+    }
+
     override suspend fun readArtifact(request: ArtifactReadRequest) = outputStore.read(request)
 
     override fun observe(runId: RunId, after: EventCursor?): Flow<RuntimeUpdate> = flow {
@@ -271,7 +304,7 @@ class RunCoordinator(
                 else if (old.phase != RunPhase.CANCELLING) append(old, RuntimeEvent.RunStarted(old.sessionRef), old.copy(phase = RunPhase.RUNNING))
             }
             if (!eligible) return
-            result = if (signal.value != null) ProcessResult(null, true) else process.execute(request, signal) { line, stderr ->
+            result = if (signal.value != null) ProcessResult(null, true) else process.execute(request, signal, devicePort(id) { chunk++ }) { line, stderr ->
                 try {
                     if (stderr) emitFact(AgentFact.Diagnostic("stderr", line))
                     else decoder.decode(line).forEach { emitFact(it) }
@@ -299,6 +332,7 @@ class RunCoordinator(
                         cause == StopCause.STORAGE_FAILURE || cause == StopCause.PROTOCOL_FAILURE -> RunPhase.FAILED
                         old.phase == RunPhase.CANCELLING -> RunPhase.CANCELLED
                         result.error != null || protocolError != null || old.pendingApprovals.isNotEmpty() -> RunPhase.FAILED
+                        old.deviceOperations.any { !it.operation.status.terminal || it.operation.status in setOf(DeviceStatus.UNCONFIRMED, DeviceStatus.INTERRUPTED) } -> RunPhase.OUTCOME_UNKNOWN
                         (result.retained || result.exitCode == 0) && protocolSuccess == true -> RunPhase.SUCCEEDED
                         else -> RunPhase.FAILED
                     }
@@ -317,12 +351,57 @@ class RunCoordinator(
                         }
                     }
                     val evidence = TerminalEvidence(protocolSuccess, result.exitCode, error, result.terminationConfirmed)
-                    append(terminalBase, RuntimeEvent.RunFinished(phase, evidence), terminalBase.copy(phase = phase, terminalEvidence = evidence, pendingApprovals = emptyList()))
+                    append(terminalBase, RuntimeEvent.RunFinished(phase, evidence), terminalBase.copy(phase = phase, terminalEvidence = evidence, pendingApprovals = emptyList(), deviceOperations = terminalBase.deviceOperations.map { it.copy(operation = DeviceOperationRules.stopped(it.operation, phase != RunPhase.CANCELLED)) }))
                     if (result.terminationConfirmed) { activeState.value = null; activeRequest = null; stop = null }
                 } catch (_: Exception) { failStorage() }
             }
         }
     }
+    /** A per-run trusted fact port. CLI output and model text can never call this path. */
+    private fun devicePort(id: RunId, order: () -> Long) = object : DeviceOperationPort {
+        override suspend fun admit(request: DeviceAdmission): AdmittedDevice = mutex.withLock {
+            if (!healthy) deviceFailure(DeviceErrorCode.STORAGE_FULL)
+            val old = journal.snapshot(id) ?: deviceFailure(DeviceErrorCode.NOT_FOUND)
+            old.deviceOperations.firstOrNull { it.operation.requestId == request.requestId }?.let { record ->
+                if (record.fingerprint != request.fingerprint) deviceFailure(DeviceErrorCode.REQUEST_CONFLICT)
+                return@withLock AdmittedDevice(record.operation, false)
+            }
+            if (old.phase.terminal || old.phase == RunPhase.CANCELLING || active.value != id || stop?.value != null)
+                deviceFailure(DeviceErrorCode.CANCELLED)
+            if (old.deviceOperations.size >= 512) deviceFailure(DeviceErrorCode.UNAVAILABLE, "Device operation limit reached")
+            val operation = DeviceOperation(newId(), request.requestId, 1, request.plugin, request.action, request.displayType,
+                DeviceStatus.QUEUED, "queued", request.subject, request.input,
+                availableActions = listOf(DeviceButton.STOP_RUN, DeviceButton.OPEN_CONVERSATION))
+            DeviceOperationRules.validate(operation)
+            val record = DeviceRecord(operation, request.fingerprint, order())
+            try { append(old, RuntimeEvent.DeviceOperationUpdated(record), old.copy(deviceOperations = old.deviceOperations + record)) }
+            catch (error: Exception) { failStorage(); throw DeviceFailure(DeviceError(DeviceErrorCode.STORAGE_FULL)) }
+            AdmittedDevice(operation, true)
+        }
+        override suspend fun find(requestId: String): DeviceOperation? = mutex.withLock {
+            journal.snapshot(id)?.deviceOperations?.firstOrNull { it.operation.requestId == requestId }?.operation
+        }
+        override suspend fun update(operation: DeviceOperation): DeviceOperation = mutex.withLock {
+            if (!healthy) deviceFailure(DeviceErrorCode.STORAGE_FULL)
+            val old = journal.snapshot(id) ?: deviceFailure(DeviceErrorCode.NOT_FOUND)
+            val previous = old.deviceOperations.firstOrNull { it.operation.operationId == operation.operationId }
+                ?: deviceFailure(DeviceErrorCode.NOT_FOUND)
+            if (old.phase.terminal) return@withLock previous.operation
+            val next = if (old.phase == RunPhase.CANCELLING || stop?.value != null) {
+                if (!operation.status.terminal) operation.copy(status = DeviceStatus.CANCELLING, phaseCode = "cancelling", requiresAttention = null,
+                    availableActions = listOf(DeviceButton.OPEN_CONVERSATION))
+                else operation.copy(status = if ((operation.result?.effectState ?: operation.error?.effectState) in setOf(EffectState.UNKNOWN, EffectState.SUBMITTED)) DeviceStatus.UNCONFIRMED else DeviceStatus.CANCELLED,
+                    phaseCode = "cancelled", requiresAttention = null, availableActions = listOf(DeviceButton.OPEN_CONVERSATION))
+            } else operation
+            if (!DeviceOperationRules.advances(previous.operation, next)) return@withLock previous.operation
+            val record = previous.copy(operation = next)
+            try { append(old, RuntimeEvent.DeviceOperationUpdated(record), old.copy(deviceOperations = old.deviceOperations.map {
+                if (it.operation.operationId == operation.operationId) record else it
+            })) } catch (error: Exception) { failStorage(); throw DeviceFailure(DeviceError(DeviceErrorCode.STORAGE_FULL)) }
+            next
+        }
+    }
+
     private suspend fun append(old: RunSnapshot, payload: RuntimeEvent, next: RunSnapshot, command: CommandRecord? = null) {
         val sequence = old.lastSequence + 1
         journal.append(next.copy(lastSequence = sequence, revision = old.revision + 1), envelope(old.runId, sequence, payload), command)

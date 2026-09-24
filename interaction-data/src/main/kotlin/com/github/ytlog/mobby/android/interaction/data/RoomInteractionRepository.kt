@@ -32,7 +32,7 @@ internal class RoomInteractionRepository(
         rows.map { row ->
             val activity = byConversation[row.id]
             val snapshot = activity?.snapshot?.let { storageJson.decodeFromString<RunSnapshot>(it) }
-            ConversationSummary(row.domain(), snapshot?.let { RunProjection.verifiedPhase(it).domain() }, activity?.occupied == true, activity?.executionId?.let(::ExecutionId))
+            ConversationSummary(row.domain(), snapshot?.let { RunProjection.verifiedPhase(it).domain() }, activity?.occupied == true, activity?.executionId?.let(::ExecutionId), snapshot?.deviceOperations?.maxByOrNull { it.order }?.operation)
         }
     }.distinctUntilChanged().flowOn(Dispatchers.Default)
     private data class Window(val id: String, val count: Int, val baseline: Int)
@@ -401,7 +401,7 @@ internal class RoomInteractionRepository(
             else error ?: snapshot?.terminalEvidence?.error?.message(), snapshot?.progress?.domain(), pending, occupied, expanded, storageJson.decodeFromString(expandedSteps),
             snapshot?.artifacts?.mapNotNull { ref -> content[ref.value]?.takeUnless { it.expired }?.let { SkillProposal(ref.value, it.text, DomainAgent.valueOf(snapshot.acceptedConfig.agentId.name)) } }.orEmpty(),
             storageJson.decodeFromString<StoredConversation>(frozen).creator != null, snapshot?.artifacts?.any { it.value !in content } == true, storageJson.decodeFromString<StoredConversation>(frozen).attachments,
-            snapshot?.pendingApprovals?.map { PermissionRequest(it.approvalId, it.revision, it.subject.domain()) }.orEmpty())
+            snapshot?.pendingApprovals?.map { PermissionRequest(it.approvalId, it.revision, it.subject.domain()) }.orEmpty(), snapshot?.deviceOperations.orEmpty())
     }
 }
 

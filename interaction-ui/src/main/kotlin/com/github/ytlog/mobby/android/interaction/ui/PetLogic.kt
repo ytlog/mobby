@@ -16,6 +16,7 @@ internal data class PetTarget(
     val title: String,
     val execution: ExecutionId,
     val phase: ExecutionPhase?,
+    val action: String? = null,
 )
 
 internal data class PetFrame(
@@ -31,7 +32,7 @@ internal fun petPx(dp: Int, density: Float) = (dp * density).toInt()
 internal fun petTarget(state: InteractionState): PetTarget? {
     val row = state.occupied ?: return null
     val execution = row.execution ?: return null
-    return PetTarget(row.conversation.id, row.conversation.title.ifBlank { AppStrings.currentTask }, execution, row.phase)
+    return PetTarget(row.conversation.id, row.conversation.title.ifBlank { AppStrings.currentTask }, execution, row.phase, row.deviceOperation?.let { com.github.ytlog.mobby.android.deviceinteraction.model.DeviceLabels.title(it.plugin, it.action) + " · " + com.github.ytlog.mobby.android.deviceinteraction.model.DeviceLabels.phase(it) })
 }
 
 internal fun petStatus(phase: ExecutionPhase?): String = when (phase) {

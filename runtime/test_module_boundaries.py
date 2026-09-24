@@ -5,7 +5,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parent.parent
 ALLOWED = {
-    "app": {"interaction-ui", "interaction-domain", "interaction-data", "runtime-api", "runtime-android"},
+    "app": {"interaction-ui", "interaction-domain", "interaction-data", "runtime-api", "runtime-android", "device-plugins"},
     "runtime-api": set(),
     "runtime-engine": {"runtime-api"},
     "runtime-android": {"runtime-api", "runtime-engine", "termux-core", "bootstrap-arm64", "device-plugins"},
@@ -14,6 +14,11 @@ ALLOWED = {
     "interaction-data": {"interaction-domain", "runtime-api"},
     "interaction-ui": {"interaction-domain", "speech", "device-plugins"},
 }
+ALLOWED["device-interaction"] = set()
+ALLOWED["device-interaction-ui"] = {"device-interaction"}
+for module in ("runtime-api", "runtime-engine", "runtime-android", "device-plugins", "interaction-domain", "interaction-data", "interaction-ui"):
+    ALLOWED[module].add("device-interaction")
+ALLOWED["interaction-ui"].add("device-interaction-ui")
 ALLOWED["speech"] = set()
 ALLOWED["localization"] = set()
 for module in ALLOWED:
@@ -35,7 +40,12 @@ class ModuleBoundaryTests(unittest.TestCase):
                 text = source.read_text()
                 if module.startswith("runtime-"):
                     self.assertNotRegex(text, r"com\.mobby\.(?:app|interaction)\.", str(source))
-                if module in {"runtime-api", "runtime-engine", "interaction-domain"}:
+                if module in {"runtime-api", "runtime-engine", "interaction-domain", "device-interaction"}:
                     self.assertNotRegex(text, r"(?m)^import (?:android\.|androidx\.|com\.libtermux\.)", str(source))
                 if module in {"interaction-domain", "interaction-ui"}:
                     self.assertNotRegex(text, r"com\.mobby\.(?:app|runtime|interaction\.data)\.", str(source))
+
+    def test_device_cards_depend_only_on_the_contract_and_localization(self):
+        for module in ("device-interaction", "device-interaction-ui"):
+            for source in (ROOT / module / "src/main").rglob("*.kt"):
+                self.assertNotRegex(source.read_text(), r"(?m)^import com\.github\.ytlog\.mobby\.android\.(?:runtime|interaction|device)\.", str(source))
