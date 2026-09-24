@@ -44,6 +44,27 @@ class MarkdownRenderingTest {
             compose.onNodeWithText("正在排版…").assertDoesNotExist()
         } finally { release.countDown() }
     }
+    @Test fun `pending markdown update retains the previous layout without a temporary tail or label`() {
+        val started = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val source = mutableStateOf("First paragraph")
+        try {
+            compose.setContent { CompositionLocalProvider(LocalReplyParser provides { text ->
+                if (text.endsWith("continued")) { started.countDown(); check(release.await(5, TimeUnit.SECONDS)) }
+                ReplyMarkdown.parse(text)
+            }) { MaterialTheme { ReplyContent(source.value) { _, _ -> } } } }
+            compose.waitUntil(5_000) { compose.onAllNodesWithText("First paragraph").fetchSemanticsNodes().isNotEmpty() }
+            compose.runOnIdle { source.value = "First paragraph continued" }
+            compose.waitForIdle()
+            assertTrue(started.await(5, TimeUnit.SECONDS))
+            compose.onNodeWithText("First paragraph").assertExists()
+            compose.onNodeWithText(" continued").assertDoesNotExist()
+            compose.onNodeWithText(UiStrings.updatingLayout).assertDoesNotExist()
+            release.countDown()
+            compose.waitUntil(5_000) { compose.onAllNodesWithText("First paragraph continued").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText("First paragraph").assertDoesNotExist()
+        } finally { release.countDown() }
+    }
     @Test fun `task list markers remain visible with their content`() {
         compose.setContent { MaterialTheme { ReplyContent("- [x] done\n- [ ] pending") { _, _ -> } } }
         compose.waitUntil(5_000) { compose.onAllNodesWithText("done").fetchSemanticsNodes().isNotEmpty() }

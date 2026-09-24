@@ -62,8 +62,6 @@ internal fun Turn.toolsLive(): Boolean = occupied && phase in setOf(
     null, ExecutionPhase.ACCEPTED, ExecutionPhase.RUNNING, ExecutionPhase.AWAITING_APPROVAL, ExecutionPhase.CANCELLING,
 )
 internal fun Turn.toolGroupExpanded(steps: List<Step>): Boolean = toolsLive() || toolGroupKey(steps) in expandedSteps
-/** Live thinking stays readable for the whole turn. After the turn, it opens only when chosen. */
-internal fun Turn.thinkingBodyOpen(step: Step): Boolean = step is Step.Thinking && (toolsLive() || step.id in expandedSteps)
 internal fun Turn.executionHeadline(steps: List<Step> = this.steps): String {
     val count = steps.size
     return when {
@@ -120,8 +118,6 @@ internal fun stepKindIcon(kind: String): AppGlyph = when (kind.lowercase()) {
 @Composable internal fun ExecutionCard(turn: Turn, vm: ConversationViewModel, steps: List<Step> = turn.steps, showExtras: Boolean = true, read: (String, String) -> Unit) {
     if (steps.isEmpty()) return
     val expanded = turn.toolGroupExpanded(steps)
-    val cardCursor = turn.activityMark() == ActivityMark.CARD
-    val thinkingCursor = cardCursor && steps.any { it is Step.Thinking && it.outcome == null }
     val ink = toolCallInk()
     CompositionLocalProvider(LocalToolCodeActionScale provides 2f / 3f) {
     Surface(
@@ -140,20 +136,17 @@ internal fun stepKindIcon(kind: String): AppGlyph = when (kind.lowercase()) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(turn.executionHeadline(steps), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = ink)
-                if (cardCursor && !thinkingCursor) StreamingCursor(description = AppStrings.replying)
                 AppIcon(if (expanded) AppIcons.ChevronUp else AppIcons.ChevronRight, if (expanded) AppStrings.expanded else AppStrings.collapsed, Modifier.size(18.dp), tint = ink)
             }
             if (expanded) {
             Column(Modifier.padding(start = 2.dp, end = 8.dp, bottom = 8.dp)) {
                 if (showExtras) turn.progress?.let { Text(it.label(), Modifier.padding(horizontal = 12.dp, vertical = 2.dp), style = MaterialTheme.typography.bodySmall, color = ink) }
                 steps.forEach { step -> key(step.id) {
-                    var heldClosed by rememberSaveable { mutableStateOf(false) }
-                    val open = step.id in turn.expandedSteps || (turn.thinkingBodyOpen(step) && !heldClosed)
+                    val open = step.id in turn.expandedSteps
                     val view = remember(step, LanguagePreferences.current) { ToolPresentation.present(step) }
-                    val liveThought = thinkingCursor && step.id == steps.lastOrNull { it is Step.Thinking && it.outcome == null }?.id
+                    val liveThought = turn.occupied && step.id == steps.lastOrNull { it is Step.Thinking && it.outcome == null }?.id
                     Row(Modifier.fillMaxWidth().clickable {
                         val next = !open
-                        if (step is Step.Thinking) heldClosed = !next
                         vm.enqueue {
                             vm.actions.stepExpansion(turn.id, step.id, next)
                             if (next) vm.actions.expansion(turn.id, true)
@@ -168,7 +161,6 @@ internal fun stepKindIcon(kind: String): AppGlyph = when (kind.lowercase()) {
                             style = MaterialTheme.typography.bodySmall,
                             color = ink,
                         )
-                        if (liveThought && !open) StreamingCursor(description = AppStrings.replying)
                         AppIcon(if (open) AppIcons.ChevronDown else AppIcons.ChevronRight, if (open) AppStrings.expanded else AppStrings.collapsed, Modifier.size(16.dp), tint = ink)
                     }
                     if (open) {
@@ -176,15 +168,8 @@ internal fun stepKindIcon(kind: String): AppGlyph = when (kind.lowercase()) {
                         Column(Modifier.fillMaxWidth().padding(start = 40.dp, end = 8.dp, bottom = 8.dp)) {
                             when {
                                 step is Step.Thinking -> if (body.isBlank()) {
-                                    if (liveThought) StreamingCursor(description = AppStrings.replying)
-                                    else Text(AppStrings.noOutput, style = MaterialTheme.typography.bodySmall, color = ink)
-                                } else if (ToolPresentation.looksLikeMarkdown(body)) ReplyContent(body, streaming = liveThought && open, read = read)
-                                else {
-                                    SelectionContainer {
-                                        Text(body, style = MaterialTheme.typography.bodySmall, color = ink)
-                                    }
-                                    if (liveThought && open) StreamingCursor(description = AppStrings.replying)
-                                }
+                                    if (!liveThought) Text(AppStrings.noOutput, style = MaterialTheme.typography.bodySmall, color = ink)
+                                } else ReplyContent(body, streaming = liveThought, read = read)
                                 view.terminal -> CodeContent(view.title, body.ifBlank { AppStrings.noOutput }, read, toolCallSurface(), ink)
                                 ToolPresentation.looksLikeMarkdown(body) -> ReplyContent(body, streaming = false, read = read)
                                 else -> SelectionContainer {

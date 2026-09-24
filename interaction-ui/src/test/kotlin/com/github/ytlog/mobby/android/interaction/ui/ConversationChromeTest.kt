@@ -94,6 +94,7 @@ class ConversationChromeTest {
         compose.waitForIdle()
         compose.onNodeWithText("END OF FINAL REPLY").assertIsDisplayed()
 
+        compose.onNode(hasScrollToIndexAction()).performTouchInput { swipeDown() }
         compose.onNode(hasScrollToIndexAction()).performScrollToIndex(10)
         compose.waitForIdle()
         assertTranscriptClearOfChrome()

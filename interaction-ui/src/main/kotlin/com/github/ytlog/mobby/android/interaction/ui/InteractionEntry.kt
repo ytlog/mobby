@@ -16,7 +16,7 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitHorizontalTouchSlopOrCancellation
 import androidx.compose.foundation.gestures.horizontalDrag
-import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
@@ -634,18 +634,8 @@ private val DrawerRowHeight = 40.dp
 @OptIn(FlowPreview::class)
 internal fun Turn.replyActionsVisible() = !occupied && !pending
 
-/** One blue mark for the whole turn: on the reply, on the live card, or alone while nothing has arrived. */
-internal enum class ActivityMark { NONE, REPLY, CARD, STANDALONE }
-
-internal fun Turn.activityMark(): ActivityMark {
-    if (replyActionsVisible()) return ActivityMark.NONE
-    if (phase == ExecutionPhase.CANCELLING) return ActivityMark.STANDALONE
-    if (occupied && messages.any { it.text.isNotBlank() }) return ActivityMark.REPLY
-    if (occupied && (steps.isNotEmpty() || deviceOperations.isNotEmpty())) return ActivityMark.CARD
-    return ActivityMark.STANDALONE
-}
-
-internal fun Turn.showsSeparateActivity(): Boolean = activityMark() == ActivityMark.STANDALONE
+/** Activity belongs to one independent item after this turn's content, never to text or cards. */
+internal fun Turn.showsSeparateActivity(): Boolean = occupied || pending
 
 @Composable internal fun ReplyActivity(phase: ExecutionPhase?) {
     if (phase == ExecutionPhase.CANCELLING) {
@@ -667,10 +657,11 @@ internal fun Turn.showsSeparateActivity(): Boolean = activityMark() == ActivityM
     }
 }
 
-@Composable private fun Timeline(detail: ConversationDetail, vm: ConversationViewModel, modifier: Modifier, followPadding: PaddingValues = PaddingValues(12.dp), read: (String, String) -> Unit, hostActions: InteractionHostActions, proposal: (SkillProposal) -> Unit) {
+@Composable internal fun Timeline(detail: ConversationDetail, vm: ConversationViewModel, modifier: Modifier, followPadding: PaddingValues = PaddingValues(12.dp), read: (String, String) -> Unit, hostActions: InteractionHostActions, proposal: (SkillProposal) -> Unit) {
     val topFade = if (darkChrome()) ConversationEdgeFade else LightConversationTopFade
     val bottomFade = if (darkChrome()) ConversationEdgeFade else LightConversationBottomFade
     val contentPadding = PaddingValues(start = 16.dp, top = topFade, end = 16.dp, bottom = bottomFade)
+    val activityTurn = detail.turns.lastOrNull { it.occupied } ?: detail.turns.lastOrNull { it.showsSeparateActivity() }
     val keys = buildList {
         if (detail.hasEarlier) add("earlier")
         detail.turns.forEach { t ->
@@ -686,13 +677,12 @@ internal fun Turn.showsSeparateActivity(): Boolean = activityMark() == ActivityM
             t.skillProposals.forEach { add("artifact:${t.id.value}:${it.ref}") }
             if (t.creatingSkill && !t.occupied && t.skillProposals.isEmpty() && !t.proposalsLoading) add("creator:${t.id.value}")
             if (t.failure != null || t.phase in listOf(ExecutionPhase.CANCELLED, ExecutionPhase.TIMED_OUT, ExecutionPhase.INTERRUPTED, ExecutionPhase.OUTCOME_UNKNOWN, ExecutionPhase.AWAITING_APPROVAL)) add("status:${t.id.value}")
-            if (t.showsSeparateActivity()) add("activity:${t.id.value}")
         }
+        activityTurn?.let { add("activity:${it.id.value}") }
     }
     val initial = keys.indexOf(detail.conversation.anchor).coerceAtLeast(0)
     val list = rememberLazyListState(initial, detail.conversation.anchorOffset.coerceAtLeast(0))
     var follow by remember { mutableStateOf(detail.conversation.anchor == null) }
-    val scope = rememberCoroutineScope()
     val target by vm.readingTarget.collectAsStateWithLifecycle()
     LaunchedEffect(target, keys) {
         val jump = target?.takeIf { it.conversation == detail.conversation.id } ?: return@LaunchedEffect
@@ -717,14 +707,8 @@ internal fun Turn.showsSeparateActivity(): Boolean = activityMark() == ActivityM
     LaunchedEffect(list) {
         snapshotFlow { list.layoutInfo.totalItemsCount > 0 && !list.isScrollInProgress && !list.canScrollForward }.collect { if (it) follow = true }
     }
-    val outputVersion = detail.turns.map { listOf(it.id, it.phase, it.permissions.map { p -> p.id to p.revision }, it.messages.map { m -> m.text.length }, it.steps.map { s -> s.displayedText().length }, it.deviceOperations.map { d -> d.operation.operationId to d.operation.revision }) }
-    LaunchedEffect(outputVersion, keys) { if (follow && !list.isScrollInProgress && keys.isNotEmpty()) list.scrollToBottom(keys.lastIndex) }
-    LaunchedEffect(list, follow) {
-        if (follow) snapshotFlow { list.layoutInfo.visibleItemsInfo.lastOrNull()?.let { it.key to it.size } }
-            .distinctUntilChanged()
-            .collect {
-                if (!list.isScrollInProgress && list.layoutInfo.totalItemsCount > 0) list.scrollToBottom(list.layoutInfo.totalItemsCount - 1)
-            }
+    LaunchedEffect(list, follow, dragging) {
+        if (follow && !dragging) list.followConversationTail()
     }
     LaunchedEffect(list) {
         snapshotFlow { list.layoutInfo.visibleItemsInfo.firstOrNull()?.key?.toString() to list.firstVisibleItemScrollOffset }.debounce(250).collect { (key, offset) ->
@@ -757,7 +741,7 @@ internal fun Turn.showsSeparateActivity(): Boolean = activityMark() == ActivityM
                         }
                         is TranscriptEntry.Reply -> item(key = "message:${turn.id.value}:${entry.message.id}") {
                             Column {
-                                ReplyContent(entry.message.text, streaming = turn.activityMark() == ActivityMark.REPLY && entry.message.id == lastReply, read = read)
+                                ReplyContent(entry.message.text, streaming = turn.occupied && turn.phase != ExecutionPhase.CANCELLING && entry.message.id == lastReply, read = read)
                                 if (entry.message.id == lastReply && turn.replyActionsVisible()) {
                                     val reply = entry.message.text
                                     Row {
@@ -806,11 +790,15 @@ internal fun Turn.showsSeparateActivity(): Boolean = activityMark() == ActivityM
                         }
                     }
                 }
-                if (turn.showsSeparateActivity()) item(key = "activity:${turn.id.value}") { ReplyActivity(turn.phase) }
+            }
+            activityTurn?.let { turn ->
+                item(key = "activity:${turn.id.value}") {
+                    Box(Modifier.testTag("turn-loading")) { ReplyActivity(turn.phase) }
+                }
             }
         }
         if (!follow && detail.turns.isNotEmpty()) FilledTonalButton(
-            onClick = { follow = true; scope.launch { if (keys.isNotEmpty()) list.scrollToBottom(keys.lastIndex) } },
+            onClick = { follow = true },
             modifier = Modifier.align(Alignment.BottomEnd)
                 .padding(if (darkChrome()) followPadding else PaddingValues(20.dp))
                 .shadow(if (darkChrome()) 0.dp else floatingElevation(), CircleShape)
@@ -822,11 +810,24 @@ internal fun Turn.showsSeparateActivity(): Boolean = activityMark() == ActivityM
     }
 }
 
-private suspend fun LazyListState.scrollToBottom(lastIndex: Int) {
-    scrollToItem(lastIndex, Int.MAX_VALUE)
-    while (canScrollForward) {
-        val distance = layoutInfo.viewportSize.height.toFloat()
-        if (distance <= 0f || scrollBy(distance) < 0.5f) break
+/** One collector follows measured layout changes. New tokens coalesce while an animation runs. */
+internal suspend fun LazyListState.followConversationTail() {
+    snapshotFlow {
+        val layout = layoutInfo
+        val last = layout.visibleItemsInfo.lastOrNull()
+        listOf(layout.totalItemsCount, last?.index, last?.offset, last?.size, layout.viewportEndOffset)
+    }.conflate().collect {
+        val lastIndex = layoutInfo.totalItemsCount - 1
+        if (lastIndex < 0 || !canScrollForward) return@collect
+        if (layoutInfo.visibleItemsInfo.lastOrNull()?.index != lastIndex) {
+            animateScrollToItem(lastIndex)
+        }
+        val layout = layoutInfo
+        val last = layout.visibleItemsInfo.lastOrNull() ?: return@collect
+        val distance = last.offset + last.size + layout.afterContentPadding - layout.viewportEndOffset
+        if (last.index == lastIndex && distance > 0) {
+            animateScrollBy(distance.toFloat(), tween(durationMillis = 180))
+        }
     }
 }
 

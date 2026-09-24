@@ -48,7 +48,7 @@ private val replyParsingDispatcher = Dispatchers.Default.limitedParallelism(1)
 private data class ParsedReply(val source: String, val document: Node)
 
 @Composable internal fun ReplyContent(text: String, streaming: Boolean = false, read: (String, String) -> Unit) {
-    val stream = if (streaming) rememberStreamPresentation(text, true) else StreamPresentation(text, "", false)
+    val stream = if (streaming) rememberStreamPresentation(text, true) else StreamPresentation(text)
     val source = if (streaming) stream.markdown else text
     val parse = LocalReplyParser.current
     val parsed by produceState<ParsedReply?>(null, source, parse) {
@@ -58,10 +58,8 @@ private data class ParsedReply(val source: String, val document: Node)
     val visible = parsed?.takeIf { source.startsWith(it.source) }
     Column {
         visible?.let { MarkdownBlocks(ReplyMarkdown.children(it.document), read) }
-        if (stream.tail.isNotEmpty()) Text(stream.tail, style = MaterialTheme.typography.bodyLarge)
-        if (stream.cursor) StreamingCursor()
-        if (source.isNotEmpty() && parsed?.source != source && stream.tail.isEmpty()) {
-            Text(if (visible == null) AppStrings.formatting else AppStrings.updatingLayout, style = MaterialTheme.typography.labelSmall)
+        if (!streaming && source.isNotEmpty() && visible == null) {
+            Text(AppStrings.formatting, style = MaterialTheme.typography.labelSmall)
         }
     }
 }

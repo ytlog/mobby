@@ -27,7 +27,7 @@ class ExecutionCardTest {
         Proxy.newProxyInstance(T::class.java.classLoader, arrayOf(T::class.java)) { _, method, _ -> body(method.name) } as T
     private fun vm(): ConversationViewModel = ConversationViewModel(
         InteractionUseCases(
-            stub { if (it == "getState") MutableStateFlow(InteractionState()) else error(it) },
+            stub { when (it) { "getState" -> MutableStateFlow(InteractionState()); "anchor" -> Unit; else -> error(it) } },
             stub { error(it) },
             stub { when (it) {
                 "getStatus" -> flowOf(SystemStatus())
@@ -39,6 +39,52 @@ class ExecutionCardTest {
             { "id" }, CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate), stub { error(it) }
         )
     )
+
+    @Test fun `timeline owns one bottom item across thinking tools reply cancellation and completion`() {
+        val thought = Step.Thinking("thought", "Fixture thought", null, order = 1)
+        val shown = mutableStateOf(empty.copy(phase = ExecutionPhase.RUNNING, occupied = true, steps = listOf(thought)))
+        val conversation = Conversation(ConversationId("fixture"), NextTurnConfig(AgentId.CLAUDE_CODE, "fixture", null, "default", "fixture"))
+        val model = vm()
+        compose.mainClock.autoAdvance = false
+        compose.setContent { MaterialTheme {
+            Timeline(ConversationDetail(conversation, listOf(shown.value)), model, androidx.compose.ui.Modifier,
+                read = { _, _ -> }, hostActions = InteractionHostActions({}, { _, _ -> }, {}), proposal = {})
+        } }
+        fun assertBottom() {
+            compose.mainClock.advanceTimeBy(300)
+            compose.onAllNodesWithTag("turn-loading").assertCountEquals(1)
+            compose.onAllNodesWithContentDescription("正在回复…").assertCountEquals(1)
+            val footer = compose.onNodeWithTag("turn-loading").getBoundsInRoot()
+            val card = compose.onNodeWithTag("execution-card").getBoundsInRoot()
+            assertTrue("Loading must be a separate item below the card", footer.top >= card.bottom)
+        }
+        assertBottom()
+        compose.runOnIdle { shown.value = shown.value.copy(steps = listOf(thought.copy(outcome = "SUCCEEDED"), step.copy(outcome = null, order = 2))) }
+        assertBottom()
+        compose.runOnIdle { shown.value = shown.value.copy(messages = listOf(Message("reply", "Fixture reply", order = 3))) }
+        assertBottom()
+        compose.runOnIdle { shown.value = shown.value.copy(phase = ExecutionPhase.CANCELLING) }
+        compose.mainClock.advanceTimeBy(300)
+        compose.onAllNodesWithTag("turn-loading").assertCountEquals(1)
+        compose.onNodeWithText("正在停止…").assertExists()
+        compose.runOnIdle { shown.value = shown.value.copy(occupied = false, phase = ExecutionPhase.CANCELLED) }
+        compose.mainClock.advanceTimeBy(300)
+        compose.onNodeWithTag("turn-loading").assertDoesNotExist()
+    }
+
+    @Test fun `execution cards never own loading markers for thinking or tools`() {
+        val thought = Step.Thinking("thought", "Inspect the fixture", null, order = 1)
+        val thinking = empty.copy(phase = ExecutionPhase.RUNNING, occupied = true, steps = listOf(thought))
+        val tool = thinking.copy(steps = listOf(step.copy(outcome = null, order = 2)))
+        val model = vm()
+        compose.setContent { MaterialTheme { androidx.compose.foundation.layout.Column {
+            ExecutionCard(thinking, model, thinking.steps) { _, _ -> }
+            ExecutionCard(tool, model, tool.steps) { _, _ -> }
+        } } }
+        compose.onNodeWithText("Inspect the fixture").assertDoesNotExist()
+        compose.onNodeWithText("运行 ls").assertExists()
+        compose.onAllNodesWithContentDescription("正在回复…").assertCountEquals(0)
+    }
 
     @Test fun `copy and share stay hidden until the turn ends`() {
         val reply = empty.copy(messages = listOf(Message("m", "hello")), occupied = true, phase = ExecutionPhase.RUNNING)
@@ -54,20 +100,15 @@ class ExecutionCardTest {
         compose.onNodeWithContentDescription("正在回复…").assertDoesNotExist()
     }
 
-    @Test fun `a streaming reply keeps one blue mark and does not add a second row`() {
-        val reply = empty.copy(messages = listOf(Message("m", "hello")), occupied = true, phase = ExecutionPhase.RUNNING)
-        assertEquals(ActivityMark.REPLY, reply.activityMark())
-        assertFalse(reply.showsSeparateActivity())
-        val waiting = reply.copy(messages = emptyList())
-        assertEquals(ActivityMark.STANDALONE, waiting.activityMark())
-        assertTrue(waiting.showsSeparateActivity())
-        val thinking = waiting.copy(steps = listOf(Step.Thinking("think", "private", null)))
-        assertEquals(ActivityMark.CARD, thinking.activityMark())
-        assertFalse(thinking.showsSeparateActivity())
-        assertEquals(ActivityMark.CARD, waiting.copy(steps = listOf(step.copy(outcome = null))).activityMark())
-        assertTrue(reply.copy(phase = ExecutionPhase.CANCELLING).showsSeparateActivity())
+    @Test fun `bottom loading is independent of replies tools and thinking`() {
+        val running = empty.copy(occupied = true, phase = ExecutionPhase.RUNNING)
+        assertTrue(running.showsSeparateActivity())
+        assertTrue(running.copy(messages = listOf(Message("m", "hello"))).showsSeparateActivity())
+        assertTrue(running.copy(steps = listOf(Step.Thinking("thought", "private", null))).showsSeparateActivity())
+        assertTrue(running.copy(steps = listOf(step.copy(outcome = null))).showsSeparateActivity())
+        assertTrue(running.copy(phase = ExecutionPhase.CANCELLING).showsSeparateActivity())
         assertTrue(empty.copy(pending = true).showsSeparateActivity())
-        assertFalse(empty.copy(messages = listOf(Message("m", "hello"))).showsSeparateActivity())
+        assertFalse(empty.showsSeparateActivity())
     }
 
     @Test fun `turns without steps stay off the timeline`() {
@@ -170,7 +211,7 @@ class ExecutionCardTest {
         compose.onNodeWithText("查看诊断（1）").assertExists()
     }
 
-    @Test fun `live thinking shows its text and a finished thought stays closed until opened`() {
+    @Test fun `thinking stays collapsed while streaming and opens only on request`() {
         val running = empty.copy(phase = ExecutionPhase.RUNNING, occupied = true, steps = listOf(
             step.copy(outcome = null),
             Step.Thinking("think", "private", null)))
@@ -178,8 +219,8 @@ class ExecutionCardTest {
         compose.setContent { MaterialTheme { ExecutionCard(shown.value, vm()) { _, _ -> } } }
         compose.onNodeWithText("执行中").assertExists()
         compose.onNodeWithText("思考").assertExists()
-        compose.onNodeWithText("private").assertExists()
-        compose.onAllNodesWithContentDescription("正在回复…").assertCountEquals(1)
+        compose.onNodeWithText("private").assertDoesNotExist()
+        compose.onAllNodesWithContentDescription("正在回复…").assertCountEquals(0)
         compose.onNodeWithText("运行 ls").assertExists()
         val finished = running.copy(occupied = false, phase = ExecutionPhase.SUCCEEDED, steps = listOf(
             step, Step.Thinking("think", "private", "SUCCEEDED")), expandedSteps = setOf("tools:s1"))
@@ -187,7 +228,7 @@ class ExecutionCardTest {
         compose.onNodeWithText("private").assertDoesNotExist()
         compose.onNodeWithContentDescription("正在回复…").assertDoesNotExist()
         compose.runOnIdle { shown.value = finished.copy(expandedSteps = setOf("tools:s1", "think")) }
-        compose.onNodeWithText("private").assertExists()
+        compose.waitUntil(5_000) { compose.onAllNodesWithText("private").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithContentDescription("正在回复…").assertDoesNotExist()
     }
 }

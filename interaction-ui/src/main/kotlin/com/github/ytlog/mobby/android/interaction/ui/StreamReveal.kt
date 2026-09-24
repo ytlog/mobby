@@ -6,9 +6,9 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.platform.LocalContext
 
-internal const val STREAM_PARSE_INTERVAL_MS = 1_000L
+internal const val STREAM_PARSE_INTERVAL_MS = 100L
 
-internal data class StreamPresentation(val markdown: String, val tail: String, val cursor: Boolean)
+internal data class StreamPresentation(val markdown: String)
 
 internal class StreamEngine(
     private val parseIntervalMs: Long = STREAM_PARSE_INTERVAL_MS,
@@ -19,10 +19,10 @@ internal class StreamEngine(
     fun finish(source: String): StreamPresentation {
         parsed = source
         lastParseAt = Long.MIN_VALUE / 4
-        return StreamPresentation(source, "", false)
+        return StreamPresentation(source)
     }
 
-    /** Text that has already arrived stays visible. Markdown refreshes on an interval so the layout does not reflow on every token. */
+    /** Publish whole Markdown snapshots; never append raw text in a separate layout block. */
     fun frame(source: String, nowMs: Long, reducedMotion: Boolean): StreamPresentation {
         val due = parsed.isEmpty() || reducedMotion || !source.startsWith(parsed) || nowMs - lastParseAt >= parseIntervalMs
         if (due) {
@@ -30,8 +30,7 @@ internal class StreamEngine(
             lastParseAt = nowMs
         }
         val markdown = if (source.startsWith(parsed)) parsed else ""
-        val tail = if (markdown.isEmpty()) source else source.removePrefix(markdown)
-        return StreamPresentation(markdown, tail, true)
+        return StreamPresentation(markdown)
     }
 }
 
