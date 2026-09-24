@@ -12,11 +12,11 @@
 ## 本项目的实现边界
 
 - 使用内置 libtermux-android 和 Compose，保留 Shell、Claude Code、Codex、OpenCode 的执行能力。
-- 按当前用户决定，Agent 模型请求统一走本地 Node 桥接，由 Android 网络栈联网；Codex 与 OpenCode 仅使用 Responses，Claude Code 仅使用 Messages。远端网关保持原生协议透传；按用户最新要求，本地模型服务设计允许在独立 `:local_model` 进程内提供 Responses、Chat Completions、Messages、Gemini、Ollama HTTP 协议适配，具体边界见 `docs/design/local-model-runtime.md`。协议适配不得静默丢弃字段，不支持的语义须明确拒绝；该设计不代表已经实现。
+- 按当前用户决定，现有 App 内 Agent 的模型请求统一走本地 Node 桥接，由 Android 网络栈联网；Codex 与 OpenCode 仅使用 Responses，Claude Code 仅使用 Messages。现有 App 的远端网关保持原生协议透传。另有独立安装的本地模型服务设计，可在它自己的 `:local_model` 进程内提供 Responses、Chat Completions、Messages、Gemini、Ollama HTTP 协议适配，见 `docs/design/local-model-runtime.md`；该服务不依赖或修改现有 App/Node 桥接/Agent 功能。协议适配不得静默丢弃字段，不支持的语义须明确拒绝；该设计不代表已经实现。
 - 网关选项必须有实际执行路径；保留但拒绝执行旧的不匹配协议配置，不静默改写用户配置，不丢弃工具、图片、推理或未知消息字段。
 - 按用户明确授权，Codex、Claude Code 与 OpenCode 都以 Android 应用 UID/SELinux 沙箱为执行边界，不获取 root、不修改系统权限。Codex 使用 danger-full-access 与 approval_policy=never。Claude Code 仍走 stdio 审批协议，但应用对格式正确的 can_use_tool 立即按原始参数允许一次，不再弹出确认卡；否则使用当前手机时每次操作都会停住。OpenCode 使用当次 `--auto`，不写持久权限规则。三者都不使用 bypass 参数。取消、错误和超时必须如实传递，不能显示为成功。
 - 网关密钥和真实用户配置仅存放于设备的加密存储；不得写入源码、测试夹具、文档、日志或 Git。
-- 当前 Android `applicationId` 与应用源码包为 `com.github.ytlog.mobby.android`，其余模块包使用同一前缀。Keystore 别名是 `mobby.gateway`。再次更改 applicationId 或 Keystore 别名必须先设计数据迁移方案。更换 applicationId 后，此前已安装的应用不会带入配置、密钥、HOME 和工作区。
+- 当前 Android `applicationId` 与应用源码包为 `com.github.ytlog.mobby.android`，现有 App 的其余模块包使用同一前缀；独立本地模型服务另用自身包名。Keystore 别名是 `mobby.gateway`。再次更改 applicationId 或 Keystore 别名必须先设计数据迁移方案。更换 applicationId 后，此前已安装的应用不会带入配置、密钥、HOME 和工作区。
 - 开发阶段数据库结构变化直接清空对应开发数据库并按当前结构重建，不维护旧版本迁移、升级兼容代码或历史迁移测试。保留设备 SharedPreferences、HOME 和工作区；安装更新使用覆盖安装。
 - 构建产物、下载缓存和本地机器配置不得提交。
 

@@ -4,7 +4,7 @@
 
 ## 1. 用户流程与默认策略
 
-“当前引擎”指用户正在选择的、已打包且当前手机可用的 backend ID 与版本。打开该引擎的“在线模型”页时，应用实时查询其配置的 Hugging Face、引擎官方目录及可用镜像，按实际文件和依赖过滤，展示可直接安装的量化变体。用户搜索、切来源或翻页都保持当前引擎约束；切换引擎才重新查询。尚未集成的调研引擎可查看来源说明，但不出现“可安装”按钮。
+“当前引擎”指用户正在选择的、已打包且当前手机可用的 backend ID 与版本。打开该引擎的“在线模型”页时，独立服务应用实时查询其配置的 Hugging Face、引擎官方目录及可用镜像，按实际文件和依赖过滤，展示可直接安装的量化变体。用户搜索、切来源或翻页都保持当前引擎约束；切换引擎才重新查询。尚未集成的调研引擎可查看来源说明，但不出现“可安装”按钮。
 
 默认展示 **与当前引擎匹配**；可切换“查看全部候选”，显示不兼容或需转换的模型及明确原因。推荐目录作为排序和离线缓存，不限制在线模型列表的范围。搜索结果可通过该引擎的规则动态生成完整安装配方，无需预先收入精选目录。没有足够文件元数据、无法确定分片闭包或不能验证内容身份时，该候选仍可展示，但安装需等待补足信息。
 
@@ -96,16 +96,16 @@ interface ArtifactMatcher {
 
 ## 4. 身份与数据结构
 
-模型内容身份和网络来源分开。`ModelRef.revision` 仍是规范化内容 manifest 的 SHA-256；包含固定文件集合、兼容参数及原始模型版本。可变镜像列表、临时 URL、健康状态和访问 token 不参与内容 revision，换等价源不会产生新模型版本。
+模型内容身份和网络来源分开。安装计划先固定源版本、文件集合及可验证的上游对象身份；全部文件完成校验后才计算逐文件 SHA-256、发布规范化内容 manifest，并将其 SHA-256 作为 `ModelRef.revision`。manifest 包含固定文件集合、兼容参数及原始模型版本。可变镜像列表、临时 URL、健康状态和访问 token 不参与内容 revision，规范原始来源版本固定在计划中，镜像的实际来源版本另记操作记录；换等价源不会产生新模型版本。
 
 | 对象 | 核心字段 |
 | --- | --- |
 | `ArtifactRecipe` | recipeId/version、backendId/buildRange、format、architecture、quantization、variant、必需文件及角色、设备/任务要求 |
 | `SourceDescriptor` | sourceId、HF/ENGINE_OFFICIAL/MODELSCOPE/HF_MIRROR/DIRECT 类型、base origin、发布者与官方证据、允许重定向目标策略、credentialRef、trusted/user 标记 |
 | `ArtifactOrigin` | sourceId、repoId、解析后的不可变 revision、subfolder/明确文件映射、上游模型身份；不同平台的 revision 不要求字符串相同 |
-| `ResolvedFile` | 规范化相对路径、实际长度、expectedSha256、哈希依据、候选下载 locator；分片索引/依赖角色 |
+| `ResolvedFile` | 规范化相对路径、实际长度、上游对象身份与校验算法、可选 expectedSha256、候选下载 locator；分片索引/依赖角色 |
 | `SourcePolicy` | 有序 allowedSourceIds、PINNED/AUTO_VERIFIED_EQUIVALENT、Wi-Fi/流量条件、限速与并发预算 |
-| `InstallPlan` | artifact manifest digest、recipe version、backend/device 评估快照、完整文件表、下载/峰值磁盘字节、来源顺序、许可状态、expiresAt |
+| `InstallPlan` | planId、固定的源仓库完整 commit/对象版本、recipe version、backend/device 评估快照、完整文件表及可验证对象身份、下载/峰值磁盘字节、来源顺序、许可状态、expiresAt；最终内容 manifest digest 尚不存在 |
 | `DownloadCheckpoint` | installId、文件身份、sourceId、已验证块/字节范围、对象验证器、临时文件；不保存签名 URL 或 token |
 
 文件选择先解析 branch/tag 为完整 commit，整个计划固定该版本，不逐文件访问 main。精确指定某一变体的文件及依赖闭包，不能简单下载仓库全部内容。HF 支持指定 revision 和文件过滤，参见[下载文档](https://huggingface.co/docs/huggingface_hub/guides/download)；Android 实现使用网络 API，不要求安装 Python、Git LFS 或 HF CLI。
@@ -118,14 +118,14 @@ interface ArtifactMatcher {
 
 流程为 `RESOLVING → PLANNED → QUEUED → DOWNLOADING → VERIFYING → INSTALLED`；可暂停于 `PAUSED_NETWORK / PAUSED_USER / ACCESS_REQUIRED`，或结束为 FAILED/CANCELLED。元数据解析不等于接受下载；用户启动 install 后才拉取权重。暂停可恢复原 installId，取消为终态，再次安装用新操作并复用已校验缓存。
 
-下载器位于 `:local_model`，使用 Android HTTP 栈，与推理 API 的 server/Agent Node 桥接分离。所有厂商 SDK 的自动下载须关闭或接入同一受控下载器，不能绕过来源策略。
+下载器位于独立服务应用的 `:local_model` 进程，使用 Android HTTP 栈，与对外推理 HTTP listener 分离；不依赖现有 App 或 Node 桥接。所有厂商 SDK 的自动下载须关闭或接入同一受控下载器，不能绕过来源策略。
 
 - HF 文件从固定 repo/revision 的 resolve 路径获取；正常下载可能跳转 CDN 或短期签名地址。允许来源专属、有限次数的 HTTPS 重定向，逐跳验证域名/目标地址，不盲目全局禁止重定向，也不放开任意跳转。跨 origin 默认去除 Authorization/Cookie，不把 HF token 转发给镜像或 CDN；签名 URL 只在内存使用。拒绝降级 HTTP、环回/私网目标和重定向循环。另行配置的企业内网源须显式独立授权，不能由公网上游重定向获得。
 - 令牌只发送给所属 credential origin，HF 私有/gated 模型通过原服务确认访问权限；401/403、许可未接受不触发第三方镜像绕过。访问资格和许可证单独展示，参见 [HF gated models](https://huggingface.co/docs/hub/models-gated)。
-- 续传核对 expected hash/总长、对象验证器和 Content-Range。服务器返回 200 而非 206 时重建该文件，不将完整响应追加到分片；416 先核对本地长度并做完整哈希，失败则重下。
+- 续传核对计划中可用的 expected SHA-256 或上游对象身份、总长、对象验证器和 Content-Range。服务器返回 200 而非 206 时重建该文件，不将完整响应追加到分片；416 先核对本地长度并做完整哈希，失败则重下。
 - 超时/可恢复连接错误/部分 5xx 使用有界重试（建议每源最多 3 次，指数退避）；429 尊重 Retry-After，不立即切镜像规避限额。网络条件不满足则暂停。磁盘不足、取消、认证失败和摘要不符不作普通网络重试。
-- AUTO 模式只切到同计划中逐文件 expected hash 与长度匹配的备选。没有可信分块哈希时，跨源切换重新下载当前未完成文件；已有完整且验证通过的文件继续复用。有经验证的分块摘要时才复用部分块。每个文件完成后仍做全量 SHA-256。
-- 哈希不符隔离文件并标记该源异常，当前安装失败并允许用户明确重试其他已验证源；不能更改 expected hash 让校验“通过”。同名但内容不同的官方备用包是另一 artifact，须重新生成计划，不能接着旧分片下载。
+- AUTO 模式只切到同计划中有可信跨源逐文件 SHA-256 与长度匹配证据的备选；只有源内 Git blob ID 或其他不能跨源比较的对象身份时固定原源，不自动切换。没有可信分块哈希时，跨源切换重新下载当前未完成文件；已有完整且验证通过的文件继续复用。有经验证的分块摘要时才复用部分块。每个文件完成后仍做全量 SHA-256。
+- 哈希不符隔离文件并标记该源异常，当前安装失败并允许用户明确重试其他已验证源；不能更改计划中的预期对象身份或摘要让校验“通过”。同名但内容不同的官方备用包是另一 artifact，须重新生成计划，不能接着旧分片下载。
 - 不将 LFS 指针、登录 HTML、错误 JSON 或未完整分片发布为权重。长度、哈希、容器基本结构、依赖闭包全部通过，才原子发布 manifest；状态为 INSTALLED，加载/生成验收仍是后续步骤。
 
 断网或服务被杀保留 checkpoint 和 staging；重启后标记暂停，用户恢复时重新解析短期下载地址并确认固定版本，不自动重放推理。下载进度区分网络传输字节与完整性已确认字节，未知长度显示不定进度。
@@ -134,7 +134,7 @@ interface ArtifactMatcher {
 
 ## 6. Kotlin 与 HTTP 扩展
 
-不增加第二个安装器。`ModelCatalogClient`、`ArtifactResolver` 接到已有 `LocalModelManager.inspect/install`；源配置、凭据、目录缓存和下载操作均由独立进程唯一写入。
+不增加第二个安装器。`ModelCatalogClient`、`ArtifactResolver` 接到拟议的 `LocalModelManager.inspect/install`；源配置、凭据、目录缓存和下载操作均由独立进程唯一写入。
 
 ```kotlin
 interface ModelCatalogClient {

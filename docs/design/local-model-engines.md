@@ -1,6 +1,6 @@
 # 手机本地推理引擎调研与接入目录
 
-核对日期：2026-09-24。配套架构见[本地模型 Gradle 模块与 HTTP 服务](local-model-runtime.md)。本表基于上游官方仓库和文档，属于设计输入；所有后端在 mobby 中均尚未实现或真机验收。上游 main 分支不等于已经发布的稳定包，实施时必须锁定 tag/commit、依赖及构建哈希。
+核对日期：2026-09-24。配套架构见[本地模型 Gradle 模块与 HTTP 服务](local-model-runtime.md)。本表基于上游官方仓库和文档，属于设计输入；所有后端在独立模型服务中均尚未实现或真机验收。上游 main 分支不等于已经发布的稳定包，实施时必须锁定 tag/commit、依赖及构建哈希。
 
 ## 1. 分类原则
 
@@ -49,7 +49,7 @@ A/B 是本项目的工程优先级，不是性能排名。GPU/NPU 都须绑定�
 
 | 项目/能力 | 为什么单独列出 |
 | --- | --- |
-| [MLX](https://github.com/ml-explore/mlx) / Apple 平台生态 | 开源且适合 Apple silicon，但本项目是 Android；列为未来其他平台后端，不进入 Android 构建 |
+| [MLX](https://github.com/ml-explore/mlx) / Apple 平台生态 | 开源且适合 Apple silicon，但目标服务是 Android；列为未来其他平台后端，不进入 Android 构建 |
 | [Qualcomm AI Hub Models](https://github.com/qualcomm/ai-hub-models) / QNN | 模型、示例与 NPU 工具链相关能力；不能把开放示例等同于所有 SDK/驱动都开源。QNN 作为可选执行后端依赖，经许可、芯片与系统版本审核再分发 |
 | Google AICore / 系统模型服务 | 与可由本应用打包、独立进程管理的开源引擎不是同一交付方式；本期不以其作为离线引擎兜底 |
 | Vulkan、OpenCL、XNNPACK、NNAPI | 图形/计算 API、内核库或系统加速接口，不分别包装成完整 LLM 后端；由上层引擎选择 |
@@ -57,7 +57,7 @@ A/B 是本项目的工程优先级，不是性能排名。GPU/NPU 都须绑定�
 
 本轮覆盖 18 个主要/相关运行时条目，另列平台边界；这是有官方证据的可维护目录，不宣称穷尽所有项目。今后新增后端遵守同一个 SPI 和状态机，不增加新的协议入口。
 
-模型权重下载按引擎 recipe 选择 HF 适配变体，并支持官方备用源及内容一致的镜像；具体入口、文件选择和换源规则见[模型匹配与多源下载](local-model-downloads.md)。
+模型权重下载按引擎匹配器动态生成 recipe 并选择 HF 适配变体，并支持官方备用源及内容一致的镜像；具体入口、文件选择和换源规则见[模型匹配与多源下载](local-model-downloads.md)。
 
 ## 5. 构建注册与上线门槛
 
