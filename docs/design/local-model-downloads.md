@@ -132,9 +132,9 @@ interface ArtifactMatcher {
 
 后台大文件下载需要单独的 Android 下载生命周期设计，不沿用推理 specialUse 服务作为无限下载许可。首版可只保证前台下载与暂停续传；后台能力另行评估适用的用户发起数据传输/前台 dataSync 机制与系统限制，并保持单一写入者。下载与推理共享资源预算，默认最多 2 个文件传输，校验/解压限速以避免内存和热冲突。
 
-## 6. Kotlin 与 HTTP 扩展
+## 6. 内部接口与 HTTP 扩展
 
-不增加第二个安装器。`ModelCatalogClient`、`ArtifactResolver` 接到拟议的 `LocalModelManager.inspect/install`；源配置、凭据、目录缓存和下载操作均由独立进程唯一写入。
+不增加第二个安装器。服务进程内部的 `ModelCatalogClient`、`ArtifactResolver` 接到拟议的 `LocalModelManager.inspect/install`；源配置、凭据、目录缓存和下载操作均由独立进程唯一写入。
 
 ```kotlin
 interface ModelCatalogClient {
@@ -146,13 +146,14 @@ interface ModelCatalogClient {
 }
 ```
 
-`EngineModelQuery` 包含已打包 backendId 与 backendBuild、任务/profile、关键词、来源集合、格式、量化、兼容性视图和页大小；每次请求绑定选中的引擎版本，若运行中的引擎版本已变化则返回 409 并要求重新取列表。`RecommendationQuery` 包含 backendId 或 AUTO、任务/profile、上下文、资源预算；设备事实由服务端采集，不信任 HTTP 客户端伪造。`ResolveArtifactRequest` 引用受控 candidateRef、variantId、sourcePolicyId；结果复用已有 InstallPlan。模型凭据通过 Binder 的秘密输入或单独受限管理入口保存；不放查询参数、普通 DTO 或响应正文。
+`EngineModelQuery` 包含已打包 backendId 与 backendBuild、任务/profile、关键词、来源集合、格式、量化、兼容性视图和页大小；每次请求绑定选中的引擎版本，若运行中的引擎版本已变化则返回 409 并要求重新取列表。`RecommendationQuery` 包含 backendId 或 AUTO、任务/profile、上下文、资源预算；设备事实由服务端采集，不信任 HTTP 客户端伪造。`ResolveArtifactRequest` 引用受控 candidateRef、variantId、sourcePolicyId；结果复用已有 InstallPlan。模型来源凭据通过单独受限的 HTTP 管理入口保存；不放查询参数、普通 DTO 或响应正文。
 
 | HTTP 管理路由 | 契约 |
 | --- | --- |
 | `GET /local/v1/catalog/models?backend=...&backendBuild=...&task=...&source=...&format=...&q=...&cursor=...` | 按当前已打包引擎构造来源端筛选查询，必要时检查文件；分页返回仓库、适配变体、来源、格式/量化、applied/residual filters、installable、fetchedAt 与来源错误；无网络时明确显示缓存 |
 | `POST /local/v1/catalog/search` | `{backendId,providerId,query,cursor,showIncompatible}`，保持引擎约束的在线搜索；详情按文件清单确认，标注 curated/online/needsExport/unverified |
 | `GET /local/v1/sources`、`PUT /local/v1/sources/{id}` | 获取/配置允许的来源与优先级；只有管理 scope 可访问；凭据只显示 hasCredential |
+| `PUT /local/v1/sources/{id}/credential` | 管理 scope 写入来源凭据；请求体仅含秘密值，响应只返回 hasCredential，不回显明文 |
 | `POST /local/v1/install-plans` | 原有 `{sourceRef}` 保留；新增受控 sourceRef 可指已解析 candidate+variant+policy，不接受请求直接携带任意文件下载 URL |
 | `POST /local/v1/installs` | `{planId}`，重新校验磁盘、访问权限、来源政策与计划有效期后返回 202 |
 | `POST /local/v1/operations/{id}/pause`、`.../resume` | 仅下载类操作，异步回执；恢复固定版本和源策略，政策被撤销则不恢复 |

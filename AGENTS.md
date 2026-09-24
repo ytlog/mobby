@@ -12,7 +12,7 @@
 ## 本项目的实现边界
 
 - 使用内置 libtermux-android 和 Compose，保留 Shell、Claude Code、Codex、OpenCode 的执行能力。
-- 按当前用户决定，现有 App 内 Agent 的模型请求统一走本地 Node 桥接，由 Android 网络栈联网；Codex 与 OpenCode 仅使用 Responses，Claude Code 仅使用 Messages。现有 App 的远端网关保持原生协议透传。另有由现有 App 依赖、但功能与代码独立的本地模型服务设计，可在它自己的 `:local_model` 进程内提供 Responses、Chat Completions、Messages、Gemini、Ollama HTTP 协议适配，见 `docs/design/local-model-runtime.md`；该服务仅通过宿主薄控制入口接入同一 APK，不依赖 Node 桥接/Agent 功能，也不修改原有执行路径。协议适配不得静默丢弃字段，不支持的语义须明确拒绝；该设计不代表已经实现。
+- 按当前用户决定，现有 App 内 Agent 的模型请求统一走本地 Node 桥接，由 Android 网络栈联网；Codex 与 OpenCode 仅使用 Responses，Claude Code 仅使用 Messages。现有 App 的远端网关保持原生协议透传。另有由现有 App 依赖、但功能与代码独立的本地模型服务设计，可在它自己的 `:local_model` 进程内提供 Responses、Chat Completions、Messages、Gemini、Ollama HTTP 协议适配，见 `docs/design/local-model-runtime.md`；该服务随宿主打包但宿主与服务进程的业务通信统一使用鉴权 HTTP API；Android Intent 只负责启动组件，不使用 Binder/AIDL 或跨进程直接 Kotlin 调用。服务不依赖 Node 桥接/Agent 功能，也不修改原有执行路径。协议适配不得静默丢弃字段，不支持的语义须明确拒绝；该设计不代表已经实现。
 - 网关选项必须有实际执行路径；保留但拒绝执行旧的不匹配协议配置，不静默改写用户配置，不丢弃工具、图片、推理或未知消息字段。
 - 按用户明确授权，Codex、Claude Code 与 OpenCode 都以 Android 应用 UID/SELinux 沙箱为执行边界，不获取 root、不修改系统权限。Codex 使用 danger-full-access 与 approval_policy=never。Claude Code 仍走 stdio 审批协议，但应用对格式正确的 can_use_tool 立即按原始参数允许一次，不再弹出确认卡；否则使用当前手机时每次操作都会停住。OpenCode 使用当次 `--auto`，不写持久权限规则。三者都不使用 bypass 参数。取消、错误和超时必须如实传递，不能显示为成功。
 - 网关密钥和真实用户配置仅存放于设备的加密存储；不得写入源码、测试夹具、文档、日志或 Git。

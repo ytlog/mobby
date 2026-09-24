@@ -1,12 +1,12 @@
 # 本地模型 Gradle 模块、独立进程与 HTTP API 设计
 
-状态：设计提案 v5，尚未实现。资料核对：2026-09-24。
+状态：设计提案 v6，尚未实现。资料核对：2026-09-24。
 
-交付目标：现有 mobby `:app` 通过 Gradle 依赖独立内聚的 Android Library **`:local-model`**，随同一个 APK 安装。该模块的 Service 在应用私有 **`:local_model` 独立进程**运行 HTTP 服务、模型管理、协议适配、调度及推理；`:app` 只持有薄控制入口，不在主进程运行模型。模块不依赖现有 Node 桥接、Agent、网关或交互模块；除显式控制入口外，旧功能的执行路径不变。外部客户端通过鉴权的 loopback HTTP 接入。引擎调研见[引擎目录](local-model-engines.md)。
+交付目标：现有 mobby `:app` 通过 Gradle 依赖独立内聚的 Android Library **`:local-model`**，随同一个 APK 安装。该模块的 Service 在应用私有 **`:local_model` 独立进程**运行 HTTP 服务、模型管理、协议适配、调度及推理；`:app` 只打开模块提供的管理界面或按 HTTP 契约调用，不在主进程运行模型。模块不依赖现有 Node 桥接、Agent、网关或交互模块；除显式控制入口外，旧功能的执行路径不变。外部客户端通过鉴权的 loopback HTTP 接入。引擎调研见[引擎目录](local-model-engines.md)。
 
 ## 1. 当前决定与范围
 
-按用户最新要求，HTTP API 是正式主入口：提供 OpenAI Responses、Chat Completions、Anthropic Messages、Gemini generateContent 和 Ollama chat/generate 五组协议适配器。**协议支持由本模块提供，不再要求引擎自带同名 HTTP 协议。** Kotlin API 用于宿主 App 的薄控制入口和模块内部调用，复用同一个执行核心。
+按用户最新要求，HTTP API 是正式主入口：提供 OpenAI Responses、Chat Completions、Anthropic Messages、Gemini generateContent 和 Ollama chat/generate 五组协议适配器。**协议支持由本模块提供，不再要求引擎自带同名 HTTP 协议。** Kotlin 接口仅供模块内部 core/backend 实现使用；宿主对服务的状态、配置、安装、加载、推理和停止一律调用 HTTP API。
 
 本服务独立实现各 HTTP 协议到统一推理请求的语义适配，再按原协议输出。现有 mobby 网关的透传规则只约束原有 Agent 请求；本模块不复用 Node 桥接或改写已有网关配置。支持自定义本地 HTTP endpoint 的 Agent 可作为客户端接入，具体兼容性须实测；是否把当前内置 Agent 指向本服务属于以后显式接入的独立工作。工具、图片、推理或未知字段不得被静默丢弃；无法表达的语义在执行前拒绝。
 
@@ -16,18 +16,18 @@
 
 ## 2. 现状与设计依据
 
-当前 [settings.gradle.kts](../../settings.gradle.kts) 尚无这些模块，本文所有 Gradle、AIDL、Manifest 与 API 均为拟议结构。现有 [app/build.gradle.kts](../../app/build.gradle.kts) 将增加对 `:local-model` 的单向依赖；模块不反向依赖 `:app`、`runtime-*`、`interaction-*`。模块纳入现有 APK，沿用当前 applicationId、UID、签名与最低 API 约束；任何引擎若要求更高 minSdk、冲突 native 库或扩大 APK，需要通过构建变体、选配或暂缓该引擎处理，不能悄悄改变旧 App 的安装门槛。研究与 Android 支持证据见[引擎目录](local-model-engines.md)。资源额度和超时均为拟议默认值，须真机校准。
+当前 [settings.gradle.kts](../../settings.gradle.kts) 尚无这些模块，本文所有 Gradle、Manifest 与 API 均为拟议结构。现有 [app/build.gradle.kts](../../app/build.gradle.kts) 将增加对 `:local-model` 的单向依赖；模块不反向依赖 `:app`、`runtime-*`、`interaction-*`。模块纳入现有 APK，沿用当前 applicationId、UID、签名与最低 API 约束；任何引擎若要求更高 minSdk、冲突 native 库或扩大 APK，需要通过构建变体、选配或暂缓该引擎处理，不能悄悄改变旧 App 的安装门槛。研究与 Android 支持证据见[引擎目录](local-model-engines.md)。资源额度和超时均为拟议默认值，须真机校准。
 
 ## 3. Gradle 模块设计
 
 ### 3.1 对外入口与内部模块
 
-`:app` 使用 `implementation(project(":local-model"))` 打包模块，并通过 `LocalModelHost` 控制服务启停和读取状态。`:local-model` 拥有完整功能与私有数据子目录；宿主只负责显式用户入口、通知呈现和必要的 Android 生命周期协调，不能复制调度器、下载器或协议实现。第三方客户端只使用 HTTP API，不需要链接 AAR。
+`:app` 使用 `implementation(project(":local-model"))` 打包模块。宿主可以打开模块自带管理界面；若宿主自建界面，也只能通过受限管理 HTTP API 操作服务，不持有 `LocalModelHost`、Binder/AIDL 或模型对象引用。Android 启动前台 Service 所需的显式 Intent 是唯一平台生命周期例外，不承载业务命令或模型数据。第三方客户端只使用 HTTP API，不需要链接 AAR。
 
 | 模块 | 类型 / 职责 | 依赖 |
 | --- | --- | --- |
-| `:app` | 现有 Android Application，增加对 `:local-model` 的单向依赖与薄控制入口 | `:local-model`；原有依赖保持 |
-| `:local-model` | Android Library，公开控制 facade、AIDL、Service/Manifest、HTTP listener、安装存储及进程组合根 | api、core、http；按构建配置选择 backend |
+| `:app` | 现有 Android Application，增加对 `:local-model` 的单向依赖和管理页面入口 | `:local-model`；原有依赖保持 |
+| `:local-model` | Android Library，自带管理页面、Service/Manifest、HTTP listener、安装存储及进程组合根；不向宿主公开模型调用 API | api、core、http；按构建配置选择 backend |
 | `:local-model-api` | Kotlin/JVM，模型/任务/事件 DTO、能力、错误、Backend SPI | coroutines、serialization；无 Android/Compose/CLI 依赖 |
 | `:local-model-core` | Kotlin/JVM，唯一调度器、模型租约、生成与协议会话状态机 | api |
 | `:local-model-http` | Kotlin/JVM，路由、五组协议 codec、SSE/NDJSON、鉴权和准入；嵌入式 server 传输封装 | api、core；Android 可用的 HTTP server 实现 |
@@ -40,13 +40,11 @@ local-model/
   build.gradle.kts
   consumer-rules.pro
   src/main/AndroidManifest.xml
-  src/main/aidl/.../ILocalModelControl.aidl
-  src/main/aidl/.../ILocalModelObserver.aidl
-  src/main/kotlin/.../LocalModelHost.kt          # 主进程代理，无 native 初始化
+  src/main/kotlin/.../ui/LocalModelControlActivity.kt  # 经 HTTP 管理服务；Manifest 内注册
+  src/main/kotlin/.../ui/LocalModelHttpClient.kt       # HTTP 客户端，仅供模块 UI
   src/main/kotlin/.../service/LocalModelService.kt
   src/main/kotlin/.../service/ServiceComposition.kt
   src/main/kotlin/.../service/LocalModelNotification.kt
-  src/main/kotlin/.../ipc/                      # bounded DTO / FD
   src/main/kotlin/.../storage/                  # 子进程唯一写入者
 local-model-api/src/main/kotlin/.../            # DTO、SPI、错误
 local-model-core/src/main/kotlin/.../           # 调度器、状态、租约
@@ -104,27 +102,24 @@ dependencies {
 ```mermaid
 flowchart LR
     subgraph APK[同一个 mobby APK / 同一应用 UID]
-        subgraph Main[现有 App 主进程]
-            UI[薄控制入口]
-            Proxy[LocalModelHost Binder 代理]
-            UI --> Proxy
-            Existing[既有 Shell / Agent / 网关]
+        subgraph Main[App 主进程]
+            Host[宿主入口]
+            UI[模块管理页面 / HTTP 客户端]
+            Host -->|打开页面| UI
         end
         subgraph Worker[专用进程 :local_model]
-            Control[AIDL 控制端]
             HTTP[loopback HTTP + 鉴权]
             Codec[Responses / Chat / Messages / Gemini / Ollama]
             Core[统一 IR / 单一调度器 / 状态库]
             Engine[已打包 Backend / JNI / 模型]
-            Control --> Core
             HTTP --> Codec --> Core --> Engine
         end
-        Proxy --> Control
+        UI -->|管理 HTTP API| HTTP
     end
-    Client[外部 Agent / SDK] -->|HTTP| HTTP
+    Client[外部 Agent / SDK] -->|推理 HTTP API| HTTP
 ```
 
-HTTP 流不经过主进程或 Binder。主进程不解析模型请求、不持有 native handle、不运行第二个调度器；既有 Agent/网关没有指向新服务的隐式路由。模块边界是代码和功能边界，独立进程隔离崩溃和内存负载，但不能隔离同 UID 文件访问、权限或 APK 更新。
+`LocalModelControlActivity` 仅通过 Android 显式 Intent 启动前台 Service，然后轮询 HTTP health；模型业务通信全部走 HTTP，包括宿主自建界面。页面与 Service 可以共用安装时的加密引导配置（固定监听端口、管理凭据），这只是启动所需配置，不承载运行状态或业务消息。主进程不解析模型请求、不持有 native handle、不运行第二个调度器。既有 Agent/网关没有指向新服务的隐式路由；用户以后可把本服务 URL 和推理令牌保存为普通自定义网关。
 
 ### 3.4 同 APK 的边界与代价
 
@@ -133,7 +128,7 @@ HTTP 流不经过主进程或 Binder。主进程不解析模型请求、不持�
 | 同一 applicationId/UID/权限/数据沙箱 | 用模块私有目录、独立数据库和密钥别名维持职责边界；这只是代码约束，不是安全隔离。HTTP 仍需逐请求鉴权 |
 | 同一 APK 的发布和卸载 | 模型服务与宿主同步安装、升级、卸载；不能独立更新引擎，也不能承诺卸载宿主后保留模型。变更数据库时只重建本模块开发数据库 |
 | Manifest 与依赖合并 | 检查最终 Service 声明、前台服务权限、provider 自动初始化、minSdk/ABI、R8、native 符号与包体积；不靠 `pickFirst` 掩盖冲突 |
-| 宿主进程和服务进程互相独立 | 主进程退出不应无故取消已启动的前台服务；服务崩溃不能拖垮宿主，但在途 HTTP 连接会中断，宿主须通过 Binder 失联恢复状态 |
+| 宿主进程和服务进程互相独立 | 主进程退出不应无故取消已启动的前台服务；服务崩溃不能拖垮宿主，但在途 HTTP 连接会中断，宿主通过 HTTP 连接失败与重新查询 health 恢复状态 |
 | Android 后台限制 | 用户可见操作启动服务，保持适用的前台服务通知；系统仍可终止进程，不能承诺常驻或后台任意自启 |
 
 ## 4. 独立进程与 Android 生命周期
@@ -166,40 +161,29 @@ Manifest 由 `:local-model` Library 声明，并在 `:app` 构建时合并；发
 
 现有 `MobbyApplication` 必须先识别当前进程：主进程照常初始化原有功能；`:local_model` 只做轻量应用初始化，组合根由 Service 创建。App Startup/ContentProvider 和第三方 SDK 自动初始化须检查并禁用不需要的进程行为。任何后端不得在静态初始化或 Application 全局容器中调用 `System.loadLibrary`。API 26/27 进程名读取由平台适配处理，不假设 API 28 的方法始终可用。
 
-### 4.2 控制接口与进程协议
+### 4.2 HTTP 控制与启动引导
 
-```kotlin
-interface LocalModelHost {
-    val state: StateFlow<ServiceSnapshot>
-    suspend fun start(config: ServerConfig): LmResult<ServiceLease>
-    suspend fun connection(lease: ServiceLease): LmResult<ConnectionHandle>
-    suspend fun stop(lease: ServiceLease, mode: StopMode): LmResult<Unit>
-    suspend fun restartWhenIdle(): LmResult<ServiceSnapshot>
-}
-```
+模块在用户首次打开管理页时生成独立的、安装级管理令牌，以专用 Keystore 别名加密保存；推理令牌由管理 HTTP API 签发/撤销并独立分 scope。管理页与服务同 UID，可读取模块自己的引导配置；宿主其他功能不读取模型数据库或管理凭据。预设监听 `127.0.0.1:11435`；用户可在管理页修改端口，端口冲突则启动失败并显示原因，不自动漂移。页面明确显示当前 Base URL，外部客户端自行配置。
 
-`ServiceLease` 包含 `serverInstanceId` 和 owner，防止旧页面停止新实例；`ConnectionHandle` 含 loopback 地址、协议 profile 和可消费秘密令牌，禁止 data-class 默认打印令牌。服务启动幂等、绑定成功不等于 HTTP 就绪；listener 已绑定、调度器和鉴权可用后才进入 LISTENING。
+用户从可见页面启动时，模块页面调用 Android `startForegroundService`，显式指向 `LocalModelService`；Intent 仅用于创建 Android 组件，不携带 prompt、模型命令、密钥或运行状态。服务必须在平台期限内转为前台，再读取加密配置、绑定端口并提供鉴权 HTTP。页面按有界 deadline 请求 `GET /local/v1/health`；连接成功并返回当前 instanceId 才表示 LISTENING，连接失败表示不可用，不能伪装已启动。停止、配置、安装、加载、取消、查询均由 HTTP 管理路由完成，不定义 Binder/AIDL 或跨进程 Kotlin facade。
 
-AIDL 只提供 `getSnapshot`、`start/configure`、`requestStop`、`registerObserver`、`unregisterObserver`、受控文件导入以及管理命令。每个命令带契约版本、commandId、instanceId；采用立即回执 + 异步状态，Binder 线程不阻塞模型加载。DTO 有长度限制（建议单笔 ≤ 64 KiB）；文件通过只读 FD，回调仅发有界摘要。binder 端还验证调用 UID 与会话实例。
-
-状态机：`STOPPED → STARTING → LISTENING → DRAINING → STOPPED`，可进入 FAILED。LISTENING 表示可处理 HTTP，不表示所有模型已 READY；每个模型保有独立状态。
+状态机：`STOPPED → STARTING → LISTENING → DRAINING → STOPPED`，可进入 FAILED。LISTENING 表示可处理 HTTP，不表示所有模型已 READY；每个模型保有独立状态。HTTP 不可用时，宿主只能显示“服务不可连接/可能已停止或崩溃”；具体原因在下次成功启动后由服务的持久化状态摘要提供，不通过旁路 IPC 猜测。
 
 ### 4.3 正常停止、失联与恢复
 
-- 停止服务：关闭新准入，活动 HTTP 请求收到适当失败/取消事件，停止 native 生成，确认释放模型后关闭 listener、令牌、通知与 Service。排空限时结束仍未停止，进入强制停止路径。
-- 主进程 Binder death recipient 检测服务死亡：标记实例失效、关闭已持有 lease、通知宿主控制入口该实例失效。HTTP 连接自然中断，不合成成功、不重发 prompt。
-- 服务进程是任务/安装/协议状态的唯一写入者；重启时将未终结推理/加载操作恢复为 INTERRUPTED、可恢复下载标记为暂停，并轮换 instanceId/端口/令牌。已安装文件仍有效，KV 和内存 response ID 失效。
-- 主进程被系统回收时，用户主动启动的前台 HTTP 服务可继续；UI 重新绑定读取服务状态。只绑定、未用户启动的临时模式在最后一个 lease 丢失后停止。不得在 Binder death 时无条件停止所有外部 Agent 任务。
-- `START_NOT_STICKY`；不承诺系统回收后自动复活。重启由用户或仍有效的宿主控制流程明确触发，只恢复空闲服务，不自动重放失败任务。
-- native 卡死时，主进程控制器持有 Binder 握手确认的专用进程 PID 与实例；停止期限届满后仅在仍绑定同实例、验证 PID/UID/进程身份后终止它。Binder 已死亡则不杀可能被复用的 PID；禁止按名字杀进程。无主进程时可由进程内独立 watchdog 终止自身，不能阻塞在推理线程上等待。
+- `POST /local/v1/server/stop` 请求优雅停止：关闭新准入，活动请求收到适当失败/取消事件，停止 native 生成并确认资源释放，最后关闭 listener、通知与 Service。202 仅表示已受理；若连接随服务关闭而断开，客户端不能把断开当成完成确认。
+- 端口连接失败、请求中断或超时：宿主标记当前实例不可用，不合成成功、不重发 prompt；重新启动后通过 health 的新 instanceId 和操作快照恢复显示。
+- 服务进程是任务/安装/协议状态的唯一写入者；重启时将未终结推理/加载操作恢复为 INTERRUPTED、可恢复下载标记为暂停，并轮换 instanceId。已安装文件仍有效，KV 和内存 response ID 失效。管理/推理令牌持久保存直到明确轮换或撤销，不因意外重启失效。
+- 主进程被系统回收时，用户主动启动的前台 HTTP 服务可继续；管理页重开后重新请求 health。服务使用 `START_NOT_STICKY`，不承诺被系统杀死后自动复活。
+- native 卡死由服务进程内独立 watchdog 监测；确认超时后仅终止自身进程。若整个进程无法响应，HTTP 客户端只能报服务不可用，由用户通过 Android 系统停止/重启应用；没有 Binder/PID 旁路强杀路径。
 
 HTTP 与 JNI 同进程意味着 native 崩溃会断开所有该实例连接，这是明确的设计代价；宿主主进程与其他应用仍存活。若将来要求推理崩溃时 HTTP 继续响应，再增加第二级 worker，不把这种额外进程复杂度放进首版。
 
 ### 4.4 存储与跨进程一致性
 
-模型目录、下载 staging、安装元数据、运行日志和协议状态由服务进程唯一管理；主进程只读快照/提交命令，不共享 Room DAO 或依赖 SharedPreferences 的跨进程缓存同步。配置通过加密存储或明确 Binder 快照传递。服务只保留协议续接所需的受限状态；外部 Agent 的对话历史由各客户端自行管理。
+模型目录、下载 staging、安装元数据、运行日志和协议状态由服务进程唯一管理；主进程只通过 HTTP 读取快照/提交命令，不共享 Room DAO 或依赖 SharedPreferences 的跨进程缓存同步。唯一共享的加密引导配置仅含监听端口与认证材料；变更由管理 HTTP API 提交，服务负责持久化并返回生效时机。服务只保留协议续接所需的受限状态；外部 Agent 的对话历史由各客户端自行管理。
 
-权重、协议 prompt 缓存排除自动备份。模型不进入 HOME/工作区/Git，凭据不进入日志。服务沿用 mobby applicationId 和 UID，使用单独的存储子目录、数据库与 Keystore 别名（不复用 `mobby.gateway`）；同 UID 进程并无强制文件隔离。服务令牌内存生成，每实例轮换。开发期仅重建变化的本地模型元数据库，保留原有数据库、SharedPreferences、HOME 和工作区。
+权重、协议 prompt 缓存排除自动备份。模型不进入 HOME/工作区/Git，凭据不进入日志。服务沿用 mobby applicationId 和 UID，使用单独的存储子目录、数据库与 Keystore 别名（不复用 `mobby.gateway`）；同 UID 进程并无强制文件隔离。管理/推理令牌按作用域持久加密保存，支持显式轮换/撤销；重启只轮换 instanceId，不自动改变客户端凭据。开发期仅重建变化的本地模型元数据库，保留原有数据库、SharedPreferences、HOME 和工作区。
 
 ## 5. 模型包与安装 API
 
@@ -226,7 +210,7 @@ Manifest v1 必须包含：
 
 ### 5.2 管理接口
 
-以下为拟议公共契约，尚非现有可调用 SDK。Kotlin 中统一用密封 `LmResult<T>` 表示 `Ok(value)` / `Err(LocalModelError)`；`CancellationException` 继续传播。
+以下为服务进程内部接口，不是宿主可调用 SDK；跨进程使用第 8 节 HTTP 契约。Kotlin 内部统一用密封 `LmResult<T>` 表示 `Ok(value)` / `Err(LocalModelError)`；`CancellationException` 继续传播。
 
 ```kotlin
 interface LocalModelManager {
@@ -302,9 +286,9 @@ interface LocalModelClient {
 
 `GenerationOptions` 不采用无约束的参数 Map；null 表示使用有版本记录的后端默认值，实际值进入运行快照。不支持显式指定的 seed、采样参数或内容类型时返回错误，不能静默忽略。基础 profile 接受文本；Agent profile 还要求经验证的工具定义、调用与结果。图片等按能力启用。工具调用只输出结构化提议，由外部客户端自己的工具执行层处理；推理模块不获得设备操作权限。
 
-`submit` 先校验模型、输入类型、模板/tokenizer、token 预算和资源，再接受。Kotlin `submit` 请求必须引用 READY 模型；调用方先观察 `load` 成功，再提交。HTTP adapter 若启用显式 autoLoad，须先完成相同的资源计划与加载，再调用 `submit`。排队接受时持有轻量模型租约，避免中途删除。首版同模型队列上限建议为 2，满时返回 `BUSY`；切换模型必须等活动任务释放，禁止并发 load 穿透调度器。
+`submit` 先校验模型、输入类型、模板/tokenizer、token 预算和资源，再接受。服务内部 `submit` 请求必须引用 READY 模型；调用方先观察 `load` 成功，再提交。HTTP adapter 若启用显式 autoLoad，须先完成相同的资源计划与加载，再调用 `submit`。排队接受时持有轻量模型租约，避免中途删除。首版同模型队列上限建议为 2，满时返回 `BUSY`；切换模型必须等活动任务释放，禁止并发 load 穿透调度器。
 
-多轮请求发送完整、明确选择的历史，业务层持久化内容。Kotlin 聊天接口本身不拥有 conversation ID；HTTP Responses 的受限续接存储由第 8 节定义；优化 KV cache 时仅按模型 revision、模板、token 序列前缀和加载参数复用，不依赖会话名称。超限返回 `CONTEXT_LIMIT`；不自动截断历史、不悄悄缩短输出、不自动总结。
+多轮请求发送完整、明确选择的历史，业务层持久化内容。内部聊天接口本身不拥有 conversation ID；HTTP Responses 的受限续接存储由第 8 节定义；优化 KV cache 时仅按模型 revision、模板、token 序列前缀和加载参数复用，不依赖会话名称。超限返回 `CONTEXT_LIMIT`；不自动截断历史、不悄悄缩短输出、不自动总结。
 
 ### 6.2 事件与终态
 
@@ -370,7 +354,7 @@ SPI 失败用类型化异常交给服务端映射；上层不能依赖 vendor �
 
 能力取交集：`后端已实现 ∩ 模型声明 ∩ 当前硬件支持 ∩ 产品策略 ∩ 验证证据`。设备探测结果只有候选资格；GPU 在指定机型/驱动上通过实际加载与生成才进入可用列表。GPU 失败不静默切 CPU；可以返回重新以 CPU 加载的建议，当前请求失败后由调用方明确重试。
 
-native 解码须接入引擎停止机制，单纯取消 Kotlin Job 不够。建议停止确认期限为 3 秒；若线程失去响应，由本服务控制器受控终止专用服务进程并等待 Binder death。进程死亡时原调度器一同消失，本服务控制器释放该实例租约并标记中断；正常 abort 确认后才由服务端释放任务租约。无法确认停止则 `STOP_UNCONFIRMED` 并阻止新任务。只处理本模块拥有的进程，禁止按名称杀死外部服务。
+native 解码须接入引擎停止机制，单纯取消 Kotlin Job 不够。建议停止确认期限为 3 秒；若线程失去响应，由服务内独立 watchdog 确认后终止自身进程。进程死亡时原调度器一同消失；重启后将未终结任务标记中断；正常 abort 确认后才由服务端释放任务租约。无法确认停止则 `STOP_UNCONFIRMED` 并阻止新任务。只处理本模块拥有的进程，禁止按名称杀死外部服务。
 
 热状态严重或系统低内存时停止新准入；必要时停止当前任务，待确认结束再卸载。允许降低线程数等已声明且不改变请求内容的调度参数，并记录变化；不能运行中悄悄降低上下文。长时间压力测试应覆盖降频、锁屏、后台、低内存和重复装卸。
 
@@ -378,9 +362,9 @@ native 解码须接入引擎停止机制，单纯取消 Kotlin Job 不够。建�
 
 ### 8.1 服务与模型身份
 
-默认只绑定 `127.0.0.1`，端口由系统分配；提供用户指定固定端口选项，冲突时明确失败，不能悄悄切换后仍向客户端宣传原端口。每次启动返回 `serverInstanceId`、地址与鉴权方式；不默认监听 `0.0.0.0`。LAN 暴露不在首版范围，后续需单独实现 TLS、网络访问控制和用户启用入口。
+默认只绑定 `127.0.0.1:11435`，可由用户在管理页指定其他固定端口；冲突时明确失败，不能悄悄切换后仍向客户端宣传原端口。`GET /local/v1/health` 返回 `serverInstanceId`、地址与服务状态；不默认监听 `0.0.0.0`。LAN 暴露不在首版范围，后续需单独实现 TLS、网络访问控制和用户启用入口。
 
-所有模型请求都鉴权，包括 models/health；Bearer、Messages 的 `x-api-key`、Gemini 的 `x-goog-api-key` 是同一 token 的兼容 header 表达，冲突凭据拒绝。默认不接受 query 中的 key，避免 URL 日志泄漏。推理令牌与管理令牌分 scope；外部 Agent 不可下载、删除或覆盖模型。令牌通过宿主控制入口的 Binder/界面显式交付，不写源码或日志；外部客户端自行安全保存。loopback 可被其他 App 连接，必须鉴权；`exported=false` 只保护 Service，不保护 HTTP。
+所有模型请求都鉴权，包括 models/health；Bearer、Messages 的 `x-api-key`、Gemini 的 `x-goog-api-key` 是同一 token 的兼容 header 表达，冲突凭据拒绝。默认不接受 query 中的 key，避免 URL 日志泄漏。推理令牌与管理令牌分 scope；外部 Agent 不可下载、删除或覆盖模型。令牌由模块管理页显式交付或通过受限管理 HTTP API 签发，不写源码或日志；外部客户端自行安全保存。loopback 可被其他 App 连接，必须鉴权；`exported=false` 只保护 Service，不保护 HTTP。
 
 模型名由服务分配，如 `local-qwen-small`，映射到不可变 `(modelRevision, backendBuild, device, profile)`；每请求准入时固定绑定。变更别名只影响新请求，续接沿用原组合，已卸载/删除则报错，不切模型。`/v1/models` 只列该凭据有权调用且具备对应 profile 的模型；能力详情走 `/local/v1/models/{id}/capabilities`，不向标准对象随意塞入不可识别字段。
 
@@ -462,11 +446,14 @@ Messages/Chat/Gemini 的基础 profile 由客户端发送完整历史；服务�
 
 ### 8.6 管理 HTTP API
 
-管理面放在 `/local/v1`，与兼容协议命名空间分开。所有路径都鉴权；health/engines/models/capabilities 可用推理或管理 scope 读取，安装、加载、卸载、删除与来源配置需要管理 scope；运行快照和取消仅允许任务 owner 或管理 scope。宿主 Binder 与 HTTP 管理调用同一个 core，不保留两套安装或调度逻辑。
+管理面放在 `/local/v1`，与兼容协议命名空间分开。所有路径都鉴权；health/engines/models/capabilities 可用推理或管理 scope 读取，安装、加载、卸载、删除、来源配置与服务停止需要管理 scope；运行快照和取消仅允许任务 owner 或管理 scope。宿主、模块管理页和外部管理员都调用同一 HTTP 管理面，不保留第二套安装或调度入口。
 
 | 方法与路径 | 请求 / 返回与状态 |
 | --- | --- |
 | `GET /local/v1/health` | 返回 instanceId、LISTENING/DRAINING、资源摘要；无敏感路径与凭据 |
+| `POST /local/v1/server/stop` | 管理 scope 请求排空并停止服务；202 表示已受理，关闭连接不等于完成 |
+| `PUT /local/v1/server/config` | 管理 scope 修改固定监听端口等配置；返回是否需重启及生效时机，不在当前请求中悄悄切端口 |
+| `POST /local/v1/tokens`、`DELETE /local/v1/tokens/{id}` | 管理 scope 签发或撤销推理令牌；令牌明文只在创建响应显示一次 |
 | `GET /local/v1/engines` | backend ID、研究/打包/设备状态和不可用原因；调研条目不等于已实现 |
 | `GET /local/v1/models`、`GET /local/v1/models/{id}/capabilities` | 安装状态、实际 profile、模型 revision、预算、状态保留期 |
 | `POST /local/v1/install-plans` | `{sourceRef}` → 安装计划、字节、许可、过期时间；sourceRef 来自受控 HF/官方源候选、镜像配方或导入，非任意下载 URL；发现/源管理/暂停续传接口见[下载设计](local-model-downloads.md) |
@@ -487,7 +474,7 @@ Messages/Chat/Gemini 的基础 profile 由客户端发送完整历史；服务�
 
 关闭 CORS 默认跨域访问；校验 Origin/Host，禁用重定向、任意上游代理和日志正文。HTTP parser 的 TE/CL 歧义、慢连接与大整数也需验证。不同 principal 隔离任务、response store 和模型权限，令牌轮换同时撤销旧 principal 的状态访问。
 
-以下示例假设服务已启动并加载模型；`LOCAL_MODEL_BASE` 与 `LOCAL_MODEL_TOKEN` 由本次启动返回，文档不提供真实令牌。请求不是现在已能运行的实现。
+以下示例假设服务已启动并加载模型；`LOCAL_MODEL_BASE` 由固定端口配置得到，`LOCAL_MODEL_TOKEN` 从模块管理页取得，文档不提供真实令牌。请求不是现在已能运行的实现。
 
 ```sh
 curl -N "$LOCAL_MODEL_BASE/v1/chat/completions" \
@@ -509,7 +496,11 @@ curl -N "$LOCAL_MODEL_BASE/v1/messages" \
 
 ### 8.8 外部 Agent 与 Ollama 后端
 
-对外 Agent/SDK 只使用 HTTP 协议端点；宿主控制另走 Binder。客户端需支持配置本机 Base URL、令牌及所需协议；是否能接入由客户端自身版本、协议覆盖范围和模型能力决定。`AgentCompatibilityReport(clientVersion, protocolProfile, modelRevision, backendBuild, deviceEvidence)` 记录真实互操作结果；测试首轮、续接、工具调用/结果回传、停止和辅助接口后才标记该组合可用。服务只输出工具提议，不执行客户端工具。现有 mobby Agent 与 Node 桥接保持原路径；本次只增加宿主对服务的控制入口，不做 Agent 路由接入。
+对外 Agent/SDK 与宿主业务操作都使用 HTTP 协议端点；Android Intent 仅负责平台组件启动。客户端需支持配置本机 Base URL、令牌及所需协议；是否能接入由客户端自身版本、协议覆盖范围和模型能力决定。`AgentCompatibilityReport(clientVersion, protocolProfile, modelRevision, backendBuild, deviceEvidence)` 记录真实互操作结果；测试首轮、续接、工具调用/结果回传、停止和辅助接口后才标记该组合可用。服务只输出工具提议，不执行客户端工具。现有 mobby Agent 与 Node 桥接保持原路径；用户以后可在普通自定义网关里选择本服务地址，桥接仍按原协议透传，无需添加专用本地模型调用代码。
+
+作为现有 App 的自定义网关，填写 Base URL `http://127.0.0.1:11435/v1`、服务签发的推理令牌和已安装模型的稳定 alias。该入口仍走 `CLI → 既有 Node 桥接 → 本服务 HTTP`；桥接不做协议转换，模型服务按所选协议原生响应。网关目录读取 `GET /v1/models`，Messages 查询带 `anthropic-version` 并可能携带 `limit/after_id`；服务须返回可被现有目录解析的 `data[].id`；带 `anthropic-version` 的请求按 Messages 列表形状分页，给 `has_more/last_id`，其他请求使用 OpenAI 列表形状。保存网关前，现有探测会调用非流式 `POST /v1/responses` 或 `POST /v1/messages`，分别验证 Responses 的 `object=response` 与 `output[]`、Messages 的 `type=message`、`role=assistant` 与 `content[]`。推理令牌必须同时支持桥接实际发送的 Bearer 和 Messages 的 `x-api-key`，且两者相同时视作同一凭据。
+
+现有网关探测超时约 10 秒，手机上的模型若尚未加载或非流式 16-token 探测超时，就无法通过保存门槛。首次接入需先安装并加载模型，或为该网关令牌明确启用 autoLoad 且在总超时内完成；不可跳过探测伪造可用。未来若需要更长探测时限，应单独修改网关探测策略并回归验证。`/v1/responses/compact`、`/v1/messages/count_tokens` 等辅助路由与工具/续接语义按实际客户端版本验收后才宣称兼容。固定端口、稳定 alias、持久推理令牌可让已保存的网关在服务重启后继续指向同一地址，但服务未启动时连接仍会失败。
 
 Ollama 同时有两种含义：第 8.2 节的 **Ollama HTTP 前端**允许 Ollama 客户端调用任意已支持本地引擎；`ollama` **backend**则连接一个真实 Ollama 服务。避免二者混淆。
 
@@ -521,7 +512,7 @@ Ollama 同时有两种含义：第 8.2 节的 **Ollama HTTP 前端**允许 Ollam
 
 | 阶段 | 交付 | 退出条件 |
 | --- | --- | --- |
-| P0 模块与进程 | `:app` 单向依赖、Gradle api/core/http/facade、AIDL、合并 Manifest、服务状态机、fake backend | 同一 APK 中专用进程运行、原 Agent/网关路径不变、主进程无 JNI、端口鉴权、停止/死亡/恢复、跨进程单写测试通过 |
+| P0 模块与进程 | `:app` 单向依赖、Gradle api/core/http/facade、显式 Service 启动、合并 Manifest、服务状态机、fake backend | 同一 APK 中专用进程运行、原 Agent/网关路径不变、主进程无 JNI、宿主全程 HTTP 管理、端口鉴权、停止/死亡/恢复测试通过 |
 | P1 首个完整服务 | llama CPU、HF 适配模型下载/官方备用源、Responses/Chat/Messages 基础与函数工具 profile、管理 API | 真机断网文本与工具循环、SSE、count_tokens、取消/卸载；不支持字段明确拒绝 |
 | P2 多 Agent 协议 | Gemini/Ollama 前端、Responses 续接与目标客户端所需扩展 | 五组协议合同通过；选定的外部 SDK/Agent 验收，按报告启用 |
 | P3 主流引擎 | LiteRT-LM、ONNX GenAI、MNN、MLC、ExecuTorch 逐个接入 | 每个固定版本通过相同 Backend 合同、真机资源和 HTTP 测试；不以 fake 代替 |
@@ -529,7 +520,7 @@ Ollama 同时有两种含义：第 8.2 节的 **Ollama HTTP 前端**允许 Ollam
 
 主路径回归测试：每个协议执行工具定义 → 模型调用 → 客户端提交工具结果 → 模型继续回答；包含多工具块、拆分参数、UTF-8、unknown field、opaque reasoning、JSON schema、输出上限和各类终态。Responses 加测不同 principal、过期 ID、指令不继承、版本不匹配、store=false 和进程重启。
 
-进程验收：native 崩溃只结束专用服务进程；宿主主界面可操作，HTTP 客户端得到失败，旧端口/令牌/lease 不复用。主 UI 被销毁而前台服务仍运行时可继续 HTTP 请求；服务被系统杀死后不自动重放。内存不足、加载中取消、热状态、后台启动拒绝、通知停止、固定端口冲突、Binder 超大消息、慢客户端和调度器背压均需覆盖。
+进程验收：native 崩溃只结束专用服务进程；宿主主界面可操作，HTTP 客户端得到失败，旧 instanceId 不复用、旧连接不自动重放。主 UI 被销毁而前台服务仍运行时可继续 HTTP 请求；服务被系统杀死后不自动重放。内存不足、加载中取消、热状态、后台启动拒绝、通知停止、固定端口冲突、HTTP 超大请求、慢客户端和调度器背压均需覆盖。
 
 构建验收：检查合并 Manifest、独立进程名、导出组件、ABI/minSdk、native 页大小/依赖冲突和 R8；release 变体测试 JNI 与 factory 未被错误裁剪。每个可选后端做构建矩阵，默认 APK 不携带所有 SDK。HTTP 依赖 Android 真机可运行性必须验证，不仅跑 JVM 单测。
 
@@ -546,4 +537,4 @@ Ollama 同时有两种含义：第 8.2 节的 **Ollama HTTP 前端**允许 Ollam
 
 ## 10. 本次交付边界
 
-本次交付由现有 App 依赖的独立 Gradle 模块结构、独立进程设计、Kotlin/Binder/HTTP 契约、五组协议兼容方案、18 项引擎调研及按引擎匹配的 HF/官方源/镜像下载设计。尚未修改生产构建、运行服务、下载模型或接入任何 native 引擎。实施从 P0 开始，所有代码片段均为设计规格，不能把文档中的路径或接口当作已经存在的实现。
+本次交付由现有 App 依赖的独立 Gradle 模块结构、独立进程设计、模块内部 Kotlin/对外 HTTP 契约、五组协议兼容方案、18 项引擎调研及按引擎匹配的 HF/官方源/镜像下载设计。尚未修改生产构建、运行服务、下载模型或接入任何 native 引擎。实施从 P0 开始，所有代码片段均为设计规格，不能把文档中的路径或接口当作已经存在的实现。
