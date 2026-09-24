@@ -1,5 +1,7 @@
 package com.github.ytlog.mobby.android.interaction.ui
 
+import com.github.ytlog.mobby.android.interaction.ui.UiStrings as AppStrings
+
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
@@ -167,7 +169,7 @@ class DesktopPet internal constructor(
 
     private fun petContent(target: PetTarget?, frame: PetFrame, metrics: PetMetrics): View {
         val ball = PetBallView(context, target?.phase).apply {
-            contentDescription = "任务悬浮球"
+            contentDescription = AppStrings.floatingTaskBubble2
             onTap = {
                 session.expanded = !session.expanded
                 refresh()
@@ -221,21 +223,21 @@ class DesktopPet internal constructor(
                 cornerRadius = 16 * density
             }
             layoutParams = LinearLayout.LayoutParams(width, ViewGroup.LayoutParams.MATCH_PARENT)
-            addView(label(target?.title ?: "mobby", MobbyColors.Dark.ink.toArgb(), 15f, bold = true))
-            addView(label(if (target == null) "暂无执行中的任务" else petStatus(target.phase), MobbyColors.Dark.muted.toArgb(), 13f, bold = false))
+            addView(label(target?.title ?: AppStrings.appName, MobbyColors.Dark.ink.toArgb(), 15f, bold = true))
+            addView(label(if (target == null) AppStrings.noRunningTasks else petStatus(target.phase), MobbyColors.Dark.muted.toArgb(), 13f, bold = false))
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
-                if (target != null) addView(action("停止", "停止当前任务", petCanStop(target.phase)) {
+                if (target != null) addView(action(AppStrings.stop, AppStrings.stopCurrentTask, petCanStop(target.phase)) {
                     session.expanded = false
                     stopRun(target.execution)
                     refresh()
                 })
-                addView(action(if (target == null) "返回应用" else "打开", if (target == null) "返回应用" else "回到对话", true) {
+                addView(action(if (target == null) AppStrings.returnToApp else AppStrings.open, if (target == null) AppStrings.returnToApp else AppStrings.openConversation, true) {
                     session.expanded = false
                     openConversation(target?.conversation)
                     refresh()
                 })
-                addView(action("收起", "收起悬浮球", true) {
+                addView(action(AppStrings.collapse, AppStrings.collapseBubble, true) {
                     session.tuck(target?.execution?.value)
                     refresh()
                 })

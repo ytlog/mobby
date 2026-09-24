@@ -1,5 +1,7 @@
 package com.github.ytlog.mobby.android.interaction.ui.gateway
 
+import com.github.ytlog.mobby.android.interaction.ui.UiStrings as AppStrings
+
 import com.github.ytlog.mobby.android.interaction.domain.gateway.*
 
 import androidx.compose.foundation.*
@@ -60,10 +62,10 @@ internal fun gatewayBaseAddress(value: String): String = value.trim().trimEnd('/
     val selectedReasoning = current?.takeIf { it.gatewayProfile == selectedId && it.model == selectedModel }?.reasoning
     var expandedGatewayId by rememberSaveable { mutableStateOf<String?>(null) }
     Column(Modifier.fillMaxSize()) {
-        PageHeader("网关", back)
+        PageHeader(AppStrings.gateway, back)
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            if (configured.isEmpty()) EmptyPlaceholder("还没有配置网关", "添加后可以从列表中选择，并拉取模型用于切换")
-            else SettingsGroup("已配置") {
+            if (configured.isEmpty()) EmptyPlaceholder(AppStrings.noGatewaysConfigured, AppStrings.addAGatewayToSelectItAndFetchModels)
+            else SettingsGroup(AppStrings.configured) {
                 configured.groupBy { it.id }.entries.forEachIndexed { index, entry ->
                     if (index > 0) GroupDivider()
                     val representative = entry.value.first()
@@ -76,23 +78,23 @@ internal fun gatewayBaseAddress(value: String): String = value.trim().trimEnd('/
                                 expandedGatewayId = representative.id
                                 if (!selected) select(representative, representative.model, null)
                             }
-                        }.semantics { contentDescription = "选择网关 ${representative.id}" }
+                        }.semantics { contentDescription = AppStrings.selectGateway(representative.id) }
                             .padding(start = 16.dp, top = 12.dp, bottom = 12.dp)) {
                             Text(gatewaySummary(representative), style = MaterialTheme.typography.bodyLarge)
                             Text(entry.value.joinToString(" · ") { it.agent.label() }, style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            val status = listOfNotNull(if (isCurrent) "当前会话" else null, if (defaultGateway?.id == representative.id) "新会话默认" else null).joinToString(" · ")
+                            val status = listOfNotNull(if (isCurrent) AppStrings.currentConversation else null, if (defaultGateway?.id == representative.id) AppStrings.defaultForNewConversations else null).joinToString(" · ")
                             if (status.isNotBlank()) Text(status, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                         }
                         if (selected) AppIcon(AppIcons.Check, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
-                        ActionIcon("编辑网关", { open(entry.key) }, AppIcons.Edit, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        ActionIcon(AppStrings.editGateway, { open(entry.key) }, AppIcons.Edit, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.width(8.dp))
                     }
                     if (selected && expandedGatewayId == representative.id && selectedProfile != null) {
                         val models = (selectedProfiles.flatMap { it.models } + GatewayModel(selectedProfile.model, selectedProfile.model))
                             .filter { it.id.isNotBlank() }.distinctBy { it.id }
                         GroupDivider()
-                        Text("模型", Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
+                        Text(AppStrings.model, Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
                             style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         models.forEach { item ->
                             ChoiceRow(if (item.name == item.id) item.id else "${item.name} · ${item.id}", selectedModel == item.id,
@@ -101,17 +103,17 @@ internal fun gatewayBaseAddress(value: String): String = value.trim().trimEnd('/
                         val levels = agents.firstOrNull { it.agent == selectedProfile.agent }?.models?.get(selectedModel).orEmpty()
                         if (current != null && levels.isNotEmpty()) {
                             GroupDivider()
-                            Text("思考程度", Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
+                            Text(AppStrings.reasoningEffort, Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
                                 style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            ChoiceRow("默认", selectedReasoning == null, { select(selectedProfile, selectedModel, null) })
+                            ChoiceRow(AppStrings.default, selectedReasoning == null, { select(selectedProfile, selectedModel, null) })
                             levels.forEach { level -> ChoiceRow(level, selectedReasoning == level, { select(selectedProfile, selectedModel, level) }) }
                         }
                     }
                 }
             }
-            if (notice.isNotBlank()) SettingsCaption(notice, error = notice.contains("未能"))
-            SettingsGroup { SettingsAction("添加网关") { open(null) } }
-            SettingsCaption("点按网关可展开模型与思考程度。选中的网关用于当前会话和新会话，模型与思考程度用于当前会话。")
+            if (notice.isNotBlank()) SettingsCaption(notice)
+            SettingsGroup { SettingsAction(AppStrings.addGateway) { open(null) } }
+            SettingsCaption(AppStrings.gatewaySelectionHelp)
         }
     }
 }
@@ -120,10 +122,10 @@ internal fun gatewaySummary(profile: GatewayProfile): String {
     val providerId = GatewayProviders.match(profile.agent, profile.endpoint)
     val provider = GatewayProviders.find(providerId)?.label
         ?: runCatching { java.net.URI(profile.endpoint).host }.getOrNull()
-        ?: "自定义"
+        ?: AppStrings.custom
     val catalog = when {
-        profile.catalogError != null -> "模型列表未更新"
-        profile.models.isNotEmpty() -> "${profile.models.size} 个模型"
+        profile.catalogError != null -> AppStrings.modelListNotUpdated
+        profile.models.isNotEmpty() -> AppStrings.models(profile.models.size)
         else -> null
     }
     return listOfNotNull(provider, profile.model.takeIf { it.isNotBlank() }, catalog).joinToString(" · ")
@@ -135,7 +137,7 @@ internal fun gatewaySummary(profile: GatewayProfile): String {
     refresh: suspend () -> Unit, back: () -> Unit,
     check: suspend (GatewayProfile) -> DataResult<GatewayCheckReport>,
     editingId: String? = profiles.singleOrNull()?.id,
-    delete: suspend (String) -> OperationResult = { OperationResult.Failed("无法删除") },
+    delete: suspend (String) -> OperationResult = { OperationResult.Failed(AppStrings.cannotDelete) },
     onSaved: ((String) -> Unit)? = null) {
     val group = profiles.filter { it.id == editingId }
     val saved = group.firstOrNull()
@@ -156,6 +158,8 @@ internal fun gatewaySummary(profile: GatewayProfile): String {
     var newModelId by remember { mutableStateOf("") }
     var modelError by remember { mutableStateOf("") }
     var notice by remember { mutableStateOf("") }
+    var noticeError by remember { mutableStateOf(false) }
+    var connectionError by remember { mutableStateOf(false) }
     var connectionNotice by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var checking by remember { mutableStateOf(false) }
@@ -179,31 +183,31 @@ internal fun gatewaySummary(profile: GatewayProfile): String {
         ?: gatewayBaseAddress(baseEndpoint).let { GatewayAddresses(it, it) }
     fun edit() = GatewayEdit(editingId?.takeIf { it.isNotBlank() }, candidates(), model.trim(),
         if (keyEdited) key.toCharArray() else null, selectedModels + listOfNotNull(model.takeIf { it.isNotBlank() }))
-    fun changed() { inspection = null; connectionNotice = ""; notice = "" }
+    fun changed() { noticeError = false; inspection = null; connectionNotice = ""; notice = "" }
     fun modelChanged(value: String) {
         model = value
         inspection = inspection?.copy(model = value, supportedAgents = emptySet())
         selectedModels = selectedModels + value
-        connectionNotice = ""; notice = "请用当前模型重新探测，确认可用 Agent"
+        noticeError = false; connectionNotice = ""; notice = AppStrings.probeAgainWithTheCurrentModelToConfirmAvailable
     }
     val inspected = inspection
     val savedMatches = saved != null && model.trim() == saved.model && !keyEdited &&
         group.all { candidates().forAgent(it.agent) == it.endpoint }
     Column(Modifier.fillMaxSize()) {
-        PageHeader(if (!editingId.isNullOrBlank()) "编辑网关" else "添加网关", back)
+        PageHeader(if (!editingId.isNullOrBlank()) AppStrings.editGateway else AppStrings.addGateway, back)
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            SettingsCaption("填写 Base 地址和密钥后探测。应用会自动查找可用 Agent 和模型；小型探测请求可能产生少量费用。")
+            SettingsCaption(AppStrings.enterABaseAddressAndKeyThenProbeThe)
             SettingsGroup { Box(Modifier.fillMaxWidth().onGloballyPositioned { coordinates ->
                 val origin = coordinates.positionInWindow()
                 providerAnchor = IntRect(origin.x.roundToInt(), origin.y.roundToInt(),
                     origin.x.roundToInt() + coordinates.size.width, origin.y.roundToInt() + coordinates.size.height)
             }) {
-                SettingsAction("服务：${GatewayProviders.find(providerId)?.label ?: "自定义"}", enabled = !busy && !checking) { providerExpanded = true }
+                SettingsAction(AppStrings.serviceLabel(GatewayProviders.find(providerId)?.label ?: AppStrings.custom), enabled = !busy && !checking) { providerExpanded = true }
                 FrostedMenu(providerExpanded, { providerExpanded = false }, providerAnchor) {
                     Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState()).padding(bottom = 12.dp)) {
-                        MenuSection("选择服务") {
-                        (GatewayProviders.all.map { it.id to it.label } + (GatewayProviders.CUSTOM to "自定义")).forEach { (id, label) ->
+                        MenuSection(AppStrings.selectService) {
+                        (GatewayProviders.all.map { it.id to it.label } + (GatewayProviders.CUSTOM to AppStrings.custom)).forEach { (id, label) ->
                             MenuOption(label, id == providerId) {
                                     providerId = id
                                     if (id != GatewayProviders.CUSTOM) baseEndpoint = gatewayBaseAddress(GatewayProviders.find(id)!!.candidates().responses)
@@ -216,23 +220,23 @@ internal fun gatewaySummary(profile: GatewayProfile): String {
                 }
             } }
             SettingsGroup {
-                SettingsField(baseEndpoint, { baseEndpoint = it; changed() }, "Base 地址", enabled = !busy && !checking && providerId == GatewayProviders.CUSTOM)
+                SettingsField(baseEndpoint, { baseEndpoint = it; changed() }, AppStrings.baseAddress, enabled = !busy && !checking && providerId == GatewayProviders.CUSTOM)
                 GroupDivider()
                 SettingsField(key, { key = it; keyEdited = true; changed() },
-                    if (saved?.hasCredential == true && !keyEdited) "已保存密钥，输入可替换" else "API Key（无鉴权可留空）",
+                    if (saved?.hasCredential == true && !keyEdited) AppStrings.keySavedEnterAReplacement else AppStrings.apiKeyOptionalWithoutAuthentication,
                     enabled = !busy && !checking, visualTransformation = PasswordVisualTransformation())
                 if (saved?.hasCredential == true) {
                     GroupDivider()
-                    SettingsAction("移除已保存密钥", enabled = !busy && !checking) { key = ""; keyEdited = true; changed() }
+                    SettingsAction(AppStrings.removeSavedKey, enabled = !busy && !checking) { key = ""; keyEdited = true; changed() }
                 }
             }
             val supported = inspected?.supportedAgents ?: group.map { it.agent }.toSet()
-            if (supported.isNotEmpty()) SettingsCaption("${if (inspected != null) "已确认" else "已保存"}的 Agent：${supported.joinToString("、") { it.label() }}")
+            if (supported.isNotEmpty()) SettingsCaption(AppStrings.agents(if (inspected != null) AppStrings.confirmedLabel else AppStrings.savedLabel, supported.joinToString("、") { it.label() }))
             if (listOf(candidates().responses, candidates().messages).any { it.startsWith("http://", ignoreCase = true) })
-                SettingsCaption("HTTP 会明文传输密钥和内容，仅用于可信网络；建议使用 HTTPS。", error = true)
-            SettingsGroup { SettingsAction("探测支持的 Agent 和模型", enabled = !busy && !checking && candidates().responses.isNotBlank()) {
+                SettingsCaption(AppStrings.httpSendsKeysAndContentInPlainTextUse, error = true)
+            SettingsGroup { SettingsAction(AppStrings.probeSupportedAgentsAndModels, enabled = !busy && !checking && candidates().responses.isNotBlank()) {
                 if (providerId == GatewayProviders.CUSTOM) baseEndpoint = gatewayBaseAddress(baseEndpoint)
-                busy = true; notice = "正在探测可用 Agent 和模型…"
+                noticeError = false; busy = true; notice = AppStrings.probingAvailableAgentsAndModels
                 submit {
                     val request = edit()
                     try {
@@ -243,15 +247,16 @@ internal fun gatewaySummary(profile: GatewayProfile): String {
                                 val available = result.value.models.map { it.id }.toSet()
                                 manualModels = (manualModels + selectedModels) - available
                                 selectedModels = selectedModels + model
-                                notice = if (result.value.supportedAgents.isEmpty()) "未确认任何可用 Agent；请检查地址、模型、密钥和额度"
-                                    else "已确认：${result.value.supportedAgents.joinToString("、") { it.label() }}"
+                                noticeError = result.value.supportedAgents.isEmpty()
+                                notice = if (result.value.supportedAgents.isEmpty()) AppStrings.noAvailableAgentConfirmedCheckAddressModelKeyAnd
+                                    else AppStrings.confirmed(result.value.supportedAgents.joinToString("、") { it.label() })
                             }
-                            is DataResult.Failed -> notice = result.message
+                            is DataResult.Failed -> { noticeError = true; notice = result.message }
                         }
                     } finally { request.credential?.fill('\u0000'); busy = false }
                 }
             } }
-            inspected?.catalogError?.let { SettingsCaption("模型列表不可用：$it。可从模型菜单手动添加。") }
+            inspected?.catalogError?.let { SettingsCaption(AppStrings.modelListUnavailableAddManually(it)) }
             val availableModels = (inspected?.models ?: saved?.models.orEmpty()).map { it.id to it.name } +
                 manualModels.map { it to it } + listOfNotNull(model.takeIf { it.isNotBlank() }?.let { it to it })
             val modelOptions = availableModels.distinctBy { it.first }
@@ -260,18 +265,18 @@ internal fun gatewaySummary(profile: GatewayProfile): String {
                 modelAnchor = IntRect(origin.x.roundToInt(), origin.y.roundToInt(),
                     origin.x.roundToInt() + coordinates.size.width, origin.y.roundToInt() + coordinates.size.height)
             }) {
-                SettingsAction("模型：${model.ifBlank { "请选择" }}", enabled = !busy && !checking) { modelExpanded = true }
+                SettingsAction(AppStrings.modelLabel(model.ifBlank { AppStrings.pleaseSelect }), enabled = !busy && !checking) { modelExpanded = true }
                 FrostedMenu(modelExpanded, { modelExpanded = false; addModelDialog = false }, modelAnchor) {
                     Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()).padding(bottom = 12.dp)) {
                     if (addModelDialog) {
-                        MenuSection("添加模型") {
+                        MenuSection(AppStrings.addModel) {
                             OutlinedTextField(newModelId, { newModelId = it; modelError = "" },
                                 Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
-                                label = { Text("模型 ID") }, singleLine = true, shape = RoundedCornerShape(12.dp))
+                                label = { Text(AppStrings.modelId) }, singleLine = true, shape = RoundedCornerShape(12.dp))
                             if (modelError.isNotBlank()) MenuCaption(modelError)
-                            MenuAction("添加") {
+                            MenuAction(AppStrings.add) {
                                 val id = newModelId.trim()
-                                if (id.isBlank() || id.length > 200 || id.any { it.isISOControl() || it == ',' }) modelError = "请输入一个有效的模型 ID"
+                                if (id.isBlank() || id.length > 200 || id.any { it.isISOControl() || it == ',' }) modelError = AppStrings.enterValidModelId
                                 else {
                                     manualModels = manualModels + id
                                     selectedModels = selectedModels + id
@@ -279,13 +284,13 @@ internal fun gatewaySummary(profile: GatewayProfile): String {
                                     addModelDialog = false; modelExpanded = false
                                 }
                             }
-                            MenuAction("取消") { addModelDialog = false; modelExpanded = false }
+                            MenuAction(AppStrings.cancel) { addModelDialog = false; modelExpanded = false }
                         }
                     } else {
-                    MenuSection("选择模型") {
+                    MenuSection(AppStrings.selectModel) {
                         OutlinedTextField(modelSearch, { modelSearch = it }, Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
-                            label = { Text("搜索模型") }, singleLine = true, shape = RoundedCornerShape(12.dp))
-                        MenuAction("添加模型") {
+                            label = { Text(AppStrings.searchModels) }, singleLine = true, shape = RoundedCornerShape(12.dp))
+                        MenuAction(AppStrings.addModel) {
                             newModelId = ""; modelError = ""; addModelDialog = true
                         }
                     }
@@ -301,19 +306,19 @@ internal fun gatewaySummary(profile: GatewayProfile): String {
                                 Text(name, maxLines = 1, color = menuInk(), style = MaterialTheme.typography.bodyLarge)
                                 if (name != id) Text(id, maxLines = 1, color = menuMuted(), style = MaterialTheme.typography.bodySmall)
                             }
-                            if (id == model) Text("默认", color = menuMuted(), style = MaterialTheme.typography.labelMedium)
-                            else androidx.compose.material3.TextButton(onClick = { modelChanged(id); modelExpanded = false }) { Text("设为默认") }
+                            if (id == model) Text(AppStrings.default, color = menuMuted(), style = MaterialTheme.typography.labelMedium)
+                            else androidx.compose.material3.TextButton(onClick = { modelChanged(id); modelExpanded = false }) { Text(AppStrings.setAsDefault) }
                             if (id == model || id in selectedModels) AppIcon(AppIcons.Check, null, Modifier.size(20.dp), tint = menuTick())
                         }
                     }
-                    if (matches.size > 30) MenuCaption("还有 ${matches.size - 30} 个结果，请搜索")
+                    if (matches.size > 30) MenuCaption(AppStrings.moreResultsSearch(matches.size - 30))
                     }
                     }
                 }
             } }
-            SettingsCaption("已选 ${(selectedModels + model).count { it.isNotBlank() }} 个模型；已发现 ${inspected?.models?.size ?: 0} 个。默认模型变更后需重新探测。")
-            SettingsGroup { SettingsAction("保存网关", enabled = !busy && !checking && inspected?.supportedAgents?.isNotEmpty() == true) {
-                busy = true; notice = "保存前正在重新确认可用性…"
+            SettingsCaption(AppStrings.selectedDiscoveredModels((selectedModels + model).count { it.isNotBlank() }, inspected?.models?.size ?: 0))
+            SettingsGroup { SettingsAction(AppStrings.saveGateway, enabled = !busy && !checking && inspected?.supportedAgents?.isNotEmpty() == true) {
+                noticeError = false; busy = true; notice = AppStrings.recheckingAvailabilityBeforeSaving
                 submit {
                     val request = edit()
                     var leave: String? = null
@@ -321,40 +326,40 @@ internal fun gatewaySummary(profile: GatewayProfile): String {
                         when (val result = save(request)) {
                             is GatewaySaveResult.Saved -> {
                                 key = ""; keyEdited = false; refresh()
-                                leave = "网关已保存：${result.agents.joinToString("、") { it.label() }}；保留 ${result.models.size} 个模型"
+                                leave = AppStrings.gatewaySavedModelsKept(result.agents.joinToString("、") { it.label() }, result.models.size)
                             }
-                            is GatewaySaveResult.Failed -> notice = result.message
+                            is GatewaySaveResult.Failed -> { noticeError = true; notice = result.message }
                         }
                     } finally { request.credential?.fill('\u0000'); busy = false }
                     leave?.let { if (onSaved != null) onSaved(it) else notice = it }
                 }
             } }
             if (!editingId.isNullOrBlank()) SettingsGroup {
-                SettingsAction("删除网关", enabled = !busy && !checking) {
+                SettingsAction(AppStrings.deleteGateway, enabled = !busy && !checking) {
                     busy = true
                     submit { try { when (val result = delete(editingId)) {
-                        OperationResult.Done -> { refresh(); onSaved?.invoke("网关已删除") ?: back() }
-                        is OperationResult.Failed -> notice = result.message
+                        OperationResult.Done -> { refresh(); onSaved?.invoke(AppStrings.gatewayDeleted) ?: back() }
+                        is OperationResult.Failed -> { noticeError = true; notice = result.message }
                     } } finally { busy = false } }
                 }
             }
-            if (notice.isNotBlank()) SettingsCaption(notice, error = notice.contains("失败") || notice.contains("未确认") || notice.contains("不可用"))
+            if (notice.isNotBlank()) SettingsCaption(notice, error = noticeError)
             if (saved != null) SettingsGroup {
-                SettingsAction("测试已保存连接", enabled = !busy && !checking && savedMatches) {
-                    checking = true; connectionNotice = "正在检查已保存配置…"
+                SettingsAction(AppStrings.testSavedConnection, enabled = !busy && !checking && savedMatches) {
+                    connectionError = false; checking = true; connectionNotice = AppStrings.checkingSavedConfiguration
                     checkJob = checkScope.launch {
                         try { connectionNotice = when (val result = withTimeout(30_000) { check(saved) }) {
-                            is DataResult.Loaded -> result.value.message
-                            is DataResult.Failed -> result.message
-                        } } catch (_: TimeoutCancellationException) { connectionNotice = "检查超时，未判定成功" }
-                        catch (e: CancellationException) { connectionNotice = "检查已取消，未判定成功"; throw e }
-                        catch (_: Exception) { connectionNotice = "连接检查未完成，请稍后重试" }
+                            is DataResult.Loaded -> { connectionError = !result.value.passed; result.value.message }
+                            is DataResult.Failed -> { connectionError = true; result.message }
+                        } } catch (_: TimeoutCancellationException) { connectionError = true; connectionNotice = AppStrings.checkTimedOutSuccessNotConfirmed }
+                        catch (e: CancellationException) { connectionError = true; connectionNotice = AppStrings.checkCancelledSuccessNotConfirmed; throw e }
+                        catch (_: Exception) { connectionError = true; connectionNotice = AppStrings.connectionCheckIncompleteRetryLater }
                         finally { checking = false; checkJob = null }
                     }
                 }
-                if (checking) { GroupDivider(); SettingsAction("取消检查") { checkJob?.cancel() } }
+                if (checking) { GroupDivider(); SettingsAction(AppStrings.cancelCheck) { checkJob?.cancel() } }
             }
-            if (connectionNotice.isNotBlank()) SettingsCaption(connectionNotice, error = connectionNotice.contains("失败") || connectionNotice.contains("未判定"))
+            if (connectionNotice.isNotBlank()) SettingsCaption(connectionNotice, error = connectionError)
         }
     }
 }

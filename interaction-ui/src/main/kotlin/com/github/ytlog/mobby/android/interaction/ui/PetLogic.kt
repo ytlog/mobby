@@ -1,5 +1,7 @@
 package com.github.ytlog.mobby.android.interaction.ui
 
+import com.github.ytlog.mobby.android.interaction.ui.UiStrings as AppStrings
+
 import com.github.ytlog.mobby.android.interaction.domain.ConversationId
 import com.github.ytlog.mobby.android.interaction.domain.ExecutionId
 import com.github.ytlog.mobby.android.interaction.domain.ExecutionPhase
@@ -29,13 +31,13 @@ internal fun petPx(dp: Int, density: Float) = (dp * density).toInt()
 internal fun petTarget(state: InteractionState): PetTarget? {
     val row = state.occupied ?: return null
     val execution = row.execution ?: return null
-    return PetTarget(row.conversation.id, row.conversation.title.ifBlank { "当前任务" }, execution, row.phase)
+    return PetTarget(row.conversation.id, row.conversation.title.ifBlank { AppStrings.currentTask }, execution, row.phase)
 }
 
 internal fun petStatus(phase: ExecutionPhase?): String = when (phase) {
-    ExecutionPhase.CANCELLING -> "停止中"
-    ExecutionPhase.AWAITING_APPROVAL -> "等待确认"
-    else -> "正在执行"
+    ExecutionPhase.CANCELLING -> AppStrings.stopping2
+    ExecutionPhase.AWAITING_APPROVAL -> AppStrings.awaitingConfirmation
+    else -> AppStrings.running2
 }
 
 internal fun petCanStop(phase: ExecutionPhase?) = phase != ExecutionPhase.CANCELLING

@@ -1,5 +1,7 @@
 package com.github.ytlog.mobby.android.interaction.ui
 
+import com.github.ytlog.mobby.android.interaction.ui.UiStrings as AppStrings
+
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
@@ -29,8 +31,8 @@ private val previewDecodeDispatcher = Dispatchers.Default.limitedParallelism(1)
         when (val value = result) {
             is DataResult.Loaded -> AttachmentItem(value.value, { expanded -> vm.actions.previewAttachment(workspace, ref, expanded) }, remove?.let { { it(ref) } })
             else -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(if (value is DataResult.Failed) value.message else "正在读取附件信息…", Modifier.weight(1f).padding(vertical = 8.dp), style = MaterialTheme.typography.bodySmall)
-                if (remove != null) TextButton(onClick = { remove(ref) }) { Text("移除") }
+                Text(if (value is DataResult.Failed) value.message else AppStrings.readingAttachmentDetails, Modifier.weight(1f).padding(vertical = 8.dp), style = MaterialTheme.typography.bodySmall)
+                if (remove != null) TextButton(onClick = { remove(ref) }) { Text(AppStrings.remove) }
             }
         }
     } }
@@ -41,12 +43,12 @@ private val previewDecodeDispatcher = Dispatchers.Default.limitedParallelism(1)
     var expanded by remember(attachment.ref) { mutableStateOf(false) }
     val image = attachment.mediaType.startsWith("image/")
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (image) AttachmentImage(attachment.ref, attachment.name, false, loadPreview, Modifier.size(80.dp).clickable(role = Role.Button, onClickLabel = "查看图片") { expanded = true })
+        if (image) AttachmentImage(attachment.ref, attachment.name, false, loadPreview, Modifier.size(80.dp).clickable(role = Role.Button, onClickLabel = AppStrings.viewImage) { expanded = true })
         Column(Modifier.weight(1f)) {
-            Text("${attachment.name} · ${attachment.sizeBytes} B · 已就绪", Modifier.padding(vertical = 8.dp), style = MaterialTheme.typography.bodySmall)
-            if (image) TextButton(onClick = { expanded = true }, modifier = Modifier.semantics { contentDescription = "查看图片 ${attachment.name}" }) { Text("查看图片") }
+            Text(AppStrings.bReady(attachment.name, attachment.sizeBytes), Modifier.padding(vertical = 8.dp), style = MaterialTheme.typography.bodySmall)
+            if (image) TextButton(onClick = { expanded = true }, modifier = Modifier.semantics { contentDescription = AppStrings.viewImage2(attachment.name) }) { Text(AppStrings.viewImage) }
         }
-        if (remove != null) TextButton(onClick = remove, modifier = Modifier.semantics { contentDescription = "移除附件 ${attachment.name}" }) { Text("移除") }
+        if (remove != null) TextButton(onClick = remove, modifier = Modifier.semantics { contentDescription = AppStrings.removeAttachment(attachment.name) }) { Text(AppStrings.remove) }
     }
     if (expanded && image) AlertDialog(
         onDismissRequest = { expanded = false },
@@ -54,7 +56,7 @@ private val previewDecodeDispatcher = Dispatchers.Default.limitedParallelism(1)
         shape = RoundedCornerShape(24.dp),
         title = { Text(attachment.name, maxLines = 2, overflow = TextOverflow.Ellipsis) },
         text = { AttachmentImage(attachment.ref, attachment.name, true, loadPreview, Modifier.fillMaxWidth().heightIn(min = 120.dp, max = 360.dp)) },
-        confirmButton = { TextButton(onClick = { expanded = false }) { Text("关闭预览") } }
+        confirmButton = { TextButton(onClick = { expanded = false }) { Text(AppStrings.closePreview) } }
     )
 }
 
@@ -72,17 +74,17 @@ private val previewDecodeDispatcher = Dispatchers.Default.limitedParallelism(1)
                 }
             }
         } catch (e: CancellationException) { throw e }
-        catch (_: Exception) { error = "图片预览读取失败" }
+        catch (_: Exception) { error = AppStrings.couldNotReadImagePreview }
         onReady(bitmap != null)
     }
     val ready = bitmap
-    if (ready != null) Image(ready, "$name${if (expanded) "预览" else "缩略图"}", modifier, contentScale = ContentScale.Fit)
+    if (ready != null) Image(ready, "$name${if (expanded) AppStrings.preview else AppStrings.thumbnail}", modifier, contentScale = ContentScale.Fit)
     else Column(modifier) {
-        if (error == null) Text("正在加载图片…", style = MaterialTheme.typography.bodySmall)
+        if (error == null) Text(AppStrings.loadingImage, style = MaterialTheme.typography.bodySmall)
         else {
-            Text("预览失败", style = MaterialTheme.typography.bodySmall)
+            Text(AppStrings.previewFailed, style = MaterialTheme.typography.bodySmall)
             if (expanded) Text(error!!, style = MaterialTheme.typography.bodySmall)
-            TextButton(onClick = { retry++ }) { Text("重试预览") }
+            TextButton(onClick = { retry++ }) { Text(AppStrings.retryPreview) }
         }
     }
 }

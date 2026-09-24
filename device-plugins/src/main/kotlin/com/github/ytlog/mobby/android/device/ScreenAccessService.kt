@@ -1,5 +1,7 @@
 package com.github.ytlog.mobby.android.device
 
+import com.github.ytlog.mobby.android.localization.AppStrings
+
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.graphics.PixelFormat
@@ -35,16 +37,16 @@ class ScreenAccessService : AccessibilityService() {
                 "snapshot" -> snapshot()
                 "click" -> click(args["query"].orEmpty())
                 "type" -> type(args["text"].orEmpty())
-                "back" -> if (performGlobalAction(GLOBAL_ACTION_BACK)) "已返回" else "返回失败"
-                "home" -> if (performGlobalAction(GLOBAL_ACTION_HOME)) "已回到桌面" else "回到桌面失败"
-                "recents" -> if (performGlobalAction(GLOBAL_ACTION_RECENTS)) "已打开最近任务" else "打开最近任务失败"
-                else -> error("不支持的操作：$action")
+                "back" -> if (performGlobalAction(GLOBAL_ACTION_BACK)) AppStrings.wentBack else AppStrings.couldNotGoBack
+                "home" -> if (performGlobalAction(GLOBAL_ACTION_HOME)) AppStrings.returnedToHomeScreen else AppStrings.couldNotReturnToHomeScreen
+                "recents" -> if (performGlobalAction(GLOBAL_ACTION_RECENTS)) AppStrings.openedRecentApps else AppStrings.couldNotOpenRecentApps
+                else -> error(AppStrings.unsupportedOperation2(action))
             }
         }
     }
 
     private fun snapshot(): String {
-        val root = rootInActiveWindow ?: return "当前没有可读取的窗口。请确认系统无障碍已开启，且屏幕上有可见应用。"
+        val root = rootInActiveWindow ?: return AppStrings.noReadableWindowMakeSureAccessibilityIsEnabledAnd
         return try { buildString { dump(root, 0, 0) } } finally { root.recycle() }
     }
 
@@ -68,28 +70,28 @@ class ScreenAccessService : AccessibilityService() {
     }
 
     private fun click(query: String): String {
-        if (query.isBlank() || query.length > 200) throw IllegalArgumentException("请提供不超过 200 字的可见文字")
-        val root = rootInActiveWindow ?: throw IllegalStateException("当前没有可点击的窗口")
+        if (query.isBlank() || query.length > 200) throw IllegalArgumentException(AppStrings.enterVisibleTextOfAtMostCharacters)
+        val root = rootInActiveWindow ?: throw IllegalStateException(AppStrings.noWindowAvailableToClick)
         val match = find(root, query)
         val clicked = match != null && match.performAction(AccessibilityNodeInfo.ACTION_CLICK)
         root.recycle(); match?.recycle()
-        return if (clicked) "已点击：$query" else "未找到可点击的“$query”"
+        return if (clicked) AppStrings.clicked(query) else AppStrings.noClickableFound(query)
     }
 
     private fun type(text: String): String {
-        if (text.isBlank() || text.length > 2000) throw IllegalArgumentException("请提供不超过 2000 字的输入")
-        val root = rootInActiveWindow ?: throw IllegalStateException("当前没有可输入的窗口")
+        if (text.isBlank() || text.length > 2000) throw IllegalArgumentException(AppStrings.enterTextOfAtMostCharacters2)
+        val root = rootInActiveWindow ?: throw IllegalStateException(AppStrings.noWindowAvailableForInput)
         val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: findEditable(root)
         val bundle = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text) }
         val ok = focused != null && focused.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, bundle)
         root.recycle(); focused?.recycle()
-        return if (ok) "已输入 ${text.length} 个字符" else "未找到可输入的焦点"
+        return if (ok) AppStrings.enteredCharacters(text.length) else AppStrings.noFocusedInputFound
     }
 
     private fun tap(x: Float?, y: Float?): String {
         val width = resources.displayMetrics.widthPixels.toFloat()
         val height = resources.displayMetrics.heightPixels.toFloat()
-        if (x == null || y == null || x !in 0f..1f || y !in 0f..1f) throw IllegalArgumentException("坐标须为 0 到 1 的比例")
+        if (x == null || y == null || x !in 0f..1f || y !in 0f..1f) throw IllegalArgumentException(AppStrings.coordinatesMustBeProportionsBetweenAnd)
         val path = Path().apply { moveTo(x * width, y * height) }
         val gesture = GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, 80)).build()
         val done = CountDownLatch(1)
@@ -99,7 +101,7 @@ class ScreenAccessService : AccessibilityService() {
             override fun onCancelled(gestureDescription: GestureDescription?) { done.countDown() }
         }, null)
         done.await(2, TimeUnit.SECONDS)
-        return if (ok.get()) "已点击屏幕位置" else "手势未完成"
+        return if (ok.get()) AppStrings.tappedScreenPosition else AppStrings.gestureDidNotComplete
     }
 
     private fun find(node: AccessibilityNodeInfo, query: String): AccessibilityNodeInfo? {
@@ -142,7 +144,7 @@ class ScreenAccessService : AccessibilityService() {
             result.set(runCatching(block))
             latch.countDown()
         }
-        if (!latch.await(8, TimeUnit.SECONDS)) error("无障碍操作超时")
+        if (!latch.await(8, TimeUnit.SECONDS)) error(AppStrings.accessibilityOperationTimedOut)
         return result.get().getOrThrow()
     }
 
@@ -193,7 +195,7 @@ class ScreenAccessService : AccessibilityService() {
         @Volatile internal var instance: ScreenAccessService? = null
         fun connected() = instance != null
         internal fun stay(): AutoCloseable {
-            val service = instance ?: error("系统无障碍未开启。请在系统设置中打开 mobby 的“屏幕”。")
+            val service = instance ?: error(AppStrings.accessibilityIsOffEnableMobbySScreenServiceIn)
             return service.stay.acquire()
         }
     }

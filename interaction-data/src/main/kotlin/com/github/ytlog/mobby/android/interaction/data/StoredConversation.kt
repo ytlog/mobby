@@ -1,5 +1,7 @@
 package com.github.ytlog.mobby.android.interaction.data
 
+import com.github.ytlog.mobby.android.localization.AppStrings
+
 import com.github.ytlog.mobby.android.interaction.domain.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -14,7 +16,7 @@ internal val storageJson = Json { ignoreUnknownKeys = true; encodeDefaults = tru
     val gatewayProfile: String, val gatewayVersion: Long,
     val text: String = "", val draftRevision: Long = 0, val selectionStart: Int = text.length, val selectionEnd: Int = selectionStart,
     val attachments: List<String> = emptyList(), val capabilities: Set<String> = emptySet(),
-    val hasTurns: Boolean = false, val session: String? = null, val title: String = "新对话",
+    val hasTurns: Boolean = false, val session: String? = null, val title: String = AppStrings.newConversation,
     val pinned: Boolean = false, val project: String? = null, val archived: Boolean = false, val deleted: Boolean = false,
     val anchor: String? = null, val anchorOffset: Int = 0, val updatedAt: Long = 0, val creator: String? = null, val pendingAttachment: StoredImport? = null,
     val sessions: Map<String, String> = emptyMap()

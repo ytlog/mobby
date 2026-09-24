@@ -1,5 +1,7 @@
 package com.github.ytlog.mobby.android.device
 
+import com.github.ytlog.mobby.android.localization.AppStrings
+
 import android.Manifest
 import android.app.Activity
 import android.content.Context
@@ -34,7 +36,7 @@ object DeviceCapture {
         val latch = CountDownLatch(1)
         val outcome = AtomicReference<Result<String>>()
         synchronized(gate) {
-            if (waiter != null) error("已有拍摄或录音在进行")
+            if (waiter != null) error(AppStrings.aPhotoOrAudioCaptureIsAlreadyInProgress)
             waiter = { outcome.set(it); latch.countDown() }
         }
         val intent = Intent(context, DeviceCaptureActivity::class.java)
@@ -43,8 +45,8 @@ object DeviceCapture {
             .putExtra("dest", dest.absolutePath)
         context.startActivity(intent)
         if (!latch.await(120, TimeUnit.SECONDS)) {
-            finish(Result.failure(IllegalStateException("操作超时")))
-            error("操作超时")
+            finish(Result.failure(IllegalStateException(AppStrings.operationTimedOut)))
+            error(AppStrings.operationTimedOut)
         }
         return outcome.get().getOrThrow()
     }
@@ -70,7 +72,7 @@ class DeviceCaptureActivity : Activity() {
         val path = intent.getStringExtra("dest")
         val target = path?.let { File(it) }
         if (target == null || !insideFiles(target) || (kind != "photo" && kind != "record")) {
-            complete(Result.failure(IllegalStateException("无法打开采集界面")))
+            complete(Result.failure(IllegalStateException(AppStrings.cannotOpenTheCaptureScreen)))
             return
         }
         dest = target
@@ -80,13 +82,13 @@ class DeviceCaptureActivity : Activity() {
 
     private fun showCamera() {
         if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-            complete(Result.failure(IllegalStateException("相机权限已被收回")))
+            complete(Result.failure(IllegalStateException(AppStrings.cameraPermissionWasRevoked)))
             return
         }
         val preview = SurfaceView(this)
-        val shutter = button("拍照") { takePhoto() }
+        val shutter = button(AppStrings.takePhoto) { takePhoto() }
         shutter.isEnabled = false
-        setContentView(column(preview, shutter, button("取消") { complete(Result.failure(IllegalStateException("已取消拍照"))) }))
+        setContentView(column(preview, shutter, button(AppStrings.cancel) { complete(Result.failure(IllegalStateException(AppStrings.photoCaptureCancelled))) }))
         thread = HandlerThread("device-camera").also { it.start() }
         handler = Handler(thread!!.looper)
         reader = ImageReader.newInstance(1280, 720, ImageFormat.JPEG, 2)
@@ -101,7 +103,7 @@ class DeviceCaptureActivity : Activity() {
         val manager = getSystemService(CameraManager::class.java)
         val id = manager.cameraIdList.firstOrNull()
         if (id == null) {
-            complete(Result.failure(IllegalStateException("没有可用的相机")))
+            complete(Result.failure(IllegalStateException(AppStrings.noCameraAvailable)))
             return
         }
         try {
@@ -117,18 +119,18 @@ class DeviceCaptureActivity : Activity() {
                             runOnUiThread { shutter.isEnabled = true }
                         }
                         override fun onConfigureFailed(capture: CameraCaptureSession) {
-                            complete(Result.failure(IllegalStateException("相机预览失败")))
+                            complete(Result.failure(IllegalStateException(AppStrings.cameraPreviewFailed)))
                         }
                     }, handler)
                 }
                 override fun onDisconnected(device: CameraDevice) { device.close() }
                 override fun onError(device: CameraDevice, error: Int) {
                     device.close()
-                    complete(Result.failure(IllegalStateException("相机打开失败")))
+                    complete(Result.failure(IllegalStateException(AppStrings.cannotOpenCamera)))
                 }
             }, handler)
         } catch (_: SecurityException) {
-            complete(Result.failure(IllegalStateException("相机权限已被收回")))
+            complete(Result.failure(IllegalStateException(AppStrings.cameraPermissionWasRevoked)))
         }
     }
 
@@ -145,7 +147,7 @@ class DeviceCaptureActivity : Activity() {
                 dest.writeBytes(bytes)
                 complete(Result.success(dest.absolutePath))
             } catch (error: Exception) {
-                complete(Result.failure(IllegalStateException(error.message ?: "保存照片失败")))
+                complete(Result.failure(IllegalStateException(error.message ?: AppStrings.cannotSavePhoto)))
             } finally { image.close() }
         }, handler)
         capture.capture(request.build(), null, handler)
@@ -153,10 +155,10 @@ class DeviceCaptureActivity : Activity() {
 
     private fun showRecorder() {
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            complete(Result.failure(IllegalStateException("麦克风权限已被收回")))
+            complete(Result.failure(IllegalStateException(AppStrings.microphonePermissionWasRevoked)))
             return
         }
-        val status = TextView(this).apply { text = "正在录音"; textSize = 22f }
+        val status = TextView(this).apply { text = AppStrings.recording; textSize = 22f }
         try {
             recorder = newRecorder().apply {
                 setAudioSource(MediaRecorder.AudioSource.MIC)
@@ -168,13 +170,13 @@ class DeviceCaptureActivity : Activity() {
                 start()
             }
         } catch (error: Exception) {
-            complete(Result.failure(IllegalStateException(error.message ?: "无法开始录音")))
+            complete(Result.failure(IllegalStateException(error.message ?: AppStrings.cannotStartRecording)))
             return
         }
         recorder?.setOnInfoListener { _, what, _ ->
             if (what == MediaRecorder.MEDIA_RECORDER_INFO_MAX_DURATION_REACHED) finishRecording(true)
         }
-        setContentView(column(status, button("完成") { finishRecording(true) }, button("取消") { finishRecording(false) }))
+        setContentView(column(status, button(AppStrings.done) { finishRecording(true) }, button(AppStrings.cancel) { finishRecording(false) }))
     }
 
     private fun newRecorder(): MediaRecorder = if (Build.VERSION.SDK_INT >= 31) MediaRecorder(this) else @Suppress("DEPRECATION") MediaRecorder()
@@ -186,10 +188,10 @@ class DeviceCaptureActivity : Activity() {
         runCatching { active.release() }
         if (!save) {
             dest.delete()
-            complete(Result.failure(IllegalStateException("已取消录音")))
+            complete(Result.failure(IllegalStateException(AppStrings.recordingCancelled)))
         } else if (!stopped || !dest.isFile || dest.length() == 0L) {
             dest.delete()
-            complete(Result.failure(IllegalStateException("录音太短或没有保存")))
+            complete(Result.failure(IllegalStateException(AppStrings.recordingIsTooShortOrWasNotSaved)))
         } else complete(Result.success(dest.absolutePath))
     }
 
@@ -224,7 +226,7 @@ class DeviceCaptureActivity : Activity() {
         reader?.close()
         recorder?.runCatching { stop(); release() }
         thread?.quitSafely()
-        if (!finished) DeviceCapture.finish(Result.failure(IllegalStateException("采集界面已关闭")))
+        if (!finished) DeviceCapture.finish(Result.failure(IllegalStateException(AppStrings.captureScreenClosed)))
         super.onDestroy()
     }
 }

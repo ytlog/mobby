@@ -1,5 +1,7 @@
 package com.github.ytlog.mobby.android.runtime.android.gateway
 
+import com.github.ytlog.mobby.android.localization.AppStrings
+
 import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
@@ -41,17 +43,17 @@ class GatewayStore(context: Context) {
         Json.parseToJsonElement(decrypt(encrypted)).jsonArray.map { it.jsonPrimitive.content }
     }.orEmpty()
     fun load(id: String, version: Long? = null): GatewayRecord {
-        require(id in ids()) { "网关不存在" }
-        val current = GatewayRecord.parse(decrypt(requireNotNull(prefs.getString(id, null)) { "网关不存在" }))
+        require(id in ids()) { AppStrings.gatewayNotFound }
+        val current = GatewayRecord.parse(decrypt(requireNotNull(prefs.getString(id, null)) { AppStrings.gatewayNotFound }))
         if (version == null || version == current.version) return current
-        val encoded = requireNotNull(prefs.getString("$id:$version", null)) { "网关版本不存在" }
+        val encoded = requireNotNull(prefs.getString("$id:$version", null)) { AppStrings.gatewayVersionNotFound }
         return GatewayRecord.parse(decrypt(encoded))
     }
     fun list(): List<GatewayRecord> = ids().map(::load)
     fun default(): GatewayChoice? = prefs.getString("default", null)?.let { GatewayChoice.parse(decrypt(it)) }
     fun selectDefault(choice: GatewayChoice) = synchronized(writeLock) {
-        require(choice.mode in load(choice.id).modes()) { "网关不支持此 Agent" }
-        check(prefs.edit().putString("default", encrypt(choice.json())).commit()) { "保存默认网关失败" }
+        require(choice.mode in load(choice.id).modes()) { AppStrings.gatewayDoesNotSupportThisAgent }
+        check(prefs.edit().putString("default", encrypt(choice.json())).commit()) { AppStrings.couldNotSaveDefaultGateway }
     }
     fun save(record: GatewayRecord): GatewayRecord = synchronized(writeLock) {
         record.validate()
@@ -64,7 +66,7 @@ class GatewayStore(context: Context) {
         val updated = if (existing == null) ids + record.id else ids
         check(edit.putString(record.id, encrypt(saved.json()))
             .putString("index", encrypt(JsonArray(updated.map(::JsonPrimitive)).toString()))
-            .commit()) { "保存网关失败" }
+            .commit()) { AppStrings.couldNotSaveGateway }
         saved
     }
     fun delete(id: String) = synchronized(writeLock) {
@@ -73,6 +75,6 @@ class GatewayStore(context: Context) {
         val edit = prefs.edit().remove(id).putString("index", encrypt(JsonArray(updated.map(::JsonPrimitive)).toString()))
         prefs.all.keys.filter { it.startsWith("$id:") }.forEach(edit::remove)
         if (default()?.id == id) edit.remove("default")
-        check(edit.commit()) { "删除网关失败" }
+        check(edit.commit()) { AppStrings.couldNotDeleteGateway }
     }
 }

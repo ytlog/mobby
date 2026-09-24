@@ -1,5 +1,7 @@
 package com.github.ytlog.mobby.android.runtime.android
 
+import com.github.ytlog.mobby.android.localization.AppStrings
+
 import com.github.ytlog.mobby.android.runtime.engine.AgentMode
 import com.github.ytlog.mobby.android.runtime.engine.program
 
@@ -26,7 +28,7 @@ class RuntimeEnvironment(private val context: Context) {
     val workspace get() = File(sdk.vfs.homeDir, "workspace")
 
     suspend fun initialize(output: (String) -> Unit) = withContext(Dispatchers.IO) {
-        check(Build.SUPPORTED_ABIS.contains("arm64-v8a")) { "当前构建仅支持 ARM64 设备" }
+        check(Build.SUPPORTED_ABIS.contains("arm64-v8a")) { AppStrings.thisBuildOnlySupportsArmDevices }
         val nativeDir = context.applicationInfo.nativeLibraryDir
         val prefix = File(context.filesDir, "libtermux/usr").absolutePath
         val home = File(context.filesDir, "libtermux/home").absolutePath
@@ -50,48 +52,51 @@ class RuntimeEnvironment(private val context: Context) {
                 "DISABLE_AUTOUPDATER" to "1"
             )
         ))
-        check(sdk.isInstalled) { "APK 缺少可执行的 Bash 资源" }
-        output("正在准备内置运行文件…")
+        check(sdk.isInstalled) { AppStrings.apkIsMissingAnExecutableBashResource }
+        output(AppStrings.preparingBundledRuntimeFiles)
         prepareFiles(nativeDir, output)
         workspace.mkdirs()
         File(sdk.vfs.prefixDir, "etc/tls/certs").mkdirs()
         val shell = sdk.executor.resolveBinary("bash").absolutePath
         val extra = mapOf("SHELL" to shell)
         val probe = sdk.executor.execute("printf 'MOBBY_RUNTIME_OK\\n'; printf '%s\\n' \"\$BASH_VERSION\"", workspace, extra)
-        check(probe.isSuccess && probe.stdout.startsWith("MOBBY_RUNTIME_OK")) { "Bash 启动失败 (${probe.exitCode}): ${probe.stderr}" }
+        check(probe.isSuccess && probe.stdout.startsWith("MOBBY_RUNTIME_OK")) { AppStrings.bashFailedToStart(probe.exitCode, probe.stderr) }
         output("Bash ${probe.stdout.lineSequence().drop(1).firstOrNull().orEmpty()}")
         dependenciesReady = true
         opencodeReady = false
         for (name in listOf("git", "node", "npm", "claude", "codex", "opencode")) {
-            output("正在验证 $name…")
+            output(AppStrings.verifying(name))
             val result = sdk.executor.execute("$name --version", workspace)
             if (result.isSuccess && result.stdout.isNotBlank()) {
                 if (name == "opencode") opencodeReady = true
                 output("✓ $name：${result.stdout.lineSequence().first()}")
             } else if (name == "opencode") {
-                output("✗ opencode 未能启动（退出码 ${result.exitCode}）：${result.stderr.ifBlank { result.stdout }}。Claude Code 与 Codex 仍可使用。")
+                output(AppStrings.opencodeFailedToStartExitCodeClaudeCodeAnd(result.exitCode, result.stderr.ifBlank { result.stdout }))
             } else {
                 dependenciesReady = false
-                output("✗ $name 安装校验失败（退出码 ${result.exitCode}）：${result.stderr.ifBlank { result.stdout }}")
+                output(AppStrings.installationVerificationFailedExitCode(name, result.exitCode, result.stderr.ifBlank { result.stdout }))
             }
         }
         val git = sdk.executor.execute("git init -q .", workspace)
-        if (git.isSuccess) output("✓ Git 工作区已就绪") else {
+        if (git.isSuccess) output(AppStrings.gitWorkspaceReady) else {
             dependenciesReady = false
-            output("Git 工作区初始化失败：${git.stderr}")
+            output(AppStrings.gitWorkspaceInitializationFailed(git.stderr))
         }
         File(context.filesDir, "gateway.cjs").outputStream().use { target ->
             context.assets.open("gateway/bridge.cjs").use { it.copyTo(target) }
         }
-        if (dependenciesReady) output("依赖已自动安装并验证。请在「网关设置」填写地址、协议、模型和密钥。")
-        output("工作目录：${workspace.absolutePath}")
+        File(context.filesDir, "gateway-strings.cjs").outputStream().use { target ->
+            context.assets.open("gateway/gateway-strings.cjs").use { it.copyTo(target) }
+        }
+        if (dependenciesReady) output(AppStrings.dependenciesInstalledAndVerifiedConfigureAddressProtocolModelAnd)
+        output(AppStrings.workingDirectory(workspace.absolutePath))
     }
 
     private fun prepareFiles(nativeDir: String, output: (String) -> Unit) {
         val prefix = sdk.vfs.prefixDir
         fun safe(path: String): File {
             val file = File(prefix, path).toPath().normalize().toFile()
-            check(file.path.startsWith(prefix.absolutePath + File.separator)) { "非法 bootstrap 路径" }
+            check(file.path.startsWith(prefix.absolutePath + File.separator)) { AppStrings.invalidBootstrapPath }
             return file
         }
         val version = context.assets.open("bootstrap/version.txt").bufferedReader().use { it.readText() }
@@ -99,18 +104,18 @@ class RuntimeEnvironment(private val context: Context) {
         // Data files remain writable and are not replaced on every launch.
         val required = listOf("lib/node_modules/npm/bin/npm-cli.js", "lib/node_modules/@anthropic-ai/claude-code/cli.js")
         if (!marker.exists() || marker.readText() != version || required.any { !File(prefix, it).isFile }) {
-            output("首次启动或依赖更新：正在自动安装 Git、Node.js、npm 和 Agent…")
+            output(AppStrings.firstLaunchOrDependencyUpdateInstallingGitNodeJs)
             ZipInputStream(context.assets.open("bootstrap/data.zip")).use { zip ->
                 while (true) {
                     val entry = zip.nextEntry ?: break
                     if (!entry.isDirectory) {
                         val target = safe(entry.name)
                         target.parentFile?.mkdirs()
-                        check(target.parentFile!!.canonicalPath.startsWith(prefix.canonicalPath + File.separator) || target.parentFile!!.canonicalFile == prefix.canonicalFile) { "安装目录链接越界" }
+                        check(target.parentFile!!.canonicalPath.startsWith(prefix.canonicalPath + File.separator) || target.parentFile!!.canonicalFile == prefix.canonicalFile) { AppStrings.installationDirectoryLinkEscapesItsRoot }
                         val temporary = File(target.parentFile, target.name + ".mobby-tmp")
                         temporary.delete()
                         temporary.outputStream().use { zip.copyTo(it) }
-                        check(temporary.renameTo(target)) { "无法安装 ${entry.name}" }
+                        check(temporary.renameTo(target)) { AppStrings.cannotInstall(entry.name) }
                     }
                 }
             }
@@ -132,13 +137,13 @@ class RuntimeEnvironment(private val context: Context) {
                 val link = File(prefix, linkPath)
                 val value = parts[0].replace("/data/data/com.termux/files/usr", prefix.absolutePath)
                 val resolved = if (value.startsWith('/')) File(value) else File(link.parentFile, value)
-                check(resolved.toPath().normalize().startsWith(prefix.toPath())) { "非法 bootstrap 链接" }
+                check(resolved.toPath().normalize().startsWith(prefix.toPath())) { AppStrings.invalidBootstrapLink }
                 link.parentFile?.mkdirs(); link.delete()
                 Os.symlink(value, link.absolutePath)
             }
         }
         marker.writeText(version)
-        output("依赖文件安装完成，正在检查实际运行能力…")
+        output(AppStrings.dependencyFilesInstalledCheckingRuntimeCapabilities)
     }
 
     fun executable(mode: AgentMode): String {
@@ -146,7 +151,7 @@ class RuntimeEnvironment(private val context: Context) {
         val name = mode.program()
         val locations = listOf(File(sdk.vfs.binDir, name), File(sdk.vfs.homeDir, ".local/bin/$name"))
         return locations.firstOrNull { it.exists() }?.absolutePath
-            ?: error("$name 尚未安装。请先在本运行环境安装 CLI 并完成认证。")
+            ?: error(AppStrings.isNotInstalledInstallAndAuthenticateTheCliIn(name))
     }
 
     /** Internal Shell diagnostics; Agent runs go through RuntimeClient and ProcessPort. */

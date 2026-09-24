@@ -1,5 +1,7 @@
 package com.github.ytlog.mobby.android.interaction.ui
 
+import com.github.ytlog.mobby.android.interaction.ui.UiStrings as AppStrings
+
 import com.github.ytlog.mobby.android.interaction.domain.gateway.*
 
 import androidx.compose.ui.text.TextRange
@@ -51,7 +53,7 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
         if (key in permissionBusy.value || key in permissionSubmitted.value) return
         permissionAttempts.keys.removeAll { it.execution != execution }
         val decision = permissionAttempts.getOrPut(key) { PermissionDecision(java.util.UUID.randomUUID().toString(), key, allow) }
-        if (decision.allow != allow) { feedback.trySend("上次决定尚待确认，请重试同一决定"); return }
+        if (decision.allow != allow) { feedback.trySend(AppStrings.previousDecisionIsPendingConfirmationRetryTheSameDecision); return }
         permissionBusy.value = permissionBusy.value + key
         enqueue {
             try {
@@ -102,7 +104,7 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
                     is DataResult.Failed -> current.copy(preview = null, error = result.message)
                 } }
             } catch (e: CancellationException) { throw e }
-            catch (_: Exception) { skillProposal.update { if (it?.operation == operation) it.copy(error = "校验未完成，编辑内容已保留，请重试") else it } }
+            catch (_: Exception) { skillProposal.update { if (it?.operation == operation) it.copy(error = AppStrings.validationIncompleteYourEditsArePreservedPleaseRetry) else it } }
             finally { skillProposal.update { if (it?.operation == operation) it.copy(busy = false) else it } }
         }
     }
@@ -118,12 +120,12 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
                         retainedSkillProposals.remove(editor.proposal.ref)
                         skillProposal.update { if (it?.operation == operation) null else it }
                         skillProposalSaved.value = SkillProposalSaved(operation, editor.proposal.ref)
-                        feedback.send("技能已保存")
+                        feedback.send(AppStrings.skillSaved)
                     }
                     is DataResult.Failed -> skillProposal.update { if (it?.operation == operation) it.copy(error = result.message) else it }
                 }
             } catch (e: CancellationException) { throw e }
-            catch (_: Exception) { skillProposal.update { if (it?.operation == operation) it.copy(error = "保存结果未确认，编辑内容已保留，请核对技能目录") else it } }
+            catch (_: Exception) { skillProposal.update { if (it?.operation == operation) it.copy(error = AppStrings.saveUnconfirmedYourEditsArePreservedCheckTheSkill) else it } }
             finally { skillProposal.update { if (it?.operation == operation) it.copy(busy = false) else it } }
         }
     }
@@ -149,7 +151,7 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
                     is OperationResult.Failed -> current.copy(error = result.message)
                 } }
             } catch (e: CancellationException) { throw e }
-            catch (_: Exception) { projectEditor.update { if (it?.operation == editor.operation) it.copy(error = "项目保存未完成，请核对后重试") else it } }
+            catch (_: Exception) { projectEditor.update { if (it?.operation == editor.operation) it.copy(error = AppStrings.projectSaveIncompleteCheckAndRetry) else it } }
             finally { projectEditor.update { if (it?.operation == editor.operation) it.copy(busy = false) else it } }
         }
     }
@@ -169,7 +171,7 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
                     is DataResult.Failed -> { workspaces.value = emptyList(); workspaceError.value = result.message }
                 }
             } catch (e: CancellationException) { throw e }
-            catch (_: Exception) { if (query == workspaceQuery) workspaceError.value = "工作区读取失败，请重试" }
+            catch (_: Exception) { if (query == workspaceQuery) workspaceError.value = AppStrings.couldNotReadWorkspacesPleaseRetry }
         }
     }
     fun createWorkspace(name: String, owner: String) {
@@ -182,7 +184,7 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
                     is DataResult.Failed -> workspaceError.value = result.message
                 }
             } catch (e: CancellationException) { throw e }
-            catch (_: Exception) { workspaceError.value = "工作区创建结果未确认，请刷新目录核对" }
+            catch (_: Exception) { workspaceError.value = AppStrings.workspaceCreationUnconfirmedRefreshTheDirectoryToCheck }
             finally { workspaceCreating.value = false }
         }
     }
@@ -203,7 +205,7 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
     fun importSkillFile(agent: AgentId, location: String) {
         skillEditorSaved.value = null
         skillEditor.value = SkillEditor(agent, manual = false, operation = ++editorOperation)
-        runSkillEditor("文件读取未完成，请重新选择") { editor ->
+        runSkillEditor(AppStrings.fileReadIncompleteSelectItAgain) { editor ->
             when (val result = actions.readSkillImport(location)) {
                 is DataResult.Loaded -> editor.copy(name = result.value.name, description = result.value.description,
                     body = result.value.body, markdown = result.value.markdown,
@@ -213,7 +215,7 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
             }
         }
     }
-    fun validateSkillEditor() = runSkillEditor("校验未完成，编辑内容已保留，请重试") { editor ->
+    fun validateSkillEditor() = runSkillEditor(AppStrings.validationIncompleteYourEditsArePreservedPleaseRetry) { editor ->
         when (val result = if (editor.manual) actions.previewManualSkill(editor.agent, editor.name, editor.description, editor.body)
             else actions.previewSkill(editor.markdown)) {
             is DataResult.Loaded -> editor.copy(preview = result.value)
@@ -222,7 +224,7 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
     }
     fun saveSkillEditor() {
         if (skillEditor.value?.preview?.issues?.isEmpty() != true) return
-        runSkillEditor("保存结果未确认，编辑内容已保留，请核对技能目录") { editor ->
+        runSkillEditor(AppStrings.saveUnconfirmedYourEditsArePreservedCheckTheSkill) { editor ->
             when (val result = if (editor.manual) actions.saveManualSkill(editor.agent, editor.name, editor.description, editor.body)
                 else actions.importSkill(editor.agent, requireNotNull(editor.preview).markdown)) {
                 is DataResult.Loaded -> null
@@ -245,7 +247,7 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
                 }
                 if (result == null) {
                     loadSkills(catalogueAgent ?: editor.agent)
-                    feedback.trySend("技能已保存，可加入本轮草稿")
+                    feedback.trySend(AppStrings.skillSavedYouCanAddItToThisDraft)
                 }
             } catch (e: CancellationException) { throw e }
             catch (_: Exception) {
@@ -269,7 +271,7 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
                     is DataResult.Failed -> { skills.value = emptyList(); skillsError.value = result.message }
                 }
             } catch (e: CancellationException) { throw e }
-            catch (_: Exception) { if (operation == catalogueOperation) skillsError.value = "技能目录读取未完成，请重试" }
+            catch (_: Exception) { if (operation == catalogueOperation) skillsError.value = AppStrings.skillDirectoryReadIncompletePleaseRetry }
             finally { if (operation == catalogueOperation) skillsLoading.value = false }
         }
     }
@@ -285,7 +287,7 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
                     is DataResult.Failed -> { plugins.value = emptyList(); pluginsError.value = result.message }
                 }
             } catch (e: CancellationException) { throw e }
-            catch (_: Exception) { if (operation == pluginCatalogueOperation) pluginsError.value = "插件目录读取未完成，请重试" }
+            catch (_: Exception) { if (operation == pluginCatalogueOperation) pluginsError.value = AppStrings.pluginCatalogueReadIncompletePleaseRetry }
             finally { if (operation == pluginCatalogueOperation) pluginsLoading.value = false }
         }
     }
@@ -322,8 +324,8 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
     }
     /** Writes the transcript over the original selection, then sends. A changed draft is left untouched. */
     fun sendVoice(original: ComposerState, text: String): String? {
-        if (text.isBlank()) return "未识别到文字，请重新录音"
-        if (!insertVoice(original, text)) return "原草稿已改变，未发送语音"
+        if (text.isBlank()) return AppStrings.noSpeechRecognizedRecordAgain
+        if (!insertVoice(original, text)) return AppStrings.originalDraftChangedVoiceInputWasNotSent
         send()
         return null
     }
@@ -336,7 +338,7 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
                 is PrepareTurnResult.Prepared -> viewModelScope.launch { safe {
                     when (val result = actions.sendPrepared(prepared.turn)) {
                         is Submission.Rejected -> feedback.send(failure(result.reason))
-                        Submission.Unconfirmed -> feedback.send("请求结果待确认，已保留草稿；请查询原请求")
+                        Submission.Unconfirmed -> feedback.send(AppStrings.requestResultUnconfirmedDraftPreservedCheckTheOriginalRequest)
                         is Submission.Accepted -> Unit
                     }
                 } }
@@ -372,16 +374,16 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
     fun report(result: OperationResult) { if (result is OperationResult.Failed) feedback.trySend(result.message) }
     private suspend fun safe(action: suspend () -> Unit) {
         try { action() } catch (e: CancellationException) { throw e }
-        catch (_: Exception) { feedback.send("操作未完成，请检查连接或存储后重试；已有内容已保留") }
+        catch (_: Exception) { feedback.send(AppStrings.operationIncompleteCheckConnectionOrStorageAndRetryExisting) }
     }
     private fun failure(reason: Failure): String = when (reason) {
-        Failure.PENDING_ATTACHMENT -> "请先完成或移除待处理附件"
-        Failure.INPUT_TOO_LARGE -> "文字与附件合计超出 64 KiB 输入上限（含附件标记），请缩短文字或移除附件；草稿已保留"
-        Failure.BUSY -> "已有任务执行中，草稿已保留"
-        Failure.INVALID_CONFIG -> "请先检查网关和模型设置"
-        Failure.UNSUPPORTED_CAPABILITY -> "当前 Agent 不支持所选能力"
-        Failure.EMPTY_DRAFT -> "请先输入任务"
-        Failure.PENDING_SUBMISSION -> "上次请求尚未确认，请先查询原请求"
-        Failure.UNAVAILABLE -> "运行服务不可用，请检查连接后重试"
+        Failure.PENDING_ATTACHMENT -> AppStrings.finishOrRemovePendingAttachmentsFirst
+        Failure.INPUT_TOO_LARGE -> AppStrings.textAndAttachmentsExceedTheKibInputLimitIncluding
+        Failure.BUSY -> AppStrings.aTaskIsAlreadyRunningDraftPreserved
+        Failure.INVALID_CONFIG -> AppStrings.checkGatewayAndModelSettingsFirst
+        Failure.UNSUPPORTED_CAPABILITY -> AppStrings.thisAgentDoesNotSupportTheSelectedCapability
+        Failure.EMPTY_DRAFT -> AppStrings.enterATaskFirst
+        Failure.PENDING_SUBMISSION -> AppStrings.previousRequestIsUnconfirmedCheckTheOriginalRequestFirst
+        Failure.UNAVAILABLE -> AppStrings.runtimeServiceUnavailableCheckConnectionAndRetry
     }
 }

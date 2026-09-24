@@ -1,5 +1,7 @@
 package com.github.ytlog.mobby.android.runtime.engine
 
+import com.github.ytlog.mobby.android.localization.AppStrings
+
 import com.github.ytlog.mobby.android.runtime.api.*
 import kotlinx.serialization.json.*
 
@@ -35,12 +37,12 @@ class ProtocolDecoder(private val agent: AgentId, private val requestedOutput: R
     fun decode(line: String): List<AgentFact> {
         val controlRequest = agent == AgentId.CLAUDE_CODE && Regex("""^\s*\{\s*"type"\s*:\s*"control_request"""").containsMatchIn(line)
         if (controlRequest && line.endsWith(" [line truncated]"))
-            return listOf(AgentFact.Diagnostic("truncated-approval", "CLI 审批请求超过输出行上限，已停止授权流程"), AgentFact.InvalidApproval)
+            return listOf(AgentFact.Diagnostic("truncated-approval", AppStrings.cliApprovalTruncated), AgentFact.InvalidApproval)
         if (agent == AgentId.CLAUDE_CODE && line.endsWith(" [line truncated]") &&
             Regex("""^\s*\{\s*"type"\s*:\s*"user"""").containsMatchIn(line))
-            return listOf(AgentFact.Diagnostic("truncated-user-event", "CLI 用户事件超过输出行上限，无法完整解析"))
+            return listOf(AgentFact.Diagnostic("truncated-user-event", AppStrings.cliUserEventTruncated))
         val value = runCatching { Json.parseToJsonElement(line) as? JsonObject }.getOrNull()
-            ?: return if (controlRequest) listOf(AgentFact.Diagnostic("invalid-approval", "无法解析 CLI 审批请求，已停止授权流程"), AgentFact.InvalidApproval)
+            ?: return if (controlRequest) listOf(AgentFact.Diagnostic("invalid-approval", AppStrings.cliApprovalInvalid), AgentFact.InvalidApproval)
                 else listOf(AgentFact.Diagnostic("invalid-json", line))
         return when (agent) {
             AgentId.CODEX -> codex(value, line)
@@ -176,11 +178,11 @@ class ProtocolDecoder(private val agent: AgentId, private val requestedOutput: R
                     val subject = approvalSubject(tool, input)
                     if (subject != null) add(AgentFact.Approval(id, subject))
                     else {
-                        add(AgentFact.Diagnostic("invalid-approval", "无法完整解析 CLI 审批请求，已停止授权流程"))
+                        add(AgentFact.Diagnostic("invalid-approval", AppStrings.cliApprovalIncomplete))
                         add(AgentFact.InvalidApproval)
                     }
                 } else {
-                    add(AgentFact.Diagnostic("invalid-approval", "无法完整解析 CLI 审批请求，已停止授权流程"))
+                    add(AgentFact.Diagnostic("invalid-approval", AppStrings.cliApprovalIncomplete))
                     add(AgentFact.InvalidApproval)
                 }
             }
@@ -222,7 +224,7 @@ class ProtocolDecoder(private val agent: AgentId, private val requestedOutput: R
                         val outcome = if ((block["is_error"] as? JsonPrimitive)?.booleanOrNull == true) ToolOutcome.FAILED else ToolOutcome.SUCCEEDED
                         add(AgentFact.Tool(toolId, null, if (toolId in inputCaptured) null else freshOutput(toolId, raw), outcome))
                     }
-                    "image" -> add(AgentFact.Diagnostic("image", "图片输入（内容不写入诊断日志）"))
+                    "image" -> add(AgentFact.Diagnostic("image", AppStrings.imageInputDiagnostic))
                     "thinking", "redacted_thinking" -> {
                         val thinkingId = "thinking:$id#$index"
                         startedTools.add(thinkingId)
@@ -412,7 +414,7 @@ class ProtocolDecoder(private val agent: AgentId, private val requestedOutput: R
         old.lines().forEach { append("- ").append(it).append('\n') }
         new.lines().forEach { append("+ ").append(it).append('\n') }
     }.trimEnd()
-    private fun String.fit() = if (length <= 65536) this else take(65536) + "\n…已截断"
+    private fun String.fit() = if (length <= 65536) this else take(65536) + AppStrings.truncatedSuffix
     private fun freshOutput(id: String, incoming: String?): String? {
         if (incoming.isNullOrEmpty()) return null
         val previous = toolOutput[id].orEmpty()
@@ -509,7 +511,7 @@ class ProtocolDecoder(private val agent: AgentId, private val requestedOutput: R
         }
     }
     private fun finishSkill(result: SkillGeneration.Result?): List<AgentFact> = if (result == null)
-        listOf(AgentFact.Diagnostic("invalid-skill-output", "技能生成结果不符合结构要求，请重试或补充需求"), AgentFact.Completed(false, ErrorCode.PROTOCOL_ERROR))
+        listOf(AgentFact.Diagnostic("invalid-skill-output", AppStrings.invalidSkillGeneration), AgentFact.Completed(false, ErrorCode.PROTOCOL_ERROR))
     else buildList {
         result.markdown?.let { add(AgentFact.Proposal(it)) }
         add(AgentFact.Completed(true))

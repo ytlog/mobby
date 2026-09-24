@@ -177,7 +177,7 @@ internal class AndroidRuntimePorts(
                 try {
                     runtime.sdk.executor.executeArgsStreaming(listOf(File(runtime.sdk.vfs.binDir, "node").absolutePath,
                         File(context.filesDir, "gateway.cjs").absolutePath, mode(request.agentId).name) + connection.arguments,
-                        workingDirectory, mapOf("MOBBY_GATEWAY_CONFIG" to config.json()),
+                        workingDirectory, mapOf("MOBBY_GATEWAY_CONFIG" to config.json(), "MOBBY_LANGUAGE" to com.github.ytlog.mobby.android.localization.AppLanguage.current.tag),
                         onStarted = { pid -> agent.started = true; liveState.value = true; registry.started(pid) },
                         onTerminated = { code -> exit.set(code); registry.terminated(code) },
                         input = connection.session.input, timeoutMs = 0,

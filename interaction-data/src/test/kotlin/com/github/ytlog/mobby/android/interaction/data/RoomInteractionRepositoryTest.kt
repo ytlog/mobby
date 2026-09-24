@@ -33,6 +33,7 @@ class RoomInteractionRepositoryTest {
     private val importStarted = CompletableDeferred<Unit>()
     private val importedProposals = mutableListOf<String>()
     private val system = object : SystemPort {
+        override suspend fun inspectGateway(edit: GatewayEdit): DataResult<GatewayInspectionResult> = DataResult.Failed("unused")
         override suspend fun checkGateway(profile: GatewayProfile): DataResult<GatewayCheckReport> = DataResult.Failed("unused")
         override suspend fun beginCapture(conversation: String, workspace: String): DataResult<CameraCapture> = DataResult.Failed("unused")
         override suspend fun capture(): DataResult<CameraCapture?> = DataResult.Loaded(null)
@@ -76,6 +77,18 @@ class RoomInteractionRepositoryTest {
     }
     @After fun close() = runBlocking { scope.coroutineContext[Job]!!.cancelAndJoin(); db.close() }
     private suspend fun state(predicate: (InteractionState) -> Boolean = { it.selected != null }) = withTimeout(10_000) { repository.state.first(predicate) }
+    @Test fun `first turn names an untouched conversation after a language change`() = runBlocking {
+        val language = com.github.ytlog.mobby.android.localization.AppLanguage
+        language.current = com.github.ytlog.mobby.android.localization.AppLanguage.CHINESE
+        try {
+            val id = repository.create(NextTurnConfig(DomainAgent.CODEX, "test-model", null, "default", "CODEX"))
+            language.current = com.github.ytlog.mobby.android.localization.AppLanguage.ENGLISH
+            repository.editDraft(id, "Review my changes", 17, 17)
+            assertTrue(repository.prepareTurn(id, TurnId("language-turn")) is PrepareTurnResult.Prepared)
+            assertEquals("Review my changes", db.dao().conversation(id.value)!!.domain().title)
+        } finally { language.current = com.github.ytlog.mobby.android.localization.AppLanguage.CHINESE }
+    }
+
     @Test fun `project defaults persist and only new conversations adopt them`() = runBlocking {
         val original = state().selected!!.conversation
         repository.editDraft(original.id, "keep draft", 3, 3)

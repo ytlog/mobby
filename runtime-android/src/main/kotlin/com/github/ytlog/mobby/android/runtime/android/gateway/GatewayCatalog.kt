@@ -1,5 +1,7 @@
 package com.github.ytlog.mobby.android.runtime.android.gateway
 
+import com.github.ytlog.mobby.android.localization.AppStrings
+
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runInterruptible
 import kotlinx.serialization.json.*
@@ -38,7 +40,7 @@ internal class GatewayCatalog(
                 }
             }
         }
-        if (collected.isEmpty()) CatalogResult.Unavailable("模型列表为空") else CatalogResult.Ready(collected.values.toList())
+        if (collected.isEmpty()) CatalogResult.Unavailable(AppStrings.modelListIsEmpty) else CatalogResult.Ready(collected.values.toList())
     }
 
     private fun path(protocol: GatewayProtocol, after: String?): String {
@@ -63,13 +65,13 @@ internal class GatewayCatalog(
             }
             val status = http.responseCode
             if (status !in 200..299) return Page.Failed(httpMessage(status))
-            val bytes = readLimited(http) ?: return Page.Failed("模型列表过大，未保存")
+            val bytes = readLimited(http) ?: return Page.Failed(AppStrings.modelListIsTooLargeNotSaved)
             return parse(bytes.toString(Charsets.UTF_8))
         } catch (e: InterruptedException) { throw e }
-        catch (_: UnknownHostException) { return Page.Failed("无法解析网关域名，模型列表未保存") }
-        catch (_: SSLException) { return Page.Failed("TLS 校验失败，模型列表未保存") }
-        catch (_: SocketTimeoutException) { return Page.Failed("读取模型列表超时，未保存") }
-        catch (_: IOException) { return Page.Failed("无法读取模型列表，未保存") }
+        catch (_: UnknownHostException) { return Page.Failed(AppStrings.cannotResolveGatewayDomainModelListNotSaved) }
+        catch (_: SSLException) { return Page.Failed(AppStrings.tlsValidationFailedModelListNotSaved) }
+        catch (_: SocketTimeoutException) { return Page.Failed(AppStrings.modelListReadTimedOutNotSaved) }
+        catch (_: IOException) { return Page.Failed(AppStrings.cannotReadModelListNotSaved) }
         finally { connection?.disconnect() }
     }
 
@@ -91,9 +93,9 @@ internal class GatewayCatalog(
     }
 
     private fun parse(text: String): Page = runCatching {
-        val root = Json.parseToJsonElement(text) as? JsonObject ?: return Page.Failed("模型列表格式无法识别")
-        if (root["error"]?.let { it != JsonNull } == true) return Page.Failed("模型列表格式无法识别")
-        val data = root["data"] as? JsonArray ?: return Page.Failed("模型列表格式无法识别")
+        val root = Json.parseToJsonElement(text) as? JsonObject ?: return Page.Failed(AppStrings.unrecognizedModelListFormat)
+        if (root["error"]?.let { it != JsonNull } == true) return Page.Failed(AppStrings.unrecognizedModelListFormat)
+        val data = root["data"] as? JsonArray ?: return Page.Failed(AppStrings.unrecognizedModelListFormat)
         val models = data.mapNotNull { element ->
             val item = element as? JsonObject ?: return@mapNotNull null
             val id = item["id"]?.jsonPrimitive?.takeIf { it.isString }?.content ?: return@mapNotNull null
@@ -104,13 +106,13 @@ internal class GatewayCatalog(
         }
         val next = root["last_id"]?.jsonPrimitive?.takeIf { it.isString }?.content
         Page.Ok(models, root["has_more"]?.jsonPrimitive?.booleanOrNull == true, next)
-    }.getOrDefault(Page.Failed("模型列表格式无法识别"))
+    }.getOrDefault(Page.Failed(AppStrings.unrecognizedModelListFormat))
 
     private fun httpMessage(status: Int) = when (status) {
-        401, 403 -> "模型列表鉴权失败（HTTP $status），请检查密钥"
-        404 -> "该网关没有模型列表接口"
-        in 300..399 -> "模型列表要求重定向（HTTP $status），未转发凭据"
-        else -> "模型列表请求被拒绝（HTTP $status）"
+        401, 403 -> AppStrings.modelListAuthenticationFailedHttpCheckYourKey(status)
+        404 -> AppStrings.thisGatewayHasNoModelListEndpoint
+        in 300..399 -> AppStrings.modelListRequestedARedirectHttpCredentialsWereNot(status)
+        else -> AppStrings.modelListRequestRejectedHttp(status)
     }
 
     private sealed interface Page {

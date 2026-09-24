@@ -1,5 +1,7 @@
 package com.github.ytlog.mobby.android.runtime.android
 
+import com.github.ytlog.mobby.android.localization.AppStrings
+
 import com.github.ytlog.mobby.android.runtime.api.gateway.*
 
 import android.app.PendingIntent
@@ -15,7 +17,7 @@ class RuntimeHost(context: Context, notification: () -> PendingIntent) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val service = MutableStateFlow<RuntimeService?>(null)
     private val status = MutableStateFlow(ConnectionState.CONNECTING)
-    private val environmentState = MutableStateFlow(EnvironmentSnapshot(EnvironmentPhase.INITIALIZING, "正在连接运行服务"))
+    private val environmentState = MutableStateFlow(EnvironmentSnapshot(EnvironmentPhase.INITIALIZING, AppStrings.connectingToRuntimeService))
     private var observation: Job? = null
     private val diagnosticState = MutableStateFlow(DiagnosticState())
     private val app = context.applicationContext
@@ -32,7 +34,7 @@ class RuntimeHost(context: Context, notification: () -> PendingIntent) {
         }
         override fun onServiceDisconnected(name: ComponentName) {
             service.value = null; observation?.cancel(); status.value = ConnectionState.DISCONNECTED
-            environmentState.value = EnvironmentSnapshot(EnvironmentPhase.FAILED, "连接中断，结果待确认", RuntimeError(ErrorCode.DISCONNECTED, true))
+            environmentState.value = EnvironmentSnapshot(EnvironmentPhase.FAILED, AppStrings.disconnectedResultUnconfirmed, RuntimeError(ErrorCode.DISCONNECTED, true))
         }
         override fun onBindingDied(name: ComponentName) {
             onServiceDisconnected(name)

@@ -1,5 +1,9 @@
 package com.github.ytlog.mobby.android.interaction.data
 
+import com.github.ytlog.mobby.android.localization.CatalogIds
+
+import com.github.ytlog.mobby.android.localization.AppStrings
+
 import com.github.ytlog.mobby.android.interaction.domain.gateway.*
 
 import com.github.ytlog.mobby.android.runtime.api.gateway.*
@@ -13,23 +17,23 @@ import kotlinx.coroutines.flow.*
 import java.util.UUID
 
 internal fun RuntimeError.message(): String = when (code) {
-    ErrorCode.INPUT_TOO_LARGE -> "文字与附件合计超出输入上限，请缩短文字或移除附件"
-    ErrorCode.NOT_READY -> "运行环境尚未就绪"
-    ErrorCode.BUSY -> "已有任务正在执行，请等待或前往该会话停止"
-    ErrorCode.INVALID_CONFIG -> "网关或模型配置无效，请检查设置"
-    ErrorCode.PERMISSION_DENIED -> "权限被拒绝，任务未完成"
-    ErrorCode.UNSUPPORTED_CAPABILITY -> "当前 Agent 尚不支持此能力"
-    ErrorCode.DISCONNECTED -> "连接中断，结果待确认"
-    ErrorCode.RESOURCE_MISSING -> "所需文件不存在或不可读取"
-    ErrorCode.RESOURCE_BUDGET_EXCEEDED -> "附件存储已达上限，可在存储与保留设置中提高附件容量；已有附件已保留"
-    ErrorCode.STORAGE_FULL -> "存储写入失败，请检查可用空间"
-    ErrorCode.TIMEOUT -> "任务执行超时"
-    ErrorCode.INTERRUPTED -> "执行中断，结果待确认"
-    ErrorCode.STALE_APPROVAL -> "此确认请求已失效"
-    ErrorCode.REQUEST_CONFLICT -> "请求标识冲突，未重复执行"
-    ErrorCode.INCOMPATIBLE_VERSION -> "运行接口不兼容，请更新应用"
-    ErrorCode.NOT_FOUND -> "请求未被接纳，可重新提交"
-    ErrorCode.PROTOCOL_ERROR -> "Agent 执行失败或返回了不完整的协议，请展开过程查看详情"
+    ErrorCode.INPUT_TOO_LARGE -> AppStrings.textAndAttachmentsExceedTheInputLimitShortenText
+    ErrorCode.NOT_READY -> AppStrings.runtimeIsNotReady
+    ErrorCode.BUSY -> AppStrings.aTaskIsRunningWaitOrOpenItsConversation
+    ErrorCode.INVALID_CONFIG -> AppStrings.invalidGatewayOrModelConfigurationCheckSettings
+    ErrorCode.PERMISSION_DENIED -> AppStrings.permissionDeniedTaskDidNotComplete
+    ErrorCode.UNSUPPORTED_CAPABILITY -> AppStrings.thisAgentDoesNotSupportThisCapabilityYet
+    ErrorCode.DISCONNECTED -> AppStrings.disconnectedResultUnconfirmed
+    ErrorCode.RESOURCE_MISSING -> AppStrings.requiredFileIsMissingOrUnreadable
+    ErrorCode.RESOURCE_BUDGET_EXCEEDED -> AppStrings.attachmentStorageIsFullIncreaseCapacityInStorageRetention
+    ErrorCode.STORAGE_FULL -> AppStrings.storageWriteFailedCheckAvailableSpace
+    ErrorCode.TIMEOUT -> AppStrings.taskTimedOut
+    ErrorCode.INTERRUPTED -> AppStrings.executionInterruptedResultUnconfirmed
+    ErrorCode.STALE_APPROVAL -> AppStrings.thisApprovalRequestHasExpired
+    ErrorCode.REQUEST_CONFLICT -> AppStrings.requestIdConflictExecutionWasNotRepeated
+    ErrorCode.INCOMPATIBLE_VERSION -> AppStrings.incompatibleRuntimeApiUpdateTheApp
+    ErrorCode.NOT_FOUND -> AppStrings.requestWasNotAcceptedYouCanSubmitItAgain
+    ErrorCode.PROTOCOL_ERROR -> AppStrings.agentFailedOrReturnedAnIncompleteProtocolResponseExpand
 }
 internal fun RunPhase.domain(): ExecutionPhase = ExecutionPhase.valueOf(if (this == RunPhase.STARTING) "ACCEPTED" else name)
 internal fun RuntimeError.failure() = when (code) {
@@ -47,7 +51,7 @@ internal class RuntimeExecutionAdapter(private val client: RuntimeClient) : Exec
         ApprovalDecision(CommandId(decision.commandId), RunId(decision.key.execution.value), decision.key.approvalId,
             if (decision.allow) ApprovalChoice.ALLOW_ONCE else ApprovalChoice.DENY, decision.key.revision))) {
         CommandResult.Accepted -> OperationResult.Done
-        CommandResult.AlreadyTerminal -> OperationResult.Failed("此确认请求已失效")
+        CommandResult.AlreadyTerminal -> OperationResult.Failed(AppStrings.thisApprovalRequestHasExpired)
         is CommandResult.Rejected -> OperationResult.Failed(result.error.message())
     }
     override suspend fun submit(turn: TurnExecution): Submission = try {
@@ -76,7 +80,7 @@ internal class RuntimeSystemAdapter(private val context: android.content.Context
     private suspend fun <T> cameraResult(block: suspend () -> T): DataResult<T> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         try { DataResult.Loaded(block()) }
         catch (e: CancellationException) { throw e }
-        catch (_: Exception) { DataResult.Failed("拍照状态无法更新，请处理现有照片后重试") }
+        catch (_: Exception) { DataResult.Failed(AppStrings.cannotUpdatePhotoCaptureStateHandleTheExistingPhoto) }
     }
     override suspend fun beginCapture(conversation: String, workspace: String) = cameraResult { camera.begin(conversation, workspace) }
     override suspend fun capture() = cameraResult { camera.current() }
@@ -122,41 +126,41 @@ internal class RuntimeSystemAdapter(private val context: android.content.Context
             catch (_: SecurityException) { /* transient grant remains valid for this import */ }
             val name = resolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
                 if (it.moveToFirst()) it.getString(0) else null
-            } ?: "附件"
+            } ?: AppStrings.attachment
             val bytes = java.io.ByteArrayOutputStream()
             resolver.openInputStream(uri)?.use { input ->
                 val buffer = ByteArray(8192)
                 while (true) { val n = input.read(buffer); if (n < 0) break; bytes.write(buffer, 0, n); require(bytes.size() <= 2 * 1024 * 1024) }
-            } ?: return@withContext DataResult.Failed("无法读取所选文件")
+            } ?: return@withContext DataResult.Failed(AppStrings.cannotReadTheSelectedFile)
             when (val result = admin.importResource(ImportResourceRequest(WorkspaceRef(workspace), name, bytes.toByteArray()))) {
                 is AdminResult.Success -> DataResult.Loaded(Attachment(result.value.ref.value, result.value.name, result.value.sizeBytes, result.value.mediaType))
-                is AdminResult.Failed -> DataResult.Failed(if (result.error.code in setOf(ErrorCode.INVALID_CONFIG, ErrorCode.UNSUPPORTED_CAPABILITY)) "支持 32 KiB 内 UTF-8 文本或 2 MiB 内 PNG/JPEG（最长边 4096、最多 800 万像素），不支持 PDF 与其他格式" else result.error.message())
+                is AdminResult.Failed -> DataResult.Failed(if (result.error.code in setOf(ErrorCode.INVALID_CONFIG, ErrorCode.UNSUPPORTED_CAPABILITY)) AppStrings.supportsUtfTextUpToKibOrPngJpeg else result.error.message())
             }
         } catch (e: CancellationException) { throw e }
-        catch (_: SecurityException) { DataResult.Failed("文件授权失效，请重新选择") }
-        catch (_: Exception) { DataResult.Failed("文件读取失败或超过 2 MiB，请重试或移除") }
+        catch (_: SecurityException) { DataResult.Failed(AppStrings.filePermissionExpiredSelectTheFileAgain) }
+        catch (_: Exception) { DataResult.Failed(AppStrings.fileCouldNotBeReadOrExceedsMibRetry) }
     }
-    private fun SkillSummary.domain() = Skill(ref.value, DomainAgent.valueOf(agent.name), name, description, if (source == SkillSource.USER) "用户技能" else "CLI 内置", available, error?.let { "技能元信息、目录名称或文件路径无效" })
+    private fun SkillSummary.domain() = Skill(ref.value, DomainAgent.valueOf(agent.name), name, description, if (source == SkillSource.USER) CatalogIds.USER_SKILLS else CatalogIds.BUILTIN_SKILLS, available, error?.let { AppStrings.invalidSkillMetadataDirectoryNameOrFilePath })
     private fun SkillPreview.domain() = SkillContent(name, description, body, markdown, issues.map { when (it) {
-        SkillIssue.INVALID_FRONTMATTER -> "YAML 元信息无效，请修正后再导入"
-        SkillIssue.UNCLOSED_FRONTMATTER -> "元信息缺少结束分隔符 ---"
-        SkillIssue.INVALID_NAME -> "名称须为 1–63 位小写字母、数字或连字符，不能使用 synced"
-        SkillIssue.INVALID_DESCRIPTION -> "请填写不超过 1024 字的用途和触发场景"
-        SkillIssue.EMPTY_BODY -> "技能正文不能为空"
+        SkillIssue.INVALID_FRONTMATTER -> AppStrings.invalidYamlMetadataCorrectItBeforeImporting
+        SkillIssue.UNCLOSED_FRONTMATTER -> AppStrings.metadataIsMissingTheClosingSeparator
+        SkillIssue.INVALID_NAME -> AppStrings.nameMustBeLowercaseLettersDigitsOrHyphensAnd
+        SkillIssue.INVALID_DESCRIPTION -> AppStrings.describeThePurposeAndTriggersInAtMostCharacters
+        SkillIssue.EMPTY_BODY -> AppStrings.skillInstructionsCannotBeEmpty
     } })
     private fun <T, R> AdminResult<T>.result(map: (T) -> R): DataResult<R> = when (this) {
         is AdminResult.Success -> DataResult.Loaded(map(value))
         is AdminResult.Failed -> DataResult.Failed(when (error.code) {
-            ErrorCode.REQUEST_CONFLICT -> "同名技能已存在，请修改名称；原技能未被覆盖"
-            ErrorCode.INVALID_CONFIG -> "技能内容或元信息无效，请检查名称、用途、正文和文件大小"
-            ErrorCode.RESOURCE_MISSING -> "技能文件已改变或不可读取，请刷新列表"
+            ErrorCode.REQUEST_CONFLICT -> AppStrings.aSkillWithThisNameExistsRenameItThe
+            ErrorCode.INVALID_CONFIG -> AppStrings.invalidSkillContentOrMetadataCheckNamePurposeInstructions
+            ErrorCode.RESOURCE_MISSING -> AppStrings.skillFileChangedOrCannotBeReadRefreshThe
             else -> error.message()
         })
     }
     override suspend fun workspaces() = admin.listWorkspaces().result { list -> list.map { WorkspaceOption(it.ref.value, it.name) } }
     override suspend fun createWorkspace(name: String) = when (val result = admin.createWorkspace(name)) {
         is AdminResult.Success -> DataResult.Loaded(WorkspaceOption(result.value.ref.value, result.value.name))
-        is AdminResult.Failed -> DataResult.Failed(if (result.error.code == ErrorCode.INVALID_CONFIG) "工作区名称无效或已存在，请使用不同的名称（最多 80 字）" else result.error.message())
+        is AdminResult.Failed -> DataResult.Failed(if (result.error.code == ErrorCode.INVALID_CONFIG) AppStrings.workspaceNameIsInvalidOrAlreadyExistsUseA else result.error.message())
     }
     override suspend fun skills(agent: DomainAgent) = admin.listSkills(RuntimeAgent.valueOf(agent.name)).result { list -> list.map { it.domain() } }
     override suspend fun plugins() = admin.listPlugins().result { list -> list.map { item ->
@@ -177,31 +181,31 @@ internal class RuntimeSystemAdapter(private val context: android.content.Context
             val name = resolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
                 if (it.moveToFirst()) it.getString(0) else null
             }
-            if (name?.endsWith(".md", true) != true) return@withContext DataResult.Failed("请选择 .md 技能文件")
+            if (name?.endsWith(".md", true) != true) return@withContext DataResult.Failed(AppStrings.selectAMdSkillFile)
             val bytes = java.io.ByteArrayOutputStream()
             resolver.openInputStream(uri)?.use { input ->
                 val buffer = ByteArray(8192)
                 while (true) { val n = input.read(buffer); if (n < 0) break; bytes.write(buffer, 0, n); require(bytes.size() <= 128 * 1024) }
-            } ?: return@withContext DataResult.Failed("无法读取所选文件")
+            } ?: return@withContext DataResult.Failed(AppStrings.cannotReadTheSelectedFile)
             previewSkill(Charsets.UTF_8.newDecoder().decode(java.nio.ByteBuffer.wrap(bytes.toByteArray())).toString())
         } catch (e: CancellationException) { throw e }
-        catch (_: SecurityException) { DataResult.Failed("文件读取权限已失效，请重新选择") }
-        catch (_: Exception) { DataResult.Failed("无法导入：请选择不超过 128 KiB 的 UTF-8 Markdown 文件") }
+        catch (_: SecurityException) { DataResult.Failed(AppStrings.fileReadPermissionExpiredSelectTheFileAgain) }
+        catch (_: Exception) { DataResult.Failed(AppStrings.cannotImportSelectAUtfMarkdownFileUpTo) }
     }
     override suspend fun eventHistoryLimits(): DataResult<EventHistoryLimits> = when (val result = admin.eventHistorySettings()) {
         is AdminResult.Success -> DataResult.Loaded(EventHistoryLimits(result.value.retentionDays, result.value.budgetMiB, result.value.outputRetentionDays, result.value.outputBudgetMiB, result.value.attachmentBudgetMiB))
-        is AdminResult.Failed -> DataResult.Failed(if (result.error.code == ErrorCode.DISCONNECTED) "连接中断，请重试" else "无法读取存储设置，请重试")
+        is AdminResult.Failed -> DataResult.Failed(if (result.error.code == ErrorCode.DISCONNECTED) AppStrings.disconnectedPleaseRetry else AppStrings.cannotReadStorageSettingsPleaseRetry)
     }
     override suspend fun saveEventHistoryLimits(value: EventHistoryLimits): OperationResult {
-        if (value.days !in 1..3650 || value.mib !in 1..1024 || value.outputDays !in 1..3650 || value.outputMiB !in 1..4096 || value.attachmentMiB !in 1..8192) return OperationResult.Failed("存储设置超出范围")
+        if (value.days !in 1..3650 || value.mib !in 1..1024 || value.outputDays !in 1..3650 || value.outputMiB !in 1..4096 || value.attachmentMiB !in 1..8192) return OperationResult.Failed(AppStrings.storageSettingsAreOutOfRange)
         return when (val result = admin.saveEventHistorySettings(EventHistorySettings(value.days, value.mib, value.outputDays, value.outputMiB, value.attachmentMiB))) {
             is AdminResult.Success -> OperationResult.Done
-            is AdminResult.Failed -> OperationResult.Failed(if (result.error.code == ErrorCode.DISCONNECTED) "连接中断，保存未确认" else "无法保存存储设置，请重试")
+            is AdminResult.Failed -> OperationResult.Failed(if (result.error.code == ErrorCode.DISCONNECTED) AppStrings.disconnectedSaveUnconfirmed else AppStrings.cannotSaveStorageSettingsPleaseRetry)
         }
     }
     override val status = combine(client.connection, admin.environment, diagnostics.state) { connection, environment, diagnostic ->
         SystemStatus(environment.phase == EnvironmentPhase.READY, connection == ConnectionState.CONNECTED,
-            if (connection == ConnectionState.DISCONNECTED) "连接中断，结果待确认" else environment.summary,
+            if (connection == ConnectionState.DISCONNECTED) AppStrings.disconnectedResultUnconfirmed else environment.summary,
             diagnostic.phase?.let { !it.terminal || it == RunPhase.OUTCOME_UNKNOWN } == true)
     }
     override val diagnostic = diagnostics.state.map { DiagnosticOutput(it.phase?.domain(), it.output) }
@@ -258,18 +262,18 @@ internal class RuntimeSystemAdapter(private val context: android.content.Context
 }
 
 internal fun GatewayCheck.message(): String = when (outcome) {
-    GatewayCheckOutcome.SUCCEEDED -> "协议接口已响应；尚未验证 CLI、工具调用与会话恢复"
+    GatewayCheckOutcome.SUCCEEDED -> AppStrings.minimalProtocolRequestPassedCliToolCallsAndSession
     GatewayCheckOutcome.HTTP_ERROR -> when (httpStatus) {
-        401, 403 -> "鉴权或访问被拒绝（HTTP $httpStatus），请检查密钥及访问权限"
-        404 -> "请求路径或模型不存在（HTTP 404），请检查地址、协议和模型"
-        429 -> "请求受到限流或额度限制（HTTP 429），请稍后重试并检查额度"
-        in 300..399 -> "网关要求重定向（HTTP $httpStatus）；未转发凭据，请填写最终网关地址"
-        else -> "网关拒绝请求（HTTP $httpStatus），请检查配置或服务状态"
+        401, 403 -> AppStrings.authenticationOrAccessDeniedHttpCheckYourKeyAnd(httpStatus)
+        404 -> AppStrings.requestPathOrModelNotFoundHttpCheckAddress
+        429 -> AppStrings.rateOrQuotaLimitReachedHttpRetryLaterAnd
+        in 300..399 -> AppStrings.gatewayRequestedARedirectHttpCredentialsWereNotForwarded(httpStatus)
+        else -> AppStrings.gatewayRejectedTheRequestHttpCheckConfigurationOrService(httpStatus)
     }
-    GatewayCheckOutcome.INVALID_RESPONSE -> "收到的内容不符合所选协议，不能确认连接成功"
-    GatewayCheckOutcome.RESPONSE_TOO_LARGE -> "检查响应超过 64 KiB 上限，未判定成功"
-    GatewayCheckOutcome.DNS_ERROR -> "无法解析网关域名，请检查地址与网络"
-    GatewayCheckOutcome.TLS_ERROR -> "TLS 证书或安全连接校验失败；请检查网关证书与设备时间"
-    GatewayCheckOutcome.TIMEOUT -> "连接或读取网关超时，请检查网络或稍后重试"
-    GatewayCheckOutcome.CONNECTION_ERROR -> "无法完成网络请求，请检查地址、网络和网关状态"
+    GatewayCheckOutcome.INVALID_RESPONSE -> AppStrings.responseDoesNotMatchTheSelectedProtocolConnectionSuccess
+    GatewayCheckOutcome.RESPONSE_TOO_LARGE -> AppStrings.checkResponseExceedsKibSuccessWasNotConfirmed
+    GatewayCheckOutcome.DNS_ERROR -> AppStrings.cannotResolveGatewayDomainCheckAddressAndNetwork
+    GatewayCheckOutcome.TLS_ERROR -> AppStrings.tlsCertificateOrSecureConnectionValidationFailedCheckGateway
+    GatewayCheckOutcome.TIMEOUT -> AppStrings.gatewayConnectionOrReadTimedOutCheckTheNetwork
+    GatewayCheckOutcome.CONNECTION_ERROR -> AppStrings.networkRequestFailedCheckAddressNetworkAndGatewayStatus
 }

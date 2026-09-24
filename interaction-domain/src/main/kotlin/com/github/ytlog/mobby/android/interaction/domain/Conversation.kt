@@ -1,5 +1,7 @@
 package com.github.ytlog.mobby.android.interaction.domain
 
+import com.github.ytlog.mobby.android.localization.AppStrings
+
 import kotlinx.coroutines.flow.Flow
 
 @JvmInline value class ConversationId(val value: String)
@@ -19,7 +21,7 @@ data class Draft(
 data class Conversation(
     val id: ConversationId, val config: NextTurnConfig, val draft: Draft = Draft(),
     val hasTurns: Boolean = false, val session: String? = null,
-    val title: String = "新对话", val pinned: Boolean = false, val project: String? = null,
+    val title: String = AppStrings.newConversation, val pinned: Boolean = false, val project: String? = null,
     val archived: Boolean = false, val deleted: Boolean = false,
     val anchor: String? = null, val anchorOffset: Int = 0, val updatedAt: Long = 0, val creator: String? = null,
     val sessions: Map<AgentId, String> = emptyMap()
@@ -54,7 +56,7 @@ interface ExecutionPort {
     suspend fun submit(turn: TurnExecution): Submission
     suspend fun lookup(turnId: TurnId): Submission
     suspend fun cancel(executionId: ExecutionId): StopResult
-    suspend fun resolvePermission(decision: PermissionDecision): OperationResult = OperationResult.Failed("当前执行端不支持审批")
+    suspend fun resolvePermission(decision: PermissionDecision): OperationResult = OperationResult.Failed(AppStrings.thisRuntimeDoesNotSupportApprovals)
     fun observe(executionId: ExecutionId): Flow<ExecutionFact>
 }
 sealed interface PrepareTurnResult {
@@ -114,7 +116,7 @@ object ConversationRules {
         if (creator == null) return null
         require(newId != current.id)
         return Conversation(newId, current.config, Draft(
-            text = "请用 /skill-creator 帮我创建技能，要求是：", capabilities = setOf(creator)
+            text = AppStrings.createSkillPrompt, capabilities = setOf(creator)
         ), project = current.project, creator = creator)
     }
 }

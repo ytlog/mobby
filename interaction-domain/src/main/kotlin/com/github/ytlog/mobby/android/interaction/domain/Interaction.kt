@@ -1,5 +1,9 @@
 package com.github.ytlog.mobby.android.interaction.domain
 
+import com.github.ytlog.mobby.android.localization.CatalogIds
+
+import com.github.ytlog.mobby.android.localization.AppStrings
+
 import com.github.ytlog.mobby.android.interaction.domain.gateway.*
 
 import kotlinx.coroutines.flow.Flow
@@ -87,7 +91,7 @@ data class InteractionState(
     val occupied: ConversationSummary? get() = conversations.firstOrNull { it.occupied }
 }
 data class AgentOption(val agent: AgentId, val models: Map<String, Set<String>>, val unavailable: String?, val resume: Boolean, val skills: Set<String>, val resources: Boolean = false, val images: Boolean = false, val approvals: Boolean = false, val modelNames: Map<String, String> = emptyMap())
-data class SystemStatus(val ready: Boolean = false, val connected: Boolean = false, val message: String = "连接中", val diagnosticBusy: Boolean = false)
+data class SystemStatus(val ready: Boolean = false, val connected: Boolean = false, val message: String = AppStrings.connecting, val diagnosticBusy: Boolean = false)
 data class DiagnosticOutput(val phase: ExecutionPhase?, val lines: List<String>)
 sealed interface OperationResult {
     data object Done : OperationResult
@@ -107,14 +111,14 @@ enum class PluginAccess { NONE, RUNTIME, ACCESSIBILITY, DOCUMENT_TREE }
 data class PluginGrant(val ref: String, val label: String, val available: Boolean, val unavailableReason: String?, val permissions: List<String> = emptyList())
 data class Plugin(
     val ref: String, val name: String, val description: String, val available: Boolean, val unavailableReason: String?,
-    val category: String = "手机", val access: PluginAccess = PluginAccess.NONE,
+    val category: String = CatalogIds.PHONE, val access: PluginAccess = PluginAccess.NONE,
     val permissions: List<String> = emptyList(), val grant: PluginGrant? = null,
 )
 interface SystemPort {
-    suspend fun workspaces(): DataResult<List<WorkspaceOption>> = DataResult.Failed("当前执行端不支持工作区选择")
-    suspend fun createWorkspace(name: String): DataResult<WorkspaceOption> = DataResult.Failed("当前执行端不支持创建工作区")
-    suspend fun eventHistoryLimits(): DataResult<EventHistoryLimits> = DataResult.Failed("当前执行端不支持存储设置")
-    suspend fun saveEventHistoryLimits(value: EventHistoryLimits): OperationResult = OperationResult.Failed("当前执行端不支持存储设置")
+    suspend fun workspaces(): DataResult<List<WorkspaceOption>> = DataResult.Failed(AppStrings.thisRuntimeDoesNotSupportWorkspaceSelection)
+    suspend fun createWorkspace(name: String): DataResult<WorkspaceOption> = DataResult.Failed(AppStrings.thisRuntimeDoesNotSupportCreatingWorkspaces)
+    suspend fun eventHistoryLimits(): DataResult<EventHistoryLimits> = DataResult.Failed(AppStrings.thisRuntimeDoesNotSupportStorageSettings)
+    suspend fun saveEventHistoryLimits(value: EventHistoryLimits): OperationResult = OperationResult.Failed(AppStrings.thisRuntimeDoesNotSupportStorageSettings)
     suspend fun beginCapture(conversation: String, workspace: String): DataResult<CameraCapture>
     suspend fun capture(): DataResult<CameraCapture?>
     suspend fun finishCapture(id: String, success: Boolean): DataResult<CameraCapture?>
@@ -147,9 +151,9 @@ interface SystemPort {
     suspend fun stopShell(): OperationResult
 }
 interface InteractionRepository : ConversationRepository {
-    suspend fun saveProject(project: Project, createOnly: Boolean = false): OperationResult = OperationResult.Failed("当前存储不支持项目默认工作区")
+    suspend fun saveProject(project: Project, createOnly: Boolean = false): OperationResult = OperationResult.Failed(AppStrings.thisStorageDoesNotSupportDefaultProjectWorkspaces)
     suspend fun createInProject(config: NextTurnConfig, project: String, workspaceOverride: String? = null): ConversationId = error("Project creation is unsupported")
-    suspend fun saveSkillProposal(proposal: SkillProposal, markdown: String): DataResult<Skill> = DataResult.Failed("当前会话不支持保存生成草稿")
+    suspend fun saveSkillProposal(proposal: SkillProposal, markdown: String): DataResult<Skill> = DataResult.Failed(AppStrings.thisConversationDoesNotSupportSavingGeneratedDrafts)
     suspend fun conversation(id: ConversationId): Conversation
     suspend fun awaitAttachmentRecovery()
     suspend fun loadEarlier(id: ConversationId)
@@ -204,8 +208,8 @@ class InteractionUseCases(
         if (project == null) repository.create(config) else repository.createInProject(config, project, config.workspace)
     suspend fun saveProject(project: Project, createOnly: Boolean = false): OperationResult = submissionScope.async {
         val workspaces = (system.workspaces() as? DataResult.Loaded)?.value
-            ?: return@async OperationResult.Failed("无法读取工作区，请刷新后重试")
-        if (workspaces.none { it.ref == project.defaultWorkspace }) return@async OperationResult.Failed("工作区不可用，请重新选择")
+            ?: return@async OperationResult.Failed(AppStrings.cannotReadWorkspacesRefreshAndRetry)
+        if (workspaces.none { it.ref == project.defaultWorkspace }) return@async OperationResult.Failed(AppStrings.workspaceUnavailableSelectAnotherWorkspace)
         repository.saveProject(project, createOnly)
     }.await()
     suspend fun draft(id: ConversationId, text: String, start: Int, end: Int) = repository.editDraft(id, text, start, end)
@@ -229,8 +233,8 @@ class InteractionUseCases(
     suspend fun setSkill(id: ConversationId, skill: Skill, enabled: Boolean): OperationResult {
         if (enabled) {
             val current = (system.skills(skill.agent) as? DataResult.Loaded)?.value
-                ?: return OperationResult.Failed("技能目录不可用，请重试")
-            if (current.none { it.ref == skill.ref && it.available }) return OperationResult.Failed("技能已改变或不可用，请重新选择")
+                ?: return OperationResult.Failed(AppStrings.skillDirectoryUnavailablePleaseRetry)
+            if (current.none { it.ref == skill.ref && it.available }) return OperationResult.Failed(AppStrings.skillChangedOrIsUnavailableSelectItAgain)
         }
         repository.setSkill(id, skill.ref, enabled)
         return OperationResult.Done
@@ -238,24 +242,24 @@ class InteractionUseCases(
     suspend fun setPlugin(id: ConversationId, plugin: Plugin, enabled: Boolean): OperationResult {
         if (enabled) {
             val current = (system.plugins() as? DataResult.Loaded)?.value
-                ?: return OperationResult.Failed("插件目录不可用，请重试")
+                ?: return OperationResult.Failed(AppStrings.pluginCatalogueUnavailablePleaseRetry)
             if (current.none { it.ref == plugin.ref && it.available })
-                return OperationResult.Failed(plugin.unavailableReason ?: "请先授权后再使用")
+                return OperationResult.Failed(plugin.unavailableReason ?: AppStrings.grantPermissionBeforeUse)
         }
         repository.setSkill(id, plugin.ref, enabled)
         if (!enabled) plugin.grant?.let { repository.setSkill(id, it.ref, false) }
         return OperationResult.Done
     }
     suspend fun setPluginGrant(id: ConversationId, plugin: Plugin, enabled: Boolean): OperationResult {
-        val grant = plugin.grant ?: return OperationResult.Failed("这个插件没有单独的写入开关")
+        val grant = plugin.grant ?: return OperationResult.Failed(AppStrings.thisPluginHasNoSeparateWriteSwitch)
         if (enabled) {
             val current = (system.plugins() as? DataResult.Loaded)?.value
-                ?: return OperationResult.Failed("插件目录不可用，请重试")
-            val live = current.firstOrNull { it.ref == plugin.ref } ?: return OperationResult.Failed("插件目录不可用，请重试")
-            val liveGrant = live.grant ?: return OperationResult.Failed("这个插件没有单独的写入开关")
-            if (!live.available) return OperationResult.Failed(live.unavailableReason ?: "请先授权后再使用")
-            if (!liveGrant.available) return OperationResult.Failed(liveGrant.unavailableReason ?: "请先授权后再使用")
-            if (plugin.ref !in repository.conversation(id).draft.capabilities) return OperationResult.Failed("请先使用${plugin.name}")
+                ?: return OperationResult.Failed(AppStrings.pluginCatalogueUnavailablePleaseRetry)
+            val live = current.firstOrNull { it.ref == plugin.ref } ?: return OperationResult.Failed(AppStrings.pluginCatalogueUnavailablePleaseRetry)
+            val liveGrant = live.grant ?: return OperationResult.Failed(AppStrings.thisPluginHasNoSeparateWriteSwitch)
+            if (!live.available) return OperationResult.Failed(live.unavailableReason ?: AppStrings.grantPermissionBeforeUse)
+            if (!liveGrant.available) return OperationResult.Failed(liveGrant.unavailableReason ?: AppStrings.grantPermissionBeforeUse)
+            if (plugin.ref !in repository.conversation(id).draft.capabilities) return OperationResult.Failed(AppStrings.enableFirst(plugin.name))
             repository.setSkill(id, liveGrant.ref, true)
         } else repository.setSkill(id, grant.ref, false)
         return OperationResult.Done
@@ -263,14 +267,14 @@ class InteractionUseCases(
     suspend fun removeSkill(id: ConversationId, ref: String) = repository.setSkill(id, ref, false)
     suspend fun createSkillConversation(id: ConversationId, agent: AgentId): DataResult<ConversationId> {
         val creator = (system.skills(agent) as? DataResult.Loaded)?.value?.firstOrNull { it.name == "skill-creator" && it.available }
-            ?: return DataResult.Failed("当前 Agent 没有可用的 Skill Creator；请返回技能页选择其他创建方式")
+            ?: return DataResult.Failed(AppStrings.thisAgentHasNoAvailableSkillCreatorReturnTo)
         return DataResult.Loaded(repository.createSkillConversation(id, creator.ref))
     }
     suspend fun beginCapture(conversation: ConversationId, workspace: String): DataResult<CameraCapture> {
         repository.awaitAttachmentRecovery()
         val current = repository.conversation(conversation)
         if (current.archived || current.deleted || current.config.workspace != workspace || current.draft.pendingAttachment != null || current.draft.attachments.size >= 4)
-            return DataResult.Failed("当前会话不能添加照片")
+            return DataResult.Failed(AppStrings.cannotAddAPhotoToThisConversation)
         return system.beginCapture(conversation.value, workspace)
     }
     suspend fun capture(): DataResult<CameraCapture?> {
@@ -285,7 +289,7 @@ class InteractionUseCases(
         repository.beginAttachment(id, pending)
         val result = try { system.importAttachment(workspace, location) }
             catch (e: kotlinx.coroutines.CancellationException) { throw e }
-            catch (_: Exception) { DataResult.Failed("导入未完成，请重试或移除") }
+            catch (_: Exception) { DataResult.Failed(AppStrings.importIncompleteRetryOrRemoveIt) }
         repository.finishAttachment(id, pending.id, result)
         result
     }.await()
@@ -310,7 +314,7 @@ class InteractionUseCases(
     suspend fun shell(command: String) = system.shell(command)
     suspend fun stopShell() = system.stopShell()
     suspend fun rename(id: ConversationId, title: String): OperationResult =
-        if (title.isBlank()) OperationResult.Failed("标题不能为空") else repository.rename(id, title.trim().take(120))
+        if (title.isBlank()) OperationResult.Failed(AppStrings.titleCannotBeEmpty) else repository.rename(id, title.trim().take(120))
     suspend fun pin(id: ConversationId) = repository.pin(id)
     suspend fun project(id: ConversationId, project: String?) = repository.setProject(id, project?.trim()?.takeIf { it.isNotEmpty() })
     suspend fun archive(id: ConversationId, archived: Boolean) = repository.archive(id, archived)

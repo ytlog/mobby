@@ -19,8 +19,9 @@ import java.lang.reflect.Proxy
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class PluginPageTest {
+    @After fun resetLanguage() { LanguagePreferences.select(org.robolectric.RuntimeEnvironment.getApplication(), com.github.ytlog.mobby.android.localization.AppLanguage.CHINESE) }
     @get:Rule val compose = createComposeRule()
-    private val plugin = Plugin("plugin:device:screen", "屏幕", "读取并操作当前屏幕", false, "请在系统设置中开启 mobby 的“屏幕”无障碍服务", "手机", PluginAccess.ACCESSIBILITY)
+    private val plugin = Plugin("plugin:device:screen", "屏幕", "读取并操作当前屏幕", false, "请在系统设置中开启 mobby 的“屏幕”无障碍服务", "phone", PluginAccess.ACCESSIBILITY)
     private inline fun <reified T> stub(crossinline body: (String, Array<out Any?>) -> Any?): T =
         Proxy.newProxyInstance(T::class.java.classLoader, arrayOf(T::class.java)) { _, method, args -> body(method.name, args ?: emptyArray()) } as T
 
@@ -84,6 +85,10 @@ class PluginPageTest {
         val vm = ConversationViewModel(InteractionUseCases(repository, stub { name, _ -> error(name) }, system, { "id" }, CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate), stub { name, _ -> error(name) }))
         compose.setContent { MaterialTheme { PluginPage(vm) {} } }
         compose.waitUntil(5_000) { compose.onAllNodesWithText("屏幕").fetchSemanticsNodes().isNotEmpty() }
+        compose.runOnIdle { LanguagePreferences.select(org.robolectric.RuntimeEnvironment.getApplication(), com.github.ytlog.mobby.android.localization.AppLanguage.ENGLISH) }
+        compose.onNodeWithText("Phone").assertIsDisplayed()
+        compose.onNodeWithText("屏幕").assertIsDisplayed()
+        compose.runOnIdle { LanguagePreferences.select(org.robolectric.RuntimeEnvironment.getApplication(), com.github.ytlog.mobby.android.localization.AppLanguage.CHINESE) }
         compose.onNodeWithText("沟通").performClick()
         compose.waitUntil(5_000) { compose.onAllNodesWithText("这个分类还没有插件").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("手机").performClick()

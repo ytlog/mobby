@@ -1,5 +1,7 @@
 package com.github.ytlog.mobby.android.device
 
+import com.github.ytlog.mobby.android.localization.AppStrings
+
 import java.io.File
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
@@ -9,10 +11,10 @@ import java.util.zip.ZipOutputStream
 object OfficePackage {
     fun inspect(file: File): String = readZip(file) { entries ->
         when (kind(file)) {
-            "docx" -> "docx 段落 ${texts(entries, "word/document.xml", "w:t").size}"
-            "xlsx" -> "xlsx 单元格 ${sheetText(entries).size}"
-            "pptx" -> "pptx 幻灯片 ${entries.keys.count { it.startsWith("ppt/slides/slide") && it.endsWith(".xml") }}"
-            else -> error("只支持 xlsx、docx、pptx")
+            "docx" -> AppStrings.docxParagraph(texts(entries, "word/document.xml", "w:t").size)
+            "xlsx" -> AppStrings.xlsxCell(sheetText(entries).size)
+            "pptx" -> AppStrings.pptxSlide(entries.keys.count { it.startsWith("ppt/slides/slide") && it.endsWith(".xml") })
+            else -> error(AppStrings.onlyXlsxDocxAndPptxAreSupported)
         }
     }
     fun read(file: File): String = readZip(file) { entries ->
@@ -21,13 +23,13 @@ object OfficePackage {
             "xlsx" -> sheetText(entries)
             "pptx" -> entries.keys.filter { it.startsWith("ppt/slides/slide") && it.endsWith(".xml") }.sorted()
                 .flatMap { texts(entries, it, "a:t") }
-            else -> error("只支持 xlsx、docx、pptx")
+            else -> error(AppStrings.onlyXlsxDocxAndPptxAreSupported)
         }
-        if (lines.isEmpty()) "文档没有可读文本" else lines.joinToString("\n")
+        if (lines.isEmpty()) AppStrings.documentHasNoReadableText else lines.joinToString("\n")
     }
     fun write(file: File, text: String) {
         val lines = text.replace("\r\n", "\n").split('\n').take(200)
-        if (lines.sumOf { it.length } > 100_000) error("正文过长")
+        if (lines.sumOf { it.length } > 100_000) error(AppStrings.contentIsTooLong)
         file.parentFile?.mkdirs()
         val temporary = File(file.parentFile, ".${file.name}.${System.nanoTime()}.tmp")
         try {
@@ -36,7 +38,7 @@ object OfficePackage {
                     "docx" -> docx(zip, lines)
                     "xlsx" -> xlsx(zip, lines)
                     "pptx" -> pptx(zip, lines)
-                    else -> error("只支持 xlsx、docx、pptx")
+                    else -> error(AppStrings.onlyXlsxDocxAndPptxAreSupported)
                 }
             }
             if (!temporary.renameTo(file)) {
@@ -50,7 +52,7 @@ object OfficePackage {
     }
     private fun kind(file: File) = file.extension.lowercase()
     private fun <T> readZip(file: File, block: (Map<String, String>) -> T): T {
-        if (!file.isFile || file.length() > 32L * 1024 * 1024) error("文档不存在或超过 32MB")
+        if (!file.isFile || file.length() > 32L * 1024 * 1024) error(AppStrings.documentDoesNotExistOrExceedsMb)
         ZipFile(file).use { zip ->
             val entries = linkedMapOf<String, String>()
             var total = 0L
@@ -59,11 +61,11 @@ object OfficePackage {
                 val entry = items.nextElement()
                 if (entry.isDirectory) continue
                 val name = entry.name
-                if (name.startsWith("/") || ".." in name.split('/')) error("文档内容无效")
-                if (entry.size > 2L * 1024 * 1024) error("文档内容过大")
+                if (name.startsWith("/") || ".." in name.split('/')) error(AppStrings.invalidDocumentContent)
+                if (entry.size > 2L * 1024 * 1024) error(AppStrings.documentContentIsTooLarge)
                 val text = zip.getInputStream(entry).use { it.readBytes() }.toString(Charsets.UTF_8)
                 total += text.length
-                if (total > 8L * 1024 * 1024) error("文档内容过大")
+                if (total > 8L * 1024 * 1024) error(AppStrings.documentContentIsTooLarge)
                 entries[name] = text
             }
             return block(entries)

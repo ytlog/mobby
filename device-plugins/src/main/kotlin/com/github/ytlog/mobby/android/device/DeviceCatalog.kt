@@ -1,5 +1,9 @@
 package com.github.ytlog.mobby.android.device
 
+import com.github.ytlog.mobby.android.localization.CatalogIds
+
+import com.github.ytlog.mobby.android.localization.AppStrings
+
 enum class DeviceAccess { NONE, RUNTIME, ACCESSIBILITY, DOCUMENT_TREE }
 
 data class DeviceCommand(val action: String, val usage: String, val note: String = "", val grant: Boolean = false)
@@ -24,9 +28,9 @@ data class DevicePluginSpec(
 }
 
 object DeviceCatalog {
-    val all = listOf(
+    val all get() = listOf(
         DevicePluginSpec(
-            "screen", "屏幕", "读取并操作当前屏幕", "手机",
+            "screen", AppStrings.screen, AppStrings.readAndInteractWithTheCurrentScreen, CatalogIds.PHONE,
             "Use this skill to read or control the current phone. The display stays on for this run and the previous screen timeout returns when the run ends. Always snapshot first. Password fields appear as [secure]. Report failures; do not invent controls or success. Do not change the system screen timeout.",
             DeviceAccess.ACCESSIBILITY,
             commands = listOf(
@@ -40,20 +44,20 @@ object DeviceCatalog {
             ),
         ),
         DevicePluginSpec(
-            "sms", "短信", "读取短信。发送要单独打开", "沟通",
+            "sms", AppStrings.sms, AppStrings.readMessagesEnableSendingSeparately, CatalogIds.COMMUNICATION,
             "Read recent SMS, or send one when the send grant is enabled. Do not claim a message was sent unless the command succeeds.",
             DeviceAccess.RUNTIME, listOf(android.Manifest.permission.READ_SMS),
-            DeviceGrantSpec("send", "发送", listOf(android.Manifest.permission.SEND_SMS), setOf("send")),
+            DeviceGrantSpec("send", AppStrings.send, listOf(android.Manifest.permission.SEND_SMS), setOf("send")),
             listOf(
                 DeviceCommand("list", "list", "Returns about 20 recent inbox messages."),
                 DeviceCommand("send", """send {"to":"+8613800138000","body":"text"}""", "body is at most 500 characters.", grant = true),
             ),
         ),
         DevicePluginSpec(
-            "contacts", "通讯录", "读取联系人。修改要单独打开", "沟通",
+            "contacts", AppStrings.contacts, AppStrings.readContactsEnableEditingSeparately, CatalogIds.COMMUNICATION,
             "List contacts, or create, update and delete them when the write grant is enabled.",
             DeviceAccess.RUNTIME, listOf(android.Manifest.permission.READ_CONTACTS),
-            DeviceGrantSpec("write", "修改", listOf(android.Manifest.permission.WRITE_CONTACTS), setOf("create", "update", "delete")),
+            DeviceGrantSpec("write", AppStrings.edit, listOf(android.Manifest.permission.WRITE_CONTACTS), setOf("create", "update", "delete")),
             listOf(
                 DeviceCommand("list", "list", "Returns up to 50 contacts."),
                 DeviceCommand("create", """create {"name":"Ada","phone":"13800138000"}""", grant = true),
@@ -62,10 +66,10 @@ object DeviceCatalog {
             ),
         ),
         DevicePluginSpec(
-            "calendar", "日历", "读取日程。修改要单独打开", "沟通",
+            "calendar", AppStrings.calendar, AppStrings.readEventsEnableEditingSeparately, CatalogIds.COMMUNICATION,
             "List upcoming events, or create, update and delete them when the write grant is enabled.",
             DeviceAccess.RUNTIME, listOf(android.Manifest.permission.READ_CALENDAR),
-            DeviceGrantSpec("write", "修改", listOf(android.Manifest.permission.WRITE_CALENDAR), setOf("create", "update", "delete")),
+            DeviceGrantSpec("write", AppStrings.edit, listOf(android.Manifest.permission.WRITE_CALENDAR), setOf("create", "update", "delete")),
             listOf(
                 DeviceCommand("list", "list", "Returns up to 20 upcoming events."),
                 DeviceCommand("create", """create {"title":"Meet","start":"1710000000000","end":"1710003600000"}""", "start and end are epoch milliseconds.", grant = true),
@@ -74,7 +78,7 @@ object DeviceCatalog {
             ),
         ),
         DevicePluginSpec(
-            "media", "相册", "读取已授权的照片、视频和音频", "文件",
+            "media", AppStrings.media, AppStrings.readAuthorizedPhotosVideosAndAudio, CatalogIds.FILES,
             "List media the user has allowed, then copy one item into this run's inbox. Do not assume access to the whole library.",
             DeviceAccess.RUNTIME,
             commands = listOf(
@@ -83,7 +87,7 @@ object DeviceCatalog {
             ),
         ),
         DevicePluginSpec(
-            "storage", "存储", "访问用户选定的一个目录，包括 SD 卡", "文件",
+            "storage", AppStrings.storage, AppStrings.accessADirectoryYouSelectIncludingOnAnSd, CatalogIds.FILES,
             "Use only the directory the user selected. list and copy read it. export writes a workspace or inbox file back into that directory.",
             DeviceAccess.DOCUMENT_TREE,
             commands = listOf(
@@ -93,41 +97,41 @@ object DeviceCatalog {
             ),
         ),
         DevicePluginSpec(
-            "camera", "相机", "打开取景界面拍一张照片", "手机",
+            "camera", AppStrings.camera, AppStrings.openTheViewfinderToTakeAPhoto, CatalogIds.PHONE,
             "Take one photo. The user sees the shutter. The result is a file path in this run's inbox.",
             DeviceAccess.RUNTIME, listOf(android.Manifest.permission.CAMERA),
             commands = listOf(DeviceCommand("photo", "photo")),
         ),
         DevicePluginSpec(
-            "microphone", "麦克风", "打开录音界面录一段声音", "手机",
+            "microphone", AppStrings.microphone, AppStrings.openTheRecorderToRecordAudio, CatalogIds.PHONE,
             "Record from the microphone while the recording screen is visible. The result is a file path in this run's inbox.",
             DeviceAccess.RUNTIME, listOf(android.Manifest.permission.RECORD_AUDIO),
             commands = listOf(DeviceCommand("record", "record", "The user stops the recording. It also stops after 60 seconds.")),
         ),
         DevicePluginSpec(
-            "location", "位置", "读取一次前台位置", "手机",
+            "location", AppStrings.location, AppStrings.getYourLocationOnceWhileTheAppIsIn, CatalogIds.PHONE,
             "Read the current location once while mobby is in the foreground. Do not start tracking.",
             DeviceAccess.RUNTIME, listOf(android.Manifest.permission.ACCESS_COARSE_LOCATION, android.Manifest.permission.ACCESS_FINE_LOCATION),
             commands = listOf(DeviceCommand("current", "current")),
         ),
         DevicePluginSpec(
-            "sensors", "传感器", "读取一次运动和环境传感器", "手机",
+            "sensors", AppStrings.sensors, AppStrings.readMotionAndEnvironmentalSensorsOnce, CatalogIds.PHONE,
             "Sample accelerometer, gyroscope, magnetometer, light, proximity and pressure once when the device has them.",
             DeviceAccess.NONE,
             commands = listOf(DeviceCommand("sample", "sample")),
         ),
         DevicePluginSpec(
-            "clipboard", "剪贴板", "读取纯文本。写入要单独打开", "手机",
+            "clipboard", AppStrings.clipboard, AppStrings.readPlainTextEnableWritingSeparately, CatalogIds.PHONE,
             "Read or write plain text on the clipboard. Reading requires mobby to be in the foreground.",
             DeviceAccess.NONE,
-            grant = DeviceGrantSpec("write", "写入", emptyList(), setOf("write")),
+            grant = DeviceGrantSpec("write", AppStrings.write, emptyList(), setOf("write")),
             commands = listOf(
                 DeviceCommand("read", "read"),
                 DeviceCommand("write", """write {"text":"text"}""", "text is at most 4000 characters.", grant = true),
             ),
         ),
         DevicePluginSpec(
-            "office", "Office 文档", "读写工作区里的 xlsx、docx 和 pptx", "文件",
+            "office", AppStrings.officeDocuments, AppStrings.readAndWriteXlsxDocxAndPptxFilesIn, CatalogIds.FILES,
             "Inspect, read and write xlsx, docx and pptx in the workspace or this run's inbox. Do not execute macros. Paths stay inside those directories.",
             DeviceAccess.NONE,
             commands = listOf(

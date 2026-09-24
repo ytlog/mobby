@@ -81,7 +81,7 @@ class SkillEditorLifecycleTest {
         compose.waitUntil(3000) { saves == 1 && stops == 1 }
         restore.emulateSavedInstanceStateRestore()
         compose.onNodeWithText("保存技能").assertIsNotEnabled()
-        compose.runOnIdle { saveReply.complete(DataResult.Loaded(Skill("saved", AgentId.CODEX, "fixture", "description", "用户技能", true, null))) }
+        compose.runOnIdle { saveReply.complete(DataResult.Loaded(Skill("saved", AgentId.CODEX, "fixture", "description", "user", true, null))) }
         compose.onNodeWithText("搜索技能").assertExists()
         compose.onNodeWithText("保存技能").assertDoesNotExist()
         Assert.assertEquals(1, saves)
@@ -117,7 +117,7 @@ class SkillEditorLifecycleTest {
         compose.runOnIdle { vm.saveSkillEditor() }
         compose.onNodeWithContentDescription("返回").performClick()
         manual("new-draft")
-        compose.runOnIdle { saveReply.complete(DataResult.Loaded(Skill("saved", AgentId.CODEX, "old-draft", "description", "用户技能", true, null))) }
+        compose.runOnIdle { saveReply.complete(DataResult.Loaded(Skill("saved", AgentId.CODEX, "old-draft", "description", "user", true, null))) }
         compose.onNodeWithText("new-draft").assertExists()
         Assert.assertNull(vm.skillEditorSaved.value)
         Assert.assertEquals(1, saves)

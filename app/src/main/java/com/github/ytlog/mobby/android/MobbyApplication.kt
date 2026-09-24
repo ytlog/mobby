@@ -1,5 +1,7 @@
 package com.github.ytlog.mobby.android
 
+import com.github.ytlog.mobby.android.localization.AppStrings
+
 import android.app.Application
 import android.app.PendingIntent
 import android.content.ComponentCallbacks2
@@ -50,6 +52,7 @@ class MobbyApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        com.github.ytlog.mobby.android.interaction.ui.LanguagePreferences.initialize(this)
         runtime = RuntimeHost(this) {
             PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
         }
@@ -64,7 +67,7 @@ class MobbyApplication : Application() {
                 } catch (_: Exception) {
                     StopResult.Rejected(Failure.UNAVAILABLE)
                 }
-                if (result is StopResult.Rejected) Toast.makeText(this@MobbyApplication, "没能停止当前任务", Toast.LENGTH_SHORT).show()
+                if (result is StopResult.Rejected) Toast.makeText(this@MobbyApplication, AppStrings.couldNotStopTheCurrentTask, Toast.LENGTH_SHORT).show()
             }
         }, onOpen = { id -> openConversation(id) })
         petScope.launch { interaction.state.collect { latest = it; syncPet() } }

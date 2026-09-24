@@ -78,7 +78,7 @@ class SettingsSectionTest {
                 SettingsPage(SystemStatus(true, true, "运行环境已就绪"), Appearance.DARK, {}, {}, {}, vm, setPet = { requested = it })
             }
         }
-        compose.onNodeWithText("桌面悬浮球").performClick()
+        compose.onNodeWithText("桌面悬浮球").performScrollTo().performClick()
         compose.waitForIdle()
         assertEquals(true, requested)
         compose.onNodeWithText("离开应用后显示悬浮球。点按可返回应用；有任务执行时可停止任务或回到对话，拖动可调整位置。").performScrollTo().assertIsDisplayed()
@@ -92,6 +92,21 @@ class SettingsSectionTest {
             }
         }
         compose.onNodeWithText("需要允许显示在其他应用的上层。").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test fun `language can be changed immediately in settings and switched back`() {
+        val context = org.robolectric.RuntimeEnvironment.getApplication()
+        LanguagePreferences.select(context, com.github.ytlog.mobby.android.localization.AppLanguage.CHINESE)
+        val vm = viewModel()
+        compose.setContent { MaterialTheme {
+            SettingsPage(SystemStatus(true, true), Appearance.DARK, {}, {}, {}, vm)
+        } }
+        compose.onNodeWithText("English").performScrollTo().performClick()
+        compose.onNodeWithText("Settings").assertIsDisplayed()
+        compose.onNodeWithText("Language").assertIsDisplayed()
+        compose.onNodeWithText("中文").performScrollTo().performClick()
+        compose.onNodeWithText("设置").assertIsDisplayed()
+        assertEquals("zh", context.getSharedPreferences("mobby.language", 0).getString("language", null))
     }
 
     private fun viewModel(): ConversationViewModel {

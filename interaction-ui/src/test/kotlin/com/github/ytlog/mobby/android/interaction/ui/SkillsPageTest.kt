@@ -20,8 +20,8 @@ import java.lang.reflect.Proxy
 @Config(sdk = [34])
 class SkillsPageTest {
     @get:Rule val compose = createComposeRule()
-    private val user = Skill("skill:user", AgentId.CODEX, "review-plan", "检查改动", "用户技能", true, null)
-    private val builtin = Skill("skill:cli", AgentId.CODEX, "skill-creator", "创建技能", "CLI 内置", true, null)
+    private val user = Skill("skill:user", AgentId.CODEX, "review-plan", "检查改动", "user", true, null)
+    private val builtin = Skill("skill:cli", AgentId.CODEX, "skill-creator", "创建技能", "builtin", true, null)
     private inline fun <reified T> stub(crossinline body: (String, Array<out Any?>) -> Any?): T =
         Proxy.newProxyInstance(T::class.java.classLoader, arrayOf(T::class.java)) { _, method, args -> body(method.name, args ?: emptyArray()) } as T
 

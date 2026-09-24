@@ -1,5 +1,7 @@
 package com.github.ytlog.mobby.android.runtime.android
 
+import com.github.ytlog.mobby.android.localization.AppStrings
+
 import com.github.ytlog.mobby.android.runtime.api.gateway.*
 
 import com.github.ytlog.mobby.android.runtime.android.gateway.*
@@ -19,7 +21,7 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
     inner class LocalBinder : Binder() { val service get() = this@RuntimeService }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val submission = Mutex()
-    private val mutableEnvironment = MutableStateFlow(EnvironmentSnapshot(EnvironmentPhase.INITIALIZING, "正在初始化运行环境"))
+    private val mutableEnvironment = MutableStateFlow(EnvironmentSnapshot(EnvironmentPhase.INITIALIZING, AppStrings.initializingRuntime))
     override val environment = mutableEnvironment.asStateFlow()
     private lateinit var runtime: RuntimeEnvironment
     private lateinit var registry: ProcessRegistry
@@ -44,7 +46,7 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
                 try { outputStore.compact(journal) }
                 catch (e: CancellationException) { throw e }
                 catch (_: Exception) {
-                    mutableEnvironment.value = EnvironmentSnapshot(EnvironmentPhase.FAILED, "输出清理未完成，请重新检查运行环境", RuntimeError(ErrorCode.STORAGE_FULL, true))
+                    mutableEnvironment.value = EnvironmentSnapshot(EnvironmentPhase.FAILED, AppStrings.outputCleanupIncompleteRecheckRuntime, RuntimeError(ErrorCode.STORAGE_FULL, true))
                     return@withLock SubmitResult.Rejected(RuntimeError(ErrorCode.STORAGE_FULL, true))
                 }
                 try { withContext(Dispatchers.Main) { beginForeground() } }
@@ -61,19 +63,19 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
         ports = AndroidRuntimePorts(this, runtime, environment, registry, scope)
         outputStore = OutputStore(this, journal::outputExpired, EventHistorySettingsStore(this)::outputPolicy)
         coordinator = RunCoordinator(scope, ports, ports, journal, outputStore)
-        getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel("runtime", "任务运行", NotificationManager.IMPORTANCE_LOW))
+        getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel("runtime", AppStrings.taskExecution, NotificationManager.IMPORTANCE_LOW))
         scope.launch { combine(coordinator.active, ports.live) { _, _ -> Unit }.collect { submission.withLock {
             val running = coordinator.active.value != null
             val holding = ports.live.value
             when {
-                running -> withContext(Dispatchers.Main) { showForeground("可返回应用查看进度或停止任务") }
-                holding -> withContext(Dispatchers.Main) { showForeground("会话仍在运行，返回应用可继续") }
+                running -> withContext(Dispatchers.Main) { showForeground(AppStrings.returnToTheAppToViewProgressOrStop) }
+                holding -> withContext(Dispatchers.Main) { showForeground(AppStrings.conversationIsStillRunningReturnToTheAppTo) }
                 else -> {
                     endForeground()
                     if (recovered && environment.value.phase == EnvironmentPhase.READY) {
                         try { outputStore.compact(journal) }
                         catch (e: CancellationException) { throw e }
-                        catch (_: Exception) { mutableEnvironment.value = EnvironmentSnapshot(EnvironmentPhase.FAILED, "输出清理未完成，请重新检查运行环境", RuntimeError(ErrorCode.STORAGE_FULL, true)) }
+                        catch (_: Exception) { mutableEnvironment.value = EnvironmentSnapshot(EnvironmentPhase.FAILED, AppStrings.outputCleanupIncompleteRecheckRuntime, RuntimeError(ErrorCode.STORAGE_FULL, true)) }
                     }
                 }
             }
@@ -86,7 +88,7 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
         if (initialization?.isActive == true || coordinator.active.value != null) return
         // Reserve readiness before releasing admission; initialization uses the same boundary
         // as submissions and idle cleanup, so maintenance cannot overlap a new run.
-        mutableEnvironment.value = EnvironmentSnapshot(EnvironmentPhase.INITIALIZING, "正在验证本机运行环境")
+        mutableEnvironment.value = EnvironmentSnapshot(EnvironmentPhase.INITIALIZING, AppStrings.verifyingLocalRuntime)
         initialization = scope.launch { submission.withLock {
             try {
                 withTimeout(120_000) {
@@ -99,12 +101,12 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
                     runtime.initialize { message -> mutableEnvironment.value = EnvironmentSnapshot(EnvironmentPhase.INITIALIZING, message) }
                     check(runtime.dependenciesReady)
                 }
-                mutableEnvironment.value = EnvironmentSnapshot(EnvironmentPhase.READY, "运行环境已就绪")
+                mutableEnvironment.value = EnvironmentSnapshot(EnvironmentPhase.READY, AppStrings.runtimeReady)
             } catch (e: CancellationException) {
                 if (e !is TimeoutCancellationException) throw e
-                mutableEnvironment.value = EnvironmentSnapshot(EnvironmentPhase.FAILED, "初始化超时，可重试", RuntimeError(ErrorCode.TIMEOUT, true))
+                mutableEnvironment.value = EnvironmentSnapshot(EnvironmentPhase.FAILED, AppStrings.initializationTimedOutYouCanRetry, RuntimeError(ErrorCode.TIMEOUT, true))
             } catch (_: Exception) {
-                mutableEnvironment.value = EnvironmentSnapshot(EnvironmentPhase.FAILED, "运行环境初始化失败，请重试或检查安装", RuntimeError(ErrorCode.NOT_READY, true))
+                mutableEnvironment.value = EnvironmentSnapshot(EnvironmentPhase.FAILED, AppStrings.runtimeInitializationFailedRetryOrCheckTheInstallation, RuntimeError(ErrorCode.NOT_READY, true))
             }
         } }
     }
@@ -257,12 +259,12 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
         shell?.cancel()
         return CommandResult.Accepted
     }
-    private fun beginForeground() = showForeground("可返回应用查看进度或停止任务")
+    private fun beginForeground() = showForeground(AppStrings.returnToTheAppToViewProgressOrStop)
     private fun showForeground(text: String) {
         check(environment.value.phase == EnvironmentPhase.READY)
         startService(Intent(this, RuntimeService::class.java))
         val notification = Notification.Builder(this, "runtime").setSmallIcon(android.R.drawable.stat_notify_sync)
-            .setContentTitle("mobby 正在执行任务").setContentText(text)
+            .setContentTitle(AppStrings.mobbyIsRunningATask).setContentText(text)
             .setContentIntent(RuntimeHost.notificationIntent?.invoke()).setOngoing(true).build()
         if (android.os.Build.VERSION.SDK_INT >= 34) startForeground(1, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         else if (android.os.Build.VERSION.SDK_INT >= 29) startForeground(1, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_NONE)
@@ -283,13 +285,13 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
         try { submission.withLock { stopForHost(cause) } }
         catch (e: CancellationException) { throw e }
         catch (_: Exception) {
-            mutableEnvironment.value = EnvironmentSnapshot(EnvironmentPhase.FAILED, "停止结果无法确认，已有任务不会自动重发；请重启后核实", RuntimeError(ErrorCode.DISCONNECTED, true))
+            mutableEnvironment.value = EnvironmentSnapshot(EnvironmentPhase.FAILED, AppStrings.stopResultUnconfirmedTasksWillNotBeResentAutomatically, RuntimeError(ErrorCode.DISCONNECTED, true))
         }
     }
     override fun onTimeout(startId: Int, fgsType: Int) {
         hostStopCause = StopCause.TIMEOUT
         initialization?.cancel()
-        mutableEnvironment.value = EnvironmentSnapshot(EnvironmentPhase.FAILED, "系统要求结束后台任务，正在停止执行", RuntimeError(ErrorCode.TIMEOUT, true))
+        mutableEnvironment.value = EnvironmentSnapshot(EnvironmentPhase.FAILED, AppStrings.systemRequestedBackgroundTaskTerminationStoppingExecution, RuntimeError(ErrorCode.TIMEOUT, true))
         // The Android deadline must not depend on a journal lock or process cleanup completing.
         stopForeground(STOP_FOREGROUND_REMOVE)
         notificationStarted = false
@@ -299,7 +301,7 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
     override fun onDestroy() {
         initialization?.cancel()
         val cause = hostStopCause ?: StopCause.HOST_STOP
-        mutableEnvironment.value = EnvironmentSnapshot(EnvironmentPhase.FAILED, "运行服务已停止，正在核实任务状态", RuntimeError(if (cause == StopCause.TIMEOUT) ErrorCode.TIMEOUT else ErrorCode.INTERRUPTED, true))
+        mutableEnvironment.value = EnvironmentSnapshot(EnvironmentPhase.FAILED, AppStrings.runtimeServiceStoppedCheckingTaskStatus, RuntimeError(if (cause == StopCause.TIMEOUT) ErrorCode.TIMEOUT else ErrorCode.INTERRUPTED, true))
         scope.launch(NonCancellable) {
             try { finishHostStop(cause) } finally { scope.cancel() }
         }

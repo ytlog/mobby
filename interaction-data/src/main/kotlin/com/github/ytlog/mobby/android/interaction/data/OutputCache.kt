@@ -1,5 +1,7 @@
 package com.github.ytlog.mobby.android.interaction.data
 
+import com.github.ytlog.mobby.android.localization.AppStrings
+
 import androidx.room.withTransaction
 import com.github.ytlog.mobby.android.runtime.api.*
 import kotlinx.coroutines.sync.Mutex
@@ -8,7 +10,7 @@ import kotlinx.coroutines.sync.withLock
 /** Only terminal output copies are disposable; user input and conversation metadata are retained. */
 internal class OutputCache(private val db: InteractionDatabase, private val client: RuntimeClient,
     private val maxBytes: Long = 256L * 1024 * 1024) {
-    companion object { const val VERIFICATION_WARNING = "历史输出暂时无法核对，已保留缓存；请恢复连接后重试" }
+    companion object { const val VERIFICATION_WARNING = AppStrings.CACHE_VERIFICATION_MARKER }
     init { require(maxBytes >= 0) }
     private val dao = db.dao()
     private val reconciliation = Mutex()

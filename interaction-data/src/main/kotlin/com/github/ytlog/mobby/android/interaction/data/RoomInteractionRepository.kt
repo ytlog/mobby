@@ -1,5 +1,7 @@
 package com.github.ytlog.mobby.android.interaction.data
 
+import com.github.ytlog.mobby.android.localization.AppStrings
+
 import com.github.ytlog.mobby.android.interaction.domain.gateway.*
 
 import androidx.room.withTransaction
@@ -53,7 +55,7 @@ internal class RoomInteractionRepository(
                 }
             })
         }.flowOn(Dispatchers.Default)
-    }.combine(dao.projects()) { state, projects -> state.copy(projects = projects.map { Project(it.name, it.defaultWorkspace) }) }.combine(startupError) { state, error -> state.copy(error = error ?: state.error) }.catch { emit(InteractionState(loading = false, error = "无法读取会话数据库；原数据已保留，请重启应用后重试")) }
+    }.combine(dao.projects()) { state, projects -> state.copy(projects = projects.map { Project(it.name, it.defaultWorkspace) }) }.combine(startupError) { state, error -> state.copy(error = error ?: state.error) }.catch { emit(InteractionState(loading = false, error = AppStrings.cannotReadTheConversationDatabaseDataPreservedRestartThe)) }
         .stateIn(scope, SharingStarted.Eagerly, InteractionState())
 
     override suspend fun saveSkillProposal(proposal: SkillProposal, markdown: String): DataResult<Skill> {
@@ -63,18 +65,18 @@ internal class RoomInteractionRepository(
             val snapshot = dao.turnByRun(chunk.runId)?.snapshot?.let { storageJson.decodeFromString<RunSnapshot>(it) }
             snapshot?.artifacts?.any { it.value == proposal.ref } == true && snapshot.acceptedConfig.agentId.name == proposal.agent.name
         }
-        if (!sourceAvailable()) return DataResult.Failed("生成草稿已清理或来源失效，编辑内容仍保留")
+        if (!sourceAvailable()) return DataResult.Failed(AppStrings.generatedDraftWasCleanedUpOrItsSourceIs)
         when (client.readArtifact(ArtifactReadRequest(ResourceRef(proposal.ref), 0, 1))) {
             ArtifactReadResult.Expired -> {
                 outputCache.expire(proposal.ref)
-                return DataResult.Failed("生成草稿已按保留策略清理，编辑内容仍保留")
+                return DataResult.Failed(AppStrings.generatedDraftWasCleanedUpByTheRetentionPolicy)
             }
-            is ArtifactReadResult.Unavailable -> return DataResult.Failed("暂时无法核对草稿来源，编辑内容仍保留，请重试")
+            is ArtifactReadResult.Unavailable -> return DataResult.Failed(AppStrings.cannotVerifyTheDraftSourceYetYourEditsAre)
             is ArtifactReadResult.Chunk -> Unit
         }
         // This final transaction is the acceptance point for the user's edited copy.
         // Cleanup after acceptance cannot revoke a save already requested by the user.
-        if (!sourceAvailable()) return DataResult.Failed("生成草稿已清理或来源失效，编辑内容仍保留")
+        if (!sourceAvailable()) return DataResult.Failed(AppStrings.generatedDraftWasCleanedUpOrItsSourceIs)
         return system.importSkill(proposal.agent, markdown)
     }
 
@@ -108,7 +110,7 @@ internal class RoomInteractionRepository(
                         val c = row.domain()
                         val pending = c.draft.pendingAttachment
                         if (pending != null && pending.error == null) dao.save(c.copy(draft = c.draft.copy(
-                            pendingAttachment = pending.copy(error = "上次导入已中断，请重试或移除；原草稿已保留")
+                            pendingAttachment = pending.copy(error = AppStrings.theLastImportWasInterruptedRetryOrRemoveIt)
                         )).row())
                     }
                 }
@@ -129,7 +131,7 @@ internal class RoomInteractionRepository(
                     outputCache.reconcile()
                 }
             } catch (e: CancellationException) { throw e }
-            catch (e: Exception) { importRecovery.completeExceptionally(e); startupError.value = "会话恢复未完成，原数据已保留；请重启应用后重试" }
+            catch (e: Exception) { importRecovery.completeExceptionally(e); startupError.value = AppStrings.conversationRecoveryIsIncompleteDataPreservedRestartTheApp }
         }
     }
     override suspend fun conversation(id: ConversationId): Conversation = withContext(Dispatchers.IO) { requireNotNull(dao.conversation(id.value)).domain() }
@@ -149,7 +151,7 @@ internal class RoomInteractionRepository(
                 is DataResult.Failed -> c.copy(draft = c.draft.copy(pendingAttachment = pending.copy(error = result.message)))
                 is DataResult.Loaded -> {
                     if (c.archived || c.deleted || c.config.workspace != pending.workspace || (c.draft.attachments + result.value.ref).distinct().size > 4)
-                        c.copy(draft = c.draft.copy(pendingAttachment = pending.copy(error = "会话或附件状态已变化，请恢复会话后重试或移除")))
+                        c.copy(draft = c.draft.copy(pendingAttachment = pending.copy(error = AppStrings.conversationOrAttachmentChangedRestoreTheConversationAndRetry)))
                     else c.copy(draft = c.draft.copy(revision = c.draft.revision + 1, attachments = (c.draft.attachments + result.value.ref).distinct(), pendingAttachment = null))
                 }
             }
@@ -165,7 +167,7 @@ internal class RoomInteractionRepository(
     private suspend fun releaseAttachmentSources() = withContext(Dispatchers.IO) {
         try { system.retainAttachmentGrants(dao.allConversations().mapNotNull { it.domain().draft.pendingAttachment?.location }.toSet()) }
         catch (e: CancellationException) { throw e }
-        catch (_: Exception) { startupError.value = "附件已更新，但临时文件清理失败；请重启后重试" }
+        catch (_: Exception) { startupError.value = AppStrings.attachmentUpdatedButTemporaryFileCleanupFailedRestartAnd }
     }
     override suspend fun restoreDraft(id: ConversationId, text: String, attachments: List<String>) = mutate(id) { c ->
         require(!c.archived && !c.deleted && attachments.size <= 4)
@@ -186,7 +188,7 @@ internal class RoomInteractionRepository(
     override suspend fun createSkillConversation(id: ConversationId, creator: String): ConversationId = db.withTransaction {
         val old = requireNotNull(dao.conversation(id.value)).domain()
         require(creator.startsWith("skill:${old.config.agent.name}:"))
-        val created = requireNotNull(ConversationRules.createSkillConversation(old, ConversationId(this.id()), creator)).copy(title = "创建技能", updatedAt = now())
+        val created = requireNotNull(ConversationRules.createSkillConversation(old, ConversationId(this.id()), creator)).copy(title = AppStrings.createSkill, updatedAt = now())
         dao.save(created.row()); dao.select(SelectionRow(conversationId = created.id.value)); created.id
     }
     override suspend fun select(id: ConversationId) {
@@ -194,15 +196,15 @@ internal class RoomInteractionRepository(
         if (!c.deleted) {
             dao.select(SelectionRow(conversationId = id.value))
             scope.launch { try { outputCache.reconcile(id.value) } catch (e: CancellationException) { throw e }
-                catch (_: Exception) { startupError.value = "历史输出核对未完成，已保留缓存；请重试" } }
+                catch (_: Exception) { startupError.value = AppStrings.historicalOutputVerificationIsIncompleteCachePreservedPleaseRetry } }
         }
     }
     override suspend fun saveProject(project: Project, createOnly: Boolean): OperationResult = db.withTransaction {
         val existing = dao.project(project.name)
         if (project.name.isBlank() || project.name != project.name.trim() || project.name.any { it.isISOControl() } || (existing == null && project.name.length > 80))
-            return@withTransaction OperationResult.Failed("项目名称不能为空，最多 80 字")
-        if (createOnly && existing != null) return@withTransaction OperationResult.Failed("同名项目已存在，请使用其他名称")
-        if (project.defaultWorkspace.isBlank()) return@withTransaction OperationResult.Failed("请选择默认工作区")
+            return@withTransaction OperationResult.Failed(AppStrings.projectNameIsRequiredAndMustNotExceedCharacters)
+        if (createOnly && existing != null) return@withTransaction OperationResult.Failed(AppStrings.aProjectWithThisNameExistsChooseAnotherName)
+        if (project.defaultWorkspace.isBlank()) return@withTransaction OperationResult.Failed(AppStrings.selectADefaultWorkspace)
         dao.save(ProjectRow(project.name, project.defaultWorkspace))
         OperationResult.Done
     }
@@ -236,7 +238,7 @@ internal class RoomInteractionRepository(
         if (dao.turn(turnId.value) != null) return@withTransaction PrepareTurnResult.Rejected(Failure.PENDING_SUBMISSION)
         val frozen = c.copy(draft = c.draft.copy(capabilities = c.draft.capabilities + listOfNotNull(c.creator)))
         dao.save(TurnRow(turnId.value, c.id.value, c.draft.text, storageJson.encodeToString(StoredConversation.from(frozen)), now()))
-        dao.save(c.copy(hasTurns = true, updatedAt = now(), title = if (!c.hasTurns && c.title == "新对话") c.draft.text.lineSequence().first().take(40).ifBlank { "新对话" } else c.title).row())
+        dao.save(c.copy(hasTurns = true, updatedAt = now(), title = if (!c.hasTurns && AppStrings.isDefaultConversationTitle(c.title)) c.draft.text.lineSequence().first().take(40).ifBlank { AppStrings.newConversation } else c.title).row())
         inFlight.add(turnId.value)
         PrepareTurnResult.Prepared(TurnExecution(turnId, c.id, frozen.draft, c.config, c.session, c.creator != null))
     }
@@ -251,14 +253,14 @@ internal class RoomInteractionRepository(
                     dao.save(c.copy(draft = ConversationRules.afterSubmission(c.draft, turn.draft.revision, result)).row())
                 }
                 is Submission.Rejected -> dao.save(row.copy(pending = false, occupied = false, error = when (result.reason) {
-                    Failure.PENDING_ATTACHMENT -> "请求未接纳：请完成或移除待处理附件"
-                    Failure.INPUT_TOO_LARGE -> "请求未接纳：文字与附件合计超出输入上限，请缩短文字或移除附件；草稿已保留"
-                    Failure.BUSY -> "请求未接纳：已有任务占用运行环境；草稿已保留"
-                    Failure.INVALID_CONFIG -> "请求未接纳：请检查网关、模型、权限，或是否已有同名 mobby- 技能；草稿已保留"
-                    Failure.UNSUPPORTED_CAPABILITY -> "请求未接纳：当前能力不可用；草稿已保留"
-                    else -> "请求未接纳，草稿已保留，可检查连接后重试"
+                    Failure.PENDING_ATTACHMENT -> AppStrings.requestRejectedFinishOrRemovePendingAttachments
+                    Failure.INPUT_TOO_LARGE -> AppStrings.requestRejectedTextAndAttachmentsExceedTheInputLimit
+                    Failure.BUSY -> AppStrings.requestRejectedAnotherTaskIsUsingTheRuntimeDraft
+                    Failure.INVALID_CONFIG -> AppStrings.requestRejectedCheckGatewayModelPermissionsOrAnExisting
+                    Failure.UNSUPPORTED_CAPABILITY -> AppStrings.requestRejectedThisCapabilityIsUnavailableDraftPreserved
+                    else -> AppStrings.requestRejectedDraftPreservedCheckTheConnectionAndRetry
                 }))
-                Submission.Unconfirmed -> dao.save(row.copy(error = "请求结果尚未确认；请查询原请求，不要重复发送"))
+                Submission.Unconfirmed -> dao.save(row.copy(error = AppStrings.requestResultIsUnconfirmedCheckTheOriginalRequestDo))
             }
         }
         inFlight.remove(turn.turnId.value)
@@ -282,8 +284,8 @@ internal class RoomInteractionRepository(
     override suspend fun archive(id: ConversationId, archived: Boolean) = changeVisibility(id) { it.copy(archived = archived) }
     override suspend fun delete(id: ConversationId, deleted: Boolean) = changeVisibility(id) { it.copy(deleted = deleted) }
     private suspend fun changeVisibility(id: ConversationId, transform: (Conversation) -> Conversation): OperationResult = db.withTransaction {
-        if (dao.conversationTurns(id.value).any { it.occupied }) return@withTransaction OperationResult.Failed("运行中的会话不能归档或删除")
-        val c = dao.conversation(id.value)?.domain() ?: return@withTransaction OperationResult.Failed("会话不存在")
+        if (dao.conversationTurns(id.value).any { it.occupied }) return@withTransaction OperationResult.Failed(AppStrings.runningConversationsCannotBeArchivedOrDeleted)
+        val c = dao.conversation(id.value)?.domain() ?: return@withTransaction OperationResult.Failed(AppStrings.conversationNotFound)
         dao.save(transform(c).row())
         OperationResult.Done
     }
@@ -319,7 +321,7 @@ internal class RoomInteractionRepository(
                     }
                 } catch (e: CancellationException) { throw e }
                 catch (_: Exception) {
-                    db.withTransaction { dao.turn(turnId)?.let { dao.save(it.copy(error = "同步中断，结果待确认；重新打开应用可恢复观察")) } }
+                    db.withTransaction { dao.turn(turnId)?.let { dao.save(it.copy(error = AppStrings.syncInterruptedResultUnconfirmedReopenTheAppToResume)) } }
                 }
             }
         }
@@ -371,7 +373,7 @@ internal class RoomInteractionRepository(
                 val row = content[part.ref.value] ?: continue
                 if (row.expired && previousExpired) continue
                 if (isNotEmpty()) append(if (row.expired || previousExpired) "\n" else separator)
-                append(if (row.expired) "输出已按保留策略清理" else row.text)
+                append(if (row.expired) AppStrings.outputWasCleanedUpByTheRetentionPolicy else row.text)
                 previousExpired = row.expired
             }
         }
@@ -380,7 +382,7 @@ internal class RoomInteractionRepository(
         var nextOrder = pendingOrder
         return Turn(TurnId(id), userText, runId?.let(::ExecutionId), snapshot?.let { RunProjection.verifiedPhase(it).domain() },
             snapshot?.outputSegments?.filterNot { it.messageId.startsWith("diagnostic:") }?.messages().orEmpty() +
-                if (snapshot?.artifacts?.any { content[it.value]?.expired == true } == true) listOf(Message("retained-artifact-notice", "技能草稿已按保留策略清理")) else emptyList(),
+                if (snapshot?.artifacts?.any { content[it.value]?.expired == true } == true) listOf(Message("retained-artifact-notice", AppStrings.skillDraftWasCleanedUpByTheRetentionPolicy)) else emptyList(),
             snapshot?.steps?.map { step ->
                 val order = if (step.order >= 0) step.order else step.output.minOfOrNull { it.chunkIndex } ?: nextOrder++
                 val text = step.output.sortedBy { it.chunkIndex }.render(if (step.body is StepBody.Thinking) "" else "\n")
@@ -395,7 +397,7 @@ internal class RoomInteractionRepository(
                 }
             }.orEmpty(),
             snapshot?.outputSegments?.filter { it.messageId.startsWith("diagnostic:") }?.messages().orEmpty(),
-            if (error == OutputCache.VERIFICATION_WARNING) listOfNotNull(snapshot?.terminalEvidence?.error?.message(), error).joinToString("\n")
+            if (error == OutputCache.VERIFICATION_WARNING) listOfNotNull(snapshot?.terminalEvidence?.error?.message(), AppStrings.cannotVerifyHistoricalOutputYetCachePreservedReconnectAnd).joinToString("\n")
             else error ?: snapshot?.terminalEvidence?.error?.message(), snapshot?.progress?.domain(), pending, occupied, expanded, storageJson.decodeFromString(expandedSteps),
             snapshot?.artifacts?.mapNotNull { ref -> content[ref.value]?.takeUnless { it.expired }?.let { SkillProposal(ref.value, it.text, DomainAgent.valueOf(snapshot.acceptedConfig.agentId.name)) } }.orEmpty(),
             storageJson.decodeFromString<StoredConversation>(frozen).creator != null, snapshot?.artifacts?.any { it.value !in content } == true, storageJson.decodeFromString<StoredConversation>(frozen).attachments,

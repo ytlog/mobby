@@ -1,5 +1,7 @@
 package com.github.ytlog.mobby.android.interaction.ui.gateway
 
+import com.github.ytlog.mobby.android.interaction.ui.UiStrings as AppStrings
+
 import com.github.ytlog.mobby.android.interaction.domain.AgentId
 import com.github.ytlog.mobby.android.interaction.domain.gateway.GatewayAddresses
 
@@ -18,16 +20,16 @@ internal object GatewayProviders {
     private fun provider(id: String, label: String, responses: String? = null, messages: String? = null) =
         GatewayProvider(id, label, responses, messages)
 
-    val all = listOf(
-        provider("openrouter", "OpenRouter", "https://openrouter.ai/api/v1", "https://openrouter.ai/api/v1"),
-        provider("openai", "OpenAI", "https://api.openai.com/v1"),
-        provider("anthropic", "Anthropic", messages = "https://api.anthropic.com/v1"),
-        provider("deepseek", "DeepSeek", "https://api.deepseek.com", "https://api.deepseek.com/anthropic/v1"),
-        provider("mimo", "小米 MiMo", "https://api.xiaomimimo.com/v1", "https://api.xiaomimimo.com/anthropic/v1"),
-        provider("kimi", "Kimi", "https://api.moonshot.ai/v1", "https://api.moonshot.ai/anthropic/v1"),
-        provider("zhipu", "智谱 GLM", "https://open.bigmodel.cn/api/v1", "https://open.bigmodel.cn/api/anthropic/v1"),
-        provider("xai", "xAI", "https://api.x.ai/v1"),
-        provider("groq", "Groq", "https://api.groq.com/openai/v1"),
+    val all get() = listOf(
+        provider("openrouter", AppStrings.openRouterName, "https://openrouter.ai/api/v1", "https://openrouter.ai/api/v1"),
+        provider("openai", AppStrings.openAiName, "https://api.openai.com/v1"),
+        provider("anthropic", AppStrings.anthropicName, messages = "https://api.anthropic.com/v1"),
+        provider("deepseek", AppStrings.deepSeekName, "https://api.deepseek.com", "https://api.deepseek.com/anthropic/v1"),
+        provider("mimo", AppStrings.xiaomiMimo, "https://api.xiaomimimo.com/v1", "https://api.xiaomimimo.com/anthropic/v1"),
+        provider("kimi", AppStrings.kimiName, "https://api.moonshot.ai/v1", "https://api.moonshot.ai/anthropic/v1"),
+        provider("zhipu", AppStrings.zhipuGlm, "https://open.bigmodel.cn/api/v1", "https://open.bigmodel.cn/api/anthropic/v1"),
+        provider("xai", AppStrings.xaiName, "https://api.x.ai/v1"),
+        provider("groq", AppStrings.groqName, "https://api.groq.com/openai/v1"),
     )
     fun find(id: String): GatewayProvider? = all.firstOrNull { it.id == id }
 

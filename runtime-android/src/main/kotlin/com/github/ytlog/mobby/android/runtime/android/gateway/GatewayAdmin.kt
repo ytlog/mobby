@@ -1,5 +1,7 @@
 package com.github.ytlog.mobby.android.runtime.android.gateway
 
+import com.github.ytlog.mobby.android.localization.AppStrings
+
 import com.github.ytlog.mobby.android.runtime.api.gateway.*
 
 import android.content.Context
@@ -69,7 +71,7 @@ internal class GatewayAdmin(private val context: Context) {
             val old = request.id?.let { store.load(it) }
             val key = chars?.concatToString() ?: old?.key.orEmpty()
             val inspected = GatewayDiscovery().inspect(request.addresses, request.model.trim(), key)
-            require(inspected.supported.isNotEmpty()) { "没有通过原生协议探测的 Agent" }
+            require(inspected.supported.isNotEmpty()) { AppStrings.noAgentPassedTheNativeProtocolProbe }
             val models = selectedCatalog(inspected.model, inspected.models, request.selectedModels)
             val routes = inspected.supported.mapKeys { it.key.gatewayProtocol() }
             val record = GatewayRecord(id, 0, routes, inspected.model, key, models, inspected.catalogError)

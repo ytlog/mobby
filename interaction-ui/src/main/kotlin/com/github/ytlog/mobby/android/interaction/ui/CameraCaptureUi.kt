@@ -1,5 +1,7 @@
 package com.github.ytlog.mobby.android.interaction.ui
 
+import com.github.ytlog.mobby.android.interaction.ui.UiStrings as AppStrings
+
 import android.content.ClipData
 import android.content.Context
 import android.content.Intent
@@ -43,7 +45,7 @@ internal class CapturePictureContract : ActivityResultContracts.TakePicture() {
     suspend fun restore() {
         try { update(actions.capture()) }
         catch (e: CancellationException) { throw e }
-        catch (_: Exception) { fail("拍照状态恢复未完成，请稍后重试") }
+        catch (_: Exception) { fail(AppStrings.photoCaptureRecoveryIsIncompleteRetryLater) }
     }
     val launcher = rememberLauncherForActivityResult(CapturePictureContract()) { success ->
         val expected = launchId; launchId = null; revision++
@@ -56,7 +58,7 @@ internal class CapturePictureContract : ActivityResultContracts.TakePicture() {
                     update(actions.finishCapture(current.id, success))
                 else update(snapshot)
             } catch (e: CancellationException) { throw e }
-            catch (_: Exception) { fail("拍照结果未能恢复，请重新打开应用检查") }
+            catch (_: Exception) { fail(AppStrings.couldNotRecoverThePhotoReopenTheAppTo) }
             finally { busy = false }
         }
     }
@@ -66,7 +68,7 @@ internal class CapturePictureContract : ActivityResultContracts.TakePicture() {
             val restored = actions.capture()
             if (revision == initial) update(restored)
         } catch (e: CancellationException) { throw e }
-        catch (_: Exception) { fail("拍照状态恢复未完成，请稍后重试") }
+        catch (_: Exception) { fail(AppStrings.photoCaptureRecoveryIsIncompleteRetryLater) }
         finally { if (revision == initial) busy = false }
     }
     val current = capture
@@ -90,7 +92,7 @@ internal class CapturePictureContract : ActivityResultContracts.TakePicture() {
                     val result = onImport(current)
                     if (result is DataResult.Failed) fail(result.message)
                 } catch (e: CancellationException) { throw e }
-                catch (_: Exception) { fail("照片尚未加入草稿，请检查原会话后重试") }
+                catch (_: Exception) { fail(AppStrings.photoHasNotBeenAddedToTheDraftCheck) }
                 finally { busy = false }
                 restore()
             }
@@ -111,12 +113,12 @@ internal class CapturePictureContract : ActivityResultContracts.TakePicture() {
                             try { launcher.launch(Uri.parse(result.value.captureUri)) }
                             catch (_: Exception) {
                                 launchId = null; update(actions.finishCapture(result.value.id, false))
-                                fail("无法打开系统相机，请检查相机应用和权限")
+                                fail(AppStrings.cannotOpenTheSystemCameraCheckTheCameraApp)
                             }
                         }
                     }
                 } catch (e: CancellationException) { throw e }
-                catch (_: Exception) { fail("无法开始拍照，请检查当前会话后重试") }
+                catch (_: Exception) { fail(AppStrings.cannotStartPhotoCaptureCheckTheCurrentConversationAnd) }
                 finally { busy = false }
             }
         }
@@ -125,24 +127,24 @@ internal class CapturePictureContract : ActivityResultContracts.TakePicture() {
 
 @Composable internal fun CameraReviewDialog(capture: CameraCapture, busy: Boolean, preview: suspend (Boolean) -> DataResult<AttachmentPreview>, onDiscard: () -> Unit, onConfirm: () -> Unit, onCheck: () -> Unit, problem: String? = null) {
     var ready by remember(capture.id) { mutableStateOf(false) }
-    AlertDialog(onDismissRequest = { if (!busy) onDiscard() }, containerColor = raisedColor(), shape = RoundedCornerShape(24.dp), title = { Text("拍照预览") },
+    AlertDialog(onDismissRequest = { if (!busy) onDiscard() }, containerColor = raisedColor(), shape = RoundedCornerShape(24.dp), title = { Text(AppStrings.photoPreview) },
         text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (problem != null) Text(problem, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-            if (busy) Text("正在处理照片…", style = MaterialTheme.typography.bodySmall)
+            if (busy) Text(AppStrings.processingPhoto, style = MaterialTheme.typography.bodySmall)
             when (capture.phase) {
                 CapturePhase.REVIEW -> {
-                    AttachmentImage(capture.id, "拍摄照片", true, preview, Modifier.fillMaxWidth().heightIn(min = 100.dp, max = 240.dp), onReady = { ready = it })
-                    Text("照片已转为最长边不超过 2048 像素的 JPEG。确认后加入发起拍照的会话，尚未发送。", style = MaterialTheme.typography.bodySmall)
+                    AttachmentImage(capture.id, AppStrings.capturePhoto, true, preview, Modifier.fillMaxWidth().heightIn(min = 100.dp, max = 240.dp), onReady = { ready = it })
+                    Text(AppStrings.photoConvertedToJpegWithAMaximumEdgeOf, style = MaterialTheme.typography.bodySmall)
                 }
-                CapturePhase.CAPTURING -> Text("拍照尚未完成。若已从相机返回，可检查拍摄结果或取消；原草稿保持不变。")
-                CapturePhase.ERROR -> Text(capture.error ?: "照片处理失败，请取消后重拍")
+                CapturePhase.CAPTURING -> Text(AppStrings.photoCaptureIsIncompleteIfYouReturnedFromThe)
+                CapturePhase.ERROR -> Text(capture.error ?: AppStrings.photoProcessingFailedCancelAndRetake)
                 CapturePhase.IMPORTING, CapturePhase.DISCARDING -> Unit
             }
         } },
         confirmButton = {
-            if (capture.phase == CapturePhase.REVIEW) TextButton(enabled = !busy && ready, onClick = onConfirm) { Text("加入草稿") }
-            else if (capture.phase == CapturePhase.CAPTURING) TextButton(enabled = !busy, onClick = onCheck) { Text("检查拍摄结果") }
+            if (capture.phase == CapturePhase.REVIEW) TextButton(enabled = !busy && ready, onClick = onConfirm) { Text(AppStrings.addToDraft) }
+            else if (capture.phase == CapturePhase.CAPTURING) TextButton(enabled = !busy, onClick = onCheck) { Text(AppStrings.checkPhotoResult) }
         },
-        dismissButton = { TextButton(enabled = !busy, onClick = onDiscard) { Text("取消") } }
+        dismissButton = { TextButton(enabled = !busy, onClick = onDiscard) { Text(AppStrings.cancel) } }
     )
 }

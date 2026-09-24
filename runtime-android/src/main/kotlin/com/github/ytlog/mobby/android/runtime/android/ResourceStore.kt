@@ -1,5 +1,7 @@
 package com.github.ytlog.mobby.android.runtime.android
 
+import com.github.ytlog.mobby.android.localization.AppStrings
+
 import android.graphics.BitmapFactory
 import com.github.ytlog.mobby.android.runtime.api.*
 import kotlinx.serialization.Serializable
@@ -108,10 +110,10 @@ internal class ResourceStore(private val root: File, private val budgetBytes: ()
             is InputPart.Text -> part.text
             is InputPart.Resource -> if (part.ref.value.startsWith("image:")) {
                 val image = image(part.ref, workspace); images.add(image)
-                "用户所选图片 ${images.size}：" + json.encodeToString(image.name)
+                AppStrings.selectedImagePrompt(images.size) + json.encodeToString(image.name)
             } else {
                 val (summary, text) = read(part.ref, workspace)
-                "用户所选文本附件（JSON 数据，保留原文）：\n" + json.encodeToString(Document(summary.name, text))
+                AppStrings.selectedTextAttachmentPrompt + json.encodeToString(Document(summary.name, text))
             }
         } }
         require(prompt.isNotBlank() && '\u0000' !in prompt)

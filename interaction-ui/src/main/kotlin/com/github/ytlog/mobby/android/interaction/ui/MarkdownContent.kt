@@ -1,5 +1,7 @@
 package com.github.ytlog.mobby.android.interaction.ui
 
+import com.github.ytlog.mobby.android.interaction.ui.UiStrings as AppStrings
+
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.ClickableText
@@ -59,7 +61,7 @@ private data class ParsedReply(val source: String, val document: Node)
         if (stream.tail.isNotEmpty()) Text(stream.tail, style = MaterialTheme.typography.bodyLarge)
         if (stream.cursor) StreamingCursor()
         if (source.isNotEmpty() && parsed?.source != source && stream.tail.isEmpty()) {
-            Text(if (visible == null) "正在排版…" else "正在更新排版…", style = MaterialTheme.typography.labelSmall)
+            Text(if (visible == null) AppStrings.formatting else AppStrings.updatingLayout, style = MaterialTheme.typography.labelSmall)
         }
     }
 }
@@ -69,8 +71,8 @@ private data class ParsedReply(val source: String, val document: Node)
         nodes.forEach { node -> when (node) {
             is Heading -> MarkdownInline(node, when (node.level) { 1 -> MaterialTheme.typography.headlineSmall; 2 -> MaterialTheme.typography.titleLarge; else -> MaterialTheme.typography.titleMedium }, Modifier.semantics { heading() })
             is org.commonmark.node.Paragraph -> MarkdownInline(node)
-            is FencedCodeBlock -> CodeContent(node.info.ifBlank { "代码" }, node.literal, read)
-            is IndentedCodeBlock -> CodeContent("代码", node.literal, read)
+            is FencedCodeBlock -> CodeContent(node.info.ifBlank { AppStrings.code }, node.literal, read)
+            is IndentedCodeBlock -> CodeContent(AppStrings.code, node.literal, read)
             is BlockQuote -> Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant).padding(12.dp)) {
                 MarkdownBlocks(ReplyMarkdown.children(node), read)
             }
@@ -136,7 +138,7 @@ private data class ParsedReply(val source: String, val document: Node)
                         } else ReplyMarkdown.children(current).forEach(::visit)
                     }
                     is Image -> {
-                        append("[图片：")
+                        append(AppStrings.image)
                         if (ReplyMarkdown.safeLink(current.destination)) pushStringAnnotation("URL", current.destination)
                         ReplyMarkdown.children(current).forEach(::visit)
                         if (ReplyMarkdown.safeLink(current.destination)) pop()
@@ -154,12 +156,12 @@ private data class ParsedReply(val source: String, val document: Node)
     val handler = LocalUriHandler.current
     val context = LocalContext.current
     fun open(url: String) {
-        try { handler.openUri(url) } catch (_: Exception) { android.widget.Toast.makeText(context, "无法打开此链接", android.widget.Toast.LENGTH_SHORT).show() }
+        try { handler.openUri(url) } catch (_: Exception) { android.widget.Toast.makeText(context, AppStrings.cannotOpenThisLink, android.widget.Toast.LENGTH_SHORT).show() }
     }
     SelectionContainer {
         if (links.isEmpty()) Text(value, modifier.fillMaxWidth(), style = style)
         else ClickableText(value, modifier.fillMaxWidth().semantics {
-            customActions = links.map { link -> CustomAccessibilityAction("打开 ${value.text.substring(link.start, link.end)}") { open(link.item); true } }
+            customActions = links.map { link -> CustomAccessibilityAction(AppStrings.open2(value.text.substring(link.start, link.end))) { open(link.item); true } }
         }, style = style.copy(color = style.color.takeIf { it != Color.Unspecified } ?: LocalContentColor.current), onClick = { offset ->
             value.getStringAnnotations("URL", offset, offset).firstOrNull()?.let { open(it.item) }
         })

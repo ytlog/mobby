@@ -1,5 +1,7 @@
 package com.github.ytlog.mobby.android.interaction.ui
 
+import com.github.ytlog.mobby.android.interaction.ui.UiStrings as AppStrings
+
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
@@ -68,9 +70,9 @@ internal class VoiceModelTransfer(val read: Long, val total: Long, val loading: 
 
     val label: String
         get() = when {
-            loading -> "正在加载语音模型"
-            total > 0L || read > 0L -> "正在下载语音模型"
-            else -> "正在准备语音模型"
+            loading -> AppStrings.loadingSpeechModel
+            total > 0L || read > 0L -> AppStrings.downloadingSpeechModel
+            else -> AppStrings.preparingSpeechModel
         }
 
     val percent: String?
@@ -124,7 +126,7 @@ internal class VoiceCapture(context: Context) {
     private var listening = false
     private val focus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE)
         .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
-        .setOnAudioFocusChangeListener { if (it < 0) cancel("音频被其他应用占用，录音已停止") }.build()
+        .setOnAudioFocusChangeListener { if (it < 0) cancel(AppStrings.anotherAppIsUsingAudioRecordingStopped) }.build()
 
     fun start(): Boolean {
         val speech = engine ?: SpeechEngines.create(app).also { engine = it }
@@ -198,7 +200,7 @@ internal class VoiceCapture(context: Context) {
     private fun beginListening(token: Int): Boolean {
         if (token != generation || !listening) return false
         if (audio.requestAudioFocus(focus) != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
-            fail("无法获取音频焦点，请稍后重试")
+            fail(AppStrings.cannotObtainAudioFocusRetryLater)
             return false
         }
         phase = "recording"
@@ -213,7 +215,7 @@ internal class VoiceCapture(context: Context) {
                 transfer = null
                 listening = false
                 generation++
-                if (text.isBlank()) error = "未识别到文字，请重新录音" else onTranscript(text)
+                if (text.isBlank()) error = AppStrings.noSpeechRecognizedRecordAgain else onTranscript(text)
             },
             onError = { message ->
                 if (token != generation) return@listen
@@ -244,7 +246,7 @@ internal class VoiceCapture(context: Context) {
     val capture = remember { VoiceCapture(context) }
     DisposableEffect(lifecycle, capture) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP) capture.cancel("应用进入后台，录音已停止")
+            if (event == Lifecycle.Event.ON_STOP) capture.cancel(AppStrings.appMovedToBackgroundRecordingStopped)
         }
         lifecycle.addObserver(observer)
         onDispose {
@@ -342,7 +344,7 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectVo
         Spacer(Modifier.height(7.dp))
         Canvas(
             Modifier.fillMaxWidth().height(3.dp).semantics {
-                contentDescription = "语音模型下载进度"
+                contentDescription = AppStrings.speechModelDownloadProgress
                 progressBarRangeInfo = if (fraction != null) ProgressBarRangeInfo(fraction, 0f..1f) else ProgressBarRangeInfo.Indeterminate
             },
         ) {
@@ -366,7 +368,7 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectVo
 
 @Composable internal fun VoiceRecordingOverlay(cancelArmed: Boolean, level: Float, modifier: Modifier = Modifier) {
     val wash = voiceWash(cancelArmed)
-    val hint = if (cancelArmed) "松开取消" else "松手发送，上滑取消"
+    val hint = if (cancelArmed) AppStrings.releaseToCancel else AppStrings.releaseToSendSwipeUpToCancel
     Box(
         modifier.fillMaxWidth().heightIn(min = 168.dp).background(Brush.verticalGradient(listOf(Color.Transparent, wash))),
         contentAlignment = Alignment.BottomCenter,
@@ -388,7 +390,7 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectVo
     }
     val bars = spectrumBars(level, time)
     val color = if (cancelArmed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-    Canvas(modifier.height(96.dp).semantics { contentDescription = "录音频谱" }) {
+    Canvas(modifier.height(96.dp).semantics { contentDescription = AppStrings.recordingWaveform }) {
         val count = bars.size
         val gap = 1.5.dp.toPx()
         val width = ((size.width - gap * (count - 1)) / count).coerceAtLeast(1.dp.toPx())
@@ -438,21 +440,21 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectVo
             tonalElevation = 0.dp,
         ) {
             Row(Modifier.fillMaxWidth().padding(4.dp), verticalAlignment = Alignment.Bottom) {
-                ActionIcon("添加内容与能力", onAdd, AppIcons.Plus, enabled = enabled && !recording)
+                ActionIcon(AppStrings.addContentAndCapabilities, onAdd, AppIcons.Plus, enabled = enabled && !recording)
                 if (hold) {
                     Box(
                         Modifier.weight(1f).heightIn(min = 48.dp).testTag("hold-to-speak").voiceHold(enabled, onHoldTap, onHoldStart, onHoldMove, onHoldEnd),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text("按住说话", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                        Text(AppStrings.holdToSpeak2, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
                     }
-                    ActionIcon("键盘输入", onExitVoice, AppIcons.Keyboard, enabled = enabled)
+                    ActionIcon(AppStrings.keyboardInput, onExitVoice, AppIcons.Keyboard, enabled = enabled)
                 } else {
                     textField()
                     when {
-                        stop -> ActionIcon("停止当前任务", onStop, AppIcons.Stop, enabled = stopEnabled, filled = true)
-                        micAvailable -> HoldIcon("语音输入", AppIcons.Mic, enabled, "voice-mic", onEnterVoice, onHoldStart, onHoldMove, onHoldEnd)
-                        else -> ActionIcon("发送任务", onSend, AppIcons.Send, enabled = sendEnabled, filled = true)
+                        stop -> ActionIcon(AppStrings.stopCurrentTask, onStop, AppIcons.Stop, enabled = stopEnabled, filled = true)
+                        micAvailable -> HoldIcon(AppStrings.voiceInput, AppIcons.Mic, enabled, "voice-mic", onEnterVoice, onHoldStart, onHoldMove, onHoldEnd)
+                        else -> ActionIcon(AppStrings.sendTask, onSend, AppIcons.Send, enabled = sendEnabled, filled = true)
                     }
                 }
             }

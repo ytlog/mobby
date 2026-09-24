@@ -1,5 +1,7 @@
 package com.github.ytlog.mobby.android.runtime.android
 
+import com.github.ytlog.mobby.android.localization.AppStrings
+
 import com.github.ytlog.mobby.android.runtime.api.WorkspaceRef
 import com.github.ytlog.mobby.android.runtime.api.WorkspaceSummary
 import java.io.File
@@ -26,7 +28,7 @@ internal class WorkspaceStore(home: File) {
         return directory
     }
     fun list(): List<WorkspaceSummary> = buildList {
-        resolve(WorkspaceRef("default"))?.let { add(WorkspaceSummary(WorkspaceRef("default"), "默认本机工作区")) }
+        resolve(WorkspaceRef("default"))?.let { add(WorkspaceSummary(WorkspaceRef("default"), AppStrings.defaultLocalWorkspace)) }
         if (root.canonicalFile != root) return@buildList
         root.listFiles().orEmpty().sortedBy { it.name }.forEach { directory ->
             if (directory.name == "default") return@forEach

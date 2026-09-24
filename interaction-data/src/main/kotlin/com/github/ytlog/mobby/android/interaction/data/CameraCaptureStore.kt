@@ -1,5 +1,7 @@
 package com.github.ytlog.mobby.android.interaction.data
 
+import com.github.ytlog.mobby.android.localization.AppStrings
+
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -62,7 +64,7 @@ internal class CameraCaptureStore(private val context: Context) {
         current
     }
     suspend fun begin(conversation: String, workspace: String): CameraCapture = lock.withLock {
-        require(read() == null) { "请先处理已有拍照或导入" }
+        require(read() == null) { AppStrings.finishTheCurrentPhotoCaptureOrImportFirst }
         require(conversation.isNotBlank() && workspace.isNotBlank())
         val id = UUID.randomUUID().toString()
         val directory = directory(id); check(directory.mkdirs())
@@ -85,7 +87,7 @@ internal class CameraCaptureStore(private val context: Context) {
             java.io.FileOutputStream(temporary).use { it.write(normalized); it.fd.sync() }
             Files.move(temporary.toPath(), target.toPath(), java.nio.file.StandardCopyOption.ATOMIC_MOVE, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
             current.copy(attachmentUri = uri(target), phase = CapturePhase.REVIEW)
-        } catch (_: Exception) { current.copy(phase = CapturePhase.ERROR, error = "照片处理失败：请取消后重拍（原图最多 32 MiB）") }
+        } catch (_: Exception) { current.copy(phase = CapturePhase.ERROR, error = AppStrings.photoProcessingFailedCancelAndRetakeOriginalImageLimit) }
         write(next); next
     }
     suspend fun preview(id: String): ByteArray = lock.withLock {

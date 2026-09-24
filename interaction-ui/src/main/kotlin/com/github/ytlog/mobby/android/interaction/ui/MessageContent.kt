@@ -1,5 +1,7 @@
 package com.github.ytlog.mobby.android.interaction.ui
 
+import com.github.ytlog.mobby.android.interaction.ui.UiStrings as AppStrings
+
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -22,13 +24,13 @@ import com.github.ytlog.mobby.android.interaction.domain.*
 private val LocalToolCodeActionScale = staticCompositionLocalOf { 1f }
 
 internal fun ProgressNotice.label() = when (this) {
-    ProgressNotice.OUTPUT_TRUNCATED -> "输出超过保留上限，后续正文已截断"
+    ProgressNotice.OUTPUT_TRUNCATED -> AppStrings.outputExceedsTheRetentionLimitSubsequentContentWasTruncated
 }
 
 internal fun AgentId.label() = when (this) {
-    AgentId.CODEX -> "Codex"
-    AgentId.CLAUDE_CODE -> "Claude Code"
-    AgentId.OPEN_CODE -> "OpenCode"
+    AgentId.CODEX -> AppStrings.codexName
+    AgentId.CLAUDE_CODE -> AppStrings.claudeCodeName
+    AgentId.OPEN_CODE -> AppStrings.openCodeName
 }
 
 internal fun AgentId.glyph() = when (this) {
@@ -37,17 +39,17 @@ internal fun AgentId.glyph() = when (this) {
     AgentId.OPEN_CODE -> AppIcons.OpenCode
 }
 internal fun ExecutionPhase?.label(): String = when (this) {
-    null -> "等待接纳"
-    ExecutionPhase.ACCEPTED -> "准备执行"
-    ExecutionPhase.RUNNING -> "执行中"
-    ExecutionPhase.AWAITING_APPROVAL -> "待确认"
-    ExecutionPhase.CANCELLING -> "停止中"
-    ExecutionPhase.SUCCEEDED -> "完成"
-    ExecutionPhase.FAILED -> "失败"
-    ExecutionPhase.CANCELLED -> "已停止"
-    ExecutionPhase.TIMED_OUT -> "超时"
-    ExecutionPhase.INTERRUPTED -> "异常中断"
-    ExecutionPhase.OUTCOME_UNKNOWN -> "结果待确认"
+    null -> AppStrings.awaitingAcceptance
+    ExecutionPhase.ACCEPTED -> AppStrings.preparing
+    ExecutionPhase.RUNNING -> AppStrings.running
+    ExecutionPhase.AWAITING_APPROVAL -> AppStrings.pendingConfirmation
+    ExecutionPhase.CANCELLING -> AppStrings.stopping2
+    ExecutionPhase.SUCCEEDED -> AppStrings.done
+    ExecutionPhase.FAILED -> AppStrings.failed
+    ExecutionPhase.CANCELLED -> AppStrings.stopped
+    ExecutionPhase.TIMED_OUT -> AppStrings.timedOut
+    ExecutionPhase.INTERRUPTED -> AppStrings.interrupted
+    ExecutionPhase.OUTCOME_UNKNOWN -> AppStrings.resultUnconfirmed
 }
 internal fun Turn.hasVisibleExecution(): Boolean = steps.isNotEmpty()
 /** Routine CLI logs stay stored. The action appears only when this turn did not finish normally. */
@@ -65,11 +67,11 @@ internal fun Turn.thinkingBodyOpen(step: Step): Boolean = step is Step.Thinking 
 internal fun Turn.executionHeadline(steps: List<Step> = this.steps): String {
     val count = steps.size
     return when {
-        phase == ExecutionPhase.CANCELLING -> "停止中"
-        toolsLive() -> "执行中"
+        phase == ExecutionPhase.CANCELLING -> AppStrings.stopping2
+        toolsLive() -> AppStrings.running
         phase == ExecutionPhase.SUCCEEDED || phase == ExecutionPhase.RUNNING || phase == ExecutionPhase.ACCEPTED || phase == null ->
-            if (steps.isNotEmpty() && steps.all { it is Step.Thinking }) "已思考" else "已完成 ${count} 个步骤"
-        else -> "${phase.label()} · ${count} 个步骤"
+            if (steps.isNotEmpty() && steps.all { it is Step.Thinking }) AppStrings.thought else AppStrings.completedSteps(count)
+        else -> AppStrings.steps(phase.label(), count)
     }
 }
 internal fun Step.glyphKind(): String = when (this) {
@@ -103,9 +105,9 @@ internal fun stepKindIcon(kind: String): AppGlyph = when (kind.lowercase()) {
                 Text(title.take(30), Modifier.weight(1f), style = MaterialTheme.typography.labelMedium, color = titleInk)
                 val actionTint = if (darkChrome()) content else Color.Unspecified
                 val actionScale = LocalToolCodeActionScale.current
-                ActionIcon("复制原始代码", { clipboard.setText(AnnotatedString(text)) }, AppIcons.Copy, tint = actionTint, buttonSize = ToolbarControl * actionScale, glyphSize = 22.dp * actionScale)
-                ActionIcon(if (wrap) "关闭代码换行" else "代码自动换行", { wrap = !wrap }, AppIcons.Wrap, tint = actionTint, buttonSize = ToolbarControl * actionScale, glyphSize = 22.dp * actionScale)
-                ActionIcon("放大代码", { read(title, text) }, AppIcons.Expand, tint = actionTint, buttonSize = ToolbarControl * actionScale, glyphSize = 22.dp * actionScale)
+                ActionIcon(AppStrings.copyOriginalCode, { clipboard.setText(AnnotatedString(text)) }, AppIcons.Copy, tint = actionTint, buttonSize = ToolbarControl * actionScale, glyphSize = 22.dp * actionScale)
+                ActionIcon(if (wrap) AppStrings.disableCodeWrapping else AppStrings.wrapCode, { wrap = !wrap }, AppIcons.Wrap, tint = actionTint, buttonSize = ToolbarControl * actionScale, glyphSize = 22.dp * actionScale)
+                ActionIcon(AppStrings.expandCode, { read(title, text) }, AppIcons.Expand, tint = actionTint, buttonSize = ToolbarControl * actionScale, glyphSize = 22.dp * actionScale)
             }
             SelectionContainer {
                 Text(text, modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp).verticalScroll(rememberScrollState())
@@ -138,8 +140,8 @@ internal fun stepKindIcon(kind: String): AppGlyph = when (kind.lowercase()) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(turn.executionHeadline(steps), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = ink)
-                if (cardCursor && !thinkingCursor) StreamingCursor(description = "正在回复…")
-                AppIcon(if (expanded) AppIcons.ChevronUp else AppIcons.ChevronRight, if (expanded) "已展开" else "已收起", Modifier.size(18.dp), tint = ink)
+                if (cardCursor && !thinkingCursor) StreamingCursor(description = AppStrings.replying)
+                AppIcon(if (expanded) AppIcons.ChevronUp else AppIcons.ChevronRight, if (expanded) AppStrings.expanded else AppStrings.collapsed, Modifier.size(18.dp), tint = ink)
             }
             if (expanded) {
             Column(Modifier.padding(start = 2.dp, end = 8.dp, bottom = 8.dp)) {
@@ -147,7 +149,7 @@ internal fun stepKindIcon(kind: String): AppGlyph = when (kind.lowercase()) {
                 steps.forEach { step -> key(step.id) {
                     var heldClosed by rememberSaveable { mutableStateOf(false) }
                     val open = step.id in turn.expandedSteps || (turn.thinkingBodyOpen(step) && !heldClosed)
-                    val view = remember(step) { ToolPresentation.present(step) }
+                    val view = remember(step, LanguagePreferences.current) { ToolPresentation.present(step) }
                     val liveThought = thinkingCursor && step.id == steps.lastOrNull { it is Step.Thinking && it.outcome == null }?.id
                     Row(Modifier.fillMaxWidth().clickable {
                         val next = !open
@@ -166,34 +168,34 @@ internal fun stepKindIcon(kind: String): AppGlyph = when (kind.lowercase()) {
                             style = MaterialTheme.typography.bodySmall,
                             color = ink,
                         )
-                        if (liveThought && !open) StreamingCursor(description = "正在回复…")
-                        AppIcon(if (open) AppIcons.ChevronDown else AppIcons.ChevronRight, if (open) "已展开" else "已收起", Modifier.size(16.dp), tint = ink)
+                        if (liveThought && !open) StreamingCursor(description = AppStrings.replying)
+                        AppIcon(if (open) AppIcons.ChevronDown else AppIcons.ChevronRight, if (open) AppStrings.expanded else AppStrings.collapsed, Modifier.size(16.dp), tint = ink)
                     }
                     if (open) {
                         val body = view.detail
                         Column(Modifier.fillMaxWidth().padding(start = 40.dp, end = 8.dp, bottom = 8.dp)) {
                             when {
                                 step is Step.Thinking -> if (body.isBlank()) {
-                                    if (liveThought) StreamingCursor(description = "正在回复…")
-                                    else Text("尚无输出", style = MaterialTheme.typography.bodySmall, color = ink)
+                                    if (liveThought) StreamingCursor(description = AppStrings.replying)
+                                    else Text(AppStrings.noOutput, style = MaterialTheme.typography.bodySmall, color = ink)
                                 } else if (ToolPresentation.looksLikeMarkdown(body)) ReplyContent(body, streaming = liveThought && open, read = read)
                                 else {
                                     SelectionContainer {
                                         Text(body, style = MaterialTheme.typography.bodySmall, color = ink)
                                     }
-                                    if (liveThought && open) StreamingCursor(description = "正在回复…")
+                                    if (liveThought && open) StreamingCursor(description = AppStrings.replying)
                                 }
-                                view.terminal -> CodeContent(view.title, body.ifBlank { "尚无输出" }, read, toolCallSurface(), ink)
+                                view.terminal -> CodeContent(view.title, body.ifBlank { AppStrings.noOutput }, read, toolCallSurface(), ink)
                                 ToolPresentation.looksLikeMarkdown(body) -> ReplyContent(body, streaming = false, read = read)
                                 else -> SelectionContainer {
-                                    Text(body.ifBlank { "尚无输出" }, style = MaterialTheme.typography.bodySmall, color = ink,
+                                    Text(body.ifBlank { AppStrings.noOutput }, style = MaterialTheme.typography.bodySmall, color = ink,
                                         modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp).verticalScroll(rememberScrollState()))
                                 }
                             }
                         }
                     }
                 } }
-                if (showExtras && turn.diagnosticsActionVisible()) TextButton(onClick = { read("运行诊断", turn.diagnostics.joinToString("\n\n") { it.text }) }) { Text("查看诊断（${turn.diagnostics.size}）") }
+                if (showExtras && turn.diagnosticsActionVisible()) TextButton(onClick = { read(AppStrings.runtimeDiagnostics, turn.diagnostics.joinToString("\n\n") { it.text }) }) { Text(AppStrings.viewDiagnostics(turn.diagnostics.size)) }
             }
             }
         }
@@ -217,33 +219,33 @@ internal fun stepKindIcon(kind: String): AppGlyph = when (kind.lowercase()) {
     val view = remember(permission.subject) { ToolPresentation.permission(permission.subject) }
     Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = raisedColor()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("需要你的授权", style = MaterialTheme.typography.titleMedium)
+            Text(AppStrings.yourPermissionIsRequired, style = MaterialTheme.typography.titleMedium)
             Text(view.title, style = MaterialTheme.typography.titleSmall)
             SelectionContainer {
                 Text(view.detail, style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp).verticalScroll(rememberScrollState()))
             }
-            if (submitted) Text("决定已接纳，等待执行结果")
-            else if (busy) Text("正在提交决定…")
-            else if (!connected) Text("连接中断，恢复连接后再确认")
+            if (submitted) Text(AppStrings.decisionAcceptedAwaitingExecutionResult)
+            else if (busy) Text(AppStrings.submittingDecision)
+            else if (!connected) Text(AppStrings.disconnectedReconnectBeforeConfirming)
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedButton(onClick = { decide(false) }, enabled = enabled, colors = outlinedButtonColors()) { Text("拒绝") }
-                Button(onClick = { decide(true) }, enabled = enabled, colors = filledButtonColors()) { Text("仅允许这一次") }
+                OutlinedButton(onClick = { decide(false) }, enabled = enabled, colors = outlinedButtonColors()) { Text(AppStrings.deny) }
+                Button(onClick = { decide(true) }, enabled = enabled, colors = filledButtonColors()) { Text(AppStrings.allowOnce) }
             }
         }
     }
 }
 
 internal fun stepStatusLabel(outcome: String?, phase: ExecutionPhase?): String = when (outcome) {
-    "SUCCEEDED" -> "步骤完成"
-    "FAILED" -> "步骤失败"
-    "CANCELLED" -> "步骤已取消"
+    "SUCCEEDED" -> AppStrings.stepCompleted
+    "FAILED" -> AppStrings.stepFailed
+    "CANCELLED" -> AppStrings.stepCancelled
     null -> when (phase) {
-        ExecutionPhase.ACCEPTED, ExecutionPhase.RUNNING, ExecutionPhase.AWAITING_APPROVAL -> "步骤进行中"
-        ExecutionPhase.CANCELLING -> "步骤停止中"
-        else -> "步骤结果未确认"
+        ExecutionPhase.ACCEPTED, ExecutionPhase.RUNNING, ExecutionPhase.AWAITING_APPROVAL -> AppStrings.stepRunning
+        ExecutionPhase.CANCELLING -> AppStrings.stepStopping
+        else -> AppStrings.stepResultUnconfirmed
     }
-    else -> "步骤结果未确认"
+    else -> AppStrings.stepResultUnconfirmed
 }
 
 @Composable internal fun StepGlyph(kind: String, outcome: String?, phase: ExecutionPhase?) {

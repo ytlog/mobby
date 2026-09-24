@@ -1,5 +1,7 @@
 package com.github.ytlog.mobby.android.device
 
+import com.github.ytlog.mobby.android.localization.AppStrings
+
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
@@ -48,13 +50,13 @@ object DeviceHost {
     }
     fun reason(context: Context, ref: String): String? {
         if (granted(context, ref)) return null
-        val spec = DeviceCatalog.all.firstOrNull { it.ref == ref || it.grantRef == ref } ?: return "未知插件"
+        val spec = DeviceCatalog.all.firstOrNull { it.ref == ref || it.grantRef == ref } ?: return AppStrings.unknownPlugin
         return when {
-            spec.grantRef == ref -> "请先允许${spec.name}的${spec.grant!!.label}"
-            spec.id == "screen" -> "请在系统设置中开启 mobby 的“屏幕”无障碍服务"
-            spec.id == "storage" -> "请选择允许访问的目录"
-            spec.id == "media" -> "请允许读取相册中的照片、视频或音频"
-            else -> "请先允许使用${spec.name}"
+            spec.grantRef == ref -> AppStrings.allowForFirst(spec.name, spec.grant!!.label)
+            spec.id == "screen" -> AppStrings.enableMobbySScreenAccessibilityServiceInSystemSettings
+            spec.id == "storage" -> AppStrings.selectADirectoryToAllowAccess
+            spec.id == "media" -> AppStrings.allowAccessToPhotosVideosOrAudioInYour
+            else -> AppStrings.allowAccessToFirst(spec.name)
         }
     }
     fun mediaPermissions(): List<String> = if (Build.VERSION.SDK_INT >= 33) listOf(

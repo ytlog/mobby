@@ -12,6 +12,7 @@ android {
 }
 kapt { arguments { arg("room.schemaLocation", "$projectDir/schemas") } }
 dependencies {
+    implementation(project(":localization"))
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.exifinterface:exifinterface:1.3.7")
     implementation(project(":interaction-domain"))

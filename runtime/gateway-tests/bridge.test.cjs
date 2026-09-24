@@ -162,3 +162,18 @@ test('agent extra flags pass through the local bridge and are not written into u
   assert.ok(!claude.args.includes('--mcp-config'));
   assert.equal(claude.args.at(-1),'use the phone');
 });
+
+test('bridge diagnostics use the selected language without changing protocol validation', () => {
+  const {spawnSync} = require('node:child_process');
+  const script = `const {endpoint}=require('./runtime-android/src/main/assets/gateway/bridge.cjs');
+    try { endpoint({protocol:'invalid', endpoint:'https://example.invalid'}); process.exit(2); }
+    catch (error) { process.stdout.write(error.message); }`;
+  for (const [language, expected] of [['zh', '网关协议无效'], ['en', 'Invalid gateway protocol']]) {
+    const result = spawnSync(process.execPath, ['-e', script], {
+      cwd: require('node:path').resolve(__dirname, '../..'),
+      env: {...process.env, MOBBY_LANGUAGE: language}, encoding: 'utf8',
+    });
+    assert.equal(result.status, 0);
+    assert.equal(result.stdout, expected);
+  }
+});

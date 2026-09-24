@@ -14,6 +14,11 @@ ALLOWED = {
     "interaction-data": {"interaction-domain", "runtime-api"},
     "interaction-ui": {"interaction-domain", "speech", "device-plugins"},
 }
+ALLOWED["speech"] = set()
+ALLOWED["localization"] = set()
+for module in ALLOWED:
+    if module != "localization":
+        ALLOWED[module].add("localization")
 
 
 class ModuleBoundaryTests(unittest.TestCase):

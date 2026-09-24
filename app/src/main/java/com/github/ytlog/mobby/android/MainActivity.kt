@@ -1,5 +1,7 @@
 package com.github.ytlog.mobby.android
 
+import com.github.ytlog.mobby.android.localization.AppStrings
+
 import android.content.Intent
 import android.content.pm.ShortcutInfo
 import android.content.pm.ShortcutManager
@@ -38,14 +40,14 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         if (savedInstanceState == null) openConversation(intent)
         val host = InteractionHostActions(share = { text ->
-            startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text), "分享消息"))
+            startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text), AppStrings.shareMessage))
         }, shortcut = { id, title ->
             val manager = getSystemService(ShortcutManager::class.java)
             if (manager.isRequestPinShortcutSupported) {
                 val target = Intent(this, MainActivity::class.java).setAction(Intent.ACTION_VIEW).putExtra("conversationId", id)
                 manager.requestPinShortcut(ShortcutInfo.Builder(this, "conversation-$id").setShortLabel(title.take(40))
                     .setIcon(Icon.createWithResource(this, R.drawable.ic_launcher)).setIntent(target).build(), null)
-            } else android.widget.Toast.makeText(this, "当前桌面不支持添加快捷方式", android.widget.Toast.LENGTH_SHORT).show()
+            } else android.widget.Toast.makeText(this, AppStrings.yourLauncherDoesNotSupportShortcuts, android.widget.Toast.LENGTH_SHORT).show()
         }, appearance = { dark ->
             val background = mobbySystemBarColor(dark)
             val style = if (dark) SystemBarStyle.dark(background) else SystemBarStyle.light(background, background)

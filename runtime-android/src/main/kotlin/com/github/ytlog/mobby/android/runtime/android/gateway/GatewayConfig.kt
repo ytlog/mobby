@@ -1,5 +1,7 @@
 package com.github.ytlog.mobby.android.runtime.android.gateway
 
+import com.github.ytlog.mobby.android.localization.AppStrings
+
 import com.github.ytlog.mobby.android.runtime.engine.AgentMode
 
 import kotlinx.serialization.json.*
@@ -31,19 +33,19 @@ data class GatewayConfig(
     fun validate() {
         val uri = runCatching { URI(endpoint) }.getOrNull()
         require(uri != null && uri.scheme in listOf("https", "http") && !uri.host.isNullOrBlank() &&
-            uri.userInfo == null && uri.fragment == null && uri.query == null) { "请输入有效的网关 URL，不要在地址中放密钥或查询参数" }
-        require(model.isNotBlank() && model.length <= 200 && model.none { it.isISOControl() }) { "请填写有效的模型名称" }
-        require(key.length <= 8192 && key.none { it.isISOControl() }) { "密钥格式不正确" }
+            uri.userInfo == null && uri.fragment == null && uri.query == null) { AppStrings.enterAValidGatewayUrlWithoutKeysOrQuery }
+        require(model.isNotBlank() && model.length <= 200 && model.none { it.isISOControl() }) { AppStrings.enterAValidModelName }
+        require(key.length <= 8192 && key.none { it.isISOControl() }) { AppStrings.invalidKeyFormat }
         require(models.size <= 2_000 && models.all { item ->
             item.id.isNotBlank() && item.id.length <= 200 && item.id.none { it.isISOControl() } &&
                 item.name.isNotBlank() && item.name.length <= 120 && item.name.none { it.isISOControl() }
-        }) { "模型列表无效" }
-        require(catalogError == null || (catalogError.length <= 200 && catalogError.none { it.isISOControl() })) { "模型列表说明无效" }
+        }) { AppStrings.invalidModelList }
+        require(catalogError == null || (catalogError.length <= 200 && catalogError.none { it.isISOControl() })) { AppStrings.invalidModelListDescription }
     }
     fun validateFor(mode: AgentMode) {
         validate()
         require(protocol == mode.gatewayProtocol()) {
-            "网关协议必须与 Agent 原生协议一致；暂不提供转换"
+            AppStrings.gatewayProtocolMustMatchTheAgentSNativeProtocol
         }
     }
     fun json(): String = buildJsonObject {
@@ -101,7 +103,7 @@ data class GatewayRecord(
         .filter { it.gatewayProtocol() in routes }
     fun config(mode: AgentMode): GatewayConfig {
         val protocol = mode.gatewayProtocol()
-        return GatewayConfig(requireNotNull(routes[protocol]) { "网关不支持此 Agent" }, model, key,
+        return GatewayConfig(requireNotNull(routes[protocol]) { AppStrings.gatewayDoesNotSupportThisAgent }, model, key,
             protocol, models, catalogError)
     }
     fun validate() {

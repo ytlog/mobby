@@ -1,5 +1,7 @@
 package com.github.ytlog.mobby.android.runtime.android
 
+import com.github.ytlog.mobby.android.localization.AppStrings
+
 import com.github.ytlog.mobby.android.runtime.api.*
 import com.github.ytlog.mobby.android.runtime.engine.SkillDocument
 import java.io.File
@@ -97,11 +99,11 @@ internal class SkillStore(private val home: File) {
             "$invocation — ${file.absolutePath}"
         }
         val instruction = when (agent) {
-            AgentId.CLAUDE_CODE -> "请使用 Skill 工具调用下列已选择的技能，遵守 Agent 权限检查："
-            AgentId.OPEN_CODE -> "请使用 skill 工具加载下列已选择的技能，遵守 Agent 权限检查："
-            AgentId.CODEX -> "请使用下列已选择的技能，读取对应 SKILL.md 并遵守 Agent 权限检查："
+            AgentId.CLAUDE_CODE -> AppStrings.claudeSkillsPrompt
+            AgentId.OPEN_CODE -> AppStrings.openCodeSkillsPrompt
+            AgentId.CODEX -> AppStrings.codexSkillsPrompt
         }
-        val input = if (agent == AgentId.CODEX && "skill-creator" in selectedNames && text.startsWith("请用 /skill-creator 帮我创建技能，要求是："))
+        val input = if (agent == AgentId.CODEX && "skill-creator" in selectedNames && AppStrings.isSkillCreationPrompt(text))
             text.replaceFirst("/skill-creator", "$" + "skill-creator") else text
         return buildString {
             append(instruction).append('\n').append(selections.joinToString("\n"))

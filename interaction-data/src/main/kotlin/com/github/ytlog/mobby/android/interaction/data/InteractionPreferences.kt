@@ -1,5 +1,7 @@
 package com.github.ytlog.mobby.android.interaction.data
 
+import com.github.ytlog.mobby.android.localization.AppStrings
+
 import android.content.Context
 import com.github.ytlog.mobby.android.interaction.domain.*
 import kotlinx.coroutines.Dispatchers
@@ -16,6 +18,6 @@ internal class InteractionPreferences(context: Context) : PreferencePort {
         if (preferences.edit().putString("appearance", value.name).commit()) {
             current.value = value
             OperationResult.Done
-        } else OperationResult.Failed("外观设置保存失败，请重试")
+        } else OperationResult.Failed(AppStrings.couldNotSaveAppearancePleaseRetry)
     }
 }

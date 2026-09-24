@@ -1,5 +1,7 @@
 package com.github.ytlog.mobby.android.speech
 
+import com.github.ytlog.mobby.android.localization.AppStrings
+
 import android.annotation.SuppressLint
 import android.content.Context
 import android.media.AudioFormat
@@ -71,12 +73,12 @@ internal class VoskSpeechEngine(context: Context) : SpeechEngine {
     override fun listen(onLevel: (Float) -> Unit, onFinal: (String) -> Unit, onError: (String) -> Unit) {
         stop(deliver = false)
         val loaded = SpeechModels.model ?: run {
-            onError("语音模型尚未就绪")
+            onError(AppStrings.speechModelIsNotReady)
             return
         }
         val minimum = AudioRecord.getMinBufferSize(SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
         if (minimum <= 0) {
-            onError("无法使用麦克风，请稍后重试")
+            onError(AppStrings.cannotUseTheMicrophoneRetryLater)
             return
         }
         val record = try {
@@ -88,22 +90,22 @@ internal class VoskSpeechEngine(context: Context) : SpeechEngine {
                 minimum.coerceAtLeast(3200),
             )
         } catch (_: SecurityException) {
-            onError("麦克风权限未授予，请使用文字输入或重试授权")
+            onError(AppStrings.microphonePermissionNotGrantedTypeInsteadOrGrantPermission)
             return
         } catch (_: IllegalArgumentException) {
-            onError("无法使用麦克风，请稍后重试")
+            onError(AppStrings.cannotUseTheMicrophoneRetryLater)
             return
         }
         if (record.state != AudioRecord.STATE_INITIALIZED) {
             record.release()
-            onError("无法使用麦克风，请稍后重试")
+            onError(AppStrings.cannotUseTheMicrophoneRetryLater)
             return
         }
         val recognizer = try {
             Recognizer(loaded, SAMPLE_RATE.toFloat())
         } catch (_: Exception) {
             record.release()
-            onError("语音模型无法加载，请重试")
+            onError(AppStrings.cannotLoadSpeechModelPleaseRetry)
             return
         }
         val running = AtomicBoolean(true)
@@ -114,7 +116,7 @@ internal class VoskSpeechEngine(context: Context) : SpeechEngine {
             try {
                 record.startRecording()
                 if (record.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
-                    failure = "无法使用麦克风，请稍后重试"
+                    failure = AppStrings.cannotUseTheMicrophoneRetryLater
                 } else {
                     while (running.get()) {
                         val count = record.read(buffer, 0, buffer.size)
@@ -125,7 +127,7 @@ internal class VoskSpeechEngine(context: Context) : SpeechEngine {
                     }
                 }
             } catch (_: Exception) {
-                failure = "无法使用麦克风，请稍后重试"
+                failure = AppStrings.cannotUseTheMicrophoneRetryLater
             } finally {
                 runCatching {
                     if (record.recordingState == AudioRecord.RECORDSTATE_RECORDING) record.stop()
@@ -198,7 +200,7 @@ private object SpeechModels {
 }
 
 private fun speechFailure(error: Throwable): String = when ((error as? SpeechModelException)?.kind) {
-    SpeechModelException.Kind.NETWORK -> "语音模型下载失败，请检查网络后重试"
-    SpeechModelException.Kind.CHECKSUM -> "语音模型校验失败，请重试"
-    SpeechModelException.Kind.INCOMPLETE, null -> "语音模型无法加载，请重试"
+    SpeechModelException.Kind.NETWORK -> AppStrings.speechModelDownloadFailedCheckNetworkAndRetry
+    SpeechModelException.Kind.CHECKSUM -> AppStrings.speechModelVerificationFailedPleaseRetry
+    SpeechModelException.Kind.INCOMPLETE, null -> AppStrings.cannotLoadSpeechModelPleaseRetry
 }

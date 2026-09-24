@@ -1,5 +1,7 @@
 package com.github.ytlog.mobby.android.runtime.android.gateway
 
+import com.github.ytlog.mobby.android.localization.AppStrings
+
 import com.github.ytlog.mobby.android.runtime.api.gateway.*
 
 import com.github.ytlog.mobby.android.runtime.api.gateway.GatewayCheckOutcome
@@ -40,7 +42,7 @@ internal class GatewayDiscovery(
                 if (outcome == GatewayCheckOutcome.SUCCEEDED) supported[mode] = config.endpoint
             }
         }
-        val error = if (models.isEmpty()) (catalogResults.firstOrNull() as? CatalogResult.Unavailable)?.message ?: "模型列表为空" else null
+        val error = if (models.isEmpty()) (catalogResults.firstOrNull() as? CatalogResult.Unavailable)?.message ?: AppStrings.modelListIsEmpty else null
         return GatewayInspection(selectedModel, models, error, supported, outcomes)
     }
 }
@@ -49,7 +51,7 @@ internal class GatewayDiscovery(
 internal fun selectedCatalog(defaultModel: String, fetched: List<GatewayModel>, selected: Set<String>): List<GatewayModel> {
     require((selected + defaultModel).size <= 2_000 && (selected + defaultModel).all { id ->
         id.isNotBlank() && id.length <= 200 && id.none { it.isISOControl() }
-    }) { "模型列表无效" }
+    }) { AppStrings.invalidModelList }
     val byId = fetched.associateBy { it.id }
     val default = byId[defaultModel] ?: GatewayModel(defaultModel, defaultModel)
     return listOf(default) + fetched.filter { it.id in selected && it.id != defaultModel } +

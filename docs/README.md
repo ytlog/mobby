@@ -12,6 +12,7 @@
 | [Android 对话 UI 评审稿](design/conversation-ui-review.html) | 当前交互规范：会话与执行、顶部菜单、输入、插件/技能、Android 行为、实现架构及可点击原型；原生接入进度见实施记录 |
 | [交互三层架构与 Runtime 技术设计](design/interaction-runtime-architecture.html) | Compose 独立模块、三层职责、Runtime 模块、固定接口与事件协议、数据所有权和迁移验收 |
 | [设备插件方案](design/device-plugins.md) | 设备能力插件：模块、引用、技能通道与权限隔离。旧的「使用当前手机」已替换 |
+| [界面语言](localization.md) | 中英文切换、文案维护与测试边界 |
 | [网关接入](gateway.md) | 协议路径、限制和联调范围 |
 | [README 展示素材](media/) | 原创示意图、短动画和可复现的生成脚本 |
 | [实施记录](implementation.md) | 已实现内容、交互契约实施检查点、验证证据及待验收事项 |

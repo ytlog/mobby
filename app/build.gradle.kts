@@ -20,6 +20,7 @@ android {
     packaging { jniLibs { useLegacyPackaging = true; keepDebugSymbols += "**/*.so" } }
 }
 dependencies {
+    implementation(project(":localization"))
     implementation(project(":interaction-ui"))
     implementation(project(":interaction-domain"))
     implementation(project(":interaction-data"))

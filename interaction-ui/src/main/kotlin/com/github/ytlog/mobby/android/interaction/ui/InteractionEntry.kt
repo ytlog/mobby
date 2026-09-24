@@ -1,5 +1,7 @@
 package com.github.ytlog.mobby.android.interaction.ui
 
+import com.github.ytlog.mobby.android.interaction.ui.UiStrings as AppStrings
+
 import com.github.ytlog.mobby.android.interaction.ui.gateway.GatewayPage
 
 import android.Manifest
@@ -190,8 +192,8 @@ class InteractionHostActions(
                                     state.loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
                                     state.selected == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                            EmptyPlaceholder("还没有对话", "新建一个对话，从具体任务开始")
-                                            Button(onClick = { dialog = "new" }, colors = filledButtonColors()) { Text("新建对话") }
+                                            EmptyPlaceholder(AppStrings.noConversationsYet, AppStrings.startAConversationWithASpecificTask)
+                                            Button(onClick = { dialog = "new" }, colors = filledButtonColors()) { Text(AppStrings.newConversation2) }
                                         }
                                     }
                                     else -> {
@@ -225,20 +227,20 @@ class InteractionHostActions(
                     val files = target != null && !target.archived && !target.deleted && target.draft.pendingAttachment == null && target.draft.attachments.size < 4 && agentOptions.any { it.agent == target.config.agent && it.resources && it.unavailable == null }
                     Column(Modifier.heightIn(max = (availableHeight - 48.dp).coerceAtLeast(120.dp)).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            AttachmentTile("拍照", AppIcons.Camera, images, Modifier.weight(1f)) { if (target != null) { navigate("conversation"); camera.start(target) } }
-                            AttachmentTile("照片", AppIcons.Photo, images, Modifier.weight(1f)) {
+                            AttachmentTile(AppStrings.takePhoto, AppIcons.Camera, images, Modifier.weight(1f)) { if (target != null) { navigate("conversation"); camera.start(target) } }
+                            AttachmentTile(AppStrings.photos, AppIcons.Photo, images, Modifier.weight(1f)) {
                                 if (target != null) {
                                     fileTarget = target.id.value; fileWorkspace = target.config.workspace; route = "conversation"
                                     photoPicker.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                                 }
                             }
-                            AttachmentTile("本地文件", AppIcons.Upload, files, Modifier.weight(1f)) {
+                            AttachmentTile(AppStrings.localFile, AppIcons.Upload, files, Modifier.weight(1f)) {
                                 if (target != null) { fileTarget = target.id.value; fileWorkspace = target.config.workspace; route = "conversation"; filePicker.launch(arrayOf("*/*")) }
                             }
                         }
-                        Text("文本 32 KiB、图片 2 MiB，每轮最多 4 个；PDF 暂不可用。", Modifier.padding(horizontal = 8.dp, vertical = 4.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        CapabilityRow("插件", "接入本机能力，扩展任务范围", AppIcons.Plugin) { route = "plugins" }
-                        CapabilityRow("技能", "复用专业能力，处理特定任务", AppIcons.Skill) { route = "skills" }
+                        Text(AppStrings.textUpToKibImagesUpToMibPer, Modifier.padding(horizontal = 8.dp, vertical = 4.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        CapabilityRow(AppStrings.plugins, AppStrings.connectDeviceCapabilitiesToExpandYourTasks, AppIcons.Plugin) { route = "plugins" }
+                        CapabilityRow(AppStrings.skills, AppStrings.reuseExpertiseForSpecificTasks, AppIcons.Skill) { route = "skills" }
                         Spacer(Modifier.height(16.dp))
                     }
                 }
@@ -250,7 +252,7 @@ class InteractionHostActions(
                         Column(Modifier.fillMaxWidth().heightIn(max = (availableHeight - 48.dp).coerceAtLeast(120.dp))) {
                             Text(title, Modifier.fillMaxWidth().padding(horizontal = 16.dp), color = if (dark) muted else Color.Unspecified, style = MaterialTheme.typography.titleMedium)
                             val clipboard = LocalClipboardManager.current
-                            TextButton(onClick = { clipboard.setText(AnnotatedString(text)) }, colors = if (dark) textButtonColors(muted) else textButtonColors()) { Text("复制原文") }
+                            TextButton(onClick = { clipboard.setText(AnnotatedString(text)) }, colors = if (dark) textButtonColors(muted) else textButtonColors()) { Text(AppStrings.copyOriginalText) }
                             androidx.compose.foundation.text.selection.SelectionContainer {
                                 Text(
                                     if (dark) readerBody(text, ink, muted) else AnnotatedString(text),
@@ -264,24 +266,24 @@ class InteractionHostActions(
                 val c = state.selected?.conversation
                 if (dialog == "gateway-intro") AlertDialog(
                     onDismissRequest = { dialog = null }, containerColor = raisedColor(), shape = RoundedCornerShape(24.dp),
-                    title = { Text("先配置网关") },
-                    text = { Text("开始对话前，请先添加模型网关。应用会探测可用的 Agent 和模型。") },
-                    confirmButton = { TextButton(onClick = { dialog = null; navigate("gateway") }) { Text("去配置网关") } },
-                    dismissButton = { TextButton(onClick = { dialog = null }) { Text("稍后") } },
+                    title = { Text(AppStrings.configureAGatewayFirst) },
+                    text = { Text(AppStrings.addAModelGatewayBeforeStartingAConversationThe) },
+                    confirmButton = { TextButton(onClick = { dialog = null; navigate("gateway") }) { Text(AppStrings.setUpGateway) } },
+                    dismissButton = { TextButton(onClick = { dialog = null }) { Text(AppStrings.later) } },
                 )
                 if (dialog == "new") ConfigDialog(vm, c, onDismiss = { dialog = null }, onApply = { config, project -> vm.enqueue { actions.create(config, project) }; route = "conversation"; dialog = null }, anchor = toolbarAnchor)
                 if (c != null) when (dialog) {
-                    "rename" -> TextEditDialog("重命名", c.title, { dialog = null }) { value -> vm.enqueue { vm.report(actions.rename(c.id, value)) }; dialog = null }
+                    "rename" -> TextEditDialog(AppStrings.rename, c.title, { dialog = null }) { value -> vm.enqueue { vm.report(actions.rename(c.id, value)) }; dialog = null }
                     "project" -> ProjectGroupDialog(c, state.projects, { dialog = null }) { project -> vm.enqueue { actions.project(c.id, project) }; dialog = null }
-                    "delete" -> AlertDialog(onDismissRequest = { dialog = null }, containerColor = raisedColor(), shape = RoundedCornerShape(24.dp), title = { Text("删除对话？") }, text = { Text("对话将移入最近删除，可在设置中恢复；工作区文件不会删除。") },
-                        confirmButton = { TextButton(onClick = { vm.enqueue { vm.report(actions.delete(c.id, true)) }; dialog = null }) { Text("删除") } }, dismissButton = { TextButton(onClick = { dialog = null }) { Text("取消") } })
-                    "attachments" -> HistoryDialog(c.id, vm, { dialog = null }) { full -> AlertDialog(onDismissRequest = { dialog = null }, containerColor = raisedColor(), shape = RoundedCornerShape(24.dp), title = { Text("对话附件") }, text = { Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
-                        Text("已发送附件")
+                    "delete" -> AlertDialog(onDismissRequest = { dialog = null }, containerColor = raisedColor(), shape = RoundedCornerShape(24.dp), title = { Text(AppStrings.deleteConversation) }, text = { Text(AppStrings.theConversationMovesToRecentlyDeletedAndCanBe) },
+                        confirmButton = { TextButton(onClick = { vm.enqueue { vm.report(actions.delete(c.id, true)) }; dialog = null }) { Text(AppStrings.delete) } }, dismissButton = { TextButton(onClick = { dialog = null }) { Text(AppStrings.cancel) } })
+                    "attachments" -> HistoryDialog(c.id, vm, { dialog = null }) { full -> AlertDialog(onDismissRequest = { dialog = null }, containerColor = raisedColor(), shape = RoundedCornerShape(24.dp), title = { Text(AppStrings.conversationAttachments) }, text = { Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                        Text(AppStrings.sentAttachments)
                         val sent = full.turns.filter { it.execution != null }.flatMap { it.attachments }
-                        if (sent.isEmpty()) EmptyPlaceholder("没有已发送附件") else AttachmentList(sent.distinct(), c.config.workspace, vm)
-                        Text("本轮草稿附件")
-                        if (c.draft.attachments.isEmpty()) EmptyPlaceholder("没有草稿附件") else AttachmentList(c.draft.attachments, c.config.workspace, vm)
-                    } }, confirmButton = { TextButton(onClick = { dialog = null }) { Text("关闭") } }) }
+                        if (sent.isEmpty()) EmptyPlaceholder(AppStrings.noSentAttachments) else AttachmentList(sent.distinct(), c.config.workspace, vm)
+                        Text(AppStrings.draftAttachments)
+                        if (c.draft.attachments.isEmpty()) EmptyPlaceholder(AppStrings.noDraftAttachments) else AttachmentList(c.draft.attachments, c.config.workspace, vm)
+                    } }, confirmButton = { TextButton(onClick = { dialog = null }) { Text(AppStrings.close) } }) }
                     "find" -> HistoryDialog(c.id, vm, { dialog = null }) { full -> FindDialog(full, onDismiss = { dialog = null }, onSelect = { hit -> vm.jumpTo(c.id, hit); dialog = null }) }
                     "share" -> HistoryDialog(c.id, vm, { dialog = null }) { full -> ShareDialog(full, hostActions.share, onDismiss = { dialog = null }) }
                     "shortcut" -> { LaunchedEffect(c.id) { hostActions.shortcut(c.id.value, c.title); dialog = null } }
@@ -297,11 +299,11 @@ class InteractionHostActions(
     Surface(modifier, color = drawerColor(), contentColor = conversationInk()) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
             Row(Modifier.fillMaxWidth().padding(bottom = if (darkChrome()) 0.dp else 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("mobby", Modifier.weight(1f), color = conversationInk(), style = MaterialTheme.typography.headlineSmall)
+                Text(AppStrings.appName, Modifier.weight(1f), color = conversationInk(), style = MaterialTheme.typography.headlineSmall)
                 DrawerPill(onNew, control, Modifier.testTag("drawer-new")) {
                     AppIcon(AppIcons.New, null, Modifier.size(22.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text("新对话", style = MaterialTheme.typography.titleMedium)
+                    Text(AppStrings.newConversation, style = MaterialTheme.typography.titleMedium)
                 }
             }
             val visible = state.conversations.filter { !it.conversation.archived && !it.conversation.deleted && it.conversation.title.contains(query, true) }
@@ -315,26 +317,26 @@ class InteractionHostActions(
             }.filter { name -> query.isBlank() || name.contains(query, true) || inProject.any { it.conversation.project == name } }
             LazyColumn(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
                 if (pinned.isNotEmpty()) {
-                    item(key = "section:pinned") { DrawerSection("置顶") }
+                    item(key = "section:pinned") { DrawerSection(AppStrings.pin) }
                     items(pinned, key = { it.conversation.id.value }) { DrawerConversation(it, state, onSelect) }
                 }
                 if (query.isBlank() || projectNames.isNotEmpty()) {
-                    item(key = "section:projects") { DrawerSection("项目") }
-                    if (query.isBlank()) item(key = "manage-projects") { DrawerEntry("项目管理", onClick = onProjects) }
+                    item(key = "section:projects") { DrawerSection(AppStrings.project) }
+                    if (query.isBlank()) item(key = "manage-projects") { DrawerEntry(AppStrings.projectManagement, onClick = onProjects) }
                     projectNames.forEach { name ->
                         item(key = "project:$name") { DrawerEntry(name) { state.projects.firstOrNull { it.name == name }?.let(vm::openProject); onProjects() } }
                         items(inProject.filter { it.conversation.project == name }, key = { it.conversation.id.value }) { DrawerConversation(it, state, onSelect) }
                     }
                 }
                 if (history.isNotEmpty() || visible.isEmpty()) {
-                    item(key = "section:history") { DrawerSection("历史记录") }
+                    item(key = "section:history") { DrawerSection(AppStrings.history) }
                     items(history, key = { it.conversation.id.value }) { DrawerConversation(it, state, onSelect) }
-                    if (visible.isEmpty()) item(key = "empty") { EmptyPlaceholder("没有匹配的会话", "换个关键词，或新建一个对话") }
+                    if (visible.isEmpty()) item(key = "empty") { EmptyPlaceholder(AppStrings.noMatchingConversations, AppStrings.tryAnotherSearchTermOrStartANewConversation) }
                 }
             }
             Row(Modifier.fillMaxWidth().padding(top = if (darkChrome()) 0.dp else 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 DrawerSearch(query, { query = it }, control, Modifier.weight(1f).testTag("drawer-search"))
-                DrawerCircle("设置", onSettings, control, AppIcons.Settings)
+                DrawerCircle(AppStrings.settings, onSettings, control, AppIcons.Settings)
             }
         }
     }
@@ -397,13 +399,13 @@ private val DrawerRowHeight = 40.dp
             BasicTextField(
                 value = query,
                 onValueChange = onQuery,
-                modifier = Modifier.weight(1f).semantics { contentDescription = "搜索会话" },
+                modifier = Modifier.weight(1f).semantics { contentDescription = AppStrings.searchConversations },
                 singleLine = true,
                 textStyle = MaterialTheme.typography.bodyLarge.copy(color = onButtonColor()),
                 cursorBrush = SolidColor(onButtonColor()),
                 decorationBox = { inner ->
                     Box {
-                        if (query.isEmpty()) Text("搜索", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge)
+                        if (query.isEmpty()) Text(AppStrings.search, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge)
                         inner()
                     }
                 },
@@ -419,7 +421,7 @@ private val DrawerRowHeight = 40.dp
     var chip by remember { mutableStateOf(IntRect.Zero) }
     var actions by remember { mutableStateOf(IntRect.Zero) }
     Row(modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, top = 8.dp, bottom = if (darkChrome()) 0.dp else 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Surface(Modifier.size(ToolbarControl), shape = CircleShape, color = buttonColor(), contentColor = onButtonColor(), shadowElevation = floatingElevation(), tonalElevation = 0.dp) { ActionIcon("打开会话抽屉", onMenu, AppIcons.Menu) }
+            Surface(Modifier.size(ToolbarControl), shape = CircleShape, color = buttonColor(), contentColor = onButtonColor(), shadowElevation = floatingElevation(), tonalElevation = 0.dp) { ActionIcon(AppStrings.openConversationDrawer, onMenu, AppIcons.Menu) }
             Box(Modifier.padding(horizontal = 6.dp).onGloballyPositioned { coordinates ->
                 val origin = coordinates.positionInWindow()
                 chip = IntRect(origin.x.roundToInt(), origin.y.roundToInt(), origin.x.roundToInt() + coordinates.size.width, origin.y.roundToInt() + coordinates.size.height)
@@ -437,7 +439,7 @@ private val DrawerRowHeight = 40.dp
                             AppIcon(agent.glyph(), null, Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
                         }
-                        Text(agent?.label() ?: "选择 Agent")
+                        Text(agent?.label() ?: AppStrings.selectAgent)
                     }
                     }
                 }
@@ -452,23 +454,23 @@ private val DrawerRowHeight = 40.dp
             }) {
                 Surface(Modifier.height(ToolbarControl), shape = RoundedCornerShape(26.dp), color = buttonColor(), contentColor = onButtonColor(), shadowElevation = floatingElevation(), tonalElevation = 0.dp) {
                     Row(Modifier.height(ToolbarControl)) {
-                        ActionIcon("新建对话", onNew, AppIcons.New)
-                        ActionIcon("更多会话操作", { more = true }, AppIcons.More, c != null)
+                        ActionIcon(AppStrings.newConversation2, onNew, AppIcons.New)
+                        ActionIcon(AppStrings.moreConversationActions, { more = true }, AppIcons.More, c != null)
                     }
                 }
                 if (c != null) FrostedMenu(more, { more = false }, actions) {
                     Column(Modifier.padding(bottom = 12.dp)) {
                         MenuCaption(c.title)
                         listOf(
-                            Triple("share", "分享", AppIcons.Share),
-                            Triple("pin", if (c.pinned) "取消置顶" else "置顶", AppIcons.Pin),
-                            Triple("project", "添加到项目", AppIcons.Folder),
-                            Triple("attachments", "对话附件", AppIcons.File),
-                            Triple("find", "在聊天中查找", AppIcons.Search),
-                            Triple("shortcut", "添加到主屏幕", AppIcons.New),
-                            Triple("rename", "重命名", AppIcons.Edit),
-                            Triple("archive", "归档", AppIcons.Folder),
-                            Triple("delete", "删除", AppIcons.Trash),
+                            Triple("share", AppStrings.share, AppIcons.Share),
+                            Triple("pin", if (c.pinned) AppStrings.unpin else AppStrings.pin, AppIcons.Pin),
+                            Triple("project", AppStrings.addToProject, AppIcons.Folder),
+                            Triple("attachments", AppStrings.conversationAttachments, AppIcons.File),
+                            Triple("find", AppStrings.findInChat, AppIcons.Search),
+                            Triple("shortcut", AppStrings.addToHomeScreen, AppIcons.New),
+                            Triple("rename", AppStrings.rename, AppIcons.Edit),
+                            Triple("archive", AppStrings.archive, AppIcons.Folder),
+                            Triple("delete", AppStrings.delete, AppIcons.Trash),
                         ).forEach { (action, label, icon) ->
                             MenuAction(label, danger = action == "delete", icon = icon) {
                                 more = false
@@ -499,8 +501,8 @@ private val DrawerRowHeight = 40.dp
     var openKeyboard by remember { mutableStateOf(false) }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         val allowed = granted || context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-        if (!allowed) capture.error = "麦克风权限未授予，请使用文字输入或重试授权"
-        else if (capture.error == "麦克风权限未授予，请使用文字输入或重试授权") capture.error = null
+        if (!allowed) capture.error = AppStrings.microphonePermissionNotGrantedTypeInsteadOrGrantPermission
+        else capture.error = null
     }
     SideEffect {
         capture.onTranscript = transcript@{ text ->
@@ -556,10 +558,10 @@ private val DrawerRowHeight = 40.dp
     LaunchedEffect(micAvailable, stop) { if (!micAvailable || stop) voiceMode = false }
     Column(modifier.fillMaxWidth()) {
         Column(Modifier.padding(horizontal = 12.dp)) {
-            if (unavailable) Text("此对话已归档或删除，请先在设置中恢复", style = MaterialTheme.typography.bodySmall)
-            if (state.occupied != null && active == null) Text("${state.occupied!!.conversation.title} 正在执行，本轮草稿可继续编辑", style = MaterialTheme.typography.bodySmall)
-            if (system.diagnosticBusy) Text("Shell 诊断正在占用运行环境", style = MaterialTheme.typography.bodySmall)
-            if (detail.conversation.creator != null) Text("Skill Creator 已绑定此创建会话", style = MaterialTheme.typography.labelSmall)
+            if (unavailable) Text(AppStrings.thisConversationIsArchivedOrDeletedRestoreItIn, style = MaterialTheme.typography.bodySmall)
+            if (state.occupied != null && active == null) Text(AppStrings.isRunningYouCanKeepEditingThisDraft(state.occupied!!.conversation.title), style = MaterialTheme.typography.bodySmall)
+            if (system.diagnosticBusy) Text(AppStrings.shellDiagnosticsIsUsingTheRuntime, style = MaterialTheme.typography.bodySmall)
+            if (detail.conversation.creator != null) Text(AppStrings.skillCreatorIsBoundToThisCreationConversation, style = MaterialTheme.typography.labelSmall)
             if (detail.conversation.draft.capabilities.any { it != detail.conversation.creator }) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 detail.conversation.draft.capabilities.filter { it != detail.conversation.creator }.forEach { ref -> InputChip(selected = true,
                     onClick = { vm.enqueue { vm.actions.removeSkill(detail.conversation.id, ref) } }, label = { Text("${capabilityLabel(ref)} ×") }) }
@@ -568,16 +570,16 @@ private val DrawerRowHeight = 40.dp
                 AttachmentList(detail.conversation.draft.attachments, detail.conversation.config.workspace, vm) { ref -> vm.enqueue { vm.actions.removeAttachment(detail.conversation.id, ref) } }
             }
             detail.conversation.draft.pendingAttachment?.let { pending ->
-                Text(pending.error ?: "正在导入附件，完成后可发送…", style = MaterialTheme.typography.bodySmall)
+                Text(pending.error ?: AppStrings.importingAttachmentsYouCanSendWhenFinished, style = MaterialTheme.typography.bodySmall)
                 if (pending.error != null) Row {
-                    TextButton(onClick = { vm.importAttachment(detail.conversation.id, pending.workspace, pending.location) }) { Text("重试") }
-                    TextButton(onClick = { vm.enqueue { vm.actions.discardAttachment(detail.conversation.id, pending.id) } }) { Text("移除待处理附件") }
+                    TextButton(onClick = { vm.importAttachment(detail.conversation.id, pending.workspace, pending.location) }) { Text(AppStrings.retry) }
+                    TextButton(onClick = { vm.enqueue { vm.actions.discardAttachment(detail.conversation.id, pending.id) } }) { Text(AppStrings.removePendingAttachment) }
                 }
             }
             capture.transfer?.let { VoiceModelProgress(it, Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 8.dp)) }
             val notice = capture.error ?: hint
             if (notice != null) Text(notice, color = if (capture.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-            if (capture.phase == "transcribing" && !holding) Text("正在转写…", style = MaterialTheme.typography.bodySmall)
+            if (capture.phase == "transcribing" && !holding) Text(AppStrings.transcribing, style = MaterialTheme.typography.bodySmall)
         }
         VoiceComposerBar(
             voiceMode = voiceMode,
@@ -600,7 +602,7 @@ private val DrawerRowHeight = 40.dp
                 focus.clearFocus()
             },
             onExitVoice = { hint = null; voiceMode = false; openKeyboard = true },
-            onHoldTap = { hint = "请按住说话" },
+            onHoldTap = { hint = AppStrings.holdToSpeak },
             onHoldStart = ::beginHold,
             onHoldMove = { cancelArmed = it },
             onHoldEnd = { cancelled ->
@@ -621,11 +623,11 @@ private val DrawerRowHeight = 40.dp
                     enabled = !unavailable, maxLines = 5,
                     textStyle = MaterialTheme.typography.bodyLarge.copy(color = onButtonColor()),
                     cursorBrush = SolidColor(onButtonColor()),
-                    decorationBox = { inner -> Box { if (composer.value.text.isEmpty()) Text("描述任务，或添加上下文", color = MaterialTheme.colorScheme.onSurfaceVariant); inner() } },
+                    decorationBox = { inner -> Box { if (composer.value.text.isEmpty()) Text(AppStrings.describeATaskOrAddContext, color = MaterialTheme.colorScheme.onSurfaceVariant); inner() } },
                 )
             },
         )
-        if (active?.pending == true) TextButton(onClick = { vm.enqueue { vm.actions.reconcile(detail.conversation.id) } }, modifier = Modifier.padding(horizontal = 12.dp)) { Text("查询待确认请求") }
+        if (active?.pending == true) TextButton(onClick = { vm.enqueue { vm.actions.reconcile(detail.conversation.id) } }, modifier = Modifier.padding(horizontal = 12.dp)) { Text(AppStrings.checkPendingRequest) }
     }
 }
 
@@ -649,9 +651,9 @@ internal fun Turn.showsSeparateActivity(): Boolean = activityMark() == ActivityM
     if (phase == ExecutionPhase.CANCELLING) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             StreamingCursor()
-            Text("正在停止…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(AppStrings.stopping, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-    } else StreamingCursor(description = "正在回复…")
+    } else StreamingCursor(description = AppStrings.replying)
 }
 
 @Composable internal fun UserMessageBubble(content: @Composable ColumnScope.() -> Unit) {
@@ -731,12 +733,12 @@ internal fun Turn.showsSeparateActivity(): Boolean = activityMark() == ActivityM
     Box(modifier.fillMaxWidth()) {
         LazyColumn(state = list, modifier = Modifier.fillMaxSize().conversationEdgeFade(conversationCanvas(), topFade, bottomFade), contentPadding = contentPadding, verticalArrangement = Arrangement.spacedBy(16.dp)) {
             if (detail.hasEarlier) item(key = "earlier") {
-                TextButton(onClick = { follow = false; vm.enqueue { vm.actions.loadEarlier(detail.conversation.id) } }, modifier = Modifier.fillMaxWidth()) { Text("加载更早的消息") }
+                TextButton(onClick = { follow = false; vm.enqueue { vm.actions.loadEarlier(detail.conversation.id) } }, modifier = Modifier.fillMaxWidth()) { Text(AppStrings.loadEarlierMessages) }
             }
             if (detail.turns.isEmpty()) item(key = "empty") {
                 Column(Modifier.fillParentMaxWidth().padding(top = 32.dp, start = 24.dp, end = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("今天，做点什么？", style = MaterialTheme.typography.headlineMedium, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                    Text("使用 ${detail.conversation.config.agent.label()}，从一个具体任务开始。", Modifier.padding(top = 12.dp).fillMaxWidth(), color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    Text(AppStrings.whatWouldYouLikeToDoToday, style = MaterialTheme.typography.headlineMedium, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    Text(AppStrings.startASpecificTaskWith(detail.conversation.config.agent.label()), Modifier.padding(top = 12.dp).fillMaxWidth(), color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                 }
             }
             detail.turns.forEach { turn ->
@@ -756,8 +758,8 @@ internal fun Turn.showsSeparateActivity(): Boolean = activityMark() == ActivityM
                                     val reply = entry.message.text
                                     Row {
                                         val clipboard = LocalClipboardManager.current
-                                        ActionIcon("复制回复", { clipboard.setText(AnnotatedString(reply)) }, AppIcons.Copy, tint = replyActionColor())
-                                        ActionIcon("分享回复", { hostActions.share(reply) }, AppIcons.Share, tint = replyActionColor())
+                                        ActionIcon(AppStrings.copyReply, { clipboard.setText(AnnotatedString(reply)) }, AppIcons.Copy, tint = replyActionColor())
+                                        ActionIcon(AppStrings.shareReply, { hostActions.share(reply) }, AppIcons.Share, tint = replyActionColor())
                                     }
                                 }
                             }
@@ -769,12 +771,12 @@ internal fun Turn.showsSeparateActivity(): Boolean = activityMark() == ActivityM
                 } }
                 turn.skillProposals.forEach { candidate -> item(key = "artifact:${turn.id.value}:${candidate.ref}") {
                     OutlinedCard(onClick = { proposal(candidate) }, shape = RoundedCornerShape(16.dp), colors = CardDefaults.outlinedCardColors(containerColor = raisedColor()), border = BorderStroke(0.dp, Color.Transparent)) { Column(Modifier.fillMaxWidth().padding(16.dp)) {
-                        Text("生成的技能草稿", style = MaterialTheme.typography.titleMedium)
-                        Text("预览、校验并保存到 ${candidate.agent.label()}")
+                        Text(AppStrings.generatedSkillDraft, style = MaterialTheme.typography.titleMedium)
+                        Text(AppStrings.previewValidateAndSaveTo(candidate.agent.label()))
                     } }
                 } }
                 if (turn.creatingSkill && !turn.occupied && turn.skillProposals.isEmpty() && !turn.proposalsLoading) item(key = "creator:${turn.id.value}") {
-                    Text("本轮没有可保存的技能草稿。请根据回复继续补充需求；执行完成不表示技能已添加。", style = MaterialTheme.typography.bodySmall)
+                    Text(AppStrings.noSkillDraftToSaveThisTurnContinueDescribing, style = MaterialTheme.typography.bodySmall)
                 }
                 if ("status:${turn.id.value}" in keys) item(key = "status:${turn.id.value}") {
                     val statusInk = if (darkChrome()) MobbyColors.Dark.statusAccent else MobbyColors.Light.statusAccent
@@ -796,7 +798,7 @@ internal fun Turn.showsSeparateActivity(): Boolean = activityMark() == ActivityM
                                 border = BorderStroke(1.dp, statusInk.copy(alpha = 0.3f)),
                                 colors = ButtonDefaults.outlinedButtonColors(contentColor = statusInk),
                                 contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
-                            ) { Text("恢复到输入框", style = MaterialTheme.typography.labelLarge) }
+                            ) { Text(AppStrings.restoreToInput, style = MaterialTheme.typography.labelLarge) }
                         }
                     }
                 }
@@ -812,7 +814,7 @@ internal fun Turn.showsSeparateActivity(): Boolean = activityMark() == ActivityM
             shape = CircleShape,
             colors = tonalButtonColors(),
             contentPadding = PaddingValues(0.dp),
-        ) { AppIcon(AppIcons.ArrowDown, "最新消息", Modifier.size(22.dp), tint = onButtonColor()) }
+        ) { AppIcon(AppIcons.ArrowDown, AppStrings.latestMessages, Modifier.size(22.dp), tint = onButtonColor()) }
     }
 }
 
@@ -863,23 +865,23 @@ private fun Modifier.conversationEdgeFade(color: Color, topFade: Dp, bottomFade:
 }
 
 internal fun capabilityLabel(ref: String) = when (ref.removePrefix("plugin:device:")) {
-    "screen" -> "屏幕"
-    "sms" -> "短信"
-    "sms:send" -> "发送短信"
-    "contacts" -> "通讯录"
-    "contacts:write" -> "修改通讯录"
-    "calendar" -> "日历"
-    "calendar:write" -> "修改日历"
-    "media" -> "相册"
-    "storage" -> "存储"
-    "camera" -> "相机"
-    "microphone" -> "麦克风"
-    "location" -> "位置"
-    "sensors" -> "传感器"
-    "clipboard" -> "剪贴板"
-    "clipboard:write" -> "写入剪贴板"
-    "office" -> "Office 文档"
-    else -> ref.split(':').getOrNull(3) ?: "技能"
+    "screen" -> AppStrings.screen
+    "sms" -> AppStrings.sms
+    "sms:send" -> AppStrings.sendSms
+    "contacts" -> AppStrings.contacts
+    "contacts:write" -> AppStrings.editContacts
+    "calendar" -> AppStrings.calendar
+    "calendar:write" -> AppStrings.editCalendar
+    "media" -> AppStrings.media
+    "storage" -> AppStrings.storage
+    "camera" -> AppStrings.camera
+    "microphone" -> AppStrings.microphone
+    "location" -> AppStrings.location
+    "sensors" -> AppStrings.sensors
+    "clipboard" -> AppStrings.clipboard
+    "clipboard:write" -> AppStrings.writeToClipboard
+    "office" -> AppStrings.officeDocuments
+    else -> ref.split(':').getOrNull(3) ?: AppStrings.skills
 }
 
 @Composable internal fun InteractionViewport(content: @Composable BoxWithConstraintsScope.() -> Unit) {

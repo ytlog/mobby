@@ -7,11 +7,13 @@ const {randomBytes} = require('node:crypto');
 const {spawn} = require('node:child_process');
 const {Readable} = require('node:stream');
 const {pipeline} = require('node:stream/promises');
+const {GatewayStrings, GatewayError} = require('./gateway-strings.cjs');
+const strings = new GatewayStrings();
 const MAX_BODY = 16 * 1024 * 1024;
 function endpoint(config) {
-  if (!['responses', 'messages'].includes(config.protocol)) throw Error('网关协议无效');
+  if (!['responses', 'messages'].includes(config.protocol)) throw new GatewayError(strings.invalidProtocol);
   const url = new URL(config.endpoint);
-  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw Error('网关 URL 无效');
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw new GatewayError(strings.invalidUrl);
   let path = url.pathname.replace(/\/+$/, '');
   path = path.replace(/\/(chat\/completions|responses|messages)$/, '');
   if (!path) path = '/v1';
@@ -20,7 +22,7 @@ function endpoint(config) {
 }
 async function readBounded(body) {
   const chunks=[]; let size=0;
-  for await (const chunk of body) { size+=chunk.length; if (size > MAX_BODY) throw Error('网关请求或响应超过 16 MiB'); chunks.push(Buffer.from(chunk)); }
+  for await (const chunk of body) { size+=chunk.length; if (size > MAX_BODY) throw new GatewayError(strings.bodyTooLarge); chunks.push(Buffer.from(chunk)); }
   return Buffer.concat(chunks).toString('utf8');
 }
 async function createBridge(config) {
@@ -36,15 +38,15 @@ async function createBridge(config) {
       const routes = {'/v1/messages':['messages',''], '/v1/messages/count_tokens':['messages','/count_tokens'],
         '/v1/responses':['responses',''], '/v1/responses/compact':['responses','/compact']};
       const route = routes[local.pathname];
-      if (req.method !== 'POST' || !route) { res.writeHead(404); res.end(JSON.stringify({error:{message:'不支持的本地网关路径'}})); return; }
-      if (route[0] !== config.protocol) { res.writeHead(400); res.end(JSON.stringify({error:{message:'网关协议不匹配，暂不提供转换'}})); return; }
+      if (req.method !== 'POST' || !route) { res.writeHead(404); res.end(JSON.stringify({error:{message:strings.unsupportedPath}})); return; }
+      if (route[0] !== config.protocol) { res.writeHead(400); res.end(JSON.stringify({error:{message:strings.protocolMismatch}})); return; }
       if (req.headers['content-encoding'] && req.headers['content-encoding'] !== 'identity') {
-        res.writeHead(415); res.end(JSON.stringify({error:{message:'不支持的请求压缩格式'}})); return;
+        res.writeHead(415); res.end(JSON.stringify({error:{message:strings.unsupportedEncoding}})); return;
       }
       let payload;
       try {
         const body = JSON.parse(await readBounded(req));
-        if (!body || typeof body !== 'object' || Array.isArray(body)) throw Error('不支持的请求格式');
+        if (!body || typeof body !== 'object' || Array.isArray(body)) throw new GatewayError(strings.invalidRequest);
         payload = {...body, model:config.model};
       } catch (error) { error.invalidInput = true; throw error; }
       const headers = {'content-type':'application/json'};
@@ -65,7 +67,7 @@ async function createBridge(config) {
       if (!response.ok) {
         await response.body?.cancel();
         res.writeHead(response.status, {'content-type':'application/json'});
-        res.end(JSON.stringify({type:'error', error:{type:'api_error', message:`网关 HTTP ${response.status}，请检查地址、协议、模型和密钥`}}));
+        res.end(JSON.stringify({type:'error', error:{type:'api_error', message:strings.httpFailure(response.status)}}));
       } else {
         const responseHeaders = {'content-type':response.headers.get('content-type') || 'application/json'};
         // Codex uses this opaque server value to continue a turn; do not drop it at the bridge.
@@ -79,7 +81,7 @@ async function createBridge(config) {
       if (res.headersSent || res.destroyed) { res.destroy(); return; }
       if (!res.headersSent) res.writeHead(error.invalidInput ? 400 : 502, {'content-type':'application/json'});
       // Only local validation errors are useful; network errors may contain URLs or credentials.
-      const message = /^(不支持|网关|请输入)/.test(error.message) ? error.message : '网关请求失败，请检查网络与协议配置';
+      const message = error instanceof GatewayError ? error.message : strings.requestFailed;
       res.end(JSON.stringify({type:'error', error:{type:error.invalidInput ? 'invalid_request_error' : 'api_error', message}}));
     } finally { clearTimeout(timer); controllers.delete(controller); }
   });
@@ -89,11 +91,12 @@ async function createBridge(config) {
 }
 function agentLaunch(mode, args, config, environment, bridge) {
   const protocol = mode === 'CLAUDE' ? 'messages' : mode === 'CODEX' || mode === 'OPEN_CODE' ? 'responses' : null;
-  if (!protocol || config.protocol !== protocol) throw Error('网关协议必须与 Agent 原生协议一致；暂不提供转换');
-  if (!bridge?.url || !bridge?.token) throw Error('必须使用本地桥接');
+  if (!protocol || config.protocol !== protocol) throw new GatewayError(strings.nativeProtocolRequired);
+  if (!bridge?.url || !bridge?.token) throw new GatewayError(strings.bridgeRequired);
   const base = bridge.url, token = bridge.token;
   const env = {...environment};
   delete env.MOBBY_GATEWAY_CONFIG;
+  delete env.MOBBY_LANGUAGE;
   delete env.MOBBY_AGENT_INPUT_FILE;
   const agentArgs = [...args];
   if (mode === 'CLAUDE') {
@@ -123,14 +126,14 @@ function agentLaunch(mode, args, config, environment, bridge) {
         }}
       })
     });
-  } else throw Error('不支持的 Agent');
+  } else throw new GatewayError(strings.unsupportedAgent);
   return {args:agentArgs, env};
 }
 function openAgentInput(path) {
   const fd = fs.openSync(path, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
   try {
     const stat = fs.fstatSync(fd);
-    if (!stat.isFile() || stat.size > MAX_BODY) throw Error('不支持的 Agent 输入文件');
+    if (!stat.isFile() || stat.size > MAX_BODY) throw new GatewayError(strings.invalidInputFile);
     return fd;
   } catch (error) { fs.closeSync(fd); throw error; }
 }
@@ -148,9 +151,9 @@ async function main() {
     child = spawn(executable, launch.args, {env:launch.env, stdio:input === undefined ? 'inherit' : [input, 1, 2]});
   } catch (error) { bridge.close(); throw error; }
   finally { if (input !== undefined) fs.closeSync(input); }
-  child.on('error', () => { console.error('无法启动 Agent'); bridge.close(); process.exitCode=1; });
+  child.on('error', () => { console.error(strings.agentStartFailed); bridge.close(); process.exitCode=1; });
   child.on('exit', code => { bridge.close(); process.exitCode=code ?? 1; });
   for (const signal of ['SIGTERM','SIGINT']) process.on(signal, () => { child.kill(signal); bridge.close(); });
 }
 module.exports = {openAgentInput, endpoint, createBridge, agentLaunch};
-if (require.main === module) main().catch(() => { console.error('无法启动本地桥接，请检查 Agent 协议与网关配置'); process.exitCode=1; });
+if (require.main === module) main().catch(() => { console.error(strings.bridgeStartFailed); process.exitCode=1; });
