@@ -96,11 +96,13 @@ class GatewayCatalogTest {
         }
     }
 
-    @Test fun `user selection keeps the default and only selected catalog models`() {
+    @Test fun `user selection keeps catalog and manually supplied models`() {
         val fetched = listOf(GatewayModel("first", "First"), GatewayModel("other", "Other"))
-        assertEquals(listOf(GatewayModel("typed", "typed"), GatewayModel("other", "Other")),
-            selectedCatalog("typed", fetched, setOf("other")))
+        assertEquals(listOf(GatewayModel("typed", "typed"), GatewayModel("other", "Other"), GatewayModel("custom", "custom")),
+            selectedCatalog("typed", fetched, linkedSetOf("other", "custom")))
         assertEquals(listOf(GatewayModel("first", "First")), selectedCatalog("first", fetched, emptySet()))
-        assertThrows(IllegalArgumentException::class.java) { selectedCatalog("first", fetched, setOf("forged")) }
+        assertEquals(listOf(GatewayModel("first", "first"), GatewayModel("second", "second"), GatewayModel("third", "third")),
+            selectedCatalog("first", emptyList(), linkedSetOf("second", "third")))
+        assertThrows(IllegalArgumentException::class.java) { selectedCatalog("first", fetched, setOf("bad\nmodel")) }
     }
 }

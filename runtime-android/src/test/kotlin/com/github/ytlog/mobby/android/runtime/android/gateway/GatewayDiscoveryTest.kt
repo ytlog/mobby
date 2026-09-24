@@ -17,8 +17,9 @@ class GatewayDiscoveryTest {
             probe = { config -> checked += config.protocol
                 if (config.protocol == GatewayProtocol.RESPONSES) GatewayCheckOutcome.SUCCEEDED else GatewayCheckOutcome.HTTP_ERROR },
         )
-        val result = discovery.inspect(GatewayCandidateAddresses("https://test.invalid/v1"), "chat", "synthetic-key")
+        val result = discovery.inspect(GatewayCandidateAddresses("https://test.invalid/v1/responses"), "chat", "synthetic-key")
         assertEquals(setOf(AgentMode.CODEX, AgentMode.OPEN_CODE), result.supported.keys)
+        assertEquals("https://test.invalid/v1", result.supported.getValue(AgentMode.CODEX))
         assertEquals(listOf(GatewayProtocol.RESPONSES, GatewayProtocol.MESSAGES), checked)
         assertEquals(listOf("chat", "other"), result.models.map { it.id })
         assertFalse(result.toString().contains("synthetic-key"))

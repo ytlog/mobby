@@ -32,7 +32,7 @@ interface RuntimeAdminClient {
     suspend fun saveManualSkill(request: ManualSkillRequest): AdminResult<SkillSummary>
     suspend fun initialize(): AdminResult<Unit>
     suspend fun listGatewayProfiles(): AdminResult<List<GatewayProfileSummary>>
-    suspend fun inspectGateway(request: InspectGatewayRequest): AdminResult<GatewayInspectionSummary> = AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
+    suspend fun inspectGateway(request: InspectGatewayRequest): AdminResult<GatewayInspectionSummary>
     suspend fun saveGatewayProfile(request: SaveGatewayRequest): AdminResult<GatewayProfileSummary>
     suspend fun defaultGateway(): AdminResult<GatewaySelection?> = AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
     suspend fun selectDefaultGateway(selection: GatewaySelection): AdminResult<Unit> = AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))

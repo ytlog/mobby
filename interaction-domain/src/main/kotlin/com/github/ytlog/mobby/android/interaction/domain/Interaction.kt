@@ -138,7 +138,7 @@ interface SystemPort {
     suspend fun checkGateway(profile: GatewayProfile): DataResult<GatewayCheckReport>
     suspend fun gateways(): List<GatewayProfile>
     suspend fun saveGateway(edit: GatewayEdit): GatewaySaveResult
-    suspend fun inspectGateway(edit: GatewayEdit): DataResult<GatewayInspectionResult> = DataResult.Failed("当前运行环境不支持网关探测")
+    suspend fun inspectGateway(edit: GatewayEdit): DataResult<GatewayInspectionResult>
     suspend fun defaultGateway(): GatewayDefault?
     suspend fun selectDefaultGateway(profile: GatewayProfile): OperationResult
     suspend fun deleteGateway(id: String): OperationResult

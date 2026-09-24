@@ -23,8 +23,9 @@ internal class GatewayDiscovery(
 ) {
     suspend fun inspect(addresses: GatewayCandidateAddresses, preferredModel: String, key: String): GatewayInspection {
         require(preferredModel.length <= 200 && preferredModel.none { it.isISOControl() })
-        val candidates = mapOf(AgentMode.CODEX to addresses.responses, AgentMode.OPEN_CODE to addresses.responses,
-            AgentMode.CLAUDE to addresses.messages.ifBlank { addresses.responses })
+        val candidates = mapOf(AgentMode.CODEX to GatewayEndpoint.base(addresses.responses),
+            AgentMode.OPEN_CODE to GatewayEndpoint.base(addresses.responses),
+            AgentMode.CLAUDE to GatewayEndpoint.base(addresses.messages.ifBlank { addresses.responses }))
         val configs = candidates.mapValues { (mode, endpoint) -> GatewayConfig(endpoint, preferredModel.ifBlank { "catalog-probe" }, key, mode.gatewayProtocol()).also { it.validateFor(mode) } }
         val catalogResults = configs.values.distinctBy { it.endpoint to it.protocol }.map { catalog(it) }
         val models = catalogResults.filterIsInstance<CatalogResult.Ready>().flatMap { it.models }.distinctBy { it.id }.take(400)
@@ -44,10 +45,13 @@ internal class GatewayDiscovery(
     }
 }
 
-/** The user-picked subset must come from a freshly fetched catalog; the verified default is always retained. */
+/** Keep the verified default, catalog picks and explicitly entered model IDs together. */
 internal fun selectedCatalog(defaultModel: String, fetched: List<GatewayModel>, selected: Set<String>): List<GatewayModel> {
-    require(selected.all { id -> fetched.any { it.id == id } }) { "所选模型不在网关模型列表中" }
+    require((selected + defaultModel).size <= 400 && (selected + defaultModel).all { id ->
+        id.isNotBlank() && id.length <= 200 && id.none { it.isISOControl() }
+    }) { "模型列表无效" }
     val byId = fetched.associateBy { it.id }
     val default = byId[defaultModel] ?: GatewayModel(defaultModel, defaultModel)
-    return (listOf(default) + fetched.filter { it.id in selected && it.id != defaultModel }).take(400)
+    return listOf(default) + fetched.filter { it.id in selected && it.id != defaultModel } +
+        selected.filter { it != defaultModel && it !in byId }.map { GatewayModel(it, it) }
 }

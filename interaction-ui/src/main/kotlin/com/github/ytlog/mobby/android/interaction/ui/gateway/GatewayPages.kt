@@ -18,6 +18,9 @@ import com.github.ytlog.mobby.android.interaction.domain.*
 import com.github.ytlog.mobby.android.interaction.ui.*
 import kotlinx.coroutines.*
 
+internal fun gatewayBaseAddress(value: String): String = value.trim().trimEnd('/')
+    .replace(Regex("(?i)/(?:responses|messages|chat/completions)$"), "")
+
 @Composable internal fun GatewayPage(vm: ConversationViewModel, back: () -> Unit) {
     val profiles by vm.gateways.collectAsStateWithLifecycle()
     val state by vm.state.collectAsStateWithLifecycle()
@@ -102,13 +105,13 @@ internal fun gatewaySummary(profile: GatewayProfile): String {
     val group = profiles.filter { it.id == editingId }
     val saved = group.firstOrNull()
     var providerId by remember { mutableStateOf(GatewayProviders.CUSTOM) }
-    var responsesEndpoint by remember { mutableStateOf("") }
-    var messagesEndpoint by remember { mutableStateOf("") }
+    var baseEndpoint by remember { mutableStateOf("") }
     var model by remember { mutableStateOf("") }
     var key by remember { mutableStateOf("") }
     var keyEdited by remember { mutableStateOf(false) }
     var inspection by remember { mutableStateOf<GatewayInspectionResult?>(null) }
     var selectedModels by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var manualModels by remember { mutableStateOf("") }
     var modelSearch by remember { mutableStateOf("") }
     var notice by remember { mutableStateOf("") }
     var connectionNotice by remember { mutableStateOf("") }
@@ -124,18 +127,17 @@ internal fun gatewaySummary(profile: GatewayProfile): String {
                 group.all { profile -> candidates.forAgent(profile.agent) == profile.endpoint }
             } == true } ?: GatewayProviders.CUSTOM
         } ?: GatewayProviders.CUSTOM
-        responsesEndpoint = group.firstOrNull { it.agent != AgentId.CLAUDE_CODE }?.endpoint
-            ?: first?.endpoint.orEmpty()
-        messagesEndpoint = group.firstOrNull { it.agent == AgentId.CLAUDE_CODE }?.endpoint
-            ?.takeIf { it != responsesEndpoint }.orEmpty()
+        baseEndpoint = gatewayBaseAddress(GatewayProviders.find(providerId)?.candidates()?.responses ?: first?.endpoint.orEmpty())
         model = first?.model.orEmpty()
         selectedModels = first?.models?.map { it.id }?.toSet().orEmpty()
+        manualModels = ""
         key = ""; keyEdited = false; inspection = null
     }
     fun candidates(): GatewayAddresses = GatewayProviders.find(providerId)?.candidates()
-        ?: GatewayAddresses(responsesEndpoint.trim(), messagesEndpoint.trim())
+        ?: gatewayBaseAddress(baseEndpoint).let { GatewayAddresses(it, it) }
+    fun manualIds() = manualModels.split(',', '\n').map { it.trim() }.filter { it.isNotEmpty() }.toSet()
     fun edit() = GatewayEdit(editingId?.takeIf { it.isNotBlank() }, candidates(), model.trim(),
-        if (keyEdited) key.toCharArray() else null, selectedModels)
+        if (keyEdited) key.toCharArray() else null, selectedModels + manualIds())
     fun changed() { inspection = null; connectionNotice = ""; notice = "" }
     fun modelChanged(value: String) {
         model = value
@@ -150,15 +152,13 @@ internal fun gatewaySummary(profile: GatewayProfile): String {
         PageHeader(if (!editingId.isNullOrBlank()) "编辑网关" else "添加网关", back)
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            SettingsCaption("填写地址和密钥后探测。应用会用所选模型分别请求 Responses 与 Messages，并自动生成通过验证的 Agent。小型请求可能产生少量费用。")
+            SettingsCaption("填写 Base 地址和密钥后探测。应用会自动查找可用 Agent 和模型；小型探测请求可能产生少量费用。")
             SettingsGroup("服务") {
                 GatewayProviders.all.forEachIndexed { index, provider ->
                     if (index > 0) GroupDivider()
                     ChoiceRow(provider.label, providerId == provider.id, {
                         providerId = provider.id
-                        val endpoints = provider.candidates()
-                        responsesEndpoint = endpoints.responses
-                        messagesEndpoint = endpoints.messages
+                        baseEndpoint = gatewayBaseAddress(provider.candidates().responses)
                         changed()
                     }, enabled = !busy && !checking)
                 }
@@ -168,11 +168,7 @@ internal fun gatewaySummary(profile: GatewayProfile): String {
                 }, enabled = !busy && !checking)
             }
             SettingsGroup {
-                SettingsField(responsesEndpoint, { responsesEndpoint = it; changed() }, "网关地址", enabled = !busy && !checking && providerId == GatewayProviders.CUSTOM)
-                if (providerId == GatewayProviders.CUSTOM) {
-                    GroupDivider()
-                    SettingsField(messagesEndpoint, { messagesEndpoint = it; changed() }, "Messages 地址（留空则使用上方地址）", enabled = !busy && !checking)
-                }
+                SettingsField(baseEndpoint, { baseEndpoint = it; changed() }, "Base 地址", enabled = !busy && !checking && providerId == GatewayProviders.CUSTOM)
                 GroupDivider()
                 SettingsField(model, ::modelChanged, "探测模型（可先留空）", enabled = !busy && !checking)
                 GroupDivider()
@@ -184,10 +180,13 @@ internal fun gatewaySummary(profile: GatewayProfile): String {
                     SettingsAction("移除已保存密钥", enabled = !busy && !checking) { key = ""; keyEdited = true; changed() }
                 }
             }
+            val supported = inspected?.supportedAgents ?: group.map { it.agent }.toSet()
+            if (supported.isNotEmpty()) SettingsCaption("${if (inspected != null) "已确认" else "已保存"}的 Agent：${supported.joinToString("、") { it.label() }}")
             if (listOf(candidates().responses, candidates().messages).any { it.startsWith("http://", ignoreCase = true) })
                 SettingsCaption("HTTP 会明文传输密钥和内容，仅用于可信网络；建议使用 HTTPS。", error = true)
             SettingsGroup { SettingsAction("探测支持的 Agent 和模型", enabled = !busy && !checking && candidates().responses.isNotBlank()) {
-                busy = true; notice = "正在探测模型和原生协议…"
+                if (providerId == GatewayProviders.CUSTOM) baseEndpoint = gatewayBaseAddress(baseEndpoint)
+                busy = true; notice = "正在探测可用 Agent 和模型…"
                 submit {
                     val request = edit()
                     try {
@@ -196,6 +195,7 @@ internal fun gatewaySummary(profile: GatewayProfile): String {
                                 inspection = result.value
                                 model = result.value.model
                                 val available = result.value.models.map { it.id }.toSet()
+                                manualModels = (manualIds() + (selectedModels - available - model)).joinToString(", ")
                                 selectedModels = selectedModels.intersect(available) + setOf(model).intersect(available)
                                 notice = if (result.value.supportedAgents.isEmpty()) "未确认任何可用 Agent；请检查地址、模型、密钥和额度"
                                     else "已确认：${result.value.supportedAgents.joinToString("、") { it.label() }}"
@@ -206,9 +206,13 @@ internal fun gatewaySummary(profile: GatewayProfile): String {
                 }
             } }
             inspected?.let { result ->
-                result.catalogError?.let { SettingsCaption("模型列表不可用：$it。可手动填写模型并再次探测。") }
+                result.catalogError?.let { SettingsCaption("模型列表不可用：$it。仍可手动添加多个模型 ID。") }
+                SettingsCaption(if (result.supportedAgents.isNotEmpty())
+                    "默认模型已通过探测。其他模型可以从列表中选择，或手动输入多个 ID。"
+                    else "请先填写可用的探测模型并重新探测；其他模型可从列表中选择或手动输入多个 ID。")
+                SettingsGroup { SettingsField(manualModels, { manualModels = it }, "手动添加模型 ID（逗号分隔）", enabled = !busy && !checking) }
                 if (result.models.isNotEmpty()) {
-                    SettingsCaption("已选 ${selectedModels.size} 个模型；默认模型始终保留。输入关键词可筛选列表。")
+                    SettingsCaption("已选 ${(selectedModels + manualIds() + model).size} 个模型；默认模型始终保留。输入关键词可筛选列表。")
                     SettingsGroup { SettingsField(modelSearch, { modelSearch = it }, "筛选模型", enabled = !busy && !checking) }
                     val matches = result.models.filter { modelSearch.isBlank() || it.id.contains(modelSearch, true) || it.name.contains(modelSearch, true) }
                     SettingsGroup("可用模型") {
@@ -228,7 +232,7 @@ internal fun gatewaySummary(profile: GatewayProfile): String {
                 }
             }
             SettingsGroup { SettingsAction("保存网关", enabled = !busy && !checking && inspected?.supportedAgents?.isNotEmpty() == true) {
-                busy = true; notice = "保存前正在重新确认协议…"
+                busy = true; notice = "保存前正在重新确认可用性…"
                 submit {
                     val request = edit()
                     var leave: String? = null

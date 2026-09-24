@@ -57,6 +57,12 @@ class ConversationDrawerPageTest {
         } }
         val actions = InteractionUseCases(repository, stub<ExecutionPort> { error(it) }, system, { "fixture" }, scope, preferences)
         compose.setContent { InteractionEntry(actions, InteractionHostActions({}, { _, _ -> }, {})) }
+        compose.onNodeWithText("先配置网关").assertExists()
+        compose.onNodeWithText("去配置网关").performClick()
+        compose.onNodeWithText("添加网关").assertExists()
+        compose.onNodeWithContentDescription("返回").performClick()
+        compose.onNodeWithContentDescription("返回").performClick()
+        compose.onNodeWithText("先配置网关").assertDoesNotExist()
         compose.onNodeWithContentDescription("打开会话抽屉").performClick()
         compose.onNodeWithContentDescription("设置").performClick()
         compose.onNodeWithText("网关设置").assertExists()

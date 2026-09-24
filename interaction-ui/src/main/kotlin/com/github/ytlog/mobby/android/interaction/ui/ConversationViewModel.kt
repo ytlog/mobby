@@ -35,6 +35,7 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
     val composer = MutableStateFlow(ComposerState())
     val agents = MutableStateFlow<List<AgentOption>>(emptyList())
     val gateways = MutableStateFlow<List<GatewayProfile>>(emptyList())
+    val gatewaysLoaded = MutableStateFlow(false)
     val defaultGateway = MutableStateFlow<GatewayDefault?>(null)
     val skills = MutableStateFlow<List<Skill>>(emptyList())
     val skillsError = MutableStateFlow<String?>(null)
@@ -348,6 +349,7 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
     }
     suspend fun refresh() {
         gateways.value = actions.gateways()
+        gatewaysLoaded.value = status.value.ready
         defaultGateway.value = actions.defaultGateway()
         agents.value = actions.agents()
     }

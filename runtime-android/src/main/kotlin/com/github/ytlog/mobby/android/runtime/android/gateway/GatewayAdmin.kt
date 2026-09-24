@@ -70,8 +70,7 @@ internal class GatewayAdmin(private val context: Context) {
             val key = chars?.concatToString() ?: old?.key.orEmpty()
             val inspected = GatewayDiscovery().inspect(request.addresses, request.model.trim(), key)
             require(inspected.supported.isNotEmpty()) { "没有通过原生协议探测的 Agent" }
-            val models = if (inspected.models.isNotEmpty()) selectedCatalog(inspected.model, inspected.models, request.selectedModels)
-                else { require(request.selectedModels.isEmpty()); listOf(GatewayModel(inspected.model, inspected.model)) }
+            val models = selectedCatalog(inspected.model, inspected.models, request.selectedModels)
             val routes = inspected.supported.mapKeys { it.key.gatewayProtocol() }
             val record = GatewayRecord(id, 0, routes, inspected.model, key, models, inspected.catalogError)
             record.validate()

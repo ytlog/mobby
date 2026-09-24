@@ -82,6 +82,8 @@ class InteractionHostActions(
     val state by vm.state.collectAsStateWithLifecycle()
     val system by vm.status.collectAsStateWithLifecycle()
     val agentOptions by vm.agents.collectAsStateWithLifecycle()
+    val gateways by vm.gateways.collectAsStateWithLifecycle()
+    val gatewaysLoaded by vm.gatewaysLoaded.collectAsStateWithLifecycle()
     var fileTarget by rememberSaveable { mutableStateOf<String?>(null) }
     var fileWorkspace by rememberSaveable { mutableStateOf<String?>(null) }
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -98,6 +100,7 @@ class InteractionHostActions(
     var drawer by rememberSaveable { mutableStateOf(false) }
     val appearance by actions.appearance.collectAsStateWithLifecycle()
     var dialog by rememberSaveable { mutableStateOf<String?>(null) }
+    var gatewayIntroSeen by rememberSaveable { mutableStateOf(false) }
     var toolbarAnchor by remember { mutableStateOf(IntRect.Zero) }
     val skillProposal by vm.skillProposal.collectAsStateWithLifecycle()
     val skillProposalSaved by vm.skillProposalSaved.collectAsStateWithLifecycle()
@@ -118,6 +121,12 @@ class InteractionHostActions(
             reading = null
             route = "conversation"
             consumedNavigation = conversationNavigation
+        }
+    }
+    LaunchedEffect(route, system.ready, gatewaysLoaded, gateways.isEmpty(), dialog) {
+        if (!gatewayIntroSeen && route == "conversation" && system.ready && gatewaysLoaded && gateways.isEmpty() && dialog == null) {
+            gatewayIntroSeen = true
+            dialog = "gateway-intro"
         }
     }
     val dark = appearance == Appearance.DARK || appearance == Appearance.SYSTEM && isSystemInDarkTheme()
@@ -253,6 +262,13 @@ class InteractionHostActions(
                     }
                 }
                 val c = state.selected?.conversation
+                if (dialog == "gateway-intro") AlertDialog(
+                    onDismissRequest = { dialog = null }, containerColor = raisedColor(), shape = RoundedCornerShape(24.dp),
+                    title = { Text("先配置网关") },
+                    text = { Text("开始对话前，请先添加模型网关。应用会探测可用的 Agent 和模型。") },
+                    confirmButton = { TextButton(onClick = { dialog = null; navigate("gateway") }) { Text("去配置网关") } },
+                    dismissButton = { TextButton(onClick = { dialog = null }) { Text("稍后") } },
+                )
                 if (dialog == "new") ConfigDialog(vm, c, onDismiss = { dialog = null }, onApply = { config, project -> vm.enqueue { actions.create(config, project) }; route = "conversation"; dialog = null }, anchor = toolbarAnchor)
                 if (c != null) when (dialog) {
                     "rename" -> TextEditDialog("重命名", c.title, { dialog = null }) { value -> vm.enqueue { vm.report(actions.rename(c.id, value)) }; dialog = null }

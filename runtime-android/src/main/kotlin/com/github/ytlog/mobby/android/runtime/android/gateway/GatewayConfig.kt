@@ -76,11 +76,12 @@ data class GatewayConfig(
 }
 
 internal object GatewayEndpoint {
-    private val apiSuffix = Regex("/(chat/completions|responses|messages)$")
+    private val apiSuffix = Regex("(?i)/(chat/completions|responses|messages)$")
+    fun base(endpoint: String): String = endpoint.trim().trimEnd('/').replace(apiSuffix, "")
     fun url(endpoint: String, path: String): java.net.URL {
-        val base = URI(endpoint)
-        val prefix = base.rawPath.orEmpty().trimEnd('/').replace(apiSuffix, "").ifEmpty { "/v1" }
-        return java.net.URL("${base.scheme}://${base.rawAuthority}$prefix$path")
+        val parsed = URI(base(endpoint))
+        val prefix = parsed.rawPath.orEmpty().ifEmpty { "/v1" }
+        return java.net.URL("${parsed.scheme}://${parsed.rawAuthority}$prefix$path")
     }
 }
 
