@@ -1,6 +1,6 @@
 # 本地模型 Gradle 模块、独立进程与 HTTP API 设计
 
-状态：设计提案 v6，尚未实现。资料核对：2026-09-24。
+状态：目标设计提案 v6。资料核对：2026-09-24。首版实际范围、API 与限制见[实现与使用](local-model-first-version.md)；本文后续模块拆分、五组协议和下载状态机仍是规划，不代表已经交付。
 
 交付目标：现有 mobby `:app` 通过 Gradle 依赖独立内聚的 Android Library **`:local-model`**，随同一个 APK 安装。该模块的 Service 在应用私有 **`:local_model` 独立进程**运行 HTTP 服务、模型管理、协议适配、调度及推理；`:app` 只打开模块提供的管理界面或按 HTTP 契约调用，不在主进程运行模型。模块不依赖现有 Node 桥接、Agent、网关或交互模块；除显式控制入口外，旧功能的执行路径不变。外部客户端通过鉴权的 loopback HTTP 接入。引擎调研见[引擎目录](local-model-engines.md)。
 
@@ -16,7 +16,7 @@
 
 ## 2. 现状与设计依据
 
-当前 [settings.gradle.kts](../../settings.gradle.kts) 尚无这些模块，本文所有 Gradle、Manifest 与 API 均为拟议结构。现有 [app/build.gradle.kts](../../app/build.gradle.kts) 将增加对 `:local-model` 的单向依赖；模块不反向依赖 `:app`、`runtime-*`、`interaction-*`。模块纳入现有 APK，沿用当前 applicationId、UID、签名与最低 API 约束；任何引擎若要求更高 minSdk、冲突 native 库或扩大 APK，需要通过构建变体、选配或暂缓该引擎处理，不能悄悄改变旧 App 的安装门槛。研究与 Android 支持证据见[引擎目录](local-model-engines.md)。资源额度和超时均为拟议默认值，须真机校准。
+当前 [settings.gradle.kts](../../settings.gradle.kts) 已纳入首版的 `:local-model`、llama 与 MLC 适配器模块，[app/build.gradle.kts](../../app/build.gradle.kts) 已对 `:local-model` 单向依赖；下文拆分出的 api/core/http 子模块和多数 API 仍是拟议结构。模块不反向依赖 `:app`、`runtime-*`、`interaction-*`。模块纳入现有 APK，沿用当前 applicationId、UID、签名与最低 API 约束；任何引擎若要求更高 minSdk、冲突 native 库或扩大 APK，需要通过构建变体、选配或暂缓该引擎处理，不能悄悄改变旧 App 的安装门槛。研究与 Android 支持证据见[引擎目录](local-model-engines.md)。资源额度和超时均为拟议默认值，须真机校准。
 
 ## 3. Gradle 模块设计
 

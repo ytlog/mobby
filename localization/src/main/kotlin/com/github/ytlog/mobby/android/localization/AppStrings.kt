@@ -338,6 +338,7 @@ open class StringCatalog(private val fixedLanguage: AppLanguage? = null) {
     val back get() = text("返回", "Back")
     val settings get() = text("设置", "Settings")
     val gatewaySettings get() = text("网关设置", "Gateway settings")
+    val localModelService get() = text("本地模型服务", "Local model service")
     val configuredGatewaysAndModels get() = text("已配置的网关与模型", "Configured gateways and models")
     val storageRetention get() = text("存储与保留", "Storage & retention")
     val conversationAndAttachmentRetention get() = text("会话与附件保留期限", "Conversation and attachment retention")

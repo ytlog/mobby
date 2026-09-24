@@ -12,6 +12,7 @@
 | [Android 对话 UI 评审稿](design/conversation-ui-review.html) | 当前交互规范：会话与执行、顶部菜单、输入、插件/技能、Android 行为、实现架构及可点击原型；原生接入进度见实施记录 |
 | [交互三层架构与 Runtime 技术设计](design/interaction-runtime-architecture.html) | Compose 独立模块、三层职责、Runtime 模块、固定接口与事件协议、数据所有权和迁移验收 |
 | [本地模型模块与 HTTP API](design/local-model-runtime.md) | 独立 Gradle 模块与专用进程、五组 Agent 协议、模型管理、资源调度与验收；设计提案 |
+| [本地模型首版实现与使用](design/local-model-first-version.md) | 已实现的 llama.cpp 服务、Qwen/Gemma 下载 UI、HTTP 路由及当前限制 |
 | [手机推理引擎调研](design/local-model-engines.md) | 微软、Google、Meta、阿里、腾讯等 18 项引擎目录，Android 接入证据、可选后端与限制 |
 | [模型匹配与多源下载](design/local-model-downloads.md) | 按引擎选择 Hugging Face 模型、官方备用源与镜像、版本和文件校验、断点续传与下载 API |
 | [设备交互卡片实施](device-interaction-implementation.md) | 独立协议与 Compose 模块、真实动作卡、取消恢复、资源归属与验收边界 |

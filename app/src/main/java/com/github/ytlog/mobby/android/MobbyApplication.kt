@@ -52,6 +52,7 @@ class MobbyApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        if (isLocalModelProcess()) return
         com.github.ytlog.mobby.android.interaction.ui.LanguagePreferences.initialize(this)
         runtime = RuntimeHost(this) {
             PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
@@ -79,6 +80,14 @@ class MobbyApplication : Application() {
             override fun onLowMemory() = Unit
         })
     }
+
+    private fun isLocalModelProcess(): Boolean = runCatching {
+        if (android.os.Build.VERSION.SDK_INT >= 28) android.app.Application.getProcessName().endsWith(":local_model")
+        else java.io.File("/proc/self/cmdline").inputStream().use { input ->
+            val bytes = ByteArray(256); val n = input.read(bytes)
+            String(bytes, 0, n.coerceAtLeast(0), Charsets.UTF_8).substringBefore('\u0000').endsWith(":local_model")
+        }
+    }.getOrDefault(false)
 
     private fun openConversation(id: ConversationId?) {
         val intent = Intent(this, MainActivity::class.java)

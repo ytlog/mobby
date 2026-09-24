@@ -260,7 +260,7 @@ internal fun rememberedNewConversationConfig(
 }
 @Composable internal fun SettingsPage(
     system: SystemStatus, appearance: Appearance, setAppearance: (Appearance) -> Unit, navigate: (String) -> Unit, back: () -> Unit, vm: ConversationViewModel,
-    petEnabled: Boolean = false, petPermitted: Boolean = false, setPet: (Boolean) -> Unit = {},
+    petEnabled: Boolean = false, petPermitted: Boolean = false, setPet: (Boolean) -> Unit = {}, openLocalModels: () -> Unit = {},
 ) {
     val languageContext = LocalContext.current
     var languageError by remember { mutableStateOf(false) }
@@ -269,6 +269,8 @@ internal fun rememberedNewConversationConfig(
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             SettingsGroup {
                 SettingsItem(AppStrings.gatewaySettings, { navigate("gateway") }, AppStrings.configuredGatewaysAndModels)
+                GroupDivider()
+                SettingsItem(AppStrings.localModelService, openLocalModels)
                 GroupDivider()
                 SettingsItem(AppStrings.storageRetention, { navigate("history-limits") }, AppStrings.conversationAndAttachmentRetention)
             }
