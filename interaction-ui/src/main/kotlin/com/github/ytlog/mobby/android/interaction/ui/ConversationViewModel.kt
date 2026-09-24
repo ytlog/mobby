@@ -353,12 +353,19 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
         defaultGateway.value = actions.defaultGateway()
         agents.value = actions.agents()
     }
-    fun chooseGateway(profile: GatewayProfile) = enqueue {
+    fun chooseGateway(profile: GatewayProfile, model: String = profile.model, reasoning: String? = null) = enqueue {
+        val related = gateways.value.filter { it.id == profile.id }
+        val currentAgent = state.value.selected?.conversation?.config?.agent
+        val target = related.firstOrNull { it.agent == currentAgent }
+            ?: related.firstOrNull { it.agent == defaultGateway.value?.agent }
+            ?: profile
+        val selectedModel = model.takeIf { candidate -> related.any { it.models.any { item -> item.id == candidate } || it.model == candidate } }
+            ?: target.model
         state.value.selected?.conversation?.let { conversation ->
-            actions.configure(conversation.id, NextTurnConfig(profile.agent, profile.model, null, conversation.config.workspace, profile.id, profile.version))
+            actions.configure(conversation.id, NextTurnConfig(target.agent, selectedModel, reasoning, conversation.config.workspace, target.id, target.version))
         }
-        when (val result = actions.selectDefaultGateway(profile)) {
-            OperationResult.Done -> defaultGateway.value = GatewayDefault(profile.agent, profile.id, profile.version)
+        when (val result = actions.selectDefaultGateway(target)) {
+            OperationResult.Done -> defaultGateway.value = GatewayDefault(target.agent, target.id, target.version)
             is OperationResult.Failed -> report(result)
         }
     }

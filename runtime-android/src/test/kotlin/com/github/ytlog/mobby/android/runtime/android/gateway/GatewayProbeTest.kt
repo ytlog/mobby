@@ -93,7 +93,7 @@ class GatewayProbeTest {
         }
     }
     @Test fun `HTTP 200 with HTML error or unfinished response is not success`() {
-        for (body in listOf("<html>login</html>", "{}", """{"error":{"message":"private"}}""", """{"object":"response","status":"failed","output":[]}""")) {
+        for (body in listOf("<html>login</html>", "{}", """{"error":{"message":"private"}}""", """{"object":"response","status":"failed","output":[],"error":{"code":"bad_request"}}""")) {
             server({ reply(it, 200, body) }) { base ->
                 val check = runBlocking { GatewayProbe().check(ref, GatewayConfig(base, "m")) }
                 assertEquals(GatewayCheckOutcome.INVALID_RESPONSE, check.outcome)
@@ -128,12 +128,14 @@ class GatewayProbeTest {
         }
     }
 
-    @Test fun `output limits and incomplete responses are not reported as completed checks`() {
+    @Test fun `valid protocol responses count as supported regardless of generation stop state`() {
         val responses = listOf(
             GatewayProtocol.RESPONSES to """{"object":"response","status":"incomplete","output":[]}""",
-            GatewayProtocol.MESSAGES to """{"type":"message","role":"assistant","content":[],"stop_reason":"max_tokens"}""")
+            GatewayProtocol.RESPONSES to """{"object":"response","status":"failed","output":[]}""",
+            GatewayProtocol.MESSAGES to """{"type":"message","role":"assistant","content":[],"stop_reason":"max_tokens"}""",
+            GatewayProtocol.MESSAGES to """{"type":"message","role":"assistant","content":[],"stop_reason":null}""")
         for ((protocol, body) in responses) server({ reply(it, 200, body) }) { base ->
-            assertEquals(GatewayCheckOutcome.INCOMPLETE_RESPONSE, runBlocking { GatewayProbe().check(ref, GatewayConfig(base, "m", protocol = protocol)) }.outcome)
+            assertEquals(GatewayCheckOutcome.SUCCEEDED, runBlocking { GatewayProbe().check(ref, GatewayConfig(base, "m", protocol = protocol)) }.outcome)
         }
     }
 

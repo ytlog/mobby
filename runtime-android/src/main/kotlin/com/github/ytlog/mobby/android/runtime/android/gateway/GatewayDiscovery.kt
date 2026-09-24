@@ -28,7 +28,7 @@ internal class GatewayDiscovery(
             AgentMode.CLAUDE to GatewayEndpoint.base(addresses.messages.ifBlank { addresses.responses }))
         val configs = candidates.mapValues { (mode, endpoint) -> GatewayConfig(endpoint, preferredModel.ifBlank { "catalog-probe" }, key, mode.gatewayProtocol()).also { it.validateFor(mode) } }
         val catalogResults = configs.values.distinctBy { it.endpoint to it.protocol }.map { catalog(it) }
-        val models = catalogResults.filterIsInstance<CatalogResult.Ready>().flatMap { it.models }.distinctBy { it.id }.take(400)
+        val models = catalogResults.filterIsInstance<CatalogResult.Ready>().flatMap { it.models }.distinctBy { it.id }.take(2_000)
         val selectedModel = preferredModel.ifBlank { models.firstOrNull()?.id.orEmpty() }
         val supported = linkedMapOf<AgentMode, String>()
         val outcomes = linkedMapOf<GatewayProtocol, GatewayCheckOutcome>()
@@ -47,7 +47,7 @@ internal class GatewayDiscovery(
 
 /** Keep the verified default, catalog picks and explicitly entered model IDs together. */
 internal fun selectedCatalog(defaultModel: String, fetched: List<GatewayModel>, selected: Set<String>): List<GatewayModel> {
-    require((selected + defaultModel).size <= 400 && (selected + defaultModel).all { id ->
+    require((selected + defaultModel).size <= 2_000 && (selected + defaultModel).all { id ->
         id.isNotBlank() && id.length <= 200 && id.none { it.isISOControl() }
     }) { "模型列表无效" }
     val byId = fetched.associateBy { it.id }

@@ -65,11 +65,7 @@ internal class GatewayProbe(private val timeoutMillis: Int = 10_000,
                 }
             }
             val parsed = runCatching { Json.parseToJsonElement(bytes.toString("UTF-8")) as? JsonObject }.getOrNull()
-            result(when {
-                !valid(config.protocol, parsed) -> GatewayCheckOutcome.INVALID_RESPONSE
-                incomplete(config.protocol, requireNotNull(parsed)) -> GatewayCheckOutcome.INCOMPLETE_RESPONSE
-                else -> GatewayCheckOutcome.SUCCEEDED
-            })
+            result(if (valid(config.protocol, parsed)) GatewayCheckOutcome.SUCCEEDED else GatewayCheckOutcome.INVALID_RESPONSE)
         } catch (_: UnknownHostException) { result(GatewayCheckOutcome.DNS_ERROR) }
         catch (_: SSLException) { result(GatewayCheckOutcome.TLS_ERROR) }
         catch (_: SocketTimeoutException) { result(GatewayCheckOutcome.TIMEOUT) }
@@ -77,19 +73,12 @@ internal class GatewayProbe(private val timeoutMillis: Int = 10_000,
         finally { connection?.disconnect() }
     }
 
-    private fun incomplete(protocol: GatewayProtocol, value: JsonObject): Boolean = when (protocol) {
-        GatewayProtocol.RESPONSES -> value["status"]?.jsonPrimitive?.content != "completed"
-        GatewayProtocol.MESSAGES -> value["stop_reason"]?.jsonPrimitive?.content !in setOf("end_turn", "stop_sequence")
-    }
-
     private fun valid(protocol: GatewayProtocol, value: JsonObject?): Boolean = runCatching {
         if (value == null || value["error"]?.let { it != JsonNull } == true) return false
         when (protocol) {
-            GatewayProtocol.RESPONSES -> value["object"]?.jsonPrimitive?.content == "response" &&
-                value["status"]?.jsonPrimitive?.content in setOf("completed", "incomplete") && value["output"] is JsonArray
+            GatewayProtocol.RESPONSES -> value["object"]?.jsonPrimitive?.content == "response" && value["output"] is JsonArray
             GatewayProtocol.MESSAGES -> value["type"]?.jsonPrimitive?.content == "message" &&
-                value["role"]?.jsonPrimitive?.content == "assistant" && value["content"] is JsonArray &&
-                value["stop_reason"] is JsonPrimitive && value["stop_reason"] != JsonNull
+                value["role"]?.jsonPrimitive?.content == "assistant" && value["content"] is JsonArray
         }
     }.getOrDefault(false)
 }

@@ -10,6 +10,16 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class GatewayDiscoveryTest {
+    @Test fun `discovery exposes the complete catalog for model selection`() = runBlocking {
+        val fetched = (1..446).map { GatewayModel("model-$it", "Model $it") }
+        val discovery = GatewayDiscovery(catalog = { CatalogResult.Ready(fetched) },
+            probe = { GatewayCheckOutcome.SUCCEEDED })
+        val result = discovery.inspect(GatewayCandidateAddresses("https://test.invalid/v1"), "", "")
+        assertEquals(446, result.models.size)
+        assertEquals("model-446", result.models.last().id)
+        assertEquals(446, selectedCatalog("model-1", fetched, fetched.map { it.id }.toSet()).size)
+    }
+
     @Test fun `only completed native protocols become supported agents and duplicate responses endpoint is probed once`() = runBlocking {
         val checked = mutableListOf<GatewayProtocol>()
         val discovery = GatewayDiscovery(

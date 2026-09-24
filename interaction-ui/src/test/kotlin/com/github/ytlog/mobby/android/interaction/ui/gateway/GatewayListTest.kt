@@ -29,7 +29,7 @@ class GatewayListTest {
     private inline fun <reified T> stub(crossinline body: (String, Array<out Any?>?) -> Any?): T =
         Proxy.newProxyInstance(T::class.java.classLoader, arrayOf(T::class.java)) { _, method, args -> body(method.name, args) } as T
 
-    private fun page(profiles: List<GatewayProfile>, current: Conversation? = null,
+    private fun page(profiles: List<GatewayProfile>, current: Conversation? = null, modelOptions: List<AgentOption> = emptyList(),
         configured: (NextTurnConfig) -> Unit = {}, selectedDefault: (GatewayProfile) -> Unit = {}): ConversationViewModel {
         val state = MutableStateFlow(InteractionState(loading = false, selected = current?.let { ConversationDetail(it, emptyList()) }))
         val repository = stub<InteractionRepository> { name, args -> when {
@@ -45,7 +45,7 @@ class GatewayListTest {
         val system = stub<SystemPort> { name, args -> when (name) {
             "getStatus" -> flowOf(SystemStatus(true, true))
             "getDiagnostic" -> flowOf(DiagnosticOutput(null, emptyList()))
-            "agents" -> emptyList<AgentOption>()
+            "agents" -> modelOptions
             "gateways" -> profiles
             "defaultGateway" -> GatewayDefault(AgentId.CODEX, profile.id, profile.version)
             "selectDefaultGateway" -> { selectedDefault(args!![0] as GatewayProfile); OperationResult.Done }
@@ -62,13 +62,13 @@ class GatewayListTest {
 
     @Test fun `gateway page lists a configured gateway and opens its editor`() {
         page(listOf(profile))
-        compose.onNodeWithText("探测模型（可先留空）").assertDoesNotExist()
+        compose.onNodeWithText("服务：OpenRouter").assertDoesNotExist()
         compose.onNodeWithText("OpenRouter · openai/gpt-test · 2 个模型").assertExists()
         compose.onNodeWithContentDescription("编辑网关").performClick()
         compose.onNodeWithText("编辑网关").assertExists()
-        compose.onNodeWithText("探测模型（可先留空）").assertExists()
+        compose.onNodeWithText("服务：OpenRouter").assertExists()
         compose.onNodeWithContentDescription("返回").performClick()
-        compose.onNodeWithText("探测模型（可先留空）").assertDoesNotExist()
+        compose.onNodeWithText("服务：OpenRouter").assertDoesNotExist()
         compose.onNodeWithText("已配置").assertExists()
     }
 
@@ -77,9 +77,9 @@ class GatewayListTest {
         val current = Conversation(ConversationId("current"), NextTurnConfig(AgentId.CODEX, "old", "high", "workspace", "CODEX", 2))
         var configured: NextTurnConfig? = null
         var selectedDefault: GatewayProfile? = null
-        val vm = page(listOf(profile, claude), current, { configured = it }, { selectedDefault = it })
+        val vm = page(listOf(profile, claude), current, configured = { configured = it }, selectedDefault = { selectedDefault = it })
         compose.waitUntil(5_000) { vm.state.value.selected != null }
-        compose.onAllNodesWithText("Claude Code").onLast().performClick()
+        compose.onNodeWithContentDescription("选择网关 CLAUDE").performClick()
         compose.waitUntil(5_000) { configured != null && selectedDefault != null }
         Assert.assertEquals(AgentId.CLAUDE_CODE, configured?.agent)
         Assert.assertEquals("claude-model", configured?.model)
@@ -96,8 +96,8 @@ class GatewayListTest {
         val current = Conversation(ConversationId("current"), NextTurnConfig(AgentId.CODEX, profile.model, null, "workspace", profile.id, profile.version))
         var configured: NextTurnConfig? = null
         var selected: GatewayProfile? = null
-        page(listOf(profile, second), current, { configured = it }, { selected = it })
-        compose.onAllNodesWithText("Codex").onLast().performClick()
+        page(listOf(profile, second), current, configured = { configured = it }, selectedDefault = { selected = it })
+        compose.onNodeWithContentDescription("选择网关 second-gateway").performClick()
         compose.waitUntil(5_000) { configured?.gatewayProfile == second.id && selected?.id == second.id }
         Assert.assertEquals("other-model", configured?.model)
     }
@@ -107,8 +107,36 @@ class GatewayListTest {
         compose.onNodeWithText("还没有配置网关").assertExists()
         compose.onNodeWithText("添加网关").performClick()
         compose.onNodeWithText("添加网关").assertExists()
-        compose.onNodeWithText("探测模型（可先留空）").assertExists()
+        compose.onNodeWithText("服务：自定义").assertExists()
         compose.onNodeWithText("填写 Base 地址和密钥后探测。", substring = true).assertExists()
+    }
+
+    @Test fun `one gateway is selected once and keeps the current agent when supported`() {
+        val newCodex = profile.copy(id = "shared", version = 3, endpoint = "https://example.com/v1", model = "shared-model")
+        val newClaude = newCodex.copy(agent = AgentId.CLAUDE_CODE, protocol = "MESSAGES")
+        val current = Conversation(ConversationId("current"), NextTurnConfig(AgentId.CODEX, profile.model, null, "workspace", profile.id, profile.version))
+        var configured: NextTurnConfig? = null
+        var selected: GatewayProfile? = null
+        page(listOf(profile, newCodex, newClaude), current, configured = { configured = it }, selectedDefault = { selected = it })
+        compose.onNodeWithContentDescription("选择网关 shared").performClick()
+        compose.waitUntil(5_000) { configured != null && selected != null }
+        Assert.assertEquals(AgentId.CODEX, configured?.agent)
+        Assert.assertEquals("shared", configured?.gatewayProfile)
+        Assert.assertEquals(AgentId.CODEX, selected?.agent)
+        compose.onAllNodesWithContentDescription("选择网关 shared").assertCountEquals(1)
+    }
+
+    @Test fun `selected gateway exposes its models and supported reasoning levels`() {
+        val current = Conversation(ConversationId("current"), NextTurnConfig(AgentId.CODEX, profile.model, null, "workspace", profile.id, profile.version))
+        val agent = AgentOption(AgentId.CODEX, mapOf("other" to setOf("low", "high")), null, true, emptySet())
+        var configured: NextTurnConfig? = null
+        page(listOf(profile), current, listOf(agent), configured = { configured = it })
+        compose.onNodeWithText("Other · other").performClick()
+        compose.waitUntil(5_000) { configured?.model == "other" }
+        compose.onNodeWithText("思考程度").assertExists()
+        compose.onNodeWithText("high").performClick()
+        compose.waitUntil(5_000) { configured?.reasoning == "high" }
+        Assert.assertEquals(profile.id, configured?.gatewayProfile)
     }
 
     @Test fun `catalog failure is shown on the configured row`() {

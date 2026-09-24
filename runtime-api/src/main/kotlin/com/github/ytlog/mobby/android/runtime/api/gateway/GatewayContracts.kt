@@ -28,6 +28,6 @@ class InspectGatewayRequest(val id: String?, val addresses: GatewayCandidateAddr
 }
 data class GatewayInspectionSummary(val model: String, val models: List<GatewayModelSummary>,
     val supportedAgents: Set<AgentId>, val catalogError: String?)
-enum class GatewayCheckOutcome { SUCCEEDED, HTTP_ERROR, INCOMPLETE_RESPONSE, INVALID_RESPONSE, RESPONSE_TOO_LARGE, DNS_ERROR, TLS_ERROR, TIMEOUT, CONNECTION_ERROR }
+enum class GatewayCheckOutcome { SUCCEEDED, HTTP_ERROR, INVALID_RESPONSE, RESPONSE_TOO_LARGE, DNS_ERROR, TLS_ERROR, TIMEOUT, CONNECTION_ERROR }
 /** Contains no response body, endpoint or credential. A small protocol request is not a CLI acceptance test. */
 data class GatewayCheck(val profile: GatewayProfileRef, val outcome: GatewayCheckOutcome, val httpStatus: Int? = null)

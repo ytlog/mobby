@@ -258,7 +258,7 @@ internal class RuntimeSystemAdapter(private val context: android.content.Context
 }
 
 internal fun GatewayCheck.message(): String = when (outcome) {
-    GatewayCheckOutcome.SUCCEEDED -> "最小协议请求通过；尚未验证 CLI、工具调用与会话恢复"
+    GatewayCheckOutcome.SUCCEEDED -> "协议接口已响应；尚未验证 CLI、工具调用与会话恢复"
     GatewayCheckOutcome.HTTP_ERROR -> when (httpStatus) {
         401, 403 -> "鉴权或访问被拒绝（HTTP $httpStatus），请检查密钥及访问权限"
         404 -> "请求路径或模型不存在（HTTP 404），请检查地址、协议和模型"
@@ -266,7 +266,6 @@ internal fun GatewayCheck.message(): String = when (outcome) {
         in 300..399 -> "网关要求重定向（HTTP $httpStatus）；未转发凭据，请填写最终网关地址"
         else -> "网关拒绝请求（HTTP $httpStatus），请检查配置或服务状态"
     }
-    GatewayCheckOutcome.INCOMPLETE_RESPONSE -> "网关已响应，但小型请求未完整结束，可能达到输出上限；不计为检查通过"
     GatewayCheckOutcome.INVALID_RESPONSE -> "收到的内容不符合所选协议，不能确认连接成功"
     GatewayCheckOutcome.RESPONSE_TOO_LARGE -> "检查响应超过 64 KiB 上限，未判定成功"
     GatewayCheckOutcome.DNS_ERROR -> "无法解析网关域名，请检查地址与网络"

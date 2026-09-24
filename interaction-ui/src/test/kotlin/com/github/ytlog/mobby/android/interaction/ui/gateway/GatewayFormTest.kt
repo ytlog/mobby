@@ -47,7 +47,8 @@ class GatewayFormTest {
         compose.onNodeWithText("Messages", substring = true).assertDoesNotExist()
         compose.onNodeWithText("已确认：Codex、OpenCode").assertExists()
         compose.onNodeWithText("支持的 Agent").assertDoesNotExist()
-        compose.onNodeWithText("Other").performScrollTo().performClick()
+        compose.onNodeWithText("模型：chat").performScrollTo().performClick()
+        compose.onNodeWithText("Other").performClick()
         compose.onNodeWithText("保存网关").performScrollTo().performClick()
         assertEquals(setOf("chat", "other"), saved!!.selectedModels)
         assertEquals("chat", saved!!.model)
@@ -61,9 +62,20 @@ class GatewayFormTest {
             { DataResult.Loaded(noCatalog) }, {}, {}, { DataResult.Failed("unused") }, editingId = "") } }
         field("Base 地址").performScrollTo().performTextReplacement("https://gateway.invalid/v1")
         compose.onNodeWithText("探测支持的 Agent 和模型").performScrollTo().performClick()
-        field("手动添加模型 ID（逗号分隔）").performScrollTo().performTextReplacement("second, third")
+        compose.onNodeWithText("模型：first").performScrollTo().performClick()
+        compose.onNodeWithText("添加模型").performClick()
+        field("模型 ID").performTextReplacement("second")
+        compose.onNodeWithText("添加", useUnmergedTree = true).performClick()
+        compose.onNodeWithText("模型：first").performScrollTo().performClick()
+        compose.onNodeWithText("添加模型").performClick()
+        field("模型 ID").performTextReplacement("third")
+        compose.onNodeWithText("添加", useUnmergedTree = true).performClick()
+        compose.onNodeWithText("模型：first").performScrollTo().performClick()
+        compose.onNodeWithText("second").assertExists()
+        compose.onNodeWithText("third").assertExists()
+        compose.onNodeWithText("模型：first").performScrollTo().performClick()
         compose.onNodeWithText("保存网关").performScrollTo().performClick()
-        assertEquals(setOf("second", "third"), saved!!.selectedModels)
+        assertEquals(setOf("first", "second", "third"), saved!!.selectedModels)
         assertEquals("first", saved!!.model)
     }
 
@@ -87,11 +99,36 @@ class GatewayFormTest {
             {}, {}, { DataResult.Failed("unused") }, editingId = "") } }
         field("Base 地址").performScrollTo().performTextReplacement("https://gateway.invalid/v1")
         compose.onNodeWithText("探测支持的 Agent 和模型").performScrollTo().performClick()
-        compose.onAllNodesWithText("设为默认").onLast().performScrollTo().performClick()
+        compose.onNodeWithText("模型：chat").performScrollTo().performClick()
+        compose.onNodeWithText("设为默认").performClick()
         compose.onNodeWithText("保存网关").assertIsNotEnabled()
         compose.onNodeWithText("探测支持的 Agent 和模型").performScrollTo().performClick()
         assertEquals(listOf("", "other"), inspectedModels)
         compose.onNodeWithText("保存网关").assertIsEnabled()
+    }
+
+    @Test fun `provider selector is collapsed until opened`() {
+        compose.setContent { MaterialTheme { GatewayForm(emptyList(), { runBlocking { it() } },
+            { GatewaySaveResult.Failed("unused") }, { DataResult.Loaded(discovered) },
+            {}, {}, { DataResult.Failed("unused") }, editingId = "") } }
+        compose.onNodeWithText("服务：自定义").assertExists()
+        compose.onNodeWithText("OpenRouter").assertDoesNotExist()
+        compose.onNodeWithText("服务：自定义").performClick()
+        compose.onNodeWithText("OpenRouter").performClick()
+        compose.onNodeWithText("服务：OpenRouter").assertExists()
+        field("探测模型（可先留空）").assertDoesNotExist()
+    }
+
+    @Test fun `model dropdown can find an item beyond the first four hundred`() {
+        val largeCatalog = discovered.copy(models = (1..446).map { GatewayModel("model-$it", "Model $it") })
+        compose.setContent { MaterialTheme { GatewayForm(emptyList(), { runBlocking { it() } },
+            { GatewaySaveResult.Failed("unused") }, { DataResult.Loaded(largeCatalog) },
+            {}, {}, { DataResult.Failed("unused") }, editingId = "") } }
+        field("Base 地址").performScrollTo().performTextReplacement("https://gateway.invalid/v1")
+        compose.onNodeWithText("探测支持的 Agent 和模型").performScrollTo().performClick()
+        compose.onNodeWithText("模型：chat").performScrollTo().performClick()
+        field("搜索模型").performTextReplacement("model-446")
+        compose.onNodeWithText("Model 446").assertExists()
     }
 
     @Test fun `editing existing gateway shows detected agents and probes again before saving`() {

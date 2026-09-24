@@ -34,7 +34,7 @@ data class GatewayConfig(
             uri.userInfo == null && uri.fragment == null && uri.query == null) { "请输入有效的网关 URL，不要在地址中放密钥或查询参数" }
         require(model.isNotBlank() && model.length <= 200 && model.none { it.isISOControl() }) { "请填写有效的模型名称" }
         require(key.length <= 8192 && key.none { it.isISOControl() }) { "密钥格式不正确" }
-        require(models.size <= 400 && models.all { item ->
+        require(models.size <= 2_000 && models.all { item ->
             item.id.isNotBlank() && item.id.length <= 200 && item.id.none { it.isISOControl() } &&
                 item.name.isNotBlank() && item.name.length <= 120 && item.name.none { it.isISOControl() }
         }) { "模型列表无效" }
@@ -64,7 +64,7 @@ data class GatewayConfig(
                     val name = item["name"]?.jsonPrimitive?.takeIf { it.isString }?.content?.take(120) ?: id
                     if (name.any { it.isISOControl() }) return@mapNotNull null
                     GatewayModel(id, name.ifBlank { id })
-                }?.distinctBy { it.id }?.take(400)
+                }?.distinctBy { it.id }?.take(2_000)
             }.getOrNull().orEmpty()
             val catalogError = obj["catalogError"]?.jsonPrimitive?.takeIf { it.isString }?.content
                 ?.takeIf { it.length <= 200 && it.none { char -> char.isISOControl() } }

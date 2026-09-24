@@ -18,7 +18,7 @@ internal sealed interface CatalogResult {
 internal class GatewayCatalog(
     private val timeoutMillis: Int = 15_000,
     private val maxBytes: Int = 8 * 1024 * 1024,
-    private val maxModels: Int = 400,
+    private val maxModels: Int = 2_000,
     private val open: (java.net.URL) -> HttpURLConnection = { it.openConnection() as HttpURLConnection },
 ) {
     suspend fun fetch(config: GatewayConfig): CatalogResult = runInterruptible(Dispatchers.IO) {
@@ -26,7 +26,7 @@ internal class GatewayCatalog(
         val collected = linkedMapOf<String, GatewayModel>()
         var after: String? = null
         var page = 0
-        while (page < 4 && collected.size < maxModels) {
+        while (page < 20 && collected.size < maxModels) {
             page++
             when (val loaded = page(config, path(config.protocol, after))) {
                 is Page.Failed -> return@runInterruptible if (collected.isEmpty()) CatalogResult.Unavailable(loaded.message)

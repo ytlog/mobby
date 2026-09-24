@@ -63,6 +63,19 @@ class GatewayCatalogTest {
         }
     }
 
+    @Test fun `responses catalog retains a gateway list larger than four hundred models`() {
+        val body = "{\"data\":[" + (1..446).joinToString(",") { "{\"id\":\"model-$it\"}" } + "]}"
+        server({ exchange ->
+            assertEquals("/v1/models", exchange.path)
+            reply(exchange, 200, body)
+        }) { base ->
+            val result = runBlocking { GatewayCatalog().fetch(GatewayConfig("$base/v1", "model-1", "synthetic-secret")) }
+                as CatalogResult.Ready
+            assertEquals(446, result.models.size)
+            assertEquals("model-446", result.models.last().id)
+        }
+    }
+
     @Test fun `messages catalog pages with the native key and stops when the list ends`() {
         val paths = mutableListOf<String>()
         server({ exchange ->
