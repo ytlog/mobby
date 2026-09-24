@@ -152,7 +152,8 @@ class WorkspacePickerTest {
         compose.setContent { MaterialTheme { AgentConfigMenu(true, {}, conversation, vm) } }
         compose.onNodeWithText("新建并使用此配置").assertDoesNotExist()
         compose.onNodeWithText("应用").assertExists()
-        compose.onNodeWithText("Claude Code ·", substring = true).performScrollTo().performClick()
+        compose.onNodeWithText("Agent").assertExists()
+        compose.onNodeWithText("Claude Code").performScrollTo().performClick()
         compose.onNodeWithText("仍在当前对话中继续", substring = true).assertExists()
         compose.onNodeWithText("应用").assertExists()
     }

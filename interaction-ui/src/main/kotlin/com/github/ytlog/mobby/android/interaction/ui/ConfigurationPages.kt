@@ -93,13 +93,18 @@ import kotlinx.coroutines.*
     LaunchedEffect(created, canMove) { if (canMove) created?.takeIf { it.owner == workspaceOwner }?.let { workspace = it.workspace.ref; adding = false; name = ""; vm.consumeWorkspaceCreated(it) } }
     FrostedMenu(true, dismiss, anchor) {
         Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()).padding(bottom = 12.dp)) {
+            MenuSection("Agent") {
+                AgentId.values().forEach { value -> MenuOption(value.label(), agent == value, icon = value.glyph()) {
+                    agent = value
+                    val gateway = profiles.firstOrNull { it.agent == value && it.id == gatewayId } ?: profiles.firstOrNull { it.agent == value }
+                    gatewayId = gateway?.id.orEmpty(); model = gateway?.model.orEmpty(); reasoning = null
+                } }
+            }
             MenuSection("网关") {
-                profiles.forEach { gateway ->
-                    MenuOption("${gateway.agent.label()} · ${gatewaySummary(gateway)}", gatewayId == gateway.id && agent == gateway.agent) {
-                        agent = gateway.agent; gatewayId = gateway.id; model = gateway.model; reasoning = null
-                    }
+                profiles.filter { it.agent == agent }.forEach { gateway ->
+                    MenuOption(gatewaySummary(gateway), gatewayId == gateway.id) { gatewayId = gateway.id; model = gateway.model; reasoning = null }
                 }
-                if (profiles.isEmpty()) MenuCaption("尚无可用网关，请前往网关设置。")
+                if (profiles.none { it.agent == agent }) MenuCaption("该 Agent 尚无网关，请前往网关设置。")
             }
             MenuSection("模型") {
                 val gateway = profiles.firstOrNull { it.agent == agent && it.id == gatewayId }
