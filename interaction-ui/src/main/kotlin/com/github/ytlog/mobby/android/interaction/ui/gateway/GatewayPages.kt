@@ -58,6 +58,7 @@ internal fun gatewayBaseAddress(value: String): String = value.trim().trimEnd('/
         ?: selectedProfiles.firstOrNull()
     val selectedModel = current?.takeIf { it.gatewayProfile == selectedId }?.model ?: selectedProfile?.model.orEmpty()
     val selectedReasoning = current?.takeIf { it.gatewayProfile == selectedId && it.model == selectedModel }?.reasoning
+    var expandedGatewayId by rememberSaveable { mutableStateOf<String?>(null) }
     Column(Modifier.fillMaxSize()) {
         PageHeader("网关", back)
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -70,7 +71,11 @@ internal fun gatewayBaseAddress(value: String): String = value.trim().trimEnd('/
                     val isCurrent = current?.gatewayProfile == representative.id
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f).selectable(selected = selected, role = Role.RadioButton) {
-                            select(representative, representative.model, null)
+                            if (expandedGatewayId == representative.id) expandedGatewayId = null
+                            else {
+                                expandedGatewayId = representative.id
+                                if (!selected) select(representative, representative.model, null)
+                            }
                         }.semantics { contentDescription = "选择网关 ${representative.id}" }
                             .padding(start = 16.dp, top = 12.dp, bottom = 12.dp)) {
                             Text(gatewaySummary(representative), style = MaterialTheme.typography.bodyLarge)
@@ -83,30 +88,30 @@ internal fun gatewayBaseAddress(value: String): String = value.trim().trimEnd('/
                         ActionIcon("编辑网关", { open(entry.key) }, AppIcons.Edit, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.width(8.dp))
                     }
-                }
-            }
-            if (selectedProfile != null) {
-                val models = (selectedProfiles.flatMap { it.models } + GatewayModel(selectedProfile.model, selectedProfile.model))
-                    .filter { it.id.isNotBlank() }.distinctBy { it.id }
-                SettingsGroup("模型") {
-                    models.forEachIndexed { index, item ->
-                        if (index > 0) GroupDivider()
-                        ChoiceRow(if (item.name == item.id) item.id else "${item.name} · ${item.id}", selectedModel == item.id,
-                            { select(selectedProfile, item.id, null) }, enabled = current != null)
-                    }
-                }
-                val levels = agents.firstOrNull { it.agent == selectedProfile.agent }?.models?.get(selectedModel).orEmpty()
-                if (current != null && levels.isNotEmpty()) SettingsGroup("思考程度") {
-                    ChoiceRow("默认", selectedReasoning == null, { select(selectedProfile, selectedModel, null) })
-                    levels.forEach { level ->
+                    if (selected && expandedGatewayId == representative.id && selectedProfile != null) {
+                        val models = (selectedProfiles.flatMap { it.models } + GatewayModel(selectedProfile.model, selectedProfile.model))
+                            .filter { it.id.isNotBlank() }.distinctBy { it.id }
                         GroupDivider()
-                        ChoiceRow(level, selectedReasoning == level, { select(selectedProfile, selectedModel, level) })
+                        Text("模型", Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
+                            style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        models.forEach { item ->
+                            ChoiceRow(if (item.name == item.id) item.id else "${item.name} · ${item.id}", selectedModel == item.id,
+                                { select(selectedProfile, item.id, null) }, enabled = current != null)
+                        }
+                        val levels = agents.firstOrNull { it.agent == selectedProfile.agent }?.models?.get(selectedModel).orEmpty()
+                        if (current != null && levels.isNotEmpty()) {
+                            GroupDivider()
+                            Text("思考程度", Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
+                                style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            ChoiceRow("默认", selectedReasoning == null, { select(selectedProfile, selectedModel, null) })
+                            levels.forEach { level -> ChoiceRow(level, selectedReasoning == level, { select(selectedProfile, selectedModel, level) }) }
+                        }
                     }
                 }
             }
             if (notice.isNotBlank()) SettingsCaption(notice, error = notice.contains("未能"))
             SettingsGroup { SettingsAction("添加网关") { open(null) } }
-            SettingsCaption("选中的网关用于当前会话和新会话；下方模型与思考程度用于当前会话。")
+            SettingsCaption("点按网关可展开模型与思考程度。选中的网关用于当前会话和新会话，模型与思考程度用于当前会话。")
         }
     }
 }

@@ -131,12 +131,24 @@ class GatewayListTest {
         val agent = AgentOption(AgentId.CODEX, mapOf("other" to setOf("low", "high")), null, true, emptySet())
         var configured: NextTurnConfig? = null
         page(listOf(profile), current, listOf(agent), configured = { configured = it })
+        compose.onNodeWithText("Other · other").assertDoesNotExist()
+        compose.onNodeWithContentDescription("选择网关 CODEX").performClick()
         compose.onNodeWithText("Other · other").performClick()
         compose.waitUntil(5_000) { configured?.model == "other" }
         compose.onNodeWithText("思考程度").assertExists()
         compose.onNodeWithText("high").performClick()
         compose.waitUntil(5_000) { configured?.reasoning == "high" }
         Assert.assertEquals(profile.id, configured?.gatewayProfile)
+    }
+
+    @Test fun `tapping a gateway toggles its model list`() {
+        val current = Conversation(ConversationId("current"), NextTurnConfig(AgentId.CODEX, profile.model, null, "workspace", profile.id, profile.version))
+        page(listOf(profile), current)
+        compose.onNodeWithText("Other · other").assertDoesNotExist()
+        compose.onNodeWithContentDescription("选择网关 CODEX").performClick()
+        compose.onNodeWithText("Other · other").assertExists()
+        compose.onNodeWithContentDescription("选择网关 CODEX").performClick()
+        compose.onNodeWithText("Other · other").assertDoesNotExist()
     }
 
     @Test fun `catalog failure is shown on the configured row`() {
