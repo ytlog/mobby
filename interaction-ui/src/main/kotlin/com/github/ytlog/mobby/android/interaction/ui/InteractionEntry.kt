@@ -104,6 +104,8 @@ class InteractionHostActions(
     val appearance by actions.appearance.collectAsStateWithLifecycle()
     var dialog by rememberSaveable { mutableStateOf<String?>(null) }
     var gatewayIntroSeen by rememberSaveable { mutableStateOf(false) }
+    var gatewayStartAdding by rememberSaveable { mutableStateOf(false) }
+    var gatewayFromIntro by rememberSaveable { mutableStateOf(false) }
     var toolbarAnchor by remember { mutableStateOf(IntRect.Zero) }
     val skillProposal by vm.skillProposal.collectAsStateWithLifecycle()
     val skillProposalSaved by vm.skillProposalSaved.collectAsStateWithLifecycle()
@@ -137,7 +139,7 @@ class InteractionHostActions(
     val colors = if (dark) MobbyDarkScheme else MobbyLightScheme
     LaunchedEffect(vm) { for (message in vm.feedback) snackbar.showSnackbar(message) }
     fun navigate(next: String) { keyboard?.hide(); focus.clearFocus(); drawer = false; route = next }
-    BackHandler(route != "conversation") { route = when (route) { "gateway", "history-limits", "diagnostic", "archived" -> "settings"; "skills", "plugins" -> "add"; else -> "conversation" } }
+    BackHandler(route != "conversation") { route = when (route) { "gateway" -> if (gatewayFromIntro) "conversation" else "settings"; "history-limits", "diagnostic", "archived" -> "settings"; "skills", "plugins" -> "add"; else -> "conversation" } }
     MaterialTheme(colorScheme = colors) {
         val camera = rememberCameraCapture(actions, { captured ->
             actions.importAttachment(ConversationId(captured.conversation), captured.workspace, requireNotNull(captured.attachmentUri))
@@ -165,8 +167,12 @@ class InteractionHostActions(
                 ) {
                     when (route) {
                         "projects" -> ProjectPage(vm) { route = "conversation" }
-                        "settings" -> SettingsPage(system, appearance, { value -> vm.enqueue { vm.report(actions.setAppearance(value)) } }, { navigate(it) }, { route = "conversation" }, vm, petEnabled, petPermitted, hostActions.pet, { hostActions.localModels(dark) })
-                        "gateway" -> GatewayPage(vm) { route = "settings" }
+                        "settings" -> SettingsPage(system, appearance, { value -> vm.enqueue { vm.report(actions.setAppearance(value)) } }, { next ->
+                            if (next == "gateway") { gatewayStartAdding = false; gatewayFromIntro = false }
+                            navigate(next)
+                        }, { route = "conversation" }, vm, petEnabled, petPermitted, hostActions.pet, { hostActions.localModels(dark) })
+                        "gateway" -> GatewayPage(vm, startAdding = gatewayStartAdding,
+                            openLocalModels = { hostActions.localModels(dark) }) { route = if (gatewayFromIntro) "conversation" else "settings" }
                         "history-limits" -> EventHistoryPage(actions::eventHistoryLimits, actions::saveEventHistoryLimits) { route = "settings" }
                         "diagnostic" -> DiagnosticPage(vm) { route = "settings" }
                         "archived" -> ArchivedPage(state, vm) { route = "settings" }
@@ -269,7 +275,9 @@ class InteractionHostActions(
                     onDismissRequest = { dialog = null }, containerColor = raisedColor(), shape = RoundedCornerShape(24.dp),
                     title = { Text(AppStrings.configureAGatewayFirst) },
                     text = { Text(AppStrings.addAModelGatewayBeforeStartingAConversationThe) },
-                    confirmButton = { TextButton(onClick = { dialog = null; navigate("gateway") }) { Text(AppStrings.setUpGateway) } },
+                    confirmButton = { TextButton(onClick = {
+                        dialog = null; gatewayStartAdding = true; gatewayFromIntro = true; navigate("gateway")
+                    }) { Text(AppStrings.setUpGateway) } },
                     dismissButton = { TextButton(onClick = { dialog = null }) { Text(AppStrings.later) } },
                 )
                 if (dialog == "new") ConfigDialog(vm, c, onDismiss = { dialog = null }, onApply = { config, project -> vm.enqueue { actions.create(config, project) }; route = "conversation"; dialog = null }, anchor = toolbarAnchor)

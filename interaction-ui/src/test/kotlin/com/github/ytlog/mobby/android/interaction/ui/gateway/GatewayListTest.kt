@@ -30,7 +30,7 @@ class GatewayListTest {
         Proxy.newProxyInstance(T::class.java.classLoader, arrayOf(T::class.java)) { _, method, args -> body(method.name, args) } as T
 
     private fun page(profiles: List<GatewayProfile>, current: Conversation? = null, modelOptions: List<AgentOption> = emptyList(),
-        configured: (NextTurnConfig) -> Unit = {}, selectedDefault: (GatewayProfile) -> Unit = {}): ConversationViewModel {
+        configured: (NextTurnConfig) -> Unit = {}, selectedDefault: (GatewayProfile) -> Unit = {}, startAdding: Boolean = false): ConversationViewModel {
         val state = MutableStateFlow(InteractionState(loading = false, selected = current?.let { ConversationDetail(it, emptyList()) }))
         val repository = stub<InteractionRepository> { name, args -> when {
             name == "getState" -> state
@@ -54,11 +54,17 @@ class GatewayListTest {
         val actions = InteractionUseCases(repository, stub<ExecutionPort> { name, _ -> error(name) }, system, { "id" }, scope,
             stub<PreferencePort> { name, _ -> error(name) })
         val vm = ConversationViewModel(actions).also { store.put("vm", it) }
-        compose.setContent { MaterialTheme { GatewayPage(vm) {} } }
+        compose.setContent { MaterialTheme { GatewayPage(vm, startAdding = startAdding) {} } }
         return vm
     }
 
     @After fun cleanup() { compose.runOnIdle { store.clear() }; scope.cancel() }
+
+    @Test fun `first launch enters add gateway form directly`() {
+        page(emptyList(), startAdding = true)
+        compose.onNodeWithText("服务：自定义").assertExists()
+        compose.onNodeWithText("还没有配置网关").assertDoesNotExist()
+    }
 
     @Test fun `temporary local model is labeled and cannot open persistent editor`() {
         val local = profile.copy(id = "temporary", endpoint = "http://127.0.0.1:11435/v1", model = "qwen-test", models = listOf(GatewayModel("qwen-test", "qwen-test")), temporary = true)

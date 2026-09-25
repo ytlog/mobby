@@ -16,6 +16,7 @@ internal data class GatewayProvider(val id: String, val label: String, val respo
 
 internal object GatewayProviders {
     const val CUSTOM = "custom"
+    const val LOCAL = "local"
 
     private fun provider(id: String, label: String, responses: String? = null, messages: String? = null) =
         GatewayProvider(id, label, responses, messages)
