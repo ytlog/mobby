@@ -6,11 +6,11 @@
 
 `:app` 只依赖 `:local-model` 并打开它的管理页面。服务在同 APK 的 `:local_model` 独立进程运行，监听 `127.0.0.1:11435`。管理页通过 HTTP 查询、下载和加载模型；显式 Android Intent 只负责启动前台 Service。模块不依赖现有 Node 桥接或 Agent 代码。服务进程跳过宿主 Application 的运行时初始化。
 
-当前唯一后端是固定提交的 llama.cpp arm64 CPU，支持单文件 GGUF。arm64 构建启用 KleidiAI CPU 内核，实际使用哪些指令由设备运行时选择；尚未接入 GPU 或 NPU。推理过程只保留一个模型、一个 native 上下文。相邻请求的聊天模板编码结果有相同 token 前缀时，复用该前缀的 KV 状态并只处理后缀；前缀不一致、上下文容量不足或后端不允许裁剪时重算。切换或卸载模型会释放上下文。缓存存在于进程内，不写入磁盘，也不跨服务重启保留。
+当前唯一推理引擎是固定提交的 llama.cpp arm64，支持单文件 GGUF。构建机有兼容的 shaderc 时同时打包 Vulkan GPU；设备 Vulkan API 至少为 1.2 且实际枚举到可用 GPU 后，加载小于 1.5 GB 的模型时尝试卸载全部层，其余模型先尝试卸载 16 层。模型和 4096 token 上下文在 GPU 上初始化成功后才显示 Vulkan；失败时回退 CPU 并显示原因。CPU 构建启用 KleidiAI 内核，实际使用哪些指令由设备运行时选择；NPU 尚未接入。推理过程只保留一个模型、一个 native 上下文。相邻请求的聊天模板编码结果有相同 token 前缀时，复用该前缀的 KV 状态并只处理后缀；前缀不一致、上下文容量不足或后端不允许裁剪时重算。切换或卸载模型会释放上下文。缓存存在于进程内，不写入磁盘，也不跨服务重启保留。
 
 在线目录查询千问 2.5 0.5B、千问 3 0.6B、[千问 3.5 0.8B](https://huggingface.co/ggml-org/Qwen3.5-0.8B-GGUF)、Gemma 3 270M/1B 和 [Gemma 4 E2B](https://huggingface.co/ggml-org/gemma-4-E2B-it-GGUF) 的 GGUF 仓库，按引擎格式、量化格式、文件大小和 SHA-256 元数据筛选。千问 3.5 可选 Q4_0（约 563 MB）和 Q8_0（约 834 MB）；Gemma 4 E2B 只选 Q4_0（约 2.84 GB）。当前只支持文本推理，因此不下载这两个多模态模型的视觉 projector 或 Gemma 4 的 MTP 文件；图片输入仍不可用。Gemma 4 还需要足够的设备存储和运行内存，具体手机能否顺利加载需要实机验证。可选来源为[魔搭 ModelScope](https://modelscope.cn/)、[Hugging Face](https://huggingface.co/) 和 [HF 镜像](https://hf-mirror.com/)；中文首次使用默认魔搭，英文首次使用默认 Hugging Face。用户手动选择会保存在模块设置中，模型列表与下载都只使用所选来源，不自动切源。下载先写临时文件，校验长度和 SHA-256 后才登记为已安装。模型权重不打包进 APK。
 
-管理页沿用宿主设置页的明暗配色、圆角分组、标题和按钮层级。首次无网关的引导直接进入“添加网关”；在服务选择中点“本地模型服务”会打开本地配置页，返回后仍在添加页，可选用已加载模型作为当前及新会话的临时网关。也可从“设置 → 本地模型服务”进入。打开管理页后，服务自动启动并显示千问列表；切换“Gemma”查看另一组；在“下载来源”选择手机可访问的网站；点击某个量化版本的“下载”，进度和大小会在卡片内显示；完成后在“已下载”中点击“加载”。已加载模型会自动出现在宿主的网关列表，并标明“临时 · 本地模型”，无需复制地址、密钥或模型 ID；停止模型或本地服务后，临时网关从列表移除。网关记录和选中状态只保存在宿主进程内，不写入长期网关配置；每次列出或使用时，宿主通过本机 HTTP 健康接口核对加载状态。服务地址只监听本机；其他设备不能直接访问。页面重新打开时会恢复尚在运行的下载进度。已加载模型的卡片显示实际运行后端；当前 CPU 构建显示“运行后端：llama.cpp · CPU”。
+管理页沿用宿主设置页的明暗配色、圆角分组、标题和按钮层级。首次无网关的引导直接进入“添加网关”；在服务选择中点“本地模型服务”会打开本地配置页，返回后仍在添加页，可选用已加载模型作为当前及新会话的临时网关。也可从“设置 → 本地模型服务”进入。打开管理页后，服务自动启动并显示千问列表；切换“Gemma”查看另一组；在“下载来源”选择手机可访问的网站；点击某个量化版本的“下载”，进度和大小会在卡片内显示；完成后在“已下载”中点击“加载”。已加载模型会自动出现在宿主的网关列表，并标明“临时 · 本地模型”，无需复制地址、密钥或模型 ID；停止模型或本地服务后，临时网关从列表移除。网关记录和选中状态只保存在宿主进程内，不写入长期网关配置；每次列出或使用时，宿主通过本机 HTTP 健康接口核对加载状态。服务地址只监听本机；其他设备不能直接访问。页面重新打开时会恢复尚在运行的下载进度。已加载模型的卡片显示实际运行后端；GPU 成功时显示 Vulkan 设备，CPU 回退时显示原因。
 
 ## HTTP API
 
@@ -18,7 +18,7 @@
 
 | 路由 | 用途 |
 | --- | --- |
-| `GET /local/v1/health`、`GET /local/v1/engines` | 服务状态、引擎能力；健康响应包含实际运行后端 `backend`（未加载时为 `null`），以及最近一次推理的阶段、提示词/复用/生成 token 数，以及加载、预填充、首次输出和总耗时。只记录数量与时间，不记录提示词、生成内容或密钥 |
+| `GET /local/v1/health`、`GET /local/v1/engines` | 服务状态、引擎能力；健康响应包含实际运行后端 `backend` 和回退原因 `backendReason`（未加载时均为 `null`），以及最近一次推理的阶段、提示词/复用/生成 token 数，以及加载、预填充、首次输出和总耗时。只记录数量与时间，不记录提示词、生成内容或密钥 |
 | `GET /local/v1/catalog/models?backend=llama&family=Qwen&source=modelscope` | 在线筛选模型；`family=Gemma`、`source=huggingface` 或 `source=hf-mirror` 同理。未指定来源时 HTTP API 默认为魔搭，与页面语言默认值独立 |
 | `POST /local/v1/installs`、`GET /local/v1/operations`、`GET /local/v1/operations/{id}` | 下载候选项、查询进度；需管理令牌 |
 | `GET /local/v1/models`、`POST /local/v1/loads`、`POST /local/v1/models/unload` | 已安装模型和加载状态；加载/卸载需管理令牌 |
@@ -40,6 +40,8 @@ curl http://127.0.0.1:11435/v1/chat/completions \
 
 ## 构建与验证
 
-先运行 `git submodule update --init third_party/llama.cpp`，使用项目现有 Android SDK/NDK、JDK 17 执行 `./gradlew :app:assembleDebug`。`app/src/androidTest/.../LocalModelSmokeTest.kt` 验证独立进程、HTTP 健康检查以及手机网络上的 Qwen/Gemma 目录查询。该测试不下载几百 MiB 的权重；模型生成需要另在设备上下载并运行验证。
+先运行 `git submodule update --init third_party/llama.cpp`，使用项目现有 Android SDK/NDK、JDK 17 执行 `./gradlew :app:assembleDebug`。构建机还需安装支持 llama.cpp 着色器的新版 `glslc`（shaderc）和包含 `vulkan.hpp` 的 Vulkan-Headers，才会打包 Vulkan；否则明确警告并构建 CPU 版。需要强制检查 GPU 构建时使用 `./gradlew -Pmobby.requireVulkan=true :app:assembleDebug`。`app/src/androidTest/.../LocalModelSmokeTest.kt` 验证独立进程、HTTP 健康检查以及手机网络上的 Qwen/Gemma 目录查询。`LocalModelGpuDeviceTest.kt` 会在设备已下载 GGUF 且声明 Vulkan Compute 时，实际加载权重并生成 4 个 token，核对运行后端。两项测试都不会下载权重；完整 Agent 工具循环仍需设备验收。
+
+2026-09-25 真机验证：M2007J1SC / Adreno 650 的物理设备仅报告 Vulkan 1.1，强行卸载模型会在驱动核心函数入口处崩溃，因此此机型明确回退 CPU。已下载的 Gemma 4 E2B Q4_0 在 CPU 上冷加载约 52 秒；原普通聊天路径不支持其 Jinja 模板，修正为与工具路径共用模板处理器后，固定“你好”提示词的首 token 约 1.1 秒，4 token 约 2 秒。以上是独立 native 探针的结果，非网关端到端或长上下文性能保证。
 
 设计文档是目标架构，不能将其中未来接口、五组协议、多源下载和资源调度视为当前实现。后续迭代必须据此更新实现状态，不在现有首版上假设这些能力已经存在。

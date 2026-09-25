@@ -1,13 +1,56 @@
 #include <jni.h>
+#include <android/log.h>
 #include <llama.h>
+#include <ggml-backend.h>
 #include <chat.h>
 #include <algorithm>
+#include <cstring>
 #include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <string>
+#include <sys/stat.h>
+#include <utility>
 #include <vector>
+#if MOBBY_VULKAN_PACKAGED
+#include <vulkan/vulkan.h>
+#endif
+
+#ifndef MOBBY_VULKAN_PACKAGED
+#define MOBBY_VULKAN_PACKAGED 0
+#endif
 
 namespace {
+enum class VulkanSupport { unavailable, driver_too_old, supported };
+VulkanSupport vulkan_support() {
+#if MOBBY_VULKAN_PACKAGED
+    VkInstanceCreateInfo info{};
+    info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+    VkInstance instance = VK_NULL_HANDLE;
+    if (vkCreateInstance(&info, nullptr, &instance) != VK_SUCCESS) return VulkanSupport::unavailable;
+    uint32_t count = 0;
+    VulkanSupport result = VulkanSupport::unavailable;
+    if (vkEnumeratePhysicalDevices(instance, &count, nullptr) == VK_SUCCESS && count) {
+        std::vector<VkPhysicalDevice> devices(std::min(count, 16u));
+        count = static_cast<uint32_t>(devices.size());
+        if (vkEnumeratePhysicalDevices(instance, &count, devices.data()) == VK_SUCCESS) {
+            result = VulkanSupport::driver_too_old;
+            for (uint32_t i = 0; i < count; ++i) {
+                VkPhysicalDeviceProperties properties{};
+                vkGetPhysicalDeviceProperties(devices[i], &properties);
+                if (properties.apiVersion >= VK_API_VERSION_1_2) {
+                    result = VulkanSupport::supported;
+                    break;
+                }
+            }
+        }
+    }
+    vkDestroyInstance(instance, nullptr);
+    return result;
+#else
+    return VulkanSupport::unavailable;
+#endif
+}
 void fail(JNIEnv *env, const char *message) {
     jclass cls = env->FindClass("java/lang/IllegalStateException");
     env->ThrowNew(cls, message);
@@ -18,6 +61,21 @@ std::string get(JNIEnv *env, jstring value) {
     std::string out(chars);
     env->ReleaseStringUTFChars(value, chars);
     return out;
+}
+void initialize_backend() {
+    static std::once_flag once;
+    std::call_once(once, [] { llama_backend_init(); });
+}
+ggml_backend_dev_t vulkan_device() {
+    initialize_backend();
+    for (size_t i = 0; i < ggml_backend_dev_count(); ++i) {
+        auto dev = ggml_backend_dev_get(i);
+        const auto type = ggml_backend_dev_type(dev);
+        if (type != GGML_BACKEND_DEVICE_TYPE_GPU && type != GGML_BACKEND_DEVICE_TYPE_IGPU) continue;
+        const char *name = ggml_backend_dev_name(dev);
+        if (name && std::strncmp(name, "Vulkan", 6) == 0) return dev;
+    }
+    return nullptr;
 }
 size_t complete_utf8(const std::string &s) {
     size_t i = 0, last = 0;
@@ -32,13 +90,29 @@ size_t complete_utf8(const std::string &s) {
 }
 
 struct ModelSession {
-    explicit ModelSession(llama_model *value) : model(value) {}
+    ModelSession(llama_model *value, std::string active_backend, std::string fallback_reason)
+        : model(value), backend(std::move(active_backend)), backend_reason(std::move(fallback_reason)) {}
     ~ModelSession() { context.reset(); llama_model_free(model); }
     llama_model *model;
+    std::string backend;
+    std::string backend_reason;
     std::unique_ptr<llama_context, decltype(&llama_free)> context{nullptr, llama_free};
     std::vector<llama_token> cached_tokens;
     int32_t context_size = 0;
 };
+
+std::unique_ptr<ModelSession> load_session(const std::string &file, llama_model_params params,
+                                           const std::string &backend, const std::string &reason = "") {
+    llama_model *model = llama_model_load_from_file(file.c_str(), params);
+    if (!model) return nullptr;
+    auto session = std::make_unique<ModelSession>(model, backend, reason);
+    auto cp = llama_context_default_params();
+    cp.n_ctx = 4096; cp.n_batch = 512; cp.n_ubatch = 512;
+    session->context.reset(llama_init_from_model(model, cp));
+    if (!session->context) return nullptr;
+    session->context_size = 4096;
+    return session;
+}
 
 // Reuse only an identical token prefix. Keep the last prompt token for decoding so logits
 // are valid even when the new prompt is entirely present in the previous context.
@@ -81,14 +155,36 @@ bool decode_prompt(ModelSession &session, std::vector<llama_token> &tokens, size
 
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_github_ytlog_mobby_android_localmodel_llama_LlamaNative_load(JNIEnv *env, jclass, jstring path) {
-    static bool initialized = false;
-    if (!initialized) { llama_backend_init(); initialized = true; }
     const std::string file = get(env, path);
-    auto params = llama_model_default_params();
-    params.n_gpu_layers = 0;
-    llama_model *model = llama_model_load_from_file(file.c_str(), params);
-    if (!model) { fail(env, "llama.cpp could not load GGUF"); return 0; }
-    return reinterpret_cast<jlong>(new ModelSession(model));
+    try {
+        const auto support = vulkan_support();
+        std::string fallback_reason = !MOBBY_VULKAN_PACKAGED ? "vulkan_not_packaged" :
+            support == VulkanSupport::driver_too_old ? "vulkan_driver_too_old" : "vulkan_unavailable";
+        if (auto gpu = support == VulkanSupport::supported ? vulkan_device() : nullptr) {
+            ggml_backend_dev_t devices[] = {gpu, nullptr};
+            auto params = llama_model_default_params();
+            params.devices = devices;
+            struct stat st{};
+            params.n_gpu_layers = stat(file.c_str(), &st) == 0 && st.st_size < 1'500'000'000 ? 99 : 16;
+            const char *description = ggml_backend_dev_description(gpu);
+            const std::string backend = std::string("Vulkan GPU") + (description && *description ? std::string(" · ") + description : "");
+            fallback_reason = "vulkan_load_failed";
+            try {
+                if (auto session = load_session(file, params, backend)) return reinterpret_cast<jlong>(session.release());
+                __android_log_print(ANDROID_LOG_WARN, "MobbyLocalModel", "Vulkan model or context could not load; falling back to CPU");
+            } catch (const std::exception &) {
+                __android_log_print(ANDROID_LOG_WARN, "MobbyLocalModel", "Vulkan model load failed; falling back to CPU");
+            }
+        }
+        auto params = llama_model_default_params();
+        params.n_gpu_layers = 0;
+        initialize_backend();
+        ggml_backend_dev_t cpu_devices[] = {ggml_backend_dev_by_type(GGML_BACKEND_DEVICE_TYPE_CPU), nullptr};
+        params.devices = cpu_devices;
+        if (auto session = load_session(file, params, "CPU", fallback_reason)) return reinterpret_cast<jlong>(session.release());
+        fail(env, "llama.cpp could not load GGUF");
+    } catch (const std::exception &e) { fail(env, e.what()); }
+    return 0;
 }
 
 extern "C" JNIEXPORT void JNICALL
@@ -99,7 +195,14 @@ Java_com_github_ytlog_mobby_android_localmodel_llama_LlamaNative_unload(JNIEnv *
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_github_ytlog_mobby_android_localmodel_llama_LlamaNative_backend(JNIEnv *env, jclass, jlong handle) {
     if (!reinterpret_cast<ModelSession *>(handle)) { fail(env, "Model is not loaded"); return nullptr; }
-    return env->NewStringUTF("CPU");
+    return env->NewStringUTF(reinterpret_cast<ModelSession *>(handle)->backend.c_str());
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_github_ytlog_mobby_android_localmodel_llama_LlamaNative_backendReason(JNIEnv *env, jclass, jlong handle) {
+    auto *session = reinterpret_cast<ModelSession *>(handle);
+    if (!session) { fail(env, "Model is not loaded"); return nullptr; }
+    return session->backend_reason.empty() ? nullptr : env->NewStringUTF(session->backend_reason.c_str());
 }
 
 extern "C" JNIEXPORT jint JNICALL
@@ -120,16 +223,20 @@ Java_com_github_ytlog_mobby_android_localmodel_llama_LlamaNative_generate(
         role_strings.push_back(get(env, r)); content_strings.push_back(get(env, c));
         env->DeleteLocalRef(r); env->DeleteLocalRef(c);
     }
-    std::vector<llama_chat_message> messages;
-    for (jsize i = 0; i < count; ++i) messages.push_back({role_strings[i].c_str(), content_strings[i].c_str()});
-    const char *tmpl = llama_model_chat_template(session->model, nullptr);
-    if (!tmpl) { fail(env, "GGUF has no chat template"); return -1; }
-    int32_t prompt_len = llama_chat_apply_template(tmpl, messages.data(), messages.size(), true, nullptr, 0);
-    if (prompt_len <= 0 || prompt_len > 128 * 1024) { fail(env, "Unsupported or oversized chat template"); return -1; }
-    std::string prompt(prompt_len + 1, '\0');
-    prompt_len = llama_chat_apply_template(tmpl, messages.data(), messages.size(), true, prompt.data(), prompt.size());
-    if (prompt_len <= 0) { fail(env, "Chat template failed"); return -1; }
-    prompt.resize(prompt_len);
+    std::string prompt;
+    try {
+        common_chat_templates_inputs input;
+        input.enable_thinking = false;
+        for (jsize i = 0; i < count; ++i) {
+            common_chat_msg message;
+            message.role = role_strings[i];
+            message.content = content_strings[i];
+            input.messages.push_back(std::move(message));
+        }
+        auto templates = common_chat_templates_init(session->model, "");
+        prompt = common_chat_templates_apply(templates.get(), input).prompt;
+    } catch (const std::exception &e) { fail(env, e.what()); return -1; }
+    if (prompt.empty() || prompt.size() > 128 * 1024) { fail(env, "Invalid or oversized chat prompt"); return -1; }
     const auto *vocab = llama_model_get_vocab(session->model);
     const int32_t needed = -llama_tokenize(vocab, prompt.data(), prompt.size(), nullptr, 0, true, true);
     if (needed <= 0 || needed > 4096 - max_tokens) { fail(env, "Prompt exceeds context budget"); return -1; }

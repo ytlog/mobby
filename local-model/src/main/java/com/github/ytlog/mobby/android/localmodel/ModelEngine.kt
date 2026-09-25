@@ -7,27 +7,30 @@ internal class ModelEngine(private val store: LocalModelStore) {
     val telemetry = InferenceTelemetry()
     @Volatile private var loaded: InstalledModel? = null
     @Volatile private var activeBackend: String? = null
+    @Volatile private var backendReason: String? = null
     private var handle = 0L
 
     fun current(): String? = loaded?.id
     fun backend(): String? = activeBackend
+    fun backendReason(): String? = backendReason
 
     @Synchronized fun load(id: String): String {
         val model = store.models().firstOrNull { it.id == id } ?: error("Model is not installed")
         require(model.engine == "llama") { "Backend is not packaged" }
         if (loaded?.id == id && handle != 0L) return id
-        if (handle != 0L) { LlamaNative.unload(handle); handle = 0L; loaded = null; activeBackend = null }
+        if (handle != 0L) { LlamaNative.unload(handle); handle = 0L; loaded = null; activeBackend = null; backendReason = null }
         val started = System.nanoTime()
         try {
             handle = LlamaNative.load(store.file(model).absolutePath)
             check(handle != 0L) { "Model could not be loaded" }
             activeBackend = LlamaNative.backend(handle)
+            backendReason = LlamaNative.backendReason(handle)
             loaded = model
             telemetry.load(id, (System.nanoTime() - started) / 1_000_000, true)
             return id
         } catch (e: Exception) {
             if (handle != 0L) LlamaNative.unload(handle)
-            handle = 0L; loaded = null; activeBackend = null
+            handle = 0L; loaded = null; activeBackend = null; backendReason = null
             telemetry.load(id, (System.nanoTime() - started) / 1_000_000, false)
             throw e
         }
@@ -35,7 +38,7 @@ internal class ModelEngine(private val store: LocalModelStore) {
 
     @Synchronized fun unload() {
         if (handle != 0L) LlamaNative.unload(handle)
-        handle = 0L; loaded = null; activeBackend = null
+        handle = 0L; loaded = null; activeBackend = null; backendReason = null
     }
 
     @Synchronized fun generate(id: String, messages: List<PromptMessage>, maxTokens: Int, onStart: (Int) -> Boolean, sink: (String) -> Boolean): Int {

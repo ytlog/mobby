@@ -56,6 +56,7 @@ class LocalModelActivity : ComponentActivity() {
     private var installed by mutableStateOf<List<InstalledModel>>(emptyList())
     private var loaded by mutableStateOf<String?>(null)
     private var backend by mutableStateOf<String?>(null)
+    private var backendReason by mutableStateOf<String?>(null)
     private var inference by mutableStateOf<JsonObject?>(null)
     private var progress by mutableStateOf<InstallProgress?>(null)
     private var modelMutation by mutableStateOf<Pair<String, Boolean>?>(null)
@@ -114,6 +115,7 @@ class LocalModelActivity : ComponentActivity() {
         ready = health["status"]?.jsonPrimitive?.content == "LISTENING"
         loaded = health["loadedModel"]?.jsonPrimitive?.contentOrNull
         backend = health["backend"]?.jsonPrimitive?.contentOrNull
+        backendReason = health["backendReason"]?.jsonPrimitive?.contentOrNull
         inference = health["inference"] as? JsonObject
         installed = withContext(Dispatchers.IO) { json.decodeFromString(request("/local/v1/models")) }
     }
@@ -122,6 +124,7 @@ class LocalModelActivity : ComponentActivity() {
         val health = withContext(Dispatchers.IO) { json.parseToJsonElement(request("/local/v1/health")).jsonObject }
         loaded = health["loadedModel"]?.jsonPrimitive?.contentOrNull
         backend = health["backend"]?.jsonPrimitive?.contentOrNull
+        backendReason = health["backendReason"]?.jsonPrimitive?.contentOrNull
         inference = health["inference"] as? JsonObject
     }
 
@@ -248,6 +251,14 @@ class LocalModelActivity : ComponentActivity() {
                                                 Text("${model.quantization} · ${model.size / 1_048_576} MiB" + if (loaded == model.id) label(" · 已加入网关", " · in gateways") else "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                                 if (loaded == model.id && backend != null) {
                                                     Text(label("运行后端：llama.cpp · ", "Active backend: llama.cpp · ") + backend, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                                                    val reason = when (backendReason) {
+                                                        "vulkan_not_packaged" -> label("当前 APK 未打包 Vulkan", "Vulkan is not packaged in this APK")
+                                                        "vulkan_unavailable" -> label("未检测到可用的 Vulkan GPU", "No usable Vulkan GPU detected")
+                                                        "vulkan_driver_too_old" -> label("设备 Vulkan 驱动低于 1.2，暂用 CPU", "Device Vulkan driver is below 1.2; using CPU")
+                                                        "vulkan_load_failed" -> label("GPU 加载失败，已回退 CPU", "GPU load failed; using CPU")
+                                                        else -> null
+                                                    }
+                                                    if (reason != null) Text(reason, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                                 }
                                             }
                                             val busy = modelMutation?.first == model.id
