@@ -7,6 +7,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -34,13 +35,14 @@ class LocalModelActivity : ComponentActivity() {
     companion object { const val EXTRA_DARK = "local_model_dark"; private const val BASE_URL = "http://127.0.0.1:11435/v1" }
     private fun label(zh: String, en: String) = if (AppLanguage.current == AppLanguage.CHINESE) zh else en
     private val auth by lazy { LocalModelAuth(this) }
+    private val sourcePreference by lazy { ModelDownloadSourcePreference(this) }
     private val json = Json { ignoreUnknownKeys = true }
     private var ready by mutableStateOf(false)
     private var starting by mutableStateOf(true)
     private var listing by mutableStateOf(false)
     private var error by mutableStateOf<String?>(null)
     private var family by mutableStateOf("Qwen")
-    private var source by mutableStateOf("modelscope")
+    private var source by mutableStateOf(ModelDownloadSource.defaultFor(AppLanguage.current))
     private var candidates by mutableStateOf<List<Candidate>>(emptyList())
     private var installed by mutableStateOf<List<InstalledModel>>(emptyList())
     private var loaded by mutableStateOf<String?>(null)
@@ -84,7 +86,7 @@ class LocalModelActivity : ComponentActivity() {
         listing = true
         try {
             val selected = family
-            val selectedSource = source
+            val selectedSource = source.id
             candidates = withContext(Dispatchers.IO) { json.decodeFromString(request("/local/v1/catalog/models?backend=llama&family=$selected&source=$selectedSource")) }
         } finally { listing = false }
     }
@@ -123,6 +125,7 @@ class LocalModelActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        source = sourcePreference.selected(AppLanguage.current)
         action { startService() }
         setContent {
             LocalModelTheme(intent.getBooleanExtra(EXTRA_DARK, false)) {
@@ -171,13 +174,20 @@ class LocalModelActivity : ComponentActivity() {
                                         }
                                         if (listing) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                                     }
-                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        listOf("modelscope", "hf-mirror").forEach { option ->
-                                            FilterChip(selected = source == option, enabled = !listing, onClick = { source = option; candidates = emptyList(); action { listModels() } },
-                                                label = { Text(if (option == "modelscope") label("魔搭", "ModelScope") else label("HF 镜像", "HF mirror")) })
+                                    Text(label("下载来源", "Download source"), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        ModelDownloadSource.values().forEach { option ->
+                                            FilterChip(selected = source == option, enabled = !listing, onClick = { action {
+                                                check(withContext(Dispatchers.IO) { sourcePreference.select(option) }) { label("保存下载来源失败", "Could not save download source") }
+                                                source = option; candidates = emptyList(); listModels()
+                                            } }, label = { Text(when (option) {
+                                                ModelDownloadSource.MODELSCOPE -> label("魔搭", "ModelScope")
+                                                ModelDownloadSource.HUGGING_FACE -> "Hugging Face"
+                                                ModelDownloadSource.HF_MIRROR -> label("HF 镜像", "HF mirror")
+                                            }) })
                                         }
                                     }
-                                    Text(label("默认使用魔搭；下载失败会尝试 HF 镜像，文件须通过 SHA-256 校验。", "ModelScope is the default; failed downloads retry the HF mirror and require SHA-256 verification."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(label("手动选择会保存；列表与下载都使用所选来源。文件会经过 SHA-256 校验。", "Your choice is saved; listing and downloads use that source. Files are SHA-256 verified."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     if (candidates.isEmpty() && !listing) Text(label("暂无模型，请检查网络后重试。", "No models found. Check your connection and retry."), style = MaterialTheme.typography.bodySmall)
                                     candidates.forEach { item ->
                                         val existing = installed.any { it.id == item.id }

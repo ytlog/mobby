@@ -78,8 +78,8 @@ internal class LocalModelStore(context: Context) {
                 Artifact(path, size, sha, rev)
             }
         }
-        "hf-mirror" -> {
-            val base = "https://hf-mirror.com"
+        "huggingface", "hf-mirror" -> {
+            val base = if (provider == "huggingface") "https://huggingface.co" else "https://hf-mirror.com"
             val rev = revision ?: json.parseToJsonElement(readUrl("$base/api/models/$repo")).jsonObject["sha"]?.jsonPrimitive?.content
                 ?: error("Mirror revision missing")
             val tree = json.parseToJsonElement(readUrl("$base/api/models/$repo/tree/$rev?recursive=1")) as JsonArray
@@ -107,7 +107,7 @@ internal class LocalModelStore(context: Context) {
     fun resolve(candidate: Candidate): Candidate {
         val source = repos[candidate.repo] ?: error("Unknown model source")
         require(source.family == candidate.family && candidate.engine == "llama" && candidate.installable)
-        require(candidate.source in setOf("modelscope", "hf-mirror"))
+        require(ModelDownloadSource.fromId(candidate.source) != null)
         require(candidate.revision.matches(Regex("[0-9a-f]{40}")))
         require(candidate.id == id(candidate.family, candidate.path) && supported(candidate.path, candidate.size))
         val found = artifacts(candidate.repo, candidate.source, candidate.revision).firstOrNull { it.path == candidate.path }
@@ -133,17 +133,13 @@ internal class LocalModelStore(context: Context) {
         val target = File(root, "${candidate.id}.gguf")
         val partial = File(root, "${candidate.id}.$op.part")
         try {
-            val urls = if (candidate.source == "modelscope") listOf(
-                "https://modelscope.cn/models/${candidate.repo}/resolve/${candidate.revision}/${candidate.path}",
-                "https://hf-mirror.com/${candidate.repo}/resolve/main/${candidate.path}",
-            ) else listOf("https://hf-mirror.com/${candidate.repo}/resolve/${candidate.revision}/${candidate.path}")
-            var failure: Exception? = null
-            for (url in urls) {
-                partial.delete()
-                try { downloadFile(URL(url), partial, candidate, op); failure = null; break }
-                catch (e: Exception) { failure = e }
+            val base = when (candidate.source) {
+                "modelscope" -> "https://modelscope.cn/models"
+                "huggingface" -> "https://huggingface.co"
+                "hf-mirror" -> "https://hf-mirror.com"
+                else -> error("Unknown model source")
             }
-            failure?.let { throw it }
+            downloadFile(URL("$base/${candidate.repo}/resolve/${candidate.revision}/${candidate.path}"), partial, candidate, op)
             check(partial.renameTo(target)) { "Could not publish model" }
             synchronized(this) {
                 val updated = models().filterNot { it.id == candidate.id } + InstalledModel(candidate.id, "llama", target.name, candidate.size, candidate.sha256, candidate.displayName, candidate.quantization)

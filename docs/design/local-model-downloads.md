@@ -1,6 +1,6 @@
 # 按引擎匹配模型与多源下载设计
 
-状态：完整多源方案设计提案，尚未全部实现；核对日期：2026-09-24。本文将用户所说的“hg”按 Hugging Face（HF）理解。首版因设备无法访问 HF，已经改用 ModelScope 默认目录和下载、HF 镜像备用；真实范围见[首版实现与使用](local-model-first-version.md)。下文 HF 优先和其他引擎策略仍是早期设计，不代表当前默认行为。配套见[模块与 HTTP API](local-model-runtime.md)、[引擎目录](local-model-engines.md)。
+状态：完整多源方案设计提案，尚未全部实现；核对日期：2026-09-24。本文将用户所说的“hg”按 Hugging Face（HF）理解。首版提供魔搭、Hugging Face 和 HF 镜像三个可选来源；页面首次使用随界面语言选择默认源，用户手动选择后保持固定来源，不自动切源。真实范围见[首版实现与使用](local-model-first-version.md)。下文 HF 优先和其他引擎策略仍是早期设计，不代表当前默认行为。配套见[模块与 HTTP API](local-model-runtime.md)、[引擎目录](local-model-engines.md)。
 
 ## 1. 用户流程与默认策略
 

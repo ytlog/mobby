@@ -90,8 +90,10 @@ class LocalModelService : Service() {
                 if (!permitted(call)) return@get
                 val backend = call.request.queryParameters["backend"] ?: "llama"
                 if (backend != "llama") { call.respondText(Protocol.error("Backend not packaged"), ContentType.Application.Json, HttpStatusCode.ServiceUnavailable); return@get }
+                val source = call.request.queryParameters["source"] ?: "modelscope"
+                if (ModelDownloadSource.fromId(source) == null) { call.respondText(Protocol.error("Unknown model source"), ContentType.Application.Json, HttpStatusCode.BadRequest); return@get }
                 try {
-                    val candidates = withContext(Dispatchers.IO) { store.catalog(call.request.queryParameters["family"], call.request.queryParameters["source"] ?: "modelscope") }
+                    val candidates = withContext(Dispatchers.IO) { store.catalog(call.request.queryParameters["family"], source) }
                     call.respondText(Protocol.json.encodeToString(candidates), ContentType.Application.Json)
                 } catch (e: Exception) { call.respondText(Protocol.error(e.message ?: "Catalog unavailable"), ContentType.Application.Json, HttpStatusCode.BadGateway) }
             }
