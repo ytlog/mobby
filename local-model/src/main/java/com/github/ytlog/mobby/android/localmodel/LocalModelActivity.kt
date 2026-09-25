@@ -20,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
 import com.github.ytlog.mobby.android.localization.AppLanguage
@@ -52,12 +53,14 @@ class LocalModelActivity : ComponentActivity() {
     private var installed by mutableStateOf<List<InstalledModel>>(emptyList())
     private var loaded by mutableStateOf<String?>(null)
     private var progress by mutableStateOf<InstallProgress?>(null)
+    private var modelMutation by mutableStateOf<Pair<String, Boolean>?>(null)
     private var showConnectionDetails by mutableStateOf(false)
+    private var copiedField by mutableStateOf<String?>(null)
     private var activeOperation: String? = null
 
     private fun request(path: String, method: String = "GET", body: String? = null): String {
         val c = URL("http://127.0.0.1:11435$path").openConnection() as HttpURLConnection
-        c.connectTimeout = 3_000; c.readTimeout = 60_000; c.requestMethod = method
+        c.connectTimeout = 3_000; c.readTimeout = if (path == "/local/v1/loads") 180_000 else 60_000; c.requestMethod = method
         c.setRequestProperty("Authorization", "Bearer ${auth.token("admin")}")
         c.setRequestProperty("Accept", "application/json")
         if (body != null) {
@@ -78,6 +81,27 @@ class LocalModelActivity : ComponentActivity() {
     private fun action(block: suspend () -> Unit) = lifecycleScope.launch {
         error = null
         try { block() } catch (e: Exception) { error = e.message?.take(300) ?: label("操作失败", "Operation failed") }
+    }
+
+    private fun copyValue(clipboard: ClipboardManager, field: String, value: String) {
+        clipboard.setPrimaryClip(ClipData.newPlainText(field, value))
+        copiedField = field
+        lifecycleScope.launch {
+            delay(1_600)
+            if (copiedField == field) copiedField = null
+        }
+    }
+
+    private suspend fun changeModel(id: String, load: Boolean) {
+        check(modelMutation == null) { label("请等待当前模型操作完成", "Wait for the current model operation") }
+        modelMutation = id to load
+        try {
+            withContext(Dispatchers.IO) {
+                if (load) request("/local/v1/loads", "POST", json.encodeToString(mapOf("model" to id)))
+                else request("/local/v1/models/unload", "POST", "{}")
+            }
+            refresh()
+        } finally { modelMutation = null }
     }
 
     private suspend fun refresh() {
@@ -169,14 +193,15 @@ class LocalModelActivity : ComponentActivity() {
                                                 Text(model.displayName.ifBlank { model.id }, style = MaterialTheme.typography.bodyLarge)
                                                 Text("${model.quantization} · ${model.size / 1_048_576} MiB" + if (loaded == model.id) label(" · 已加入网关", " · in gateways") else "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                             }
-                                            if (loaded == model.id) OutlinedButton(onClick = { action {
-                                                withContext(Dispatchers.IO) { request("/local/v1/models/unload", "POST", "{}") }
-                                                refresh()
-                                            } }) { Text(label("停止模型", "Unload")) }
-                                            else OutlinedButton(onClick = { action {
-                                                withContext(Dispatchers.IO) { request("/local/v1/loads", "POST", json.encodeToString(mapOf("model" to model.id))) }
-                                                refresh()
-                                            } }) { Text(label("加载", "Load")) }
+                                            val busy = modelMutation?.first == model.id
+                                            if (loaded == model.id) OutlinedButton(enabled = modelMutation == null, onClick = { action { changeModel(model.id, false) } }) {
+                                                if (busy) { CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp); Spacer(Modifier.width(8.dp)) }
+                                                Text(if (busy) label("停止中…", "Unloading…") else label("停止模型", "Unload"))
+                                            }
+                                            else OutlinedButton(enabled = modelMutation == null, onClick = { action { changeModel(model.id, true) } }) {
+                                                if (busy) { CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp); Spacer(Modifier.width(8.dp)) }
+                                                Text(if (busy) label("加载中…", "Loading…") else label("加载", "Load"))
+                                            }
                                         }
                                     }
                                 }
@@ -228,27 +253,43 @@ class LocalModelActivity : ComponentActivity() {
                                                 }
                                             }
                                     } }
-                                    TextButton(onClick = { action { listModels() } }, enabled = !listing) { Text(label("刷新模型列表", "Refresh model list")) }
                                 }
-                                TextButton(onClick = { showConnectionDetails = !showConnectionDetails }) {
-                                    Text(label("其他客户端接入", "Other client access"))
-                                }
-                                if (showConnectionDetails) ModelSection(null) {
-                                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        Text(label("本机外的客户端无法直接访问此地址。", "This address is available only on this device."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        Text(BASE_URL, style = MaterialTheme.typography.bodyMedium)
-                                        loaded?.let { Text("${label("模型 ID", "Model ID")}: $it", style = MaterialTheme.typography.bodySmall) }
-                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            TextButton(onClick = { clipboard.setPrimaryClip(ClipData.newPlainText("Local model URL", BASE_URL)) }) { Text(label("复制地址", "Copy URL")) }
-                                            TextButton(onClick = { clipboard.setPrimaryClip(ClipData.newPlainText("Local model key", auth.inferenceToken())) }) { Text(label("复制密钥", "Copy key")) }
+                                ModelSection(label("更多操作", "More options")) {
+                                    ModelActionRow(label("刷新模型列表", "Refresh model list"),
+                                        label("重新从所选来源获取", "Fetch again from the selected source"),
+                                        enabled = !listing, busy = listing, trailing = "↻") { action { listModels() } }
+                                    ModelDivider()
+                                    ModelActionRow(label("其他客户端接入", "Other client access"),
+                                        label("查看本机连接信息", "View connection details for this device"),
+                                        trailing = if (showConnectionDetails) "⌄" else "›") {
+                                        showConnectionDetails = !showConnectionDetails
+                                    }
+                                    if (showConnectionDetails) {
+                                        ModelDivider()
+                                        Text(label("仅同一部手机上的客户端可以使用此地址。", "Only clients on this phone can use this address."),
+                                            Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
+                                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        ModelConnectionRow(label("服务地址", "Service URL"), BASE_URL, if (copiedField == "url") label("已复制", "Copied") else label("复制", "Copy")) {
+                                            copyValue(clipboard, "url", BASE_URL)
                                         }
-                                        loaded?.let { id -> TextButton(onClick = { clipboard.setPrimaryClip(ClipData.newPlainText("Local model ID", id)) }) { Text(label("复制模型 ID", "Copy model ID")) } }
+                                        ModelDivider()
+                                        ModelConnectionRow(label("推理密钥", "Inference key"), label("已安全保存", "Stored securely"), if (copiedField == "key") label("已复制", "Copied") else label("复制", "Copy")) {
+                                            copyValue(clipboard, "key", auth.inferenceToken())
+                                        }
+                                        loaded?.let { id ->
+                                            ModelDivider()
+                                            ModelConnectionRow(label("模型 ID", "Model ID"), id, if (copiedField == "model") label("已复制", "Copied") else label("复制", "Copy")) {
+                                                copyValue(clipboard, "model", id)
+                                            }
+                                        }
                                     }
                                 }
-                                TextButton(onClick = { action {
+                                ModelSection(null) { ModelActionRow(label("停止本地服务", "Stop local service"),
+                                    label("已加载模型及临时网关会关闭", "Closes the loaded model and temporary gateway"),
+                                    enabled = modelMutation == null, danger = true) { action {
                                     withContext(Dispatchers.IO) { request("/local/v1/server/stop", "POST", "{}") }
                                     ready = false; loaded = null
-                                } }) { Text(label("停止本地服务", "Stop local service")) }
+                                } } }
                             }
                         }
                     }
@@ -268,6 +309,36 @@ class LocalModelActivity : ComponentActivity() {
 
 @Composable private fun ModelDivider() {
     HorizontalDivider(Modifier.padding(start = 16.dp), color = MaterialTheme.colorScheme.outline)
+}
+
+@Composable private fun ModelActionRow(title: String, detail: String, enabled: Boolean = true, busy: Boolean = false,
+    trailing: String? = null, danger: Boolean = false, onClick: () -> Unit) {
+    val color = when {
+        !enabled -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+        danger -> MaterialTheme.colorScheme.error
+        else -> MaterialTheme.colorScheme.onSurface
+    }
+    TextButton(onClick = onClick, enabled = enabled, modifier = Modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
+        colors = ButtonDefaults.textButtonColors(contentColor = color)) {
+        Column(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
+            Text(title, style = MaterialTheme.typography.bodyLarge, color = color)
+            Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+        else trailing?.let { Text(it, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+    }
+}
+
+@Composable private fun ModelConnectionRow(title: String, value: String, copyLabel: String, onCopy: () -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(value, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
+        }
+        TextButton(onClick = onCopy) { Text(copyLabel) }
+    }
 }
 
 @Composable private fun ModelChip(text: String, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
