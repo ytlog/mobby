@@ -15,6 +15,34 @@ import java.lang.reflect.Proxy
 /** Runs against an already downloaded GGUF on a Vulkan-capable phone; never downloads a model. */
 @RunWith(AndroidJUnit4::class)
 class LocalModelGpuDeviceTest {
+    @Test fun gemma4ToolCallSurvivesGpuDecode() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val model = File(context.filesDir, "local-models").listFiles()
+            ?.firstOrNull { it.extension == "gguf" && it.name.contains("gemma-4") }
+        assumeTrue("Download Gemma 4 before running this device test", model != null)
+        val native = Class.forName("com.github.ytlog.mobby.android.localmodel.llama.LlamaNative")
+        val handle = native.getMethod("load", String::class.java).invoke(null, model!!.absolutePath) as Long
+        try {
+            val backend = native.getMethod("backend", java.lang.Long.TYPE).invoke(null, handle) as String
+            assumeTrue("Requires a Vulkan backend", backend.startsWith("Vulkan GPU"))
+            val sinkType = Class.forName("com.github.ytlog.mobby.android.localmodel.llama.LlamaNative\$ToolSink")
+            var generated = 0
+            val sink = Proxy.newProxyInstance(sinkType.classLoader, arrayOf(sinkType)) { _, method, args ->
+                if (method.name == "onGeneratedToken") generated = args?.get(0) as Int
+                true
+            }
+            val messages = """[{"role":"user","content":"你好"}]"""
+            val tools = """[{"type":"function","function":{"name":"get_time","description":"Get current time","parameters":{"type":"object","properties":{}}}}]"""
+            val answer = native.getMethod("generateTools", java.lang.Long.TYPE, String::class.java,
+                String::class.java, String::class.java, java.lang.Boolean.TYPE, java.lang.Boolean.TYPE,
+                java.lang.Float.TYPE, java.lang.Float.TYPE, Integer.TYPE, sinkType)
+                .invoke(null, handle, messages, tools, "auto", false, false, 0f, 1f, 16, sink) as String
+            assertTrue("Tool request did not finish", answer.contains("output_tokens") && generated > 1)
+        } finally {
+            native.getMethod("unload", java.lang.Long.TYPE).invoke(null, handle)
+        }
+    }
+
     @Test fun gemma4PlainChatStartsGenerating() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val model = File(context.filesDir, "local-models").listFiles()

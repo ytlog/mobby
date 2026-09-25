@@ -255,6 +255,7 @@ class LocalModelActivity : ComponentActivity() {
                                                         "vulkan_not_packaged" -> label("当前 APK 未打包 Vulkan", "Vulkan is not packaged in this APK")
                                                         "vulkan_unavailable" -> label("未检测到可用的 Vulkan GPU", "No usable Vulkan GPU detected")
                                                         "vulkan_driver_too_old" -> label("设备 Vulkan 驱动低于 1.2，暂用 CPU", "Device Vulkan driver is below 1.2; using CPU")
+                                                        "vulkan_full_offload_unavailable" -> label("模型超出当前 GPU 安全内存预算，暂用 CPU", "Model exceeds the safe GPU memory budget; using CPU")
                                                         "vulkan_load_failed" -> label("GPU 加载失败，已回退 CPU", "GPU load failed; using CPU")
                                                         else -> null
                                                     }

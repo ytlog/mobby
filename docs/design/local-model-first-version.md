@@ -6,7 +6,7 @@
 
 `:app` 只依赖 `:local-model` 并打开它的管理页面。服务在同 APK 的 `:local_model` 独立进程运行，监听 `127.0.0.1:11435`。管理页通过 HTTP 查询、下载和加载模型；显式 Android Intent 只负责启动前台 Service。模块不依赖现有 Node 桥接或 Agent 代码。服务进程跳过宿主 Application 的运行时初始化。
 
-当前唯一推理引擎是固定提交的 llama.cpp arm64，支持单文件 GGUF。构建机有兼容的 shaderc 时同时打包 Vulkan GPU；设备 Vulkan API 至少为 1.2 且实际枚举到可用 GPU 后，加载小于 1.5 GB 的模型时尝试卸载全部层，其余模型先尝试卸载 16 层。模型和 4096 token 上下文在 GPU 上初始化成功后才显示 Vulkan；失败时回退 CPU 并显示原因。CPU 构建启用 KleidiAI 内核，实际使用哪些指令由设备运行时选择；NPU 尚未接入。推理过程只保留一个模型、一个 native 上下文。相邻请求的聊天模板编码结果有相同 token 前缀时，复用该前缀的 KV 状态并只处理后缀；前缀不一致、上下文容量不足或后端不允许裁剪时重算。切换或卸载模型会释放上下文。缓存存在于进程内，不写入磁盘，也不跨服务重启保留。
+当前唯一推理引擎是固定提交的 llama.cpp arm64，支持单文件 GGUF。构建机有兼容的 shaderc 时同时打包 Vulkan GPU；设备 Vulkan API 至少为 1.2 且实际枚举到可用 GPU 后，模型文件小于 1.5 GB，或设备内存至少 12 GB 且文件小于 3 GB 时，才尝试将全部层卸载至 GPU；其他组合直接使用 CPU。已知 Gemma 4 在部分卸载的 CPU/GPU 混合路径上会崩溃，因此当前不使用部分卸载。模型和 4096 token 上下文在 GPU 上初始化成功后才显示 Vulkan；失败时回退 CPU 并显示原因。CPU 构建启用 KleidiAI 内核，实际使用哪些指令由设备运行时选择；NPU 尚未接入。推理过程只保留一个模型、一个 native 上下文。相邻请求的聊天模板编码结果有相同 token 前缀时，复用该前缀的 KV 状态并只处理后缀；前缀不一致、上下文容量不足或后端不允许裁剪时重算。切换或卸载模型会释放上下文。缓存存在于进程内，不写入磁盘，也不跨服务重启保留。
 
 在线目录查询千问 2.5 0.5B、千问 3 0.6B、[千问 3.5 0.8B](https://huggingface.co/ggml-org/Qwen3.5-0.8B-GGUF)、Gemma 3 270M/1B 和 [Gemma 4 E2B](https://huggingface.co/ggml-org/gemma-4-E2B-it-GGUF) 的 GGUF 仓库，按引擎格式、量化格式、文件大小和 SHA-256 元数据筛选。千问 3.5 可选 Q4_0（约 563 MB）和 Q8_0（约 834 MB）；Gemma 4 E2B 只选 Q4_0（约 2.84 GB）。当前只支持文本推理，因此不下载这两个多模态模型的视觉 projector 或 Gemma 4 的 MTP 文件；图片输入仍不可用。Gemma 4 还需要足够的设备存储和运行内存，具体手机能否顺利加载需要实机验证。可选来源为[魔搭 ModelScope](https://modelscope.cn/)、[Hugging Face](https://huggingface.co/) 和 [HF 镜像](https://hf-mirror.com/)；中文首次使用默认魔搭，英文首次使用默认 Hugging Face。用户手动选择会保存在模块设置中，模型列表与下载都只使用所选来源，不自动切源。下载先写临时文件，校验长度和 SHA-256 后才登记为已安装。模型权重不打包进 APK。
 
@@ -42,6 +42,6 @@ curl http://127.0.0.1:11435/v1/chat/completions \
 
 先运行 `git submodule update --init third_party/llama.cpp`，使用项目现有 Android SDK/NDK、JDK 17 执行 `./gradlew :app:assembleDebug`。构建机还需安装支持 llama.cpp 着色器的新版 `glslc`（shaderc）和包含 `vulkan.hpp` 的 Vulkan-Headers，才会打包 Vulkan；否则明确警告并构建 CPU 版。需要强制检查 GPU 构建时使用 `./gradlew -Pmobby.requireVulkan=true :app:assembleDebug`。`app/src/androidTest/.../LocalModelSmokeTest.kt` 验证独立进程、HTTP 健康检查以及手机网络上的 Qwen/Gemma 目录查询。`LocalModelGpuDeviceTest.kt` 会在设备已下载 GGUF 且声明 Vulkan Compute 时，实际加载权重并生成 4 个 token，核对运行后端。两项测试都不会下载权重；完整 Agent 工具循环仍需设备验收。
 
-2026-09-25 真机验证：M2007J1SC / Adreno 650 的物理设备仅报告 Vulkan 1.1，强行卸载模型会在驱动核心函数入口处崩溃，因此此机型明确回退 CPU。已下载的 Gemma 4 E2B Q4_0 在 CPU 上冷加载约 52 秒；原普通聊天路径不支持其 Jinja 模板，修正为与工具路径共用模板处理器后，固定“你好”提示词的首 token 约 1.1 秒，4 token 约 2 秒。以上是独立 native 探针的结果，非网关端到端或长上下文性能保证。
+2026-09-25 真机验证：M2007J1SC / Adreno 650 的物理设备仅报告 Vulkan 1.1，强行卸载模型会在驱动核心函数入口处崩溃，因此此机型明确回退 CPU。已下载的 Gemma 4 E2B Q4_0 在 CPU 上冷加载约 52 秒；原普通聊天路径不支持其 Jinja 模板，修正为与工具路径共用模板处理器后，固定“你好”提示词的首 token 约 1.1 秒，4 token 约 2 秒。以上是独立 native 探针的结果，非网关端到端或长上下文性能保证。 同日另一台 25098PN5AC / Adreno 840（Vulkan 1.4）上，Gemma 4 部分卸载 16/36 层时，带工具的生成在首 token 后出现 NaN 或 Vulkan DEVICE_LOST；完整卸载 36/36 层后，同一固定工具请求连续生成 128 token 成功。该结果来自隔离 native 探针，真实网关长对话仍需验收。
 
 设计文档是目标架构，不能将其中未来接口、五组协议、多源下载和资源调度视为当前实现。后续迭代必须据此更新实现状态，不在现有首版上假设这些能力已经存在。

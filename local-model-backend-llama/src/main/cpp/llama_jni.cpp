@@ -10,6 +10,7 @@
 #include <stdexcept>
 #include <string>
 #include <sys/stat.h>
+#include <sys/sysinfo.h>
 #include <utility>
 #include <vector>
 #if MOBBY_VULKAN_PACKAGED
@@ -160,12 +161,19 @@ Java_com_github_ytlog_mobby_android_localmodel_llama_LlamaNative_load(JNIEnv *en
         const auto support = vulkan_support();
         std::string fallback_reason = !MOBBY_VULKAN_PACKAGED ? "vulkan_not_packaged" :
             support == VulkanSupport::driver_too_old ? "vulkan_driver_too_old" : "vulkan_unavailable";
-        if (auto gpu = support == VulkanSupport::supported ? vulkan_device() : nullptr) {
+        struct stat st{};
+        struct sysinfo memory{};
+        const bool enough_memory = sysinfo(&memory) == 0 &&
+            static_cast<uint64_t>(memory.totalram) * memory.mem_unit >= 12'000'000'000ULL;
+        const bool fits_full_offload = stat(file.c_str(), &st) == 0 &&
+            (st.st_size < 1'500'000'000 || (enough_memory && st.st_size < 3'000'000'000LL));
+        if (support == VulkanSupport::supported && !fits_full_offload)
+            fallback_reason = "vulkan_full_offload_unavailable";
+        if (auto gpu = support == VulkanSupport::supported && fits_full_offload ? vulkan_device() : nullptr) {
             ggml_backend_dev_t devices[] = {gpu, nullptr};
             auto params = llama_model_default_params();
             params.devices = devices;
-            struct stat st{};
-            params.n_gpu_layers = stat(file.c_str(), &st) == 0 && st.st_size < 1'500'000'000 ? 99 : 16;
+            params.n_gpu_layers = 99;
             const char *description = ggml_backend_dev_description(gpu);
             const std::string backend = std::string("Vulkan GPU") + (description && *description ? std::string(" · ") + description : "");
             fallback_reason = "vulkan_load_failed";
