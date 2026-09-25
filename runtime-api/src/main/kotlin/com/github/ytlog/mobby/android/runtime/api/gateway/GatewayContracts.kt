@@ -23,12 +23,11 @@ class SaveGatewayRequest(val id: String?, val addresses: GatewayCandidateAddress
     val credential: SecretInput? = null, val selectedModels: Set<String> = emptySet()) {
     override fun toString() = "SaveGatewayRequest(id=$id, credentials=[redacted])"
 }
-class InspectGatewayRequest(val id: String?, val addresses: GatewayCandidateAddresses, val model: String = "",
+class FetchGatewayModelsRequest(val id: String?, val addresses: GatewayCandidateAddresses,
     val credential: SecretInput? = null) {
-    override fun toString() = "InspectGatewayRequest(id=$id, credentials=[redacted])"
+    override fun toString() = "FetchGatewayModelsRequest(id=$id, credentials=[redacted])"
 }
-data class GatewayInspectionSummary(val model: String, val models: List<GatewayModelSummary>,
-    val supportedAgents: Set<AgentId>, val catalogError: String?)
+data class GatewayCatalogSummary(val models: List<GatewayModelSummary>, val catalogError: String?)
 enum class GatewayCheckOutcome { SUCCEEDED, HTTP_ERROR, INVALID_RESPONSE, RESPONSE_TOO_LARGE, DNS_ERROR, TLS_ERROR, TIMEOUT, CONNECTION_ERROR }
 /** Contains no response body, endpoint or credential. A small protocol request is not a CLI acceptance test. */
 data class GatewayCheck(val profile: GatewayProfileRef, val outcome: GatewayCheckOutcome, val httpStatus: Int? = null)

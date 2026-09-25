@@ -18,6 +18,7 @@ import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.dp
@@ -48,7 +49,7 @@ internal fun gatewayBaseAddress(value: String): String = value.trim().trimEnd('/
     if (editing == null) GatewayList(visibleProfiles, notice, defaultGateway, state.selected?.conversation?.config, agents, back,
         select = vm::chooseGateway, open = { editing = it ?: "new"; notice = "" })
     else key(editing) {
-        GatewayForm(visibleProfiles, vm::enqueue, vm.actions::saveGateway, vm.actions::inspectGateway, vm::refresh, { editing = null }, vm.actions::checkGateway,
+        GatewayForm(visibleProfiles, vm::enqueue, vm.actions::saveGateway, vm.actions::fetchGatewayModels, vm::refresh, { editing = null }, vm.actions::checkGateway,
             editingId = editing.takeUnless { it == "new" } ?: "", delete = vm.actions::deleteGateway,
             onSaved = { message ->
             notice = message
@@ -143,9 +144,21 @@ internal fun gatewaySummary(profile: GatewayProfile): String {
     return listOfNotNull(provider, profile.model.takeIf { it.isNotBlank() }, catalog).joinToString(" · ")
 }
 
+@Composable private fun GatewayFormAction(label: String, busy: Boolean, enabled: Boolean, loadingTag: String, onClick: () -> Unit) {
+    androidx.compose.material3.TextButton(onClick = onClick, enabled = enabled && !busy, modifier = Modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
+        colors = ButtonDefaults.textButtonColors(contentColor = onButtonColor(),
+            disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f))) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (busy) CircularProgressIndicator(Modifier.size(18.dp).testTag(loadingTag), strokeWidth = 2.dp)
+            Text(label, style = MaterialTheme.typography.bodyLarge)
+        }
+    }
+}
+
 @Composable internal fun GatewayForm(profiles: List<GatewayProfile>, submit: (suspend () -> Unit) -> Unit,
     save: suspend (GatewayEdit) -> GatewaySaveResult,
-    inspect: suspend (GatewayEdit) -> DataResult<GatewayInspectionResult>,
+    fetchModels: suspend (GatewayEdit) -> DataResult<GatewayCatalogResult>,
     refresh: suspend () -> Unit, back: () -> Unit,
     check: suspend (GatewayProfile) -> DataResult<GatewayCheckReport>,
     editingId: String? = profiles.singleOrNull()?.id,
@@ -159,7 +172,7 @@ internal fun gatewaySummary(profile: GatewayProfile): String {
     var model by remember { mutableStateOf("") }
     var key by remember { mutableStateOf("") }
     var keyEdited by remember { mutableStateOf(false) }
-    var inspection by remember { mutableStateOf<GatewayInspectionResult?>(null) }
+    var catalog by remember { mutableStateOf<GatewayCatalogResult?>(null) }
     var selectedModels by remember { mutableStateOf<Set<String>>(emptySet()) }
     var manualModels by remember { mutableStateOf<Set<String>>(emptySet()) }
     var modelSearch by remember { mutableStateOf("") }
@@ -175,6 +188,8 @@ internal fun gatewaySummary(profile: GatewayProfile): String {
     var connectionError by remember { mutableStateOf(false) }
     var connectionNotice by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
+    var fetchingModels by remember { mutableStateOf(false) }
+    var savingGateway by remember { mutableStateOf(false) }
     var checking by remember { mutableStateOf(false) }
     var checkJob by remember { mutableStateOf<Job?>(null) }
     val checkScope = rememberCoroutineScope()
@@ -190,20 +205,22 @@ internal fun gatewaySummary(profile: GatewayProfile): String {
         model = first?.model.orEmpty()
         selectedModels = first?.models?.map { it.id }?.toSet().orEmpty()
         manualModels = first?.models?.map { it.id }?.toSet().orEmpty()
-        key = ""; keyEdited = false; inspection = null
+        key = ""; keyEdited = false; catalog = null
     }
     fun candidates(): GatewayAddresses = GatewayProviders.find(providerId)?.candidates()
         ?: gatewayBaseAddress(baseEndpoint).let { GatewayAddresses(it, it) }
     fun edit() = GatewayEdit(editingId?.takeIf { it.isNotBlank() }, candidates(), model.trim(),
         if (keyEdited) key.toCharArray() else null, selectedModels + listOfNotNull(model.takeIf { it.isNotBlank() }))
-    fun changed() { noticeError = false; inspection = null; connectionNotice = ""; notice = "" }
+    fun changed() {
+        noticeError = false; catalog = null; connectionNotice = ""; notice = ""
+        modelExpanded = false; modelSearch = ""
+        if (saved == null) { model = ""; selectedModels = emptySet(); manualModels = emptySet() }
+    }
     fun modelChanged(value: String) {
         model = value
-        inspection = inspection?.copy(model = value, supportedAgents = emptySet())
         selectedModels = selectedModels + value
-        noticeError = false; connectionNotice = ""; notice = AppStrings.probeAgainWithTheCurrentModelToConfirmAvailable
+        noticeError = false; connectionNotice = ""; notice = ""
     }
-    val inspected = inspection
     val savedMatches = saved != null && model.trim() == saved.model && !keyEdited &&
         group.all { candidates().forAgent(it.agent) == it.endpoint }
     Column(Modifier.fillMaxSize()) {
@@ -244,34 +261,32 @@ internal fun gatewaySummary(profile: GatewayProfile): String {
                     SettingsAction(AppStrings.removeSavedKey, enabled = !busy && !checking) { key = ""; keyEdited = true; changed() }
                 }
             }
-            val supported = inspected?.supportedAgents ?: group.map { it.agent }.toSet()
-            if (supported.isNotEmpty()) SettingsCaption(AppStrings.agents(if (inspected != null) AppStrings.confirmedLabel else AppStrings.savedLabel, supported.joinToString("、") { it.label() }))
+            val supported = group.map { it.agent }.toSet()
+            if (supported.isNotEmpty()) SettingsCaption(AppStrings.agents(AppStrings.savedLabel, supported.joinToString("、") { it.label() }))
             if (listOf(candidates().responses, candidates().messages).any { it.startsWith("http://", ignoreCase = true) })
                 SettingsCaption(AppStrings.httpSendsKeysAndContentInPlainTextUse, error = true)
-            SettingsGroup { SettingsAction(AppStrings.probeSupportedAgentsAndModels, enabled = !busy && !checking && candidates().responses.isNotBlank()) {
+            SettingsGroup { GatewayFormAction(AppStrings.fetchGatewayModels, fetchingModels,
+                enabled = !busy && !checking && candidates().responses.isNotBlank(), loadingTag = "gateway-fetch-loading") {
                 if (providerId == GatewayProviders.CUSTOM) baseEndpoint = gatewayBaseAddress(baseEndpoint)
-                noticeError = false; busy = true; notice = AppStrings.probingAvailableAgentsAndModels
+                noticeError = false; busy = true; fetchingModels = true; notice = ""
                 submit {
                     val request = edit()
                     try {
-                        when (val result = inspect(request)) {
+                        when (val result = fetchModels(request)) {
                             is DataResult.Loaded -> {
-                                inspection = result.value
-                                model = result.value.model
+                                catalog = result.value
                                 val available = result.value.models.map { it.id }.toSet()
                                 manualModels = (manualModels + selectedModels) - available
-                                selectedModels = selectedModels + model
-                                noticeError = result.value.supportedAgents.isEmpty()
-                                notice = if (result.value.supportedAgents.isEmpty()) AppStrings.noAvailableAgentConfirmedCheckAddressModelKeyAnd
-                                    else AppStrings.confirmed(result.value.supportedAgents.joinToString("、") { it.label() })
                             }
                             is DataResult.Failed -> { noticeError = true; notice = result.message }
                         }
-                    } finally { request.credential?.fill('\u0000'); busy = false }
+                    } finally { request.credential?.fill('\u0000'); fetchingModels = false; busy = false }
                 }
             } }
-            inspected?.catalogError?.let { SettingsCaption(AppStrings.modelListUnavailableAddManually(it)) }
-            val availableModels = (inspected?.models ?: saved?.models.orEmpty()).map { it.id to it.name } +
+            val fetchedCatalog = catalog
+            fetchedCatalog?.catalogError?.let { SettingsCaption(AppStrings.modelListUnavailableAddManually(it)) }
+            if (fetchedCatalog != null) {
+            val availableModels = fetchedCatalog.models.map { it.id to it.name } +
                 manualModels.map { it to it } + listOfNotNull(model.takeIf { it.isNotBlank() }?.let { it to it })
             val modelOptions = availableModels.distinctBy { it.first }
             SettingsGroup { Box(Modifier.fillMaxWidth().onGloballyPositioned { coordinates ->
@@ -330,9 +345,10 @@ internal fun gatewaySummary(profile: GatewayProfile): String {
                     }
                 }
             } }
-            SettingsCaption(AppStrings.selectedDiscoveredModels((selectedModels + model).count { it.isNotBlank() }, inspected?.models?.size ?: 0))
-            SettingsGroup { SettingsAction(AppStrings.saveGateway, enabled = !busy && !checking && inspected?.supportedAgents?.isNotEmpty() == true) {
-                noticeError = false; busy = true; notice = AppStrings.recheckingAvailabilityBeforeSaving
+            SettingsCaption(AppStrings.selectedDiscoveredModels((selectedModels + model).count { it.isNotBlank() }, fetchedCatalog.models.size))
+            SettingsGroup { GatewayFormAction(AppStrings.saveGateway, savingGateway,
+                enabled = !busy && !checking && model.isNotBlank(), loadingTag = "gateway-save-loading") {
+                noticeError = false; busy = true; savingGateway = true; notice = ""
                 submit {
                     val request = edit()
                     var leave: String? = null
@@ -344,10 +360,11 @@ internal fun gatewaySummary(profile: GatewayProfile): String {
                             }
                             is GatewaySaveResult.Failed -> { noticeError = true; notice = result.message }
                         }
-                    } finally { request.credential?.fill('\u0000'); busy = false }
+                    } finally { request.credential?.fill('\u0000'); savingGateway = false; busy = false }
                     leave?.let { if (onSaved != null) onSaved(it) else notice = it }
                 }
             } }
+            }
             if (!editingId.isNullOrBlank()) SettingsGroup {
                 SettingsAction(AppStrings.deleteGateway, enabled = !busy && !checking) {
                     busy = true

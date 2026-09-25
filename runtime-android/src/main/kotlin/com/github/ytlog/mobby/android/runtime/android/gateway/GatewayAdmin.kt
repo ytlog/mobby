@@ -49,15 +49,13 @@ internal class GatewayAdmin(private val context: Context) {
             config.endpoint, config.model, com.github.ytlog.mobby.android.runtime.api.gateway.GatewayProtocol.valueOf(config.protocol.name), config.key.isNotEmpty(),
             config.models.map { GatewayModelSummary(it.id, it.name) }, config.catalogError, record.id == LocalModelGateway.ID)
     }
-    suspend fun inspectGateway(request: InspectGatewayRequest): AdminResult<GatewayInspectionSummary> = withContext(Dispatchers.IO) {
+    suspend fun fetchGatewayModels(request: FetchGatewayModelsRequest): AdminResult<GatewayCatalogSummary> = withContext(Dispatchers.IO) {
         val chars = request.credential?.consume()
         try {
             val old = request.id?.let { GatewayStore(context).load(it) }
             val key = chars?.concatToString() ?: old?.key.orEmpty()
-            val inspected = GatewayDiscovery().inspect(request.addresses, request.model.trim(), key)
-            AdminResult.Success(GatewayInspectionSummary(inspected.model,
-                inspected.models.map { GatewayModelSummary(it.id, it.name) },
-                inspected.supported.keys.map { it.productAgent() }.toSet(), inspected.catalogError))
+            val catalog = GatewayDiscovery().fetchModels(request.addresses, key)
+            AdminResult.Success(GatewayCatalogSummary(catalog.models.map { GatewayModelSummary(it.id, it.name) }, catalog.catalogError))
         } catch (e: CancellationException) { throw e }
         catch (_: IllegalArgumentException) { AdminResult.Failed(RuntimeError(ErrorCode.INVALID_CONFIG)) }
         catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.PROTOCOL_ERROR, true)) }
@@ -71,7 +69,7 @@ internal class GatewayAdmin(private val context: Context) {
             val old = request.id?.let { store.load(it) }
             val key = chars?.concatToString() ?: old?.key.orEmpty()
             val inspected = GatewayDiscovery().inspect(request.addresses, request.model.trim(), key)
-            require(inspected.supported.isNotEmpty()) { AppStrings.noAgentPassedTheNativeProtocolProbe }
+            if (inspected.supported.isEmpty()) return@withContext AdminResult.Failed(RuntimeError(ErrorCode.GATEWAY_PROBE_FAILED))
             val models = selectedCatalog(inspected.model, inspected.models, request.selectedModels)
             val routes = inspected.supported.mapKeys { it.key.gatewayProtocol() }
             val record = GatewayRecord(id, 0, routes, inspected.model, key, models, inspected.catalogError)

@@ -21,6 +21,7 @@ internal fun RuntimeError.message(): String = when (code) {
     ErrorCode.NOT_READY -> AppStrings.runtimeIsNotReady
     ErrorCode.BUSY -> AppStrings.aTaskIsRunningWaitOrOpenItsConversation
     ErrorCode.INVALID_CONFIG -> AppStrings.invalidGatewayOrModelConfigurationCheckSettings
+    ErrorCode.GATEWAY_PROBE_FAILED -> AppStrings.noAvailableAgentConfirmedCheckAddressModelKeyAnd
     ErrorCode.PERMISSION_DENIED -> AppStrings.permissionDeniedTaskDidNotComplete
     ErrorCode.UNSUPPORTED_CAPABILITY -> AppStrings.thisAgentDoesNotSupportThisCapabilityYet
     ErrorCode.DISCONNECTED -> AppStrings.disconnectedResultUnconfirmed
@@ -234,14 +235,13 @@ internal class RuntimeSystemAdapter(private val context: android.content.Context
     override suspend fun selectDefaultGateway(profile: GatewayProfile): OperationResult =
         admin.selectDefaultGateway(GatewaySelection(RuntimeAgent.valueOf(profile.agent.name), GatewayProfileRef(profile.id, profile.version))).operation()
     override suspend fun deleteGateway(id: String): OperationResult = admin.deleteGatewayProfile(id).operation()
-    override suspend fun inspectGateway(edit: GatewayEdit): DataResult<GatewayInspectionResult> {
+    override suspend fun fetchGatewayModels(edit: GatewayEdit): DataResult<GatewayCatalogResult> {
         val secret = edit.credential?.let(::SecretInput)
         edit.credential?.fill('\u0000')
-        return when (val result = admin.inspectGateway(InspectGatewayRequest(edit.id,
-            GatewayCandidateAddresses(edit.addresses.responses, edit.addresses.messages), edit.model, secret))) {
-            is AdminResult.Success -> DataResult.Loaded(GatewayInspectionResult(result.value.model,
-                result.value.models.map { GatewayModel(it.id, it.name) },
-                result.value.supportedAgents.map { DomainAgent.valueOf(it.name) }.toSet(), result.value.catalogError))
+        return when (val result = admin.fetchGatewayModels(FetchGatewayModelsRequest(edit.id,
+            GatewayCandidateAddresses(edit.addresses.responses, edit.addresses.messages), secret))) {
+            is AdminResult.Success -> DataResult.Loaded(GatewayCatalogResult(
+                result.value.models.map { GatewayModel(it.id, it.name) }, result.value.catalogError))
             is AdminResult.Failed -> DataResult.Failed(result.error.message())
         }
     }

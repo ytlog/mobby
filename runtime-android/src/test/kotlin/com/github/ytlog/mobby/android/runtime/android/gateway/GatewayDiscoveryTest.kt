@@ -10,6 +10,18 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class GatewayDiscoveryTest {
+    @Test fun `fetching models does not probe any agent protocol`() = runBlocking {
+        val fetched = listOf(GatewayModel("chat", "Chat"))
+        var probes = 0
+        val discovery = GatewayDiscovery(catalog = { CatalogResult.Ready(fetched) },
+            probe = { probes++; GatewayCheckOutcome.SUCCEEDED })
+        val result = discovery.fetchModels(GatewayCandidateAddresses("https://test.invalid/v1"), "synthetic-key")
+        assertEquals(fetched, result.models)
+        assertNull(result.catalogError)
+        assertEquals(0, probes)
+        assertFalse(result.toString().contains("synthetic-key"))
+    }
+
     @Test fun `discovery exposes the complete catalog for model selection`() = runBlocking {
         val fetched = (1..446).map { GatewayModel("model-$it", "Model $it") }
         val discovery = GatewayDiscovery(catalog = { CatalogResult.Ready(fetched) },

@@ -154,7 +154,7 @@ interface SystemPort {
     suspend fun checkGateway(profile: GatewayProfile): DataResult<GatewayCheckReport>
     suspend fun gateways(): List<GatewayProfile>
     suspend fun saveGateway(edit: GatewayEdit): GatewaySaveResult
-    suspend fun inspectGateway(edit: GatewayEdit): DataResult<GatewayInspectionResult>
+    suspend fun fetchGatewayModels(edit: GatewayEdit): DataResult<GatewayCatalogResult>
     suspend fun defaultGateway(): GatewayDefault?
     suspend fun selectDefaultGateway(profile: GatewayProfile): OperationResult
     suspend fun deleteGateway(id: String): OperationResult
@@ -322,7 +322,7 @@ class InteractionUseCases(
         if (result is GatewaySaveResult.Saved) system.gateways().filter { it.id == edit.id }.forEach { repository.updateGateway(it) }
         return result
     }
-    suspend fun inspectGateway(edit: GatewayEdit) = system.inspectGateway(edit)
+    suspend fun fetchGatewayModels(edit: GatewayEdit) = system.fetchGatewayModels(edit)
     suspend fun initialize() = system.initialize()
     suspend fun shell(command: String) = system.shell(command)
     suspend fun stopShell() = system.stopShell()

@@ -16,6 +16,7 @@ internal data class GatewayInspection(
     val supported: Map<AgentMode, String>,
     val outcomes: Map<GatewayProtocol, GatewayCheckOutcome>,
 )
+internal data class GatewayModels(val models: List<GatewayModel>, val catalogError: String?)
 
 internal class GatewayDiscovery(
     private val catalog: suspend (GatewayConfig) -> CatalogResult = { GatewayCatalog().fetch(it) },
@@ -23,15 +24,16 @@ internal class GatewayDiscovery(
         GatewayProbe().check(GatewayProfileRef("discovery", 0), it).outcome
     },
 ) {
+    suspend fun fetchModels(addresses: GatewayCandidateAddresses, key: String): GatewayModels {
+        val configs = configs(addresses, "catalog-probe", key)
+        return loadCatalog(configs)
+    }
+
     suspend fun inspect(addresses: GatewayCandidateAddresses, preferredModel: String, key: String): GatewayInspection {
         require(preferredModel.length <= 200 && preferredModel.none { it.isISOControl() })
-        val candidates = mapOf(AgentMode.CODEX to GatewayEndpoint.base(addresses.responses),
-            AgentMode.OPEN_CODE to GatewayEndpoint.base(addresses.responses),
-            AgentMode.CLAUDE to GatewayEndpoint.base(addresses.messages.ifBlank { addresses.responses }))
-        val configs = candidates.mapValues { (mode, endpoint) -> GatewayConfig(endpoint, preferredModel.ifBlank { "catalog-probe" }, key, mode.gatewayProtocol()).also { it.validateFor(mode) } }
-        val catalogResults = configs.values.distinctBy { it.endpoint to it.protocol }.map { catalog(it) }
-        val models = catalogResults.filterIsInstance<CatalogResult.Ready>().flatMap { it.models }.distinctBy { it.id }.take(2_000)
-        val selectedModel = preferredModel.ifBlank { models.firstOrNull()?.id.orEmpty() }
+        val configs = configs(addresses, preferredModel.ifBlank { "catalog-probe" }, key)
+        val catalog = loadCatalog(configs)
+        val selectedModel = preferredModel.ifBlank { catalog.models.firstOrNull()?.id.orEmpty() }
         val supported = linkedMapOf<AgentMode, String>()
         val outcomes = linkedMapOf<GatewayProtocol, GatewayCheckOutcome>()
         if (selectedModel.isNotEmpty()) {
@@ -42,8 +44,21 @@ internal class GatewayDiscovery(
                 if (outcome == GatewayCheckOutcome.SUCCEEDED) supported[mode] = config.endpoint
             }
         }
+        return GatewayInspection(selectedModel, catalog.models, catalog.catalogError, supported, outcomes)
+    }
+
+    private fun configs(addresses: GatewayCandidateAddresses, model: String, key: String): Map<AgentMode, GatewayConfig> {
+        val candidates = mapOf(AgentMode.CODEX to GatewayEndpoint.base(addresses.responses),
+            AgentMode.OPEN_CODE to GatewayEndpoint.base(addresses.responses),
+            AgentMode.CLAUDE to GatewayEndpoint.base(addresses.messages.ifBlank { addresses.responses }))
+        return candidates.mapValues { (mode, endpoint) -> GatewayConfig(endpoint, model, key, mode.gatewayProtocol()).also { it.validateFor(mode) } }
+    }
+
+    private suspend fun loadCatalog(configs: Map<AgentMode, GatewayConfig>): GatewayModels {
+        val catalogResults = configs.values.distinctBy { it.endpoint to it.protocol }.map { catalog(it) }
+        val models = catalogResults.filterIsInstance<CatalogResult.Ready>().flatMap { it.models }.distinctBy { it.id }.take(2_000)
         val error = if (models.isEmpty()) (catalogResults.firstOrNull() as? CatalogResult.Unavailable)?.message ?: AppStrings.modelListIsEmpty else null
-        return GatewayInspection(selectedModel, models, error, supported, outcomes)
+        return GatewayModels(models, error)
     }
 }
 

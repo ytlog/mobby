@@ -207,7 +207,7 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
     private val gatewayAdmin by lazy { GatewayAdmin(this) }
     override suspend fun validateGateway(profile: GatewayProfileRef, agent: AgentId) = gatewayAdmin.validateGateway(profile, agent)
     override suspend fun listGatewayProfiles() = gatewayAdmin.listGatewayProfiles()
-    override suspend fun inspectGateway(request: InspectGatewayRequest) = gatewayAdmin.inspectGateway(request)
+    override suspend fun fetchGatewayModels(request: FetchGatewayModelsRequest) = gatewayAdmin.fetchGatewayModels(request)
     override suspend fun defaultGateway() = gatewayAdmin.defaultGateway()
     override suspend fun selectDefaultGateway(selection: GatewaySelection) = gatewayAdmin.selectDefaultGateway(selection)
     override suspend fun saveGatewayProfile(request: SaveGatewayRequest) = gatewayAdmin.saveGatewayProfile(request)
