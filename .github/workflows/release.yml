@@ -1,0 +1,119 @@
+name: Publish Android release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version name, for example 0.1.0 (creates tag v0.1.0)"
+        required: true
+        type: string
+      version_code:
+        description: "Android versionCode; increase for each update"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate release inputs and signing secrets
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+          VERSION_CODE: ${{ inputs.version_code }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          MOBBY_RELEASE_KEYSTORE_BASE64: ${{ secrets.MOBBY_RELEASE_KEYSTORE_BASE64 }}
+          MOBBY_RELEASE_STORE_PASSWORD: ${{ secrets.MOBBY_RELEASE_STORE_PASSWORD }}
+          MOBBY_RELEASE_KEY_ALIAS: ${{ secrets.MOBBY_RELEASE_KEY_ALIAS }}
+          MOBBY_RELEASE_KEY_PASSWORD: ${{ secrets.MOBBY_RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/$DEFAULT_BRANCH" ]] || { echo 'Select the repository default branch for releases'; exit 1; }
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Version must be major.minor.patch'; exit 1; }
+          [[ "$VERSION_CODE" =~ ^[1-9][0-9]*$ ]] && (( ${#VERSION_CODE} <= 10 )) && (( VERSION_CODE <= 2100000000 )) || { echo 'Invalid Android versionCode'; exit 1; }
+          : "${MOBBY_RELEASE_KEYSTORE_BASE64:?Missing keystore secret}"
+          : "${MOBBY_RELEASE_STORE_PASSWORD:?Missing store password}"
+          : "${MOBBY_RELEASE_KEY_ALIAS:?Missing key alias}"
+          : "${MOBBY_RELEASE_KEY_PASSWORD:?Missing key password}"
+          if git ls-remote --exit-code --tags origin "refs/tags/v${VERSION}" >/dev/null; then
+            echo "Tag v${VERSION} already exists"
+            exit 1
+          else
+            result=$?
+            if (( result != 2 )); then
+              echo 'Could not check remote tags'
+              exit "$result"
+            fi
+          fi
+          printf '%s' "$MOBBY_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/mobby-release.jks"
+          test -s "$RUNNER_TEMP/mobby-release.jks"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Android build dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +o pipefail
+          yes | sdkmanager --licenses >/dev/null
+          set -o pipefail
+          sdkmanager --install 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1'
+
+      - name: Check runtime protocols and Android unit tests
+        run: |
+          python3 -m unittest discover -s runtime -p 'test_*.py'
+          node --test runtime/gateway-tests/bridge.test.cjs
+          ./gradlew :app:testDebugUnitTest :termux-core:testDebugUnitTest :app:lintDebug
+
+      - name: Build signed, optimized release APK
+        env:
+          VERSION: ${{ inputs.version }}
+          VERSION_CODE: ${{ inputs.version_code }}
+          MOBBY_RELEASE_STORE_FILE: ${{ runner.temp }}/mobby-release.jks
+          MOBBY_RELEASE_STORE_PASSWORD: ${{ secrets.MOBBY_RELEASE_STORE_PASSWORD }}
+          MOBBY_RELEASE_KEY_ALIAS: ${{ secrets.MOBBY_RELEASE_KEY_ALIAS }}
+          MOBBY_RELEASE_KEY_PASSWORD: ${{ secrets.MOBBY_RELEASE_KEY_PASSWORD }}
+        run: ./gradlew :app:assembleRelease -Pmobby.versionName="$VERSION" -Pmobby.versionCode="$VERSION_CODE"
+
+      - name: Verify APK and prepare release assets
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+          VERSION_CODE: ${{ inputs.version_code }}
+        run: |
+          set -euo pipefail
+          apk=app/build/outputs/apk/release/app-release.apk
+          test -s "$apk"
+          test -s app/build/outputs/mapping/release/mapping.txt
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$apk"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep -F "versionCode='$VERSION_CODE' versionName='$VERSION'"
+          mkdir -p release-assets
+          cp "$apk" "release-assets/mobby-v${VERSION}-arm64-v8a.apk"
+          (cd release-assets && sha256sum *.apk > SHA256SUMS.txt)
+
+      - name: Save R8 mapping for crash analysis
+        uses: actions/upload-artifact@v4
+        with:
+          name: r8-mapping-v${{ inputs.version }}
+          path: app/build/outputs/mapping/release/mapping.txt
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: gh release create "v${VERSION}" release-assets/* --target "$GITHUB_SHA" --title "v${VERSION}" --generate-notes

@@ -1,4 +1,14 @@
 plugins { id("com.android.application"); kotlin("android") }
+
+val releaseStoreFile = providers.environmentVariable("MOBBY_RELEASE_STORE_FILE").orNull
+val releaseStorePassword = providers.environmentVariable("MOBBY_RELEASE_STORE_PASSWORD").orNull
+val releaseKeyAlias = providers.environmentVariable("MOBBY_RELEASE_KEY_ALIAS").orNull
+val releaseKeyPassword = providers.environmentVariable("MOBBY_RELEASE_KEY_PASSWORD").orNull
+val releaseSigningValues = listOf(releaseStoreFile, releaseStorePassword, releaseKeyAlias, releaseKeyPassword)
+require(releaseSigningValues.all { it.isNullOrBlank() } || releaseSigningValues.all { !it.isNullOrBlank() }) {
+    "Release signing requires all four MOBBY_RELEASE_* environment variables"
+}
+
 android {
     namespace = "com.github.ytlog.mobby.android"
     compileSdk = 35
@@ -8,13 +18,31 @@ android {
         applicationId = "com.github.ytlog.mobby.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = providers.gradleProperty("mobby.versionCode").orNull?.toInt() ?: 1
+        versionName = providers.gradleProperty("mobby.versionName").orNull ?: "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk { abiFilters += "arm64-v8a" }
     }
     buildFeatures { compose = true }
     composeOptions { kotlinCompilerExtensionVersion = "1.5.0" }
+    signingConfigs {
+        if (!releaseStoreFile.isNullOrBlank()) {
+            create("mobbyRelease") {
+                storeFile = file(releaseStoreFile)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+    buildTypes {
+        getByName("release") {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            if (!releaseStoreFile.isNullOrBlank()) signingConfig = signingConfigs.getByName("mobbyRelease")
+        }
+    }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
     packaging { jniLibs { useLegacyPackaging = true; keepDebugSymbols += "**/*.so" } }
