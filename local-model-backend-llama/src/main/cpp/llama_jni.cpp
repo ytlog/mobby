@@ -167,7 +167,8 @@ Java_com_github_ytlog_mobby_android_localmodel_llama_LlamaNative_generateTools(
         jclass sink_class = env->GetObjectClass(sink);
         jmethodID on_start = env->GetMethodID(sink_class, "onStart", "(I)Z");
         jmethodID on_token = env->GetMethodID(sink_class, "onToken", "()Z");
-        if (!on_start || !on_token) return nullptr;
+        jmethodID on_text = env->GetMethodID(sink_class, "onText", "(Ljava/lang/String;)Z");
+        if (!on_start || !on_token || !on_text) return nullptr;
         if (!env->CallBooleanMethod(sink, on_start, needed) || env->ExceptionCheck()) {
             if (!env->ExceptionCheck()) throw std::runtime_error("Generation cancelled");
             return nullptr;
@@ -212,7 +213,10 @@ Java_com_github_ytlog_mobby_android_localmodel_llama_LlamaNative_generateTools(
             auto batch = llama_batch_get_one(tokens.data() + pos, n);
             if (llama_decode(ctx.get(), batch) != 0) throw std::runtime_error("Prompt decode failed");
         }
+        common_chat_parser_params parser(params);
+        if (!params.parser.empty()) parser.parser.load(params.parser);
         std::string output;
+        std::string streamed_content;
         int generated = 0;
         for (; generated < max_tokens; ++generated) {
             if (!env->CallBooleanMethod(sink, on_token) || env->ExceptionCheck()) {
@@ -225,11 +229,28 @@ Java_com_github_ytlog_mobby_android_localmodel_llama_LlamaNative_generateTools(
             int n = llama_token_to_piece(vocab, token, piece.data(), piece.size(), 0, true);
             if (n < 0) throw std::runtime_error("Token piece too large");
             output.append(piece.data(), n);
+            const size_t valid = complete_utf8(output);
+            if (valid > 0) {
+                std::string partial_content;
+                try {
+                    partial_content = common_chat_parse(output.substr(0, valid), true, parser).content;
+                } catch (const std::exception &) {
+                    // A partial grammar may be undecidable until more tokens arrive; the final parse below is strict.
+                }
+                if (partial_content.size() > streamed_content.size() &&
+                    partial_content.compare(0, streamed_content.size(), streamed_content) == 0) {
+                    const std::string delta = partial_content.substr(streamed_content.size());
+                    jstring chunk = env->NewStringUTF(delta.c_str());
+                    const bool keep = env->CallBooleanMethod(sink, on_text, chunk);
+                    env->DeleteLocalRef(chunk);
+                    if (env->ExceptionCheck()) return nullptr;
+                    if (!keep) throw std::runtime_error("Generation cancelled");
+                    streamed_content = partial_content;
+                }
+            }
             auto batch = llama_batch_get_one(&token, 1);
             if (llama_decode(ctx.get(), batch) != 0) throw std::runtime_error("Generation decode failed");
         }
-        common_chat_parser_params parser(params);
-        if (!params.parser.empty()) parser.parser.load(params.parser);
         auto answer = common_chat_parse(output, false, parser);
         common_json result = {
             {"content", answer.content}, {"input_tokens", needed}, {"output_tokens", generated},

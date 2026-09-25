@@ -233,26 +233,41 @@ class LocalModelService : Service() {
 
     private suspend fun inferTools(call: ApplicationCall, protocol: String, request: InferenceRequest, id: String, created: Long) {
         val context = requireNotNull(request.toolContext)
-        val completed = try {
-            val job = currentCoroutineContext()[Job]
-            val raw = withContext(Dispatchers.IO) { engine.generateTools(request.model, context, request.maxTokens) { job?.isActive != false } }
-            val turn = ToolResponses.parse(raw, context)
-            ToolResponses.completion(protocol, id, request.model, created, turn)
-        } catch (e: Exception) {
-            call.respondText(Protocol.error(e.message ?: "Tool generation failed", "server_error"), ContentType.Application.Json, HttpStatusCode.ServiceUnavailable)
-            return
-        }
         if (!request.stream) {
+            val completed = try {
+                val job = currentCoroutineContext()[Job]
+                val raw = withContext(Dispatchers.IO) { engine.generateTools(request.model, context, request.maxTokens, { job?.isActive != false }) }
+                val turn = ToolResponses.parse(raw, context)
+                ToolResponses.completion(protocol, id, request.model, created, turn)
+            } catch (e: Exception) {
+                call.respondText(Protocol.error(e.message ?: "Tool generation failed", "server_error"), ContentType.Application.Json, HttpStatusCode.ServiceUnavailable)
+                return
+            }
             call.respondText(completed.toString(), ContentType.Application.Json)
             return
         }
         call.respondTextWriter(contentType = ContentType.Text.EventStream) {
-            ToolResponses.events(protocol, completed).forEach { (event, payload) ->
-                if (event != null) write("event: $event\n")
-                write("data: $payload\n\n")
+            val stream = ToolEventStream(protocol, id, request.model, created)
+            fun emit(events: List<Pair<String?, JsonObject>>) {
+                events.forEach { (event, payload) ->
+                    if (event != null) write("event: $event\n")
+                    write("data: $payload\n\n")
+                }
+                flush()
             }
-            if (protocol == "chat") write("data: [DONE]\n\n")
-            flush()
+            try {
+                val job = currentCoroutineContext()[Job]
+                val raw = withContext(Dispatchers.IO) { engine.generateTools(request.model, context, request.maxTokens,
+                    { job?.isActive != false },
+                    { count -> runCatching { emit(stream.start(count)); true }.getOrDefault(false) },
+                    { piece -> runCatching { emit(stream.delta(piece)); true }.getOrDefault(false) }) }
+                val turn = ToolResponses.parse(raw, context)
+                val completed = ToolResponses.completion(protocol, id, request.model, created, turn)
+                emit(stream.finish(completed))
+                if (protocol == "chat") { write("data: [DONE]\n\n"); flush() }
+            } catch (e: Exception) {
+                runCatching { write("event: error\ndata: ${Protocol.error(e.message ?: "Tool generation failed", "server_error")}\n\n"); flush() }
+            }
         }
     }
 

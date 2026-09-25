@@ -23,7 +23,7 @@
 | `POST /local/v1/server/stop` | 停止服务；需管理令牌 |
 | `GET /v1/models`、`POST /v1/responses`、`POST /v1/chat/completions`、`POST /v1/messages` | 模型列表、文本与工具调用生成 |
 
-推理支持纯文本 system/user/assistant 消息，以及 Responses、Messages、Chat Completions 的函数工具定义、调用与结果回传。Responses 的文本自定义工具映射为模型工具模板中的字符串参数，再还原为原协议的 `custom_tool_call`；SSE 的工具事件在完整生成和校验后发送。模型必须带有 llama.cpp 可识别的工具聊天模板；模型不支持工具、生成未知工具名或无效 JSON 参数时明确报错。图片、严格 JSON Schema、显式推理强度、云端内置工具和未实现字段仍拒绝，不做静默转换。本地网关运行 Codex 时关闭仅云端可用的 web_search 与多 Agent 工具；运行 Claude Code 时将输出请求限制为 1,024 token 并关闭云端推理配置；运行 OpenCode 时为本地模型声明 32,768 token 上下文和 1,024 token 输出上限。三者仍发送各自原生协议请求，Node 桥接不删除工具或转换协议。以上是协议实现，尚未经过手机上实际模型的端到端工具循环验收，不宣称完整兼容所有 Agent 版本。一个时刻只加载一个模型；模型 ID 来自安装目录。
+推理支持纯文本 system/user/assistant 消息，以及 Responses、Messages、Chat Completions 的函数工具定义、调用与结果回传。Responses 的文本自定义工具映射为模型工具模板中的字符串参数，再还原为原协议的 `custom_tool_call`；SSE 的文本增量在生成过程中发送，工具事件在完整生成和校验后发送。模型必须带有 llama.cpp 可识别的工具聊天模板；模型不支持工具、生成未知工具名或无效 JSON 参数时明确报错。图片、严格 JSON Schema、显式推理强度、云端内置工具和未实现字段仍拒绝，不做静默转换。本地网关运行 Codex 时关闭仅云端可用的 web_search 与多 Agent 工具；运行 Claude Code 时将输出请求限制为 1,024 token 并关闭云端推理配置；运行 OpenCode 时为本地模型声明 32,768 token 上下文和 1,024 token 输出上限。三者仍发送各自原生协议请求，Node 桥接不删除工具或转换协议。以上是协议实现，尚未经过手机上实际模型的端到端工具循环验收，不宣称完整兼容所有 Agent 版本。一个时刻只加载一个模型；模型 ID 来自安装目录。
 
 加载模型后可用如下请求验证文本推理（将示例模型 ID 和令牌替换为页面显示的实际值）：
 
@@ -34,7 +34,7 @@ curl http://127.0.0.1:11435/v1/chat/completions \
   -d '{"model":"<已加载模型 ID>","messages":[{"role":"user","content":"你好"}],"max_tokens":64}'
 ```
 
-需要工具调用的客户端在请求中提供工具定义和历史工具结果。比如 Responses 使用 `tools:[{"type":"function","name":"read_file","parameters":{"type":"object","properties":{"path":{"type":"string"}}}}]`，模型返回 `output[].type="function_call"` 和 `call_id`；客户端执行工具后再提交同一 `call_id` 的 `function_call_output`。Messages 使用 `tool_use` / `tool_result`，Chat Completions 使用 `tool_calls` / `role="tool"`。服务只生成调用提议，工具由 Agent 客户端执行。工具请求目前完整生成后再发送 SSE 事件，长提示和低速模型可能等待较久；工具请求上下文最多 32,768 token，输出最多 1,024 token，超过时明确失败。
+需要工具调用的客户端在请求中提供工具定义和历史工具结果。比如 Responses 使用 `tools:[{"type":"function","name":"read_file","parameters":{"type":"object","properties":{"path":{"type":"string"}}}}]`，模型返回 `output[].type="function_call"` 和 `call_id`；客户端执行工具后再提交同一 `call_id` 的 `function_call_output`。Messages 使用 `tool_use` / `tool_result`，Chat Completions 使用 `tool_calls` / `role="tool"`。服务只生成调用提议，工具由 Agent 客户端执行。工具请求的文本可逐段显示；模型若选择调用工具，工具参数仍需等待完整生成和校验。长提示的预填充阶段也可能等待较久；工具请求上下文最多 32,768 token，输出最多 1,024 token，超过时明确失败。
 
 ## 构建与验证
 

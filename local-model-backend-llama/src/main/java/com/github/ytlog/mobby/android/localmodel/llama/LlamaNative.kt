@@ -11,5 +11,5 @@ object LlamaNative {
         parallel: Boolean, enableThinking: Boolean, temperature: Float, topP: Float, maxTokens: Int, sink: ToolSink): String
 
     interface TokenSink { fun onStart(inputTokens: Int): Boolean; fun onToken(text: String): Boolean }
-    interface ToolSink { fun onStart(inputTokens: Int): Boolean; fun onToken(): Boolean }
+    interface ToolSink { fun onStart(inputTokens: Int): Boolean; fun onToken(): Boolean; fun onText(text: String): Boolean }
 }

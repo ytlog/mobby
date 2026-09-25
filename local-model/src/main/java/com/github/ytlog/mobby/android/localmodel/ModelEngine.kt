@@ -37,13 +37,15 @@ internal class ModelEngine(private val store: LocalModelStore) {
             })
     }
 
-    @Synchronized fun generateTools(id: String, context: ToolContext, maxTokens: Int, keepGoing: () -> Boolean): String {
+    @Synchronized fun generateTools(id: String, context: ToolContext, maxTokens: Int, keepGoing: () -> Boolean,
+                                    onStart: (Int) -> Boolean = { true }, onText: (String) -> Boolean = { true }): String {
         check(loaded?.id == id && handle != 0L) { "Model is not loaded" }
         return LlamaNative.generateTools(handle, context.messages.toString(), context.tools.toString(), context.choice,
             context.parallel, context.enableThinking, context.temperature, context.topP, maxTokens,
             object : LlamaNative.ToolSink {
-                override fun onStart(inputTokens: Int) = keepGoing()
+                override fun onStart(inputTokens: Int) = keepGoing() && onStart(inputTokens)
                 override fun onToken() = keepGoing()
+                override fun onText(text: String) = keepGoing() && onText(text)
             })
     }
 }
