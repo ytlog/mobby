@@ -260,7 +260,6 @@ class InteractionUseCases(
                 return OperationResult.Failed(plugin.unavailableReason ?: AppStrings.grantPermissionBeforeUse)
         }
         repository.setSkill(id, plugin.ref, enabled)
-        if (!enabled) plugin.grant?.let { repository.setSkill(id, it.ref, false) }
         return OperationResult.Done
     }
     suspend fun setPluginGrant(id: ConversationId, plugin: Plugin, enabled: Boolean): OperationResult {

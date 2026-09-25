@@ -483,7 +483,6 @@ open class StringCatalog(private val fixedLanguage: AppLanguage? = null) {
     val thisConversationIsArchivedOrDeletedRestoreItIn get() = text("此对话已归档或删除，请先在设置中恢复", "This conversation is archived or deleted. Restore it in Settings first")
     fun isRunningYouCanKeepEditingThisDraft(arg0: Any?) = text("{0} 正在执行，本轮草稿可继续编辑", "{0} is running. You can keep editing this draft", arg0)
     val shellDiagnosticsIsUsingTheRuntime get() = text("Shell 诊断正在占用运行环境", "Shell diagnostics is using the runtime")
-    val skillCreatorIsBoundToThisCreationConversation get() = text("Skill Creator 已绑定此创建会话", "Skill Creator is bound to this creation conversation")
     val importingAttachmentsYouCanSendWhenFinished get() = text("正在导入附件，完成后可发送…", "Importing attachments. You can send when finished…")
     val removePendingAttachment get() = text("移除待处理附件", "Remove pending attachment")
     val transcribing get() = text("正在转写…", "Transcribing…")
@@ -577,14 +576,14 @@ open class StringCatalog(private val fixedLanguage: AppLanguage? = null) {
     val editorStateWasNotRestoredIfYouJustSaved get() = text("编辑状态未恢复。若刚才执行过保存，请先到技能目录核对。", "Editor state was not restored. If you just saved, check the skill directory first.")
     val backToSkillDirectory get() = text("返回技能目录", "Back to skill directory")
     val theAgentReadsInstructionsAndRequestsPermissionsWhenUsed get() = text("使用时由 Agent 读取说明并申请所需权限；访问范围取决于技能内容与 Agent 权限。", "The Agent reads instructions and requests permissions when used. Access depends on the skill content and Agent permissions.")
-    val boundToThisCreationConversation get() = text("已绑定此创建会话", "Bound to this creation conversation")
+    val skillCreatorChip get() = "Skill Creator"
+    val removeSkillCreatorBindingHint get() = text("移除后此会话不再自动使用 Skill Creator，已有对话内容不受影响。", "After removal, this conversation no longer uses Skill Creator automatically. Existing messages are unchanged.")
     val searchSkills get() = text("搜索技能", "Search skills")
     val noSkillsYet get() = text("尚无技能", "No skills yet")
     val noMatchingSkills get() = text("没有匹配的技能", "No matching skills")
     val tapAddAtTheTopRightToSaveA get() = text("点右上角添加，把常用流程保存下来", "Tap Add at the top right to save a workflow")
     val tryAnotherCategoryOrSearchTerm get() = text("换个分类或关键词试试", "Try another category or search term")
     val skillUnavailable get() = text("技能不可用", "Skill unavailable")
-    val bound get() = text("已绑定", "Bound")
     val createWithMobby get() = text("与 mobby 对话创建", "Create with mobby")
     val importSkillFileMd get() = text("导入技能文件（.md）", "Import skill file (.md)")
     val createManually get() = text("手动创建", "Create manually")
@@ -806,4 +805,5 @@ object AppStrings : StringCatalog() {
     const val CACHE_VERIFICATION_MARKER = "历史输出暂时无法核对，已保留缓存；请恢复连接后重试"
     fun isDefaultConversationTitle(value: String): Boolean = AppLanguage.values().any { StringCatalog(it).newConversation == value }
     fun isSkillCreationPrompt(value: String): Boolean = AppLanguage.values().any { value.startsWith(StringCatalog(it).createSkillPrompt) }
+    fun isUneditedSkillCreationPrompt(value: String): Boolean = AppLanguage.values().any { value == StringCatalog(it).createSkillPrompt }
 }

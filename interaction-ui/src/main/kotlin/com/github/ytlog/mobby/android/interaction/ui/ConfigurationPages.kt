@@ -409,23 +409,25 @@ private val pluginCatalogTabs get() = listOf(AppStrings.phone, AppStrings.commun
                             iconForeground = swatch.first,
                             iconBackground = swatch.second,
                             action = when {
-                                !plugin.available -> AppStrings.enable
                                 chosen -> AppStrings.remove
+                                !plugin.available -> AppStrings.enable
                                 else -> AppStrings.use
                             },
                             actionEnabled = !plugin.available || conversation != null,
                             onAction = {
-                                if (!plugin.available) requestAccess(plugin)
-                                else if (conversation != null) vm.enqueue { vm.report(vm.actions.setPlugin(conversation.id, plugin, !chosen)) }
+                                if (chosen && conversation != null) vm.enqueue { vm.report(vm.actions.setPlugin(conversation.id, plugin, false)) }
+                                else if (!plugin.available) requestAccess(plugin)
+                                else if (conversation != null) vm.enqueue { vm.report(vm.actions.setPlugin(conversation.id, plugin, true)) }
                             },
                         )
                         plugin.grant?.let { grant ->
                             if (chosen || !grant.available) TextButton(onClick = {
-                                if (!grant.available) requestAccess(plugin, grant = true)
-                                else if (conversation != null) vm.enqueue { vm.report(vm.actions.setPluginGrant(conversation.id, plugin, !grantChosen)) }
-                            }, enabled = grant.available || grant.permissions.isNotEmpty()) { Text(when {
-                                !grant.available -> AppStrings.enable2(grant.label)
+                                if (grantChosen && conversation != null) vm.enqueue { vm.report(vm.actions.setPluginGrant(conversation.id, plugin, false)) }
+                                else if (!grant.available) requestAccess(plugin, grant = true)
+                                else if (conversation != null) vm.enqueue { vm.report(vm.actions.setPluginGrant(conversation.id, plugin, true)) }
+                            }, enabled = grantChosen || grant.available || grant.permissions.isNotEmpty()) { Text(when {
                                 grantChosen -> AppStrings.disable(grant.label)
+                                !grant.available -> AppStrings.enable2(grant.label)
                                 else -> AppStrings.allow(grant.label)
                             }) }
                         }

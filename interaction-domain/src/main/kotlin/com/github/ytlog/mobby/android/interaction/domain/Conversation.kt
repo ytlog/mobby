@@ -90,7 +90,9 @@ class StopRunUseCase(private val execution: ExecutionPort) {
 /** Pure interaction policies, shared by future repository and Compose projections. */
 object ConversationRules {
     fun afterSubmission(current: Draft, submittedRevision: Long, result: Submission): Draft =
-        if (result is Submission.Accepted && current.revision == submittedRevision) Draft(revision = current.revision + 1) else current
+        if (result is Submission.Accepted && current.revision == submittedRevision)
+            Draft(revision = current.revision + 1, capabilities = current.capabilities.filter { it.startsWith("plugin:device:") }.toSet())
+        else current
 
     /** Record one engine's CLI session. The active session changes only when that engine is currently selected. */
     fun rememberSession(current: Conversation, agent: AgentId, id: String): Conversation {

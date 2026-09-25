@@ -184,9 +184,16 @@ internal class RoomInteractionRepository(
     }
     override suspend fun setSkill(id: ConversationId, ref: String, enabled: Boolean) = mutate(id) { c ->
         require(!enabled || ref.startsWith("skill:${c.config.agent.name}:") || ref.startsWith("plugin:device:"))
-        val refs = if (enabled) c.draft.capabilities + ref else c.draft.capabilities - ref
-        require((refs + listOfNotNull(c.creator)).size <= 24)
-        c.copy(draft = c.draft.copy(revision = c.draft.revision + 1, capabilities = refs))
+        val refs = if (enabled) c.draft.capabilities + ref else c.draft.capabilities.filterNot {
+            it == ref || ref.startsWith("plugin:device:") && it.startsWith("$ref:")
+        }.toSet()
+        val creator = if (!enabled && c.creator == ref) null else c.creator
+        require((refs + listOfNotNull(creator)).size <= 24)
+        val clearTemplate = creator == null && c.creator != null && AppStrings.isUneditedSkillCreationPrompt(c.draft.text)
+        c.copy(draft = c.draft.copy(revision = c.draft.revision + 1, capabilities = refs,
+            text = if (clearTemplate) "" else c.draft.text,
+            selectionStart = if (clearTemplate) 0 else c.draft.selectionStart,
+            selectionEnd = if (clearTemplate) 0 else c.draft.selectionEnd), creator = creator)
     }
     override suspend fun createSkillConversation(id: ConversationId, creator: String): ConversationId = db.withTransaction {
         val old = requireNotNull(dao.conversation(id.value)).domain()

@@ -568,10 +568,11 @@ private val DrawerRowHeight = 40.dp
             if (unavailable) Text(AppStrings.thisConversationIsArchivedOrDeletedRestoreItIn, style = MaterialTheme.typography.bodySmall)
             if (state.occupied != null && active == null) Text(AppStrings.isRunningYouCanKeepEditingThisDraft(state.occupied!!.conversation.title), style = MaterialTheme.typography.bodySmall)
             if (system.diagnosticBusy) Text(AppStrings.shellDiagnosticsIsUsingTheRuntime, style = MaterialTheme.typography.bodySmall)
-            if (detail.conversation.creator != null) Text(AppStrings.skillCreatorIsBoundToThisCreationConversation, style = MaterialTheme.typography.labelSmall)
-            if (detail.conversation.draft.capabilities.any { it != detail.conversation.creator }) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                detail.conversation.draft.capabilities.filter { it != detail.conversation.creator }.forEach { ref -> InputChip(selected = true,
-                    onClick = { vm.enqueue { vm.actions.removeSkill(detail.conversation.id, ref) } }, label = { Text("${capabilityLabel(ref)} ×") }) }
+            val selectedCapabilities = detail.conversation.draft.capabilities + listOfNotNull(detail.conversation.creator)
+            if (selectedCapabilities.isNotEmpty()) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                selectedCapabilities.forEach { ref -> InputChip(selected = true,
+                    onClick = { vm.enqueue { vm.actions.removeSkill(detail.conversation.id, ref) } },
+                    label = { Text("${if (ref == detail.conversation.creator) AppStrings.skillCreatorChip else capabilityLabel(ref)} ×") }) }
             }
             Column(Modifier.heightIn(max = 160.dp).verticalScroll(rememberScrollState())) {
                 AttachmentList(detail.conversation.draft.attachments, detail.conversation.config.workspace, vm) { ref -> vm.enqueue { vm.actions.removeAttachment(detail.conversation.id, ref) } }

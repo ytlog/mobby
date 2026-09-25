@@ -96,7 +96,8 @@ private val skillCatalogTabs get() = listOf(AppStrings.added, AppStrings.feature
                     Text(content.description)
                     val bound = conversation?.creator != null && conversation.creator == skill?.ref
                     val chosen = conversation?.draft?.capabilities?.contains(skill?.ref) == true
-                    Button(onClick = { if (conversation != null && skill != null) vm.enqueue { vm.report(vm.actions.setSkill(conversation.id, skill, !chosen)) } }, enabled = conversation != null && skill?.available == true && !bound, colors = filledButtonColors()) { Text(if (bound) AppStrings.boundToThisCreationConversation else if (chosen) AppStrings.remove else AppStrings.use) }
+                    Button(onClick = { if (conversation != null && skill != null) vm.enqueue { vm.report(vm.actions.setSkill(conversation.id, skill, !bound && !chosen)) } }, enabled = conversation != null && (bound || chosen || skill?.available == true), colors = filledButtonColors()) { Text(if (bound || chosen) AppStrings.remove else AppStrings.use) }
+                    if (bound) Text(AppStrings.removeSkillCreatorBindingHint, style = MaterialTheme.typography.bodySmall)
                     ReplyContent(content.body, streaming = false, read = { _, _ -> })
                 }
                 if (detail == null && detailError == null) CircularProgressIndicator()
@@ -125,13 +126,9 @@ private val skillCatalogTabs get() = listOf(AppStrings.added, AppStrings.feature
                                 icon = AppIcons.Skill,
                                 iconForeground = swatch.first,
                                 iconBackground = swatch.second,
-                                action = when {
-                                    bound -> AppStrings.bound
-                                    chosen -> AppStrings.remove
-                                    else -> AppStrings.use
-                                },
-                                actionEnabled = conversation != null && skill.available && !bound,
-                                onAction = { if (conversation != null && skill.available && !bound) vm.enqueue { vm.report(vm.actions.setSkill(conversation.id, skill, !chosen)) } },
+                                action = if (bound || chosen) AppStrings.remove else AppStrings.use,
+                                actionEnabled = conversation != null && (bound || chosen || skill.available),
+                                onAction = { if (conversation != null && (bound || chosen || skill.available)) vm.enqueue { vm.report(vm.actions.setSkill(conversation.id, skill, !bound && !chosen)) } },
                                 onClick = { selectedRef = skill.ref; page = "detail" },
                             )
                         }
