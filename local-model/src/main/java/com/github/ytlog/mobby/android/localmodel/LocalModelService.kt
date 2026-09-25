@@ -80,7 +80,10 @@ class LocalModelService : Service() {
         routing {
             get("/local/v1/health") {
                 if (!permitted(call)) return@get
-                call.respondText(buildJsonObject { put("instanceId", instanceId); put("status", "LISTENING"); put("port", port); put("loadedModel", engine.current()) }.toString(), ContentType.Application.Json)
+                call.respondText(buildJsonObject {
+                    put("instanceId", instanceId); put("status", "LISTENING"); put("port", port); put("loadedModel", engine.current())
+                    engine.telemetry.snapshot()?.let { put("inference", it.json()) }
+                }.toString(), ContentType.Application.Json)
             }
             get("/local/v1/engines") {
                 if (!permitted(call)) return@get

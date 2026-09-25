@@ -30,9 +30,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.longOrNull
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -52,6 +55,7 @@ class LocalModelActivity : ComponentActivity() {
     private var candidates by mutableStateOf<List<Candidate>>(emptyList())
     private var installed by mutableStateOf<List<InstalledModel>>(emptyList())
     private var loaded by mutableStateOf<String?>(null)
+    private var inference by mutableStateOf<JsonObject?>(null)
     private var progress by mutableStateOf<InstallProgress?>(null)
     private var modelMutation by mutableStateOf<Pair<String, Boolean>?>(null)
     private var showConnectionDetails by mutableStateOf(false)
@@ -108,7 +112,13 @@ class LocalModelActivity : ComponentActivity() {
         val health = withContext(Dispatchers.IO) { json.parseToJsonElement(request("/local/v1/health")).jsonObject }
         ready = health["status"]?.jsonPrimitive?.content == "LISTENING"
         loaded = health["loadedModel"]?.jsonPrimitive?.contentOrNull
+        inference = health["inference"] as? JsonObject
         installed = withContext(Dispatchers.IO) { json.decodeFromString(request("/local/v1/models")) }
+    }
+
+    private suspend fun refreshInference() {
+        val health = withContext(Dispatchers.IO) { json.parseToJsonElement(request("/local/v1/health")).jsonObject }
+        inference = health["inference"] as? JsonObject
     }
 
     private suspend fun listModels() {
@@ -163,6 +173,12 @@ class LocalModelActivity : ComponentActivity() {
         action { startService() }
         setContent {
             LocalModelTheme(dark) {
+                LaunchedEffect(ready) {
+                    while (ready) {
+                        delay(1_500)
+                        runCatching { refreshInference() }
+                    }
+                }
                 val clipboard = getSystemService(ClipboardManager::class.java)
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
@@ -181,6 +197,40 @@ class LocalModelActivity : ComponentActivity() {
                                     }
                                     if (starting) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
                                     else if (!ready) TextButton(onClick = { action { startService() } }) { Text(label("重试", "Retry")) }
+                                }
+                            }
+                            inference?.let { sample ->
+                                val stage = sample["stage"]?.jsonPrimitive?.content.orEmpty()
+                                val prompt = sample["promptTokens"]?.jsonPrimitive?.intOrNull ?: 0
+                                val reused = sample["reusedTokens"]?.jsonPrimitive?.intOrNull ?: 0
+                                val elapsed = sample["elapsedMs"]?.jsonPrimitive?.longOrNull ?: 0
+                                val setup = sample["setupMs"]?.jsonPrimitive?.longOrNull
+                                val prefill = sample["prefillMs"]?.jsonPrimitive?.longOrNull
+                                val firstToken = sample["firstTokenMs"]?.jsonPrimitive?.longOrNull
+                                val firstText = sample["firstTextMs"]?.jsonPrimitive?.longOrNull
+                                val loadTime = sample["loadMs"]?.jsonPrimitive?.longOrNull
+                                ModelSection(label("推理统计", "Inference metrics")) {
+                                    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text(when (stage) {
+                                            "setup" -> label("准备请求", "Preparing")
+                                            "prefill" -> label("处理提示词", "Processing prompt")
+                                            "generating" -> label("生成中", "Generating")
+                                            "generated" -> label("最近一次生成结束", "Last generation finished")
+                                            "failed" -> label("最近一次请求失败", "Last request failed")
+                                            "ready" -> label("模型已加载", "Model loaded")
+                                            else -> label("加载失败", "Load failed")
+                                        }, style = MaterialTheme.typography.bodyMedium)
+                                        if (prompt > 0) Text(label("提示词 $prompt token，复用 $reused token", "Prompt $prompt tokens, reused $reused tokens"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Text(label("耗时 ${elapsed} ms", "Elapsed ${elapsed} ms") +
+                                            (setup?.let { label(" · 准备 $it ms", " · setup $it ms") } ?: "") +
+                                            (prefill?.let { label(" · 提示词处理 $it ms", " · prompt processing $it ms") } ?: "") +
+                                            (loadTime?.let { label(" · 加载 $it ms", " · load $it ms") } ?: ""),
+                                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        if (firstToken != null || firstText != null) Text(
+                                            (firstToken?.let { label("首 token $it ms", "First token $it ms") } ?: "") +
+                                                (firstText?.let { label(" · 首段文字 $it ms", " · first text $it ms") } ?: ""),
+                                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
                                 }
                             }
                             error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }

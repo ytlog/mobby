@@ -10,6 +10,17 @@ object LlamaNative {
     @JvmStatic external fun generateTools(handle: Long, messagesJson: String, toolsJson: String, choice: String,
         parallel: Boolean, enableThinking: Boolean, temperature: Float, topP: Float, maxTokens: Int, sink: ToolSink): String
 
-    interface TokenSink { fun onStart(inputTokens: Int): Boolean; fun onToken(text: String): Boolean }
-    interface ToolSink { fun onStart(inputTokens: Int): Boolean; fun onToken(): Boolean; fun onText(text: String): Boolean }
+    interface TokenSink {
+        fun onStart(inputTokens: Int, reusedTokens: Int): Boolean
+        fun onPrefillComplete(): Boolean
+        fun onGeneratedToken(count: Int): Boolean
+        fun onToken(text: String): Boolean
+    }
+    interface ToolSink {
+        fun onStart(inputTokens: Int, reusedTokens: Int): Boolean
+        fun onPrefillComplete(): Boolean
+        fun onGeneratedToken(count: Int): Boolean
+        fun onToken(): Boolean
+        fun onText(text: String): Boolean
+    }
 }

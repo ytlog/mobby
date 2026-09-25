@@ -4,6 +4,7 @@ import com.github.ytlog.mobby.android.localmodel.llama.LlamaNative
 
 internal data class PromptMessage(val role: String, val content: String)
 internal class ModelEngine(private val store: LocalModelStore) {
+    val telemetry = InferenceTelemetry()
     @Volatile private var loaded: InstalledModel? = null
     private var handle = 0L
 
@@ -14,10 +15,17 @@ internal class ModelEngine(private val store: LocalModelStore) {
         require(model.engine == "llama") { "Backend is not packaged" }
         if (loaded?.id == id && handle != 0L) return id
         if (handle != 0L) { LlamaNative.unload(handle); handle = 0L; loaded = null }
-        handle = LlamaNative.load(store.file(model).absolutePath)
-        check(handle != 0L) { "Model could not be loaded" }
-        loaded = model
-        return id
+        val started = System.nanoTime()
+        try {
+            handle = LlamaNative.load(store.file(model).absolutePath)
+            check(handle != 0L) { "Model could not be loaded" }
+            loaded = model
+            telemetry.load(id, (System.nanoTime() - started) / 1_000_000, true)
+            return id
+        } catch (e: Exception) {
+            telemetry.load(id, (System.nanoTime() - started) / 1_000_000, false)
+            throw e
+        }
     }
 
     @Synchronized fun unload() {
@@ -30,22 +38,42 @@ internal class ModelEngine(private val store: LocalModelStore) {
         require(messages.isNotEmpty() && messages.size <= 64)
         require(maxTokens in 1..1024)
         require(messages.all { it.role in listOf("system", "user", "assistant") && it.content.isNotBlank() && it.content.length <= 32_768 })
-        return LlamaNative.generate(handle, messages.map { it.role }.toTypedArray(), messages.map { it.content }.toTypedArray(), maxTokens,
-            object : LlamaNative.TokenSink {
-                override fun onStart(inputTokens: Int) = onStart(inputTokens)
-                override fun onToken(text: String) = sink(text)
-            })
+        val run = telemetry.begin(id, "text")
+        var completed = false
+        try {
+            val count = LlamaNative.generate(handle, messages.map { it.role }.toTypedArray(), messages.map { it.content }.toTypedArray(), maxTokens,
+                object : LlamaNative.TokenSink {
+                    override fun onStart(inputTokens: Int, reusedTokens: Int): Boolean {
+                        run.prompt(inputTokens, reusedTokens); return onStart(inputTokens)
+                    }
+                    override fun onPrefillComplete(): Boolean { run.prefillComplete(); return true }
+                    override fun onGeneratedToken(count: Int): Boolean { run.token(count); return true }
+                    override fun onToken(text: String): Boolean { run.text(); return sink(text) }
+                })
+            completed = count >= 0
+            return count
+        } finally { run.finish(completed) }
     }
 
     @Synchronized fun generateTools(id: String, context: ToolContext, maxTokens: Int, keepGoing: () -> Boolean,
                                     onStart: (Int) -> Boolean = { true }, onText: (String) -> Boolean = { true }): String {
         check(loaded?.id == id && handle != 0L) { "Model is not loaded" }
-        return LlamaNative.generateTools(handle, context.messages.toString(), context.tools.toString(), context.choice,
-            context.parallel, context.enableThinking, context.temperature, context.topP, maxTokens,
-            object : LlamaNative.ToolSink {
-                override fun onStart(inputTokens: Int) = keepGoing() && onStart(inputTokens)
-                override fun onToken() = keepGoing()
-                override fun onText(text: String) = keepGoing() && onText(text)
-            })
+        val run = telemetry.begin(id, "tools")
+        var completed = false
+        try {
+            val raw = LlamaNative.generateTools(handle, context.messages.toString(), context.tools.toString(), context.choice,
+                context.parallel, context.enableThinking, context.temperature, context.topP, maxTokens,
+                object : LlamaNative.ToolSink {
+                    override fun onStart(inputTokens: Int, reusedTokens: Int): Boolean {
+                        run.prompt(inputTokens, reusedTokens); return keepGoing() && onStart(inputTokens)
+                    }
+                    override fun onPrefillComplete(): Boolean { run.prefillComplete(); return keepGoing() }
+                    override fun onGeneratedToken(count: Int): Boolean { run.token(count); return keepGoing() }
+                    override fun onToken() = keepGoing()
+                    override fun onText(text: String): Boolean { run.text(); return keepGoing() && onText(text) }
+                })
+            completed = true
+            return raw
+        } finally { run.finish(completed) }
     }
 }
