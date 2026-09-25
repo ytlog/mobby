@@ -26,7 +26,7 @@ data class Conversation(
     val anchor: String? = null, val anchorOffset: Int = 0, val updatedAt: Long = 0, val creator: String? = null,
     val sessions: Map<AgentId, String> = emptyMap()
 )
-data class TurnExecution(val turnId: TurnId, val conversationId: ConversationId, val draft: Draft, val config: NextTurnConfig, val session: String?, val creatingSkill: Boolean = false)
+data class TurnExecution(val turnId: TurnId, val conversationId: ConversationId, val draft: Draft, val config: NextTurnConfig, val session: String?, val creatingSkill: Boolean = false, val projectRules: String = "")
 enum class Failure { PENDING_ATTACHMENT, INPUT_TOO_LARGE, BUSY, INVALID_CONFIG, UNSUPPORTED_CAPABILITY, UNAVAILABLE, EMPTY_DRAFT, PENDING_SUBMISSION }
 sealed interface Submission {
     data class Accepted(val executionId: ExecutionId) : Submission

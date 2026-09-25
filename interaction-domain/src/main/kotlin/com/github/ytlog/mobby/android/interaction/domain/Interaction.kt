@@ -40,7 +40,8 @@ data class Turn(
     val progress: ProgressNotice? = null, val pending: Boolean = false, val occupied: Boolean = false,
     val expanded: Boolean? = null, val expandedSteps: Set<String> = emptySet(),
     val skillProposals: List<SkillProposal> = emptyList(), val creatingSkill: Boolean = false, val proposalsLoading: Boolean = false, val attachments: List<String> = emptyList(),
-    val permissions: List<PermissionRequest> = emptyList(), val deviceOperations: List<DeviceRecord> = emptyList()
+    val permissions: List<PermissionRequest> = emptyList(), val deviceOperations: List<DeviceRecord> = emptyList(),
+    val workspace: String = "default", val project: String? = null
 ) {
     /** Replies stay where they were produced. Adjacent tool calls form one run and collapse after they finish. */
     fun transcript(): List<TranscriptEntry> {
@@ -95,7 +96,7 @@ sealed interface TranscriptEntry {
 }
 data class ConversationSummary(val conversation: Conversation, val phase: ExecutionPhase? = null, val occupied: Boolean = false, val execution: ExecutionId? = null, val deviceOperation: com.github.ytlog.mobby.android.deviceinteraction.model.DeviceOperation? = null)
 data class ConversationDetail(val conversation: Conversation, val turns: List<Turn>, val hasEarlier: Boolean = false)
-data class Project(val name: String, val defaultWorkspace: String)
+data class Project(val name: String, val workspace: String, val skills: Set<String> = emptySet(), val rules: String = "")
 data class InteractionState(
     val conversations: List<ConversationSummary> = emptyList(), val selected: ConversationDetail? = null,
     val loading: Boolean = true, val error: String? = null, val projects: List<Project> = emptyList()
@@ -164,7 +165,7 @@ interface SystemPort {
 }
 interface InteractionRepository : ConversationRepository {
     suspend fun saveProject(project: Project, createOnly: Boolean = false): OperationResult = OperationResult.Failed(AppStrings.thisStorageDoesNotSupportDefaultProjectWorkspaces)
-    suspend fun createInProject(config: NextTurnConfig, project: String, workspaceOverride: String? = null): ConversationId = error("Project creation is unsupported")
+    suspend fun createInProject(config: NextTurnConfig, project: String): ConversationId = error("Project creation is unsupported")
     suspend fun saveSkillProposal(proposal: SkillProposal, markdown: String): DataResult<Skill> = DataResult.Failed(AppStrings.thisConversationDoesNotSupportSavingGeneratedDrafts)
     suspend fun conversation(id: ConversationId): Conversation
     suspend fun awaitAttachmentRecovery()
@@ -186,7 +187,7 @@ interface InteractionRepository : ConversationRepository {
     suspend fun updateGateway(profile: GatewayProfile)
     suspend fun rename(id: ConversationId, title: String): OperationResult
     suspend fun pin(id: ConversationId)
-    suspend fun setProject(id: ConversationId, project: String?)
+    suspend fun setProject(id: ConversationId, project: String?): OperationResult
     suspend fun archive(id: ConversationId, archived: Boolean): OperationResult
     suspend fun delete(id: ConversationId, deleted: Boolean): OperationResult
     suspend fun expansion(turnId: TurnId, expanded: Boolean)
@@ -204,7 +205,6 @@ class InteractionUseCases(
     private val preferences: PreferencePort
 ) {
     suspend fun workspaces() = system.workspaces()
-    suspend fun createWorkspace(name: String) = submissionScope.async { system.createWorkspace(name) }.await()
     suspend fun eventHistoryLimits() = system.eventHistoryLimits()
     suspend fun saveEventHistoryLimits(value: EventHistoryLimits) = submissionScope.async { system.saveEventHistoryLimits(value) }.await()
     val appearance get() = preferences.appearance
@@ -217,13 +217,37 @@ class InteractionUseCases(
     suspend fun history(id: ConversationId) = repository.history(id)
     suspend fun select(id: ConversationId) = repository.select(id)
     suspend fun create(config: NextTurnConfig, project: String? = null) =
-        if (project == null) repository.create(config) else repository.createInProject(config, project, config.workspace)
+        if (project == null) repository.create(config.copy(workspace = "default")) else repository.createInProject(config, project)
+    suspend fun createProject(name: String, skills: Set<String> = emptySet()): OperationResult = submissionScope.async {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty() || trimmed.length > 80 || trimmed.any { it.isISOControl() })
+            return@async OperationResult.Failed(AppStrings.projectNameIsRequiredAndMustNotExceedCharacters)
+        validateProjectSkills(skills)?.let { return@async it }
+        val existing = (system.workspaces() as? DataResult.Loaded)?.value
+            ?: return@async OperationResult.Failed(AppStrings.cannotReadWorkspacesRefreshAndRetry)
+        existing.firstOrNull { it.name == trimmed }?.let { workspace ->
+            return@async repository.saveProject(Project(trimmed, workspace.ref, skills), createOnly = true)
+        }
+        when (val created = system.createWorkspace(trimmed)) {
+            is DataResult.Failed -> OperationResult.Failed(created.message)
+            is DataResult.Loaded -> repository.saveProject(Project(trimmed, created.value.ref, skills), createOnly = true)
+        }
+    }.await()
     suspend fun saveProject(project: Project, createOnly: Boolean = false): OperationResult = submissionScope.async {
+        validateProjectSkills(project.skills)?.let { return@async it }
         val workspaces = (system.workspaces() as? DataResult.Loaded)?.value
             ?: return@async OperationResult.Failed(AppStrings.cannotReadWorkspacesRefreshAndRetry)
-        if (workspaces.none { it.ref == project.defaultWorkspace }) return@async OperationResult.Failed(AppStrings.workspaceUnavailableSelectAnotherWorkspace)
+        if (workspaces.none { it.ref == project.workspace }) return@async OperationResult.Failed(AppStrings.workspaceUnavailableSelectAnotherWorkspace)
         repository.saveProject(project, createOnly)
     }.await()
+    private suspend fun validateProjectSkills(names: Set<String>): OperationResult.Failed? {
+        if (names.size > 24) return OperationResult.Failed(AppStrings.skillChangedOrIsUnavailableSelectItAgain)
+        if (names.isEmpty()) return null
+        val available = (system.skills(AgentId.CODEX) as? DataResult.Loaded)?.value
+            ?: return OperationResult.Failed(AppStrings.skillDirectoryUnavailablePleaseRetry)
+        return if (available.filter { it.available }.map { it.name }.toSet().containsAll(names)) null
+            else OperationResult.Failed(AppStrings.skillChangedOrIsUnavailableSelectItAgain)
+    }
     suspend fun draft(id: ConversationId, text: String, start: Int, end: Int) = repository.editDraft(id, text, start, end)
     suspend fun configure(id: ConversationId, config: NextTurnConfig) = repository.configure(id, config)
     suspend fun prepareSend(id: ConversationId) = repository.prepareTurn(id, TurnId(nextId()))

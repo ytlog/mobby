@@ -13,7 +13,6 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
 
-internal data class CreatedWorkspace(val owner: String, val workspace: WorkspaceOption)
 internal data class ReadingTarget(val conversation: ConversationId, val key: String, val sequence: Long)
 internal data class SkillProposalEditor(val proposal: SkillProposal, val value: TextFieldValue = TextFieldValue(proposal.markdown),
     val preview: SkillContent? = null, val busy: Boolean = false, val error: String? = null, val operation: Long = 0)
@@ -130,24 +129,24 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
         }
     }
     val projectEditor = MutableStateFlow<ProjectEditor?>(null)
+    val projectCreated = MutableStateFlow<String?>(null)
     private var projectOperation = 0L
-    fun openProject(project: Project?) {
+    fun openProject() {
         if (projectEditor.value?.busy == true) return
-        projectEditor.value = ProjectEditor(project?.name.orEmpty(), project?.defaultWorkspace ?: "default", project != null, operation = ++projectOperation)
+        projectEditor.value = ProjectEditor(operation = ++projectOperation)
     }
     fun editProject(value: ProjectEditor) {
         projectEditor.update { if (it?.operation == value.operation && !it.busy) value.copy(error = null) else it }
     }
     fun dismissProject() { if (projectEditor.value?.busy != true) projectEditor.value = null }
     fun saveProject() {
-        if (workspaceCreating.value) return
         val editor = projectEditor.value?.takeUnless { it.busy } ?: return
         projectEditor.value = editor.copy(busy = true, error = null)
         viewModelScope.launch {
             try {
-                val result = actions.saveProject(Project(editor.name.trim(), editor.workspace), createOnly = !editor.existing)
+                val result = actions.createProject(editor.name)
                 projectEditor.update { current -> if (current?.operation != editor.operation) current else when (result) {
-                    OperationResult.Done -> null
+                    OperationResult.Done -> { projectCreated.value = editor.name.trim(); null }
                     is OperationResult.Failed -> current.copy(error = result.message)
                 } }
             } catch (e: CancellationException) { throw e }
@@ -157,8 +156,6 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
     }
     val workspaces = MutableStateFlow<List<WorkspaceOption>>(emptyList())
     val workspaceError = MutableStateFlow<String?>(null)
-    val workspaceCreating = MutableStateFlow(false)
-    val workspaceCreated = MutableStateFlow<CreatedWorkspace?>(null)
     private var workspaceQuery = 0L
     fun loadWorkspaces() {
         val query = ++workspaceQuery
@@ -174,21 +171,6 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
             catch (_: Exception) { if (query == workspaceQuery) workspaceError.value = AppStrings.couldNotReadWorkspacesPleaseRetry }
         }
     }
-    fun createWorkspace(name: String, owner: String) {
-        if (workspaceCreating.value) return
-        workspaceCreating.value = true; workspaceError.value = null
-        viewModelScope.launch {
-            try {
-                when (val result = actions.createWorkspace(name)) {
-                    is DataResult.Loaded -> { workspaceCreated.value = CreatedWorkspace(owner, result.value); loadWorkspaces() }
-                    is DataResult.Failed -> workspaceError.value = result.message
-                }
-            } catch (e: CancellationException) { throw e }
-            catch (_: Exception) { workspaceError.value = AppStrings.workspaceCreationUnconfirmedRefreshTheDirectoryToCheck }
-            finally { workspaceCreating.value = false }
-        }
-    }
-    fun consumeWorkspaceCreated(value: CreatedWorkspace) { workspaceCreated.compareAndSet(value, null) }
     val skillEditor = MutableStateFlow<SkillEditor?>(null)
     val skillEditorSaved = MutableStateFlow<Long?>(null)
     private var editorOperation = 0L
@@ -349,6 +331,28 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
     fun send() {
         val id = composer.value.conversation ?: return
         enqueue {
+            when (val prepared = actions.prepareSend(id)) {
+                is PrepareTurnResult.Rejected -> feedback.send(failure(prepared.reason))
+                is PrepareTurnResult.Prepared -> viewModelScope.launch { safe {
+                    when (val result = actions.sendPrepared(prepared.turn)) {
+                        is Submission.Rejected -> feedback.send(failure(result.reason))
+                        Submission.Unconfirmed -> feedback.send(AppStrings.requestResultUnconfirmedDraftPreservedCheckTheOriginalRequest)
+                        is Submission.Accepted -> Unit
+                    }
+                } }
+            }
+        }
+    }
+    fun sendInProject(project: String, text: String, opened: () -> Unit) {
+        if (text.isBlank()) return
+        enqueue {
+            val agent = defaultGateway.value?.agent ?: state.value.selected?.conversation?.config?.agent ?: AgentId.CODEX
+            val config = ConversationGatewayResolver.newConversation(agent, state.value.selected?.conversation,
+                state.value.conversations, gateways.value, defaultGateway.value)
+            if (config == null) { feedback.send(AppStrings.noGatewayAvailableOpenGatewaySettings); return@enqueue }
+            val id = actions.create(config, project)
+            actions.draft(id, text, text.length, text.length)
+            opened()
             when (val prepared = actions.prepareSend(id)) {
                 is PrepareTurnResult.Rejected -> feedback.send(failure(prepared.reason))
                 is PrepareTurnResult.Prepared -> viewModelScope.launch { safe {

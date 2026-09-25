@@ -44,39 +44,6 @@ import kotlinx.coroutines.*
     AlertDialog(onDismissRequest = dismiss, containerColor = raisedColor(), shape = RoundedCornerShape(24.dp), title = { Text(title) }, text = { OutlinedTextField(value, { value = it }, singleLine = true) },
         confirmButton = { TextButton(onClick = { save(value) }) { Text(AppStrings.save) } }, dismissButton = { TextButton(onClick = dismiss) { Text(AppStrings.cancel) } })
 }
-@Composable internal fun WorkspacePicker(vm: ConversationViewModel, selected: String, owner: String, enabled: Boolean = true, select: (String) -> Unit) {
-    val workspaces by vm.workspaces.collectAsStateWithLifecycle()
-    val error by vm.workspaceError.collectAsStateWithLifecycle()
-    val creating by vm.workspaceCreating.collectAsStateWithLifecycle()
-    val created by vm.workspaceCreated.collectAsStateWithLifecycle()
-    var adding by rememberSaveable { mutableStateOf(false) }
-    var name by rememberSaveable { mutableStateOf("") }
-    LaunchedEffect(Unit) { vm.loadWorkspaces() }
-    LaunchedEffect(created, enabled) { if (enabled) created?.takeIf { it.owner == owner }?.let { select(it.workspace.ref); adding = false; name = ""; vm.consumeWorkspaceCreated(it) } }
-    val current = workspaces.firstOrNull { it.ref == selected }?.name ?: selected
-    if (!enabled) SettingsGroup(AppStrings.workspace) {
-        Text(current, Modifier.padding(horizontal = 16.dp, vertical = 14.dp), style = MaterialTheme.typography.bodyLarge)
-    } else {
-        SettingsGroup(AppStrings.workspace) {
-            workspaces.forEachIndexed { index, workspace ->
-                if (index > 0) GroupDivider()
-                ChoiceRow(workspace.name, selected == workspace.ref, { select(workspace.ref) }, enabled = !creating)
-            }
-            if (workspaces.isNotEmpty()) GroupDivider()
-            SettingsAction(if (adding) AppStrings.collapseNewWorkspace else AppStrings.newWorkspace, enabled = !creating) { adding = !adding }
-            if (adding) {
-                SettingsField(name, { name = it }, AppStrings.workspaceName, enabled = !creating)
-                Text(AppStrings.createASeparateFolderInTheAppSLocal, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                SettingsAction(AppStrings.createWorkspace, enabled = !creating && name.isNotBlank() && name.length <= 80) { vm.createWorkspace(name, owner) }
-            }
-            if (creating) LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp))
-            GroupDivider()
-            SettingsAction(AppStrings.refreshWorkspaces, enabled = !creating, onClick = vm::loadWorkspaces)
-        }
-        if (workspaces.none { it.ref == selected }) SettingsCaption(AppStrings.currentWorkspaceUnavailableRefreshOrSelectAnotherWorkspace)
-        error?.let { SettingsCaption(it, error = true) }
-    }
-}
 @Composable internal fun AgentConfigMenu(expanded: Boolean, dismiss: () -> Unit, c: Conversation, vm: ConversationViewModel, anchor: IntRect = IntRect.Zero) {
     if (!expanded) return
     val agents by vm.agents.collectAsStateWithLifecycle()
@@ -85,19 +52,8 @@ import kotlinx.coroutines.*
     var gatewayId by rememberSaveable(c.id.value) { mutableStateOf(c.config.gatewayProfile) }
     var model by rememberSaveable(c.id.value) { mutableStateOf(c.config.model) }
     var reasoning by rememberSaveable(c.id.value) { mutableStateOf(c.config.reasoning) }
-    var workspace by rememberSaveable(c.id.value) { mutableStateOf(c.config.workspace) }
-    val workspaceOwner = rememberSaveable(c.id.value) { java.util.UUID.randomUUID().toString() }
-    val workspaces by vm.workspaces.collectAsStateWithLifecycle()
-    val error by vm.workspaceError.collectAsStateWithLifecycle()
-    val creating by vm.workspaceCreating.collectAsStateWithLifecycle()
-    val created by vm.workspaceCreated.collectAsStateWithLifecycle()
-    var adding by rememberSaveable { mutableStateOf(false) }
-    var name by rememberSaveable { mutableStateOf("") }
-    val canMove = !c.hasTurns && c.draft.attachments.isEmpty() && c.draft.pendingAttachment == null
     val option = agents.firstOrNull { it.agent == agent }
     val levels = option?.models?.get(model).orEmpty()
-    LaunchedEffect(Unit) { vm.loadWorkspaces() }
-    LaunchedEffect(created, canMove) { if (canMove) created?.takeIf { it.owner == workspaceOwner }?.let { workspace = it.workspace.ref; adding = false; name = ""; vm.consumeWorkspaceCreated(it) } }
     FrostedMenu(true, dismiss, anchor) {
         Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()).padding(bottom = 12.dp)) {
             MenuSection(AppStrings.agentLabel) {
@@ -128,23 +84,6 @@ import kotlinx.coroutines.*
                     levels.forEach { level -> MenuOption(level, reasoning == level) { reasoning = level } }
                 }
             }
-            HorizontalDivider(Modifier.padding(horizontal = 20.dp, vertical = 8.dp), color = menuInk().copy(alpha = 0.08f))
-            MenuSection(AppStrings.workspace) {
-                if (!canMove) MenuCaption(if (c.hasTurns) AppStrings.thisConversationHasTaskHistorySoItsExecutionWorkspace else AppStrings.removeDraftAttachmentsBeforeSwitchingWorkspaces)
-                workspaces.forEach { item -> MenuOption(item.name, workspace == item.ref, enabled = canMove && !creating) { workspace = item.ref } }
-                if (workspaces.none { it.ref == workspace }) MenuCaption(AppStrings.currentWorkspaceUnavailableRefreshOrSelectAnotherWorkspace)
-                if (canMove) {
-                    MenuAction(AppStrings.newWorkspace, !creating) { adding = !adding }
-                    if (adding) {
-                        OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth().padding(horizontal = 20.dp), label = { Text(AppStrings.workspaceName) }, singleLine = true, enabled = !creating)
-                        MenuCaption(AppStrings.createASeparateFolderInTheAppSLocal)
-                        MenuAction(AppStrings.createWorkspace, !creating && name.isNotBlank() && name.length <= 80) { vm.createWorkspace(name, workspaceOwner) }
-                    }
-                    if (creating) LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 20.dp))
-                }
-                error?.let { MenuCaption(it) }
-                MenuAction(AppStrings.refreshWorkspaces) { vm.loadWorkspaces() }
-            }
             MenuCaption(AppStrings.changesApplyToTheNextTurnTheCurrentExecution)
             if (agent != c.config.agent && c.hasTurns)
                 MenuCaption(AppStrings.continueInThisConversationCodexClaudeCodeAndOpencode)
@@ -154,7 +93,7 @@ import kotlinx.coroutines.*
         Button(
             onClick = {
                 val p = profiles.firstOrNull { it.agent == agent && it.id == gatewayId }
-                if (p != null) vm.enqueue { vm.actions.configure(c.id, NextTurnConfig(agent, model, reasoning, workspace, p.id, p.version)) }
+                if (p != null) vm.enqueue { vm.actions.configure(c.id, NextTurnConfig(agent, model, reasoning, c.config.workspace, p.id, p.version)) }
                 dismiss()
             },
             enabled = profiles.any { it.agent == agent && it.id == gatewayId },
@@ -172,18 +111,9 @@ import kotlinx.coroutines.*
     val defaultGateway by vm.defaultGateway.collectAsStateWithLifecycle()
     var agent by rememberSaveable { mutableStateOf(defaultGateway?.agent ?: c?.config?.agent ?: state.conversations.maxByOrNull { it.conversation.updatedAt }?.conversation?.config?.agent ?: AgentId.CODEX) }
     var agentChosen by rememberSaveable { mutableStateOf(false) }
-    var workspace by rememberSaveable { mutableStateOf(state.projects.firstOrNull { it.name == project }?.defaultWorkspace ?: c?.config?.workspace ?: "default") }
-    val workspaceOwner = rememberSaveable { java.util.UUID.randomUUID().toString() }
-    val workspaces by vm.workspaces.collectAsStateWithLifecycle()
-    val error by vm.workspaceError.collectAsStateWithLifecycle()
-    val creating by vm.workspaceCreating.collectAsStateWithLifecycle()
-    val created by vm.workspaceCreated.collectAsStateWithLifecycle()
-    var adding by rememberSaveable { mutableStateOf(false) }
-    var name by rememberSaveable { mutableStateOf("") }
     val remembered = ConversationGatewayResolver.newConversation(agent, c, state.conversations, profiles, defaultGateway)
-    val canCreate = !creating && remembered != null &&
-        workspaces.any { it.ref == workspace } && (project == null || state.projects.any { it.name == project })
-    LaunchedEffect(Unit) { vm.enqueue { vm.refresh() }; vm.loadWorkspaces() }
+    val canCreate = remembered != null && (project == null || state.projects.any { it.name == project })
+    LaunchedEffect(Unit) { vm.enqueue { vm.refresh() } }
     LaunchedEffect(defaultGateway, profiles, state.conversations) {
         if (!agentChosen && c == null) {
             agent = defaultGateway?.let { choice -> choice.agent.takeIf { candidate -> profiles.any { it.agent == candidate && it.id == choice.id } } }
@@ -193,40 +123,25 @@ import kotlinx.coroutines.*
             agent = defaultGateway?.agent?.takeIf { candidate -> profiles.any { it.agent == candidate } } ?: profiles.first().agent
         }
     }
-    LaunchedEffect(created) { created?.takeIf { it.owner == workspaceOwner }?.let { workspace = it.workspace.ref; adding = false; name = ""; vm.consumeWorkspaceCreated(it) } }
     FrostedMenu(true, onDismiss, anchor) {
         Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()).padding(bottom = 12.dp)) {
             Text(AppStrings.newConversation2, Modifier.padding(start = 20.dp, top = 18.dp, end = 20.dp, bottom = 4.dp), style = MaterialTheme.typography.titleMedium, color = menuInk(), fontWeight = FontWeight.Medium)
             MenuSection(AppStrings.project) {
-                MenuOption(AppStrings.noProject, project == null, enabled = !creating) { project = null; workspace = c?.config?.workspace ?: "default" }
-                state.projects.forEach { item -> MenuOption(item.name, project == item.name, enabled = !creating) { project = item.name; workspace = item.defaultWorkspace } }
+                MenuOption(AppStrings.noProject, project == null) { project = null }
+                state.projects.forEach { item -> MenuOption(item.name, project == item.name) { project = item.name } }
                 if (state.projects.isEmpty()) MenuCaption(AppStrings.createProjectsInProjectManagementInTheConversationDrawer)
             }
             MenuSection(AppStrings.agentLabel) {
                 AgentId.values().forEach { value ->
-                    MenuOption(value.label(), agent == value, icon = value.glyph(), enabled = !creating && profiles.any { it.agent == value }) { agent = value; agentChosen = true }
+                    MenuOption(value.label(), agent == value, icon = value.glyph(), enabled = profiles.any { it.agent == value }) { agent = value; agentChosen = true }
                 }
                 if (profiles.none { it.agent == agent }) MenuCaption(AppStrings.noGatewayAvailableOpenGatewaySettings)
-            }
-            HorizontalDivider(Modifier.padding(horizontal = 20.dp, vertical = 8.dp), color = menuInk().copy(alpha = 0.08f))
-            MenuSection(AppStrings.workspace) {
-                workspaces.forEach { item -> MenuOption(item.name, workspace == item.ref, enabled = !creating) { workspace = item.ref } }
-                if (workspaces.none { it.ref == workspace }) MenuCaption(AppStrings.currentWorkspaceUnavailableRefreshOrSelectAnotherWorkspace)
-                MenuAction(AppStrings.newWorkspace, !creating) { adding = !adding }
-                if (adding) {
-                    OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth().padding(horizontal = 20.dp), label = { Text(AppStrings.workspaceName) }, singleLine = true, enabled = !creating)
-                    MenuCaption(AppStrings.createASeparateFolderInTheAppSLocal)
-                    MenuAction(AppStrings.createWorkspace, !creating && name.isNotBlank() && name.length <= 80) { vm.createWorkspace(name, workspaceOwner) }
-                }
-                if (creating) LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 20.dp))
-                error?.let { MenuCaption(it) }
-                MenuAction(AppStrings.refreshWorkspaces) { vm.loadWorkspaces() }
             }
         }
         Button(
             onClick = {
                 val config = remembered ?: return@Button
-                onApply(config.copy(workspace = workspace), project)
+                onApply(config, project)
             },
             enabled = canCreate,
             modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 20.dp).heightIn(min = 48.dp),

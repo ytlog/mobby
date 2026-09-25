@@ -133,66 +133,6 @@ class WorkspacePickerTest {
         val valid = NextTurnConfig(AgentId.CODEX, "remote-other", null, "default", "REMOTE", 4)
         Assert.assertNull(ConversationGatewayResolver.repair(valid, listOf(remote, local), selected))
     }
-    @Test fun `selected workspace survives page recreation and reaches new conversation config`() {
-        val vm = vm()
-        var submitted: NextTurnConfig? = null
-        val restoration = StateRestorationTester(compose)
-        restoration.setContent { MaterialTheme { ConfigDialog(vm, null, {}, { config, _ -> submitted = config }) } }
-        compose.onNodeWithText("Claude Code").performScrollTo().performClick()
-        compose.onNodeWithText("Project B").performScrollTo().performClick()
-        restoration.emulateSavedInstanceStateRestore()
-        compose.onNodeWithText("创建").performClick()
-        Assert.assertEquals("second", submitted?.workspace)
-        Assert.assertEquals(AgentId.CLAUDE_CODE, submitted?.agent)
-        Assert.assertEquals("claude-fixture", submitted?.model)
-    }
-    @Test fun `workspace creation survives recreation without duplicate creation and selects its result`() {
-        val vm = vm()
-        var submitted: NextTurnConfig? = null
-        val restoration = StateRestorationTester(compose)
-        restoration.setContent { MaterialTheme { ConfigDialog(vm, null, {}, { config, _ -> submitted = config }) } }
-        compose.onNodeWithText("新建工作区").performScrollTo().performClick()
-        compose.onNodeWithText("工作区名称").performScrollTo().performTextReplacement("New workspace")
-        compose.onNodeWithText("创建工作区").performScrollTo().performClick()
-        compose.runOnIdle { vm.createWorkspace("duplicate", "duplicate-owner") }
-        restoration.emulateSavedInstanceStateRestore()
-        compose.onNodeWithText("创建").assertIsNotEnabled()
-        compose.runOnIdle { created.complete(WorkspaceOption("new-workspace", "New workspace")) }
-        compose.onNodeWithText("创建").performClick()
-        Assert.assertEquals("new-workspace", submitted?.workspace)
-        Assert.assertEquals(1, creations)
-    }
-    @Test fun `selecting a project supplies its default and an explicit workspace choice overrides it`() {
-        val vm = vm()
-        var submitted: NextTurnConfig? = null
-        var project: String? = null
-        compose.setContent { MaterialTheme { ConfigDialog(vm, null, {}, { config, group -> submitted = config; project = group }) } }
-        compose.onNodeWithText("Project A").performScrollTo().performClick()
-        compose.onNodeWithText("创建").performClick()
-        Assert.assertEquals("second", submitted?.workspace)
-        Assert.assertEquals("Project A", project)
-        compose.onNodeWithText("默认本机工作区").performScrollTo().performClick()
-        compose.onNodeWithText("创建").performClick()
-        Assert.assertEquals("default", submitted?.workspace)
-        Assert.assertEquals("Project A", project)
-    }
-    @Test fun `late workspace creation cannot change a different dialog selection`() {
-        val vm = vm()
-        val mounted = mutableStateOf(true)
-        var submitted: NextTurnConfig? = null
-        compose.setContent { if (mounted.value) MaterialTheme { ConfigDialog(vm, null, {}, { config, _ -> submitted = config }) } }
-        compose.onNodeWithText("新建工作区").performScrollTo().performClick()
-        compose.onNodeWithText("工作区名称").performScrollTo().performTextReplacement("New workspace")
-        compose.onNodeWithText("创建工作区").performScrollTo().performClick()
-        compose.runOnIdle { mounted.value = false }
-        compose.waitForIdle()
-        compose.runOnIdle { mounted.value = true }
-        compose.runOnIdle { created.complete(WorkspaceOption("new-workspace", "New workspace")) }
-        compose.onNodeWithText("创建").performClick()
-        Assert.assertEquals("default", submitted?.workspace)
-        Assert.assertEquals(1, creations)
-    }
-
     @Test fun `switching agent keeps the conversation and explains separate sessions`() {
         val vm = vm()
         val conversation = Conversation(ConversationId("c"), NextTurnConfig(AgentId.CODEX, "model", null, "default", "CODEX"), hasTurns = true, session = "codex-session")
@@ -212,32 +152,4 @@ class WorkspacePickerTest {
         compose.onNodeWithText("example.test · model · 1 个模型").assertDoesNotExist()
         compose.onNodeWithText("model").assertExists()
     }
-    @Test fun `project default save survives recreation without duplicate requests`() {
-        val vm = vm()
-        projectReply = CompletableDeferred()
-        val restoration = StateRestorationTester(compose)
-        restoration.setContent { MaterialTheme { ProjectPage(vm, {}) } }
-        compose.onNodeWithText("Project A").performClick()
-        compose.onNodeWithText("默认本机工作区").performScrollTo().performClick()
-        compose.onNodeWithText("保存项目").performClick()
-        compose.runOnIdle { vm.saveProject() }
-        restoration.emulateSavedInstanceStateRestore()
-        compose.onNodeWithText("保存项目").assertIsNotEnabled()
-        compose.runOnIdle { projectReply!!.complete(OperationResult.Done) }
-        compose.onNodeWithText("保存项目").assertDoesNotExist()
-        compose.onNodeWithText("默认工作区：默认本机工作区").assertExists()
-        Assert.assertEquals(listOf(Project("Project A", "default")), savedProjects)
-    }
-    @Test fun `new project is saved with the selected workspace`() {
-        val vm = vm()
-        compose.setContent { MaterialTheme { ProjectPage(vm, {}) } }
-        compose.onNodeWithText("新建项目").performClick()
-        compose.onNodeWithText("项目名称").performTextReplacement("Project C")
-        compose.onNodeWithText("Project B").performScrollTo().performClick()
-        compose.onNodeWithText("保存项目").performClick()
-        compose.onNodeWithText("Project C").assertExists()
-        compose.onNodeWithText("保存项目").assertDoesNotExist()
-        Assert.assertEquals(listOf(Project("Project C", "second")), savedProjects)
-    }
-
 }

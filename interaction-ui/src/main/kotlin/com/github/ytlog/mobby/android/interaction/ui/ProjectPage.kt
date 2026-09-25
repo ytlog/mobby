@@ -14,8 +14,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.github.ytlog.mobby.android.interaction.domain.*
 
-internal data class ProjectEditor(val name: String, val workspace: String, val existing: Boolean,
-    val busy: Boolean = false, val error: String? = null, val operation: Long)
+internal data class ProjectEditor(val name: String = "", val busy: Boolean = false, val error: String? = null, val operation: Long)
 
 @Composable internal fun ProjectChoices(projects: List<Project>, selected: String?, enabled: Boolean = true, select: (Project?) -> Unit) {
     Text(AppStrings.project, style = MaterialTheme.typography.labelLarge)
@@ -28,46 +27,44 @@ internal data class ProjectEditor(val name: String, val workspace: String, val e
     var selected by rememberSaveable(conversation.id.value) { mutableStateOf(conversation.project) }
     AlertDialog(onDismissRequest = dismiss, containerColor = raisedColor(), shape = RoundedCornerShape(24.dp), title = { Text(AppStrings.addToProject) }, text = {
         Column(Modifier.verticalScroll(rememberScrollState())) {
-            Text(AppStrings.onlyChangesGroupingExistingConversationsKeepTheirExecutionDirectory)
+            Text(AppStrings.movingConversationChangesFutureExecutionDirectory)
             ProjectChoices(projects, selected) { selected = it?.name }
         }
     }, confirmButton = { TextButton(onClick = { save(selected) }, enabled = selected == null || projects.any { it.name == selected }) { Text(AppStrings.save) } },
         dismissButton = { TextButton(onClick = dismiss) { Text(AppStrings.cancel) } })
 }
 
-@Composable internal fun ProjectPage(vm: ConversationViewModel, back: () -> Unit) {
+@Composable internal fun ProjectPage(vm: ConversationViewModel, back: () -> Unit, openProject: (String) -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
-    val workspaces by vm.workspaces.collectAsStateWithLifecycle()
     val editor by vm.projectEditor.collectAsStateWithLifecycle()
-    val creatingWorkspace by vm.workspaceCreating.collectAsStateWithLifecycle()
-    LaunchedEffect(Unit) { vm.loadWorkspaces() }
+    val created by vm.projectCreated.collectAsStateWithLifecycle()
+    LaunchedEffect(created) { created?.let { openProject(it); vm.projectCreated.value = null } }
     Column(Modifier.fillMaxSize()) {
         PageHeader(AppStrings.projectManagement, back)
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            SettingsCaption(AppStrings.theProjectSDefaultWorkspaceIsUsedForNew)
+            SettingsCaption(AppStrings.projectIsWorkspace)
             state.error?.let { SettingsCaption(it, error = true) }
             if (state.loading) SettingsCaption(AppStrings.readingProjects)
             SettingsGroup {
-                SettingsAction(AppStrings.newProject, enabled = !state.loading && state.error == null) { vm.openProject(null) }
+                SettingsAction(AppStrings.newProject, enabled = !state.loading && state.error == null) { vm.openProject() }
                 state.projects.forEach { project ->
                     GroupDivider()
-                    val workspace = workspaces.firstOrNull { it.ref == project.defaultWorkspace }?.name ?: AppStrings.unavailable
-                    SettingsItem(project.name, { vm.openProject(project) }, AppStrings.defaultWorkspace(workspace))
+                    val count = state.conversations.count { it.conversation.project == project.name && !it.conversation.deleted }
+                    SettingsItem(project.name, { openProject(project.name) }, AppStrings.projectConversationCount(count))
                 }
             }
             if (state.projects.isEmpty() && !state.loading && state.error == null) EmptyPlaceholder(AppStrings.noProjectsYet, AppStrings.createProjectsToGroupConversationsByWorkspace)
         }
     }
-    editor?.let { current -> AlertDialog(onDismissRequest = vm::dismissProject, containerColor = MaterialTheme.colorScheme.background, shape = RoundedCornerShape(24.dp), tonalElevation = 0.dp,
-        title = { Text(if (current.existing) current.name else AppStrings.newProject, style = MaterialTheme.typography.titleMedium) }, text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                SettingsCaption(if (current.existing) AppStrings.changingTheDefaultWorkspaceDoesNotMoveExistingConversations else AppStrings.thisWorkspaceIsUsedForNewConversationsInThe)
-                if (!current.existing) SettingsGroup { SettingsField(current.name, { vm.editProject(current.copy(name = it)) }, AppStrings.projectName, enabled = !current.busy) }
-                WorkspacePicker(vm, current.workspace, "project:${current.operation}", !current.busy) { vm.editProject(current.copy(workspace = it)) }
+    editor?.let { current -> AlertDialog(onDismissRequest = vm::dismissProject, containerColor = raisedColor(), shape = RoundedCornerShape(24.dp), tonalElevation = 0.dp,
+        title = { Text(AppStrings.newProject, style = MaterialTheme.typography.titleMedium) }, text = {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                OutlinedTextField(current.name, { vm.editProject(current.copy(name = it)) }, Modifier.fillMaxWidth(),
+                    label = { Text(AppStrings.projectName) }, singleLine = true, enabled = !current.busy)
                 current.error?.let { SettingsCaption(it, error = true) }
                 if (current.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             }
         }, confirmButton = { TextButton(onClick = vm::saveProject,
-            enabled = !current.busy && !creatingWorkspace && current.name.isNotBlank() && (current.existing || current.name.trim().length <= 80) && workspaces.any { it.ref == current.workspace }) { Text(AppStrings.saveProject) } },
+            enabled = !current.busy && current.name.isNotBlank() && current.name.trim().length <= 80) { Text(AppStrings.create) } },
         dismissButton = { TextButton(onClick = vm::dismissProject, enabled = !current.busy) { Text(AppStrings.cancel) } }) }
 }

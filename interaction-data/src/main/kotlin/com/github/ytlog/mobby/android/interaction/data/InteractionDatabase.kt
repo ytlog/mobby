@@ -5,7 +5,7 @@ import androidx.room.*
 import kotlinx.coroutines.flow.Flow
 
 @Entity(tableName = "projects")
-internal data class ProjectRow(@PrimaryKey val name: String, val defaultWorkspace: String)
+internal data class ProjectRow(@PrimaryKey val name: String, val workspace: String, val skills: String = "[]", val rules: String = "")
 
 @Entity(tableName = "conversations")
 internal data class ConversationRow(@PrimaryKey val id: String, val body: String, val updatedAt: Long)
@@ -35,6 +35,7 @@ internal data class TurnWithChunks(
 @Dao internal interface InteractionDao {
     @Query("SELECT * FROM projects ORDER BY name") fun projects(): Flow<List<ProjectRow>>
     @Query("SELECT * FROM projects WHERE name=:name") suspend fun project(name: String): ProjectRow?
+    @Query("SELECT * FROM projects WHERE workspace=:workspace LIMIT 1") suspend fun projectByWorkspace(workspace: String): ProjectRow?
     @Upsert suspend fun save(row: ProjectRow)
     @Query("SELECT * FROM conversations ORDER BY updatedAt DESC") fun conversations(): Flow<List<ConversationRow>>
     @Transaction
@@ -53,6 +54,7 @@ internal data class TurnWithChunks(
         )""") fun conversationActivities(): Flow<List<ConversationActivityRow>>
     @Query("SELECT conversationId FROM selection WHERE `key`='current'") fun selection(): Flow<String?>
     @Query("SELECT * FROM conversations WHERE id=:id") suspend fun conversation(id: String): ConversationRow?
+    @Query("SELECT * FROM conversations WHERE id=:id") fun observeConversation(id: String): Flow<ConversationRow?>
     @Query("SELECT * FROM conversations ORDER BY updatedAt DESC") suspend fun allConversations(): List<ConversationRow>
     @Query("SELECT * FROM turns WHERE conversationId=:id ORDER BY createdAt,id") suspend fun conversationTurns(id: String): List<TurnRow>
     @Query("SELECT * FROM turns WHERE conversationId=:id AND occupied=1 ORDER BY createdAt,id LIMIT 1") suspend fun earliestOccupied(id: String): TurnRow?
@@ -78,12 +80,12 @@ internal data class TurnWithChunks(
     @Upsert suspend fun select(row: SelectionRow)
     @Upsert suspend fun chunks(rows: List<ChunkRow>)
 }
-@Database(entities = [ConversationRow::class, TurnRow::class, ChunkRow::class, SelectionRow::class, ExpiredOutputCacheRow::class, ProjectRow::class], version = 6, exportSchema = true)
+@Database(entities = [ConversationRow::class, TurnRow::class, ChunkRow::class, SelectionRow::class, ExpiredOutputCacheRow::class, ProjectRow::class], version = 1, exportSchema = false)
 internal abstract class InteractionDatabase : RoomDatabase() {
     abstract fun dao(): InteractionDao
     companion object {
         fun open(context: Context) = Room.databaseBuilder(
-            context.applicationContext, InteractionDatabase::class.java, "interaction.db"
-        ).fallbackToDestructiveMigration().build()
+            context.applicationContext, InteractionDatabase::class.java, "interaction-current.db"
+        ).build()
     }
 }

@@ -45,7 +45,8 @@ internal fun RuntimeError.failure() = when (code) {
     else -> Failure.UNAVAILABLE
 }
 internal fun TurnExecution.request() = RunRequest(RequestId(turnId.value), RuntimeAgent.valueOf(config.agent.name), WorkspaceRef(config.workspace),
-    listOf(InputPart.Text(draft.text)) + draft.attachments.map { InputPart.Resource(ResourceRef(it)) }, config.model,
+    (if (projectRules.isBlank()) emptyList() else listOf(InputPart.Text("Project rules for this turn:\n" + projectRules))) +
+        listOf(InputPart.Text(draft.text)) + draft.attachments.map { InputPart.Resource(ResourceRef(it)) }, config.model,
     GatewayProfileRef(config.gatewayProfile, config.gatewayVersion), config.reasoning, session?.let(::SessionRef), draft.capabilities.map(::CapabilityRef).toSet(), requestedOutput = if (creatingSkill) RequestedOutput.SKILL_PROPOSAL else RequestedOutput.TEXT)
 internal class RuntimeExecutionAdapter(private val client: RuntimeClient) : ExecutionPort {
     override suspend fun respondToDevice(request: com.github.ytlog.mobby.android.deviceinteraction.model.DeviceInteractionResponse): OperationResult =

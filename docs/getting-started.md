@@ -43,7 +43,7 @@ APK：`app/build/outputs/apk/debug/app-debug.apk`，仅 ARM64，Android 8.0 及�
 
 项目名和界面品牌为 `mobby`。Android `applicationId` 与应用源码包为 `com.github.ytlog.mobby.android`。交互、运行时和语音模块的包名使用同一前缀，例如 `com.github.ytlog.mobby.android.interaction.ui`。Keystore 别名是 `mobby.gateway`。
 
-更换 `applicationId` 后，此前已安装的应用不会带入配置、密钥、HOME 和工作区。同一 `applicationId` 的覆盖安装仍保留 SharedPreferences、HOME 和工作区。开发阶段数据库结构变化直接重建对应开发数据库，不维护旧版本迁移。
+更换 `applicationId` 后，此前已安装的应用不会带入配置、密钥、HOME 和工作区。同一 `applicationId` 的覆盖安装仍保留 SharedPreferences、HOME 和工作区。交互数据库只维护当前结构；再次修改表结构前须清除 `interaction-current.db`，随后按新结构创建，不维护旧版本迁移。
 
 ## 添加文件与照片
 

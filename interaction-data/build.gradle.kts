@@ -10,7 +10,6 @@ android {
         unitTests.all { it.systemProperty("robolectric.dependency.repo.url", "https://repo.maven.apache.org/maven2") }
     }
 }
-kapt { arguments { arg("room.schemaLocation", "$projectDir/schemas") } }
 dependencies {
     implementation(project(":device-interaction"))
     implementation(project(":localization"))

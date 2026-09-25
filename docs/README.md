@@ -6,12 +6,13 @@
 
 | 文档 | 用途 |
 | --- | --- |
-| [构建与使用](getting-started.md) | 环境要求、构建命令、使用方式、当前状态和升级兼容 |
+| [构建与使用](getting-started.md) | 环境要求、构建命令、使用方式、当前状态和开发数据库规则 |
 | [GitHub 手动发布](release.md) | Release 签名密钥、手动触发、版本号、R8 和验收 |
 | [项目需求](requirements.md) | 第一阶段本地 Agent 运行验证的目标与范围 |
 | [运行验证方案](design/runtime-test-plan.md) | 初始测试控制台方案；实际实现与验证进展以实施记录为准 |
 | [Android 对话 UI 评审稿](design/conversation-ui-review.html) | 当前交互规范：会话与执行、顶部菜单、输入、插件/技能、Android 行为、实现架构及可点击原型；原生接入进度见实施记录 |
 | [交互三层架构与 Runtime 技术设计](design/interaction-runtime-architecture.html) | Compose 独立模块、三层职责、Runtime 模块、固定接口与事件协议、数据所有权和迁移验收 |
+| [项目、目录与会话数据](design/project-workspace-management.md) | 项目即执行目录、默认目录、会话迁移、项目 Skill 与数据管理职责 |
 | [本地模型模块与 HTTP API](design/local-model-runtime.md) | 独立 Gradle 模块与专用进程、五组 Agent 协议、模型管理、资源调度与验收；设计提案 |
 | [本地模型首版实现与使用](design/local-model-first-version.md) | 已实现但宿主入口暂时隐藏的 llama.cpp 服务、Qwen/Gemma 下载 UI、HTTP 路由及当前限制 |
 | [手机推理引擎调研](design/local-model-engines.md) | 微软、Google、Meta、阿里、腾讯等 18 项引擎目录，Android 接入证据、可选后端与限制 |

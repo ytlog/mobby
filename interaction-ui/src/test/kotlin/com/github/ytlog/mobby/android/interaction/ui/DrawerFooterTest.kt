@@ -73,7 +73,7 @@ class DrawerFooterTest {
         assertTrue(compose.onNodeWithText("周末计划").fetchSemanticsNode().boundsInRoot.height < bar)
         compose.onNodeWithText("置顶").assertDoesNotExist()
         compose.onNodeWithText("项目").assertExists()
-        compose.onNodeWithText("项目管理").assertExists()
+        compose.onNodeWithText("更多项目").assertExists()
         compose.onNodeWithText("历史记录").assertExists()
         compose.onNodeWithText("历史会话").assertDoesNotExist()
     }
@@ -112,10 +112,11 @@ class DrawerFooterTest {
         compose.setContent { InteractionEntry(actions, InteractionHostActions({}, { _, _ -> }, {})) }
         compose.onNodeWithContentDescription("打开会话抽屉").performClick()
         val headers = listOf("置顶", "项目", "历史记录")
-        val entries = listOf("置顶事项", "项目管理", "示例项目", "项目事项", "空项目")
-        val marked = listOf("置顶事项", "项目事项")
-        val plain = listOf("项目管理", "示例项目", "空项目")
+        val entries = listOf("置顶事项", "示例项目", "空项目", "更多项目")
+        val marked = listOf("置顶事项")
+        val plain = listOf("示例项目", "空项目", "更多项目")
         (headers + entries).forEach { compose.onNodeWithText(it).assertExists() }
+        compose.onNodeWithText("项目事项").assertDoesNotExist()
         val headerLeft = headers.map { compose.onNodeWithText(it, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.left }
         val markedLeft = marked.map { compose.onNodeWithText(it, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.left }
         val plainLeft = plain.map { compose.onNodeWithText(it, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.left }
@@ -127,11 +128,10 @@ class DrawerFooterTest {
         val top = (headers + entries).associateWith { compose.onNodeWithText(it).fetchSemanticsNode().boundsInRoot.top }
         assertTrue(top.getValue("置顶") < top.getValue("置顶事项"))
         assertTrue(top.getValue("置顶事项") < top.getValue("项目"))
-        assertTrue(top.getValue("项目") < top.getValue("项目管理"))
-        assertTrue(top.getValue("项目管理") < top.getValue("示例项目"))
-        assertTrue(top.getValue("示例项目") < top.getValue("项目事项"))
-        assertTrue(top.getValue("项目事项") < top.getValue("空项目"))
-        assertTrue(top.getValue("空项目") < top.getValue("历史记录"))
+        assertTrue(top.getValue("项目") < top.getValue("示例项目"))
+        assertTrue(top.getValue("示例项目") < top.getValue("空项目"))
+        assertTrue(top.getValue("空项目") < top.getValue("更多项目"))
+        assertTrue(top.getValue("更多项目") < top.getValue("历史记录"))
         val header = compose.onNodeWithText("mobby").fetchSemanticsNode().boundsInRoot.top
         val footer = compose.onNodeWithContentDescription("搜索会话").fetchSemanticsNode().boundsInRoot.top
         compose.onNode(hasScrollAction()).performScrollToNode(hasText("周末计划"))

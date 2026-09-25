@@ -76,7 +76,7 @@
 <p>点击左上角三横杠，菜单从左侧滑入，整个对话区域（工具栏、消息、输入框）同步向右平移，保持原宽度并裁切超出屏幕的部分。抽屉宽度为 min(360dp, 可用宽度 − 56dp)，右侧保留原会话的一条可见区域；状态栏与系统导航区不参与平移。点击右侧区域、关闭按钮或系统返回时反向收起，恢复阅读位置与草稿。打开时收起输入法，背景会话不可操作。</p>
 <p>顶端为本机身份和新建按钮，中部按置顶、项目、历史分组，底部固定搜索与设置。搜索过滤会话标题，选中项显示标题、Agent 和运行状态。点击会话恢复各自的草稿、附件与阅读位置；切换会话不停止任务，也不逐次堆叠返回历史。</p>
 <p>首次进入显示空对话，后续恢复最近访问的对话。新建时选择 Agent 与可访问的工作区，发送首条任务前允许调整。已有会话通过 CLI session ID 延续上下文；恢复失败时提示重试或新建，不静默丢失上下文。</p>
-<p>项目同时提供新对话的默认工作区和会话分组。已有对话“添加到项目”只改变分组，保留该会话的执行目录；移除分组不删除工作区。侧栏设置包含网关、运行环境、外观与已归档会话。</p>
+<p>项目就是新对话的执行目录和会话分组；未选择项目使用默认目录。已有对话移入或移出项目会切换后续轮次的执行目录，历史消息和文件不移动，CLI 会话重新建立。侧栏设置包含网关、运行环境、外观与已归档会话。</p>
 </section>
 <section class="design-section" aria-labelledby="section-2">
 <h2 id="section-2">2. 对话内容与执行状态</h2>
@@ -116,7 +116,7 @@
 <div class="table-wrap"><table><thead><tr><th>操作</th><th>行为</th></tr></thead><tbody>
 <tr><td>分享</td><td>选择消息后调用系统分享，默认排除日志和配置</td></tr>
 <tr><td>置顶 / 取消置顶</td><td>更新会话抽屉分组</td></tr>
-<tr><td>添加到项目</td><td>选择项目分组，执行工作区不变</td></tr>
+<tr><td>添加到项目</td><td>切换后续轮次的项目目录，历史文件不移动</td></tr>
 <tr><td>对话附件</td><td>区分已发送附件与本轮草稿附件</td></tr>
 <tr><td>在聊天中查找</td><td>显示匹配消息并定位结果；无结果时保留查询</td></tr>
 <tr><td>添加到主屏幕</td><td>交给 Android 快捷方式确认界面</td></tr>
@@ -264,7 +264,7 @@ case 'find-chat':return '<label>在本轮示例中查找<input id="find-chat-inp
 case 'shortcut':return '<p>将当前对话固定到 Android 主屏幕</p><small>原生版本使用系统快捷方式确认界面；本原型不会修改桌面。取消不影响对话。</small><button class="menu-row" data-panel="more">返回会话菜单</button>';
 case 'delete-preview':return '<p>删除对话需要确认；不删除工作区文件。</p><small>当前设计阶段仅预览删除提示，不执行删除。运行中的对话须先停止；正式版本优先提供可撤销删除，再按明确保留期清理。</small><button class="menu-row" data-panel="more">保留对话并返回</button>';
 case 'rename':return `<label>对话标题<input id="rename-input" maxlength="80" value="${esc(c.title)}"></label><button class="filled" id="save-title">保存标题</button>`;
-case 'project':return '<p>项目关联一个本机工作区，用于组织对话。删除分组不删除目录。</p><label>项目名称<input id="project-name" maxlength="40" placeholder="例如：我的应用"></label><small>原型仅创建分组；正式版本需验证目录和读写权限。</small><button class="filled" id="create-project">创建示例项目</button>';
+case 'project':return '<p>项目对应一个本机执行目录，用于组织对话。移动会话不移动历史文件。</p><label>项目名称<input id="project-name" maxlength="40" placeholder="例如：我的应用"></label><small>此 HTML 原型仅演示界面；App 创建项目时会创建目录。</small><button class="filled" id="create-project">创建示例项目</button>';
 case 'archived':return chats.filter(x=>x.archived).map(x=>`<button class="menu-row" data-restore="${x.id}">${esc(x.title)} · 恢复</button>`).join('')||'<p>暂无归档对话。</p>';
 case 'attach':return `<button class="sheet-handle" id="attach-handle" aria-label="收起添加面板"><span aria-hidden="true"></span></button><div class="attachment-grid"><button class="attachment-tile" data-panel="camera">${icon('camera')}<span>拍照</span></button><button class="attachment-tile" data-panel="photos">${icon('photo')}<span>照片</span></button><button class="attachment-tile" data-panel="files">${icon('upload')}<span>本地文件</span></button></div><button class="capability-row" data-panel="plugins">${icon('plug')}<span class="capability-text"><strong>插件</strong><small>接入 App 和数据，扩展任务能力</small></span>${icon('right')}</button><button class="capability-row" data-panel="skills">${icon('skill')}<span class="capability-text"><strong>技能</strong><small>复用专业能力，处理特定任务</small></span>${icon('right')}</button><p class="attachment-disclaimer">交互演示 · 不调用相机、文件或外部服务</p>`;
 case 'camera':return '<button class="sheet-back" data-panel="attach">← 返回添加面板</button><p>拍照后预览，确认才加入本轮输入。</p><small>当前为布局原型，未调用相机；真实版本需具备图像协议能力，并在使用时处理相机授权。取消拍照不改变草稿。</small>';

@@ -100,6 +100,8 @@ class InteractionHostActions(
         if (uri != null && id != null && workspace != null) vm.importAttachment(ConversationId(id), workspace, uri.toString())
     }
     var route by rememberSaveable { mutableStateOf("conversation") }
+    var projectRoute by rememberSaveable { mutableStateOf<String?>(null) }
+    var projectsBackRoute by rememberSaveable { mutableStateOf("conversation") }
     var drawer by rememberSaveable { mutableStateOf(false) }
     val appearance by actions.appearance.collectAsStateWithLifecycle()
     var dialog by rememberSaveable { mutableStateOf<String?>(null) }
@@ -139,12 +141,12 @@ class InteractionHostActions(
     val colors = if (dark) MobbyDarkScheme else MobbyLightScheme
     LaunchedEffect(vm) { for (message in vm.feedback) snackbar.showSnackbar(message) }
     fun navigate(next: String) { keyboard?.hide(); focus.clearFocus(); drawer = false; route = next }
-    BackHandler(route != "conversation") { route = when (route) { "gateway" -> if (gatewayFromIntro) "conversation" else "settings"; "history-limits", "diagnostic", "archived" -> "settings"; "skills", "plugins" -> "add"; else -> "conversation" } }
+    BackHandler(route != "conversation") { route = when (route) { "gateway" -> if (gatewayFromIntro) "conversation" else "settings"; "history-limits", "diagnostic", "archived" -> "settings"; "skills", "plugins" -> "add"; "projects" -> projectsBackRoute; "project-detail" -> "conversation"; else -> "conversation" } }
     MaterialTheme(colorScheme = colors) {
         val camera = rememberCameraCapture(actions, { captured ->
             actions.importAttachment(ConversationId(captured.conversation), captured.workspace, requireNotNull(captured.attachmentUri))
         }, { message -> vm.report(OperationResult.Failed(message)) })
-        val pageColor = if (route == "conversation") conversationCanvas() else MaterialTheme.colorScheme.background
+        val pageColor = if (route == "conversation" || route == "project-detail") conversationCanvas() else MaterialTheme.colorScheme.background
         Surface(Modifier.fillMaxSize(), color = pageColor) {
             InteractionViewport {
                 val fullWidth = maxWidth
@@ -166,7 +168,11 @@ class InteractionHostActions(
                     tonalElevation = 0.dp,
                 ) {
                     when (route) {
-                        "projects" -> ProjectPage(vm) { route = "conversation" }
+                        "projects" -> ProjectPage(vm, { route = projectsBackRoute }) { name -> projectRoute = name; route = "project-detail" }
+                        "project-detail" -> projectRoute?.let { name -> ProjectDetailPage(name, vm,
+                            back = { route = "conversation" }, moreProjects = { projectsBackRoute = "project-detail"; route = "projects" },
+                            openConversation = { conversation -> vm.enqueue { actions.select(conversation.id) }; route = "conversation" },
+                            openedNewConversation = { route = "conversation" }) }
                         "settings" -> SettingsPage(system, appearance, { value -> vm.enqueue { vm.report(actions.setAppearance(value)) } }, { next ->
                             if (next == "gateway") { gatewayStartAdding = false; gatewayFromIntro = false }
                             navigate(next)
@@ -222,8 +228,9 @@ class InteractionHostActions(
                     }
                 }
                 if (drawer) Box(Modifier.offset { IntOffset((pixels * progress).roundToInt(), 0) }.fillMaxSize().then(swipe).clickable { drawer = false })
-                if (drawer || progress > 0f) ConversationDrawer(state, vm, onSelect = { c -> vm.enqueue { actions.select(c.id) }; drawer = false },
-                    onNew = { drawer = false; dialog = "new" }, onSettings = { navigate("settings") }, onProjects = { navigate("projects") },
+                if (drawer || progress > 0f) ConversationDrawer(state, onSelect = { c -> vm.enqueue { actions.select(c.id) }; drawer = false; route = "conversation" },
+                    onNew = { drawer = false; dialog = "new" }, onSettings = { navigate("settings") }, onProjects = { projectsBackRoute = "conversation"; navigate("projects") },
+                    onProject = { name -> drawer = false; projectRoute = name; route = "project-detail" },
                     modifier = Modifier.width(drawerWidth).fillMaxHeight().offset { IntOffset(((progress - 1f) * pixels).roundToInt(), 0) }.then(swipe))
                 SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
                 if (route == "add") ModalBottomSheet(onDismissRequest = { route = "conversation" }, shape = RoundedCornerShape(28.dp, 28.dp, 0.dp, 0.dp), containerColor = addSheetColor(), contentColor = addInkColor()) {
@@ -281,13 +288,17 @@ class InteractionHostActions(
                 if (dialog == "new") ConfigDialog(vm, c, onDismiss = { dialog = null }, onApply = { config, project -> vm.enqueue { actions.create(config, project) }; route = "conversation"; dialog = null }, anchor = toolbarAnchor)
                 if (c != null) when (dialog) {
                     "rename" -> TextEditDialog(AppStrings.rename, c.title, { dialog = null }) { value -> vm.enqueue { vm.report(actions.rename(c.id, value)) }; dialog = null }
-                    "project" -> ProjectGroupDialog(c, state.projects, { dialog = null }) { project -> vm.enqueue { actions.project(c.id, project) }; dialog = null }
+                    "project" -> ProjectGroupDialog(c, state.projects, { dialog = null }) { project -> vm.enqueue { vm.report(actions.project(c.id, project)) }; dialog = null }
                     "delete" -> AlertDialog(onDismissRequest = { dialog = null }, containerColor = raisedColor(), shape = RoundedCornerShape(24.dp), title = { Text(AppStrings.deleteConversation) }, text = { Text(AppStrings.theConversationMovesToRecentlyDeletedAndCanBe) },
                         confirmButton = { TextButton(onClick = { vm.enqueue { vm.report(actions.delete(c.id, true)) }; dialog = null }) { Text(AppStrings.delete) } }, dismissButton = { TextButton(onClick = { dialog = null }) { Text(AppStrings.cancel) } })
                     "attachments" -> HistoryDialog(c.id, vm, { dialog = null }) { full -> AlertDialog(onDismissRequest = { dialog = null }, containerColor = raisedColor(), shape = RoundedCornerShape(24.dp), title = { Text(AppStrings.conversationAttachments) }, text = { Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
                         Text(AppStrings.sentAttachments)
-                        val sent = full.turns.filter { it.execution != null }.flatMap { it.attachments }
-                        if (sent.isEmpty()) EmptyPlaceholder(AppStrings.noSentAttachments) else AttachmentList(sent.distinct(), c.config.workspace, vm)
+                        val sent = full.turns.filter { it.execution != null }.groupBy { it.workspace }
+                        if (sent.values.all { turns -> turns.all { it.attachments.isEmpty() } }) EmptyPlaceholder(AppStrings.noSentAttachments)
+                        else sent.forEach { (workspace, turns) ->
+                            val refs = turns.flatMap { it.attachments }.distinct()
+                            if (refs.isNotEmpty()) AttachmentList(refs, workspace, vm)
+                        }
                         Text(AppStrings.draftAttachments)
                         if (c.draft.attachments.isEmpty()) EmptyPlaceholder(AppStrings.noDraftAttachments) else AttachmentList(c.draft.attachments, c.config.workspace, vm)
                     } }, confirmButton = { TextButton(onClick = { dialog = null }) { Text(AppStrings.close) } }) }
@@ -300,7 +311,7 @@ class InteractionHostActions(
     }
 }
 
-@Composable private fun ConversationDrawer(state: InteractionState, vm: ConversationViewModel, onSelect: (Conversation) -> Unit, onNew: () -> Unit, onSettings: () -> Unit, onProjects: () -> Unit, modifier: Modifier) {
+@Composable private fun ConversationDrawer(state: InteractionState, onSelect: (Conversation) -> Unit, onNew: () -> Unit, onSettings: () -> Unit, onProjects: () -> Unit, onProject: (String) -> Unit, modifier: Modifier) {
     var query by rememberSaveable { mutableStateOf("") }
     val control = drawerControlColor()
     Surface(modifier, color = drawerColor(), contentColor = conversationInk()) {
@@ -315,13 +326,10 @@ class InteractionHostActions(
             }
             val visible = state.conversations.filter { !it.conversation.archived && !it.conversation.deleted && it.conversation.title.contains(query, true) }
             val pinned = visible.filter { it.conversation.pinned }
-            val inProject = visible.filter { !it.conversation.pinned && it.conversation.project != null }
             val history = visible.filter { !it.conversation.pinned && it.conversation.project == null }
-            val projectNames = buildList {
-                val named = state.projects.map { it.name }
-                addAll(named)
-                inProject.mapNotNull { it.conversation.project }.filter { it !in named }.distinct().forEach { add(it) }
-            }.filter { name -> query.isBlank() || name.contains(query, true) || inProject.any { it.conversation.project == name } }
+            val projectNames = state.projects.map { it.name }.filter { name ->
+                query.isBlank() || name.contains(query, true) || visible.any { it.conversation.project == name }
+            }.take(3)
             LazyColumn(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
                 if (pinned.isNotEmpty()) {
                     item(key = "section:pinned") { DrawerSection(AppStrings.pin) }
@@ -329,11 +337,10 @@ class InteractionHostActions(
                 }
                 if (query.isBlank() || projectNames.isNotEmpty()) {
                     item(key = "section:projects") { DrawerSection(AppStrings.project) }
-                    if (query.isBlank()) item(key = "manage-projects") { DrawerEntry(AppStrings.projectManagement, onClick = onProjects) }
                     projectNames.forEach { name ->
-                        item(key = "project:$name") { DrawerEntry(name) { state.projects.firstOrNull { it.name == name }?.let(vm::openProject); onProjects() } }
-                        items(inProject.filter { it.conversation.project == name }, key = { it.conversation.id.value }) { DrawerConversation(it, state, onSelect) }
+                        item(key = "project:$name") { DrawerEntry(name) { onProject(name) } }
                     }
+                    if (query.isBlank()) item(key = "more-projects") { DrawerEntry(AppStrings.moreProjects, onClick = onProjects) }
                 }
                 if (history.isNotEmpty() || visible.isEmpty()) {
                     item(key = "section:history") { DrawerSection(AppStrings.history) }
@@ -738,7 +745,7 @@ internal fun Turn.showsSeparateActivity(): Boolean = occupied || pending
                 val entries = turn.visibleTranscript()
                 val lastReply = entries.filterIsInstance<TranscriptEntry.Reply>().lastOrNull()?.message?.id
                 val lastTools = entries.filterIsInstance<TranscriptEntry.ToolRun>().lastOrNull()?.steps?.firstOrNull()?.id
-                item(key = "user:${turn.id.value}") { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { UserMessageBubble { androidx.compose.foundation.text.selection.SelectionContainer { Text(turn.userText) }; AttachmentList(turn.attachments, detail.conversation.config.workspace, vm) } } }
+                item(key = "user:${turn.id.value}") { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { UserMessageBubble { androidx.compose.foundation.text.selection.SelectionContainer { Text(turn.userText) }; AttachmentList(turn.attachments, turn.workspace, vm) } } }
                 entries.forEach { entry ->
                     when (entry) {
                         is TranscriptEntry.Device -> item(key = "device:${turn.id.value}:${entry.history.first().operation.operationId}") {

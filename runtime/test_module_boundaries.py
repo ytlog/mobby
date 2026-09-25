@@ -5,7 +5,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parent.parent
 ALLOWED = {
-    "app": {"interaction-ui", "interaction-domain", "interaction-data", "runtime-api", "runtime-android", "device-plugins"},
+    "app": {"interaction-ui", "interaction-domain", "interaction-data", "runtime-api", "runtime-android", "device-plugins", "local-model"},
     "runtime-api": set(),
     "runtime-engine": {"runtime-api"},
     "runtime-android": {"runtime-api", "runtime-engine", "termux-core", "bootstrap-arm64", "device-plugins"},
@@ -13,6 +13,8 @@ ALLOWED = {
     "interaction-domain": set(),
     "interaction-data": {"interaction-domain", "runtime-api"},
     "interaction-ui": {"interaction-domain", "speech", "device-plugins"},
+    "local-model": {"local-model-backend-llama"},
+    "local-model-backend-llama": set(),
 }
 ALLOWED["device-interaction"] = set()
 ALLOWED["device-interaction-ui"] = {"device-interaction"}

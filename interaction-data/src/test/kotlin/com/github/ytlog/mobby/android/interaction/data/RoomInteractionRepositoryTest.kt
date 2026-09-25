@@ -67,7 +67,7 @@ class RoomInteractionRepositoryTest {
         override suspend fun stopShell() = OperationResult.Done
     }
     @Before fun setUp() {
-        ApplicationProvider.getApplicationContext<Context>().deleteDatabase("interaction.db")
+        ApplicationProvider.getApplicationContext<Context>().deleteDatabase("interaction-current.db")
         start()
     }
     private fun start() {
@@ -76,7 +76,15 @@ class RoomInteractionRepositoryTest {
         repository = RoomInteractionRepository(db, runtime, system, scope, RuntimeExecutionAdapter(runtime))
     }
     @After fun close() = runBlocking { scope.coroutineContext[Job]!!.cancelAndJoin(); db.close() }
-    private suspend fun state(predicate: (InteractionState) -> Boolean = { it.selected != null }) = withTimeout(10_000) { repository.state.first(predicate) }
+    private suspend fun state(predicate: (InteractionState) -> Boolean = { it.selected != null }): InteractionState = try {
+        withTimeout(10_000) { repository.state.first(predicate) }
+    } catch (e: TimeoutCancellationException) {
+        val latest = repository.state.value
+        val selected = latest.selected?.conversation
+        val rows = selected?.let { db.dao().conversationTurns(it.id.value) }
+        val persisted = selected?.let { db.dao().conversation(it.id.value)?.domain() }
+        throw AssertionError("State never matched: selected=${selected?.id}, agent=${selected?.config?.agent}, workspace=${selected?.config?.workspace}, project=${selected?.project}, session=${selected?.session}, sessions=${selected?.sessions}, persistedSession=${persisted?.session}, persistedSessions=${persisted?.sessions}, turns=${rows?.map { it.id to Triple(storageJson.decodeFromString<StoredConversation>(it.frozen).agent, storageJson.decodeFromString<StoredConversation>(it.frozen).workspace, it.snapshot?.let { value -> storageJson.decodeFromString<RunSnapshot>(value).sessionRef?.value }) }}, error=${latest.error}", e)
+    }
     @Test fun `first turn names an untouched conversation after a language change`() = runBlocking {
         val language = com.github.ytlog.mobby.android.localization.AppLanguage
         language.current = com.github.ytlog.mobby.android.localization.AppLanguage.CHINESE
@@ -89,49 +97,6 @@ class RoomInteractionRepositoryTest {
         } finally { language.current = com.github.ytlog.mobby.android.localization.AppLanguage.CHINESE }
     }
 
-    @Test fun `project defaults persist and only new conversations adopt them`() = runBlocking {
-        val original = state().selected!!.conversation
-        repository.editDraft(original.id, "keep draft", 3, 3)
-        val before = repository.conversation(original.id)
-        assertEquals(OperationResult.Done, repository.saveProject(Project("Project A", "workspace-a")))
-        assertTrue(repository.saveProject(Project("Project A", "unwanted"), createOnly = true) is OperationResult.Failed)
-        assertEquals("workspace-a", db.dao().project("Project A")!!.defaultWorkspace)
-        repository.setProject(original.id, "Project A")
-        val grouped = repository.conversation(original.id)
-        assertEquals(before.config, grouped.config)
-        assertEquals(before.draft, grouped.draft)
-        assertEquals("Project A", grouped.project)
-        val created = repository.createInProject(before.config, "Project A")
-        assertEquals("workspace-a", repository.conversation(created).config.workspace)
-        assertEquals("Project A", repository.conversation(created).project)
-        assertEquals(OperationResult.Done, repository.saveProject(Project("Project A", "workspace-b")))
-        assertEquals("workspace-a", repository.conversation(created).config.workspace)
-        val explicit = repository.createInProject(before.config, "Project A", "chosen-workspace")
-        assertEquals("chosen-workspace", repository.conversation(explicit).config.workspace)
-        repository.setProject(original.id, null)
-        assertEquals(before.config, repository.conversation(original.id).config)
-        assertEquals(before.draft, repository.conversation(original.id).draft)
-        scope.coroutineContext[Job]!!.cancelAndJoin(); db.close(); start()
-        assertEquals(listOf(Project("Project A", "workspace-b")), state { it.projects.isNotEmpty() }.projects)
-        val latest = repository.createInProject(before.config, "Project A")
-        assertEquals("workspace-b", repository.conversation(latest).config.workspace)
-    }
-    @Test fun `development schema changes initialize an empty current database`() = runBlocking {
-        val old = seedHistory(7)
-        repository.saveProject(Project("Old project", "old-workspace"))
-        scope.coroutineContext[Job]!!.cancelAndJoin()
-        db.openHelper.writableDatabase.execSQL("DROP TABLE projects")
-        db.openHelper.writableDatabase.execSQL("PRAGMA user_version=4")
-        db.close(); start()
-        val fresh = state().selected!!
-        assertNotEquals(old.id, fresh.conversation.id)
-        assertTrue(fresh.turns.isEmpty())
-        assertTrue(db.dao().projects().first().isEmpty())
-        assertNull(db.dao().conversation(old.id.value))
-        assertNull(db.dao().turn("turn-005"))
-        assertNull(db.dao().chunk("history-body"))
-        assertEquals(6, db.openHelper.readableDatabase.version)
-    }
     @Test fun `initial page loads forty turns and older pages preserve range when a new reply arrives`() = runBlocking {
         val c = seedHistory(110)
         scope.coroutineContext[Job]!!.cancelAndJoin(); db.close(); start()
@@ -397,7 +362,7 @@ class RoomInteractionRepositoryTest {
         assertEquals("new-model", db.dao().conversation(c.id.value)!!.domain().config.model)
         assertEquals(0L, prepared.config.gatewayVersion)
     }
-    @Test fun `skill choice is draft scoped and creator conversation preserves original draft`() = runBlocking {
+    @Test fun `skill choice is draft scoped and creator binding can be removed`() = runBlocking {
         val c = state().selected!!.conversation
         val skill = "skill:CODEX:USER:review:hash"
         repository.editDraft(c.id, "original", 4, 6)
@@ -421,7 +386,7 @@ class RoomInteractionRepositoryTest {
         repository.setSkill(created, "skill:CODEX:BUILTIN:skill-creator:hash", false)
         repository.editDraft(created, "补充需求", 4, 4)
         val followUp = (repository.prepareTurn(created, TurnId("creator-followup")) as PrepareTurnResult.Prepared).turn
-        assertEquals(setOf("skill:CODEX:BUILTIN:skill-creator:hash"), followUp.draft.capabilities)
+        assertTrue(followUp.draft.capabilities.isEmpty())
     }
     @Test fun `plugin capability can join a draft for either agent and survives prepare`() = runBlocking {
         val c = state().selected!!.conversation
