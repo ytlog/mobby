@@ -118,8 +118,11 @@ internal class RoomInteractionRepository(
                 system.retainAttachmentGrants(dao.allConversations().mapNotNull { it.domain().draft.pendingAttachment?.location }.toSet())
                 importRecovery.complete(Unit)
                 if (dao.allConversations().isEmpty()) {
-                    val profile = runCatching { system.gateways().firstOrNull { it.agent == DomainAgent.CODEX } }.getOrNull()
-                    create(NextTurnConfig(DomainAgent.CODEX, profile?.model.orEmpty(), null, "default", profile?.id ?: "CODEX", profile?.version ?: 0))
+                    val profiles = runCatching { system.gateways() }.getOrDefault(emptyList())
+                    val selected = runCatching { system.defaultGateway() }.getOrNull()
+                    val profile = ConversationGatewayResolver.preferred(profiles, selected)
+                    create(NextTurnConfig(profile?.agent ?: DomainAgent.CODEX, profile?.model.orEmpty(), null, "default",
+                        profile?.id ?: "CODEX", profile?.version ?: 0))
                 } else if (dao.selection().first() == null) {
                     dao.allConversations().firstOrNull { !it.domain().deleted && !it.domain().archived }?.let { dao.select(SelectionRow(conversationId = it.id)) }
                 }

@@ -75,7 +75,7 @@ class WorkspacePickerTest {
             stub<PreferencePort> { name, _ -> error(name) })).also { store.put("vm", it) }
     }
     @After fun cleanup() { compose.runOnIdle { store.clear(); scope.cancel() } }
-    @Test fun `new conversation reuses the current agent gateway and model`() {
+    @Test fun `new conversation uses the selected default gateway instead of current conversation`() {
         gatewayDefault = AgentId.CLAUDE_CODE
         val vm = vm()
         compose.waitForIdle()
@@ -83,9 +83,9 @@ class WorkspacePickerTest {
         val current = Conversation(ConversationId("current"), NextTurnConfig(AgentId.CODEX, "old", null, "default", "CODEX"))
         compose.setContent { MaterialTheme { ConfigDialog(vm, current, {}, { config, _ -> submitted = config }) } }
         compose.onNodeWithText("创建").performClick()
-        Assert.assertEquals(AgentId.CODEX, submitted?.agent)
-        Assert.assertEquals("CODEX", submitted?.gatewayProfile)
-        Assert.assertEquals("old", submitted?.model)
+        Assert.assertEquals(AgentId.CLAUDE_CODE, submitted?.agent)
+        Assert.assertEquals("CLAUDE", submitted?.gatewayProfile)
+        Assert.assertEquals("claude-fixture", submitted?.model)
         compose.onNodeWithText("网关与 Agent").assertDoesNotExist()
         compose.onNodeWithText("模型").assertDoesNotExist()
     }
@@ -94,14 +94,43 @@ class WorkspacePickerTest {
         val recentClaude = Conversation(ConversationId("claude"), NextTurnConfig(AgentId.CLAUDE_CODE, "claude-last", "high", "second", "CLAUDE"), updatedAt = 30)
         val profiles = listOf(
             GatewayProfile(AgentId.CODEX, "CODEX", 1, "https://example.test/v1", "codex-default", "RESPONSES", true),
-            GatewayProfile(AgentId.CLAUDE_CODE, "CLAUDE", 1, "https://example.test/v1", "claude-default", "MESSAGES", true),
+            GatewayProfile(AgentId.CLAUDE_CODE, "CLAUDE", 1, "https://example.test/v1", "claude-default", "MESSAGES", true,
+                listOf(GatewayModel("claude-default", "Default"), GatewayModel("claude-last", "Last"))),
         )
-        val previous = rememberedNewConversationConfig(AgentId.CLAUDE_CODE, current, listOf(ConversationSummary(recentClaude)), profiles, GatewayDefault(AgentId.CODEX, "CODEX", 1))
+        val previous = ConversationGatewayResolver.newConversation(AgentId.CLAUDE_CODE, current, listOf(ConversationSummary(recentClaude)), profiles, GatewayDefault(AgentId.CODEX, "CODEX", 1))
         Assert.assertEquals("CLAUDE", previous?.gatewayProfile)
         Assert.assertEquals("claude-last", previous?.model)
         Assert.assertEquals("high", previous?.reasoning)
-        val firstUse = rememberedNewConversationConfig(AgentId.OPEN_CODE, current, emptyList(), profiles, GatewayDefault(AgentId.CODEX, "CODEX", 1))
+        val firstUse = ConversationGatewayResolver.newConversation(AgentId.OPEN_CODE, current, emptyList(), profiles, GatewayDefault(AgentId.CODEX, "CODEX", 1))
         Assert.assertNull(firstUse)
+    }
+    @Test fun `new conversation uses selected default gateway and its default model before recent conversations`() {
+        val recent = Conversation(ConversationId("recent"), NextTurnConfig(AgentId.CODEX, "old-model", null, "default", "OLD"), updatedAt = 40)
+        val profiles = listOf(
+            GatewayProfile(AgentId.CODEX, "OLD", 1, "https://old.test/v1", "old-model", "RESPONSES", true),
+            GatewayProfile(AgentId.CODEX, "NEW", 2, "https://new.test/v1", "new-default", "RESPONSES", true,
+                listOf(GatewayModel("new-default", "Default"), GatewayModel("other", "Other"))),
+        )
+        val config = ConversationGatewayResolver.newConversation(AgentId.CODEX, recent, listOf(ConversationSummary(recent)), profiles,
+            GatewayDefault(AgentId.CODEX, "NEW", 2))
+        Assert.assertEquals("NEW", config?.gatewayProfile)
+        Assert.assertEquals("new-default", config?.model)
+        Assert.assertEquals(2L, config?.gatewayVersion)
+    }
+    @Test fun `switching conversations repairs missing local gateway and stale model but keeps valid choices`() {
+        val remote = GatewayProfile(AgentId.CODEX, "REMOTE", 4, "https://remote.test/v1", "remote-default", "RESPONSES", true,
+            listOf(GatewayModel("remote-default", "Default"), GatewayModel("remote-other", "Other")))
+        val local = GatewayProfile(AgentId.CODEX, "LOCAL", 7, "http://127.0.0.1:11435/v1", "qwen", "RESPONSES", true,
+            listOf(GatewayModel("qwen", "Qwen")), temporary = true)
+        val selected = GatewayDefault(AgentId.CODEX, "REMOTE", 4)
+        val missing = NextTurnConfig(AgentId.CODEX, "old-qwen", null, "default", "LOCAL", 6)
+        Assert.assertEquals("remote-default", ConversationGatewayResolver.repair(missing, listOf(remote), selected)?.model)
+        Assert.assertEquals("REMOTE", ConversationGatewayResolver.repair(missing, listOf(remote), selected)?.gatewayProfile)
+        val stale = NextTurnConfig(AgentId.CODEX, "old-qwen", "high", "default", "LOCAL", 6)
+        Assert.assertEquals(NextTurnConfig(AgentId.CODEX, "qwen", null, "default", "LOCAL", 7),
+            ConversationGatewayResolver.repair(stale, listOf(local, remote), selected))
+        val valid = NextTurnConfig(AgentId.CODEX, "remote-other", null, "default", "REMOTE", 4)
+        Assert.assertNull(ConversationGatewayResolver.repair(valid, listOf(remote, local), selected))
     }
     @Test fun `selected workspace survives page recreation and reaches new conversation config`() {
         val vm = vm()

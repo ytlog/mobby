@@ -30,7 +30,8 @@ class GatewayListTest {
         Proxy.newProxyInstance(T::class.java.classLoader, arrayOf(T::class.java)) { _, method, args -> body(method.name, args) } as T
 
     private fun page(profiles: List<GatewayProfile>, current: Conversation? = null, modelOptions: List<AgentOption> = emptyList(),
-        configured: (NextTurnConfig) -> Unit = {}, selectedDefault: (GatewayProfile) -> Unit = {}, startAdding: Boolean = false): ConversationViewModel {
+        configured: (NextTurnConfig) -> Unit = {}, selectedDefault: (GatewayProfile) -> Unit = {}, startAdding: Boolean = false,
+        defaultChoice: GatewayDefault? = GatewayDefault(AgentId.CODEX, profile.id, profile.version)): ConversationViewModel {
         val state = MutableStateFlow(InteractionState(loading = false, selected = current?.let { ConversationDetail(it, emptyList()) }))
         val repository = stub<InteractionRepository> { name, args -> when {
             name == "getState" -> state
@@ -47,7 +48,7 @@ class GatewayListTest {
             "getDiagnostic" -> flowOf(DiagnosticOutput(null, emptyList()))
             "agents" -> modelOptions
             "gateways" -> profiles
-            "defaultGateway" -> GatewayDefault(AgentId.CODEX, profile.id, profile.version)
+            "defaultGateway" -> defaultChoice
             "selectDefaultGateway" -> { selectedDefault(args!![0] as GatewayProfile); OperationResult.Done }
             else -> error(name)
         } }
@@ -66,11 +67,24 @@ class GatewayListTest {
         compose.onNodeWithText("还没有配置网关").assertDoesNotExist()
     }
 
+    @Test fun `first configured local gateway becomes default and repairs empty selected conversation`() {
+        val local = profile.copy(id = "temporary", endpoint = "http://127.0.0.1:11435/v1", model = "qwen-test",
+            models = listOf(GatewayModel("qwen-test", "Qwen")), temporary = true)
+        val current = Conversation(ConversationId("current"), NextTurnConfig(AgentId.CODEX, "", null, "default", "CODEX", 0))
+        var selected: GatewayProfile? = null
+        var configured: NextTurnConfig? = null
+        val vm = page(listOf(local), current, configured = { configured = it }, selectedDefault = { selected = it }, defaultChoice = null)
+        compose.waitUntil(5_000) { selected?.id == local.id && configured?.gatewayProfile == local.id }
+        Assert.assertEquals("qwen-test", configured?.model)
+        Assert.assertEquals(local.version, configured?.gatewayVersion)
+        Assert.assertEquals(local.id, vm.defaultGateway.value?.id)
+    }
+
     @Test fun `temporary local model is labeled and cannot open persistent editor`() {
         val local = profile.copy(id = "temporary", endpoint = "http://127.0.0.1:11435/v1", model = "qwen-test", models = listOf(GatewayModel("qwen-test", "qwen-test")), temporary = true)
         page(listOf(local))
         compose.onNodeWithText("本地模型服务 · qwen-test · 1 个模型").assertExists()
-        compose.onNodeWithText("临时 · 本地模型").assertExists()
+        compose.onNodeWithText("临时 · 本地模型", substring = true).assertExists()
         compose.onAllNodesWithContentDescription("编辑网关").assertCountEquals(0)
     }
 

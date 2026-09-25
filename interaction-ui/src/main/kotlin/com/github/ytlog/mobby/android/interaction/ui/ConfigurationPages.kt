@@ -36,6 +36,7 @@ import com.github.ytlog.mobby.android.interaction.domain.*
 import com.github.ytlog.mobby.android.interaction.ui.gateway.gatewaySummary
 import com.github.ytlog.mobby.android.interaction.domain.gateway.GatewayProfile
 import com.github.ytlog.mobby.android.interaction.domain.gateway.GatewayDefault
+import com.github.ytlog.mobby.android.interaction.domain.gateway.ConversationGatewayResolver
 import kotlinx.coroutines.*
 
 @Composable internal fun TextEditDialog(title: String, initial: String, dismiss: () -> Unit, save: (String) -> Unit) {
@@ -164,28 +165,12 @@ import kotlinx.coroutines.*
         ) { Text(AppStrings.apply, fontWeight = FontWeight.SemiBold) }
     }
 }
-/** Reuse the last configuration for this Agent; fall back to its saved gateway default. */
-internal fun rememberedNewConversationConfig(
-    agent: AgentId, current: Conversation?, conversations: List<ConversationSummary>,
-    profiles: List<GatewayProfile>, defaultGateway: GatewayDefault?,
-): NextTurnConfig? {
-    val recent = (listOfNotNull(current) + conversations.map { it.conversation })
-        .filter { !it.deleted && it.config.agent == agent }
-        .maxByOrNull { it.updatedAt }
-        ?.config
-    if (recent != null && profiles.any { it.agent == agent && it.id == recent.gatewayProfile }) return recent
-    val gateway = profiles.firstOrNull { it.agent == agent && it.id == defaultGateway?.id && defaultGateway.agent == agent }
-        ?: profiles.firstOrNull { it.agent == agent }
-        ?: return null
-    return NextTurnConfig(agent, gateway.model, null, "default", gateway.id, gateway.version)
-}
-
 @Composable internal fun ConfigDialog(vm: ConversationViewModel, c: Conversation?, onDismiss: () -> Unit, onApply: (NextTurnConfig, String?) -> Unit, anchor: IntRect = IntRect.Zero) {
     val state by vm.state.collectAsStateWithLifecycle()
     var project by rememberSaveable { mutableStateOf(c?.project) }
     val profiles by vm.gateways.collectAsStateWithLifecycle()
     val defaultGateway by vm.defaultGateway.collectAsStateWithLifecycle()
-    var agent by rememberSaveable { mutableStateOf(c?.config?.agent ?: state.conversations.maxByOrNull { it.conversation.updatedAt }?.conversation?.config?.agent ?: defaultGateway?.agent ?: AgentId.CODEX) }
+    var agent by rememberSaveable { mutableStateOf(defaultGateway?.agent ?: c?.config?.agent ?: state.conversations.maxByOrNull { it.conversation.updatedAt }?.conversation?.config?.agent ?: AgentId.CODEX) }
     var agentChosen by rememberSaveable { mutableStateOf(false) }
     var workspace by rememberSaveable { mutableStateOf(state.projects.firstOrNull { it.name == project }?.defaultWorkspace ?: c?.config?.workspace ?: "default") }
     val workspaceOwner = rememberSaveable { java.util.UUID.randomUUID().toString() }
@@ -195,14 +180,14 @@ internal fun rememberedNewConversationConfig(
     val created by vm.workspaceCreated.collectAsStateWithLifecycle()
     var adding by rememberSaveable { mutableStateOf(false) }
     var name by rememberSaveable { mutableStateOf("") }
-    val remembered = rememberedNewConversationConfig(agent, c, state.conversations, profiles, defaultGateway)
+    val remembered = ConversationGatewayResolver.newConversation(agent, c, state.conversations, profiles, defaultGateway)
     val canCreate = !creating && remembered != null &&
         workspaces.any { it.ref == workspace } && (project == null || state.projects.any { it.name == project })
     LaunchedEffect(Unit) { vm.enqueue { vm.refresh() }; vm.loadWorkspaces() }
     LaunchedEffect(defaultGateway, profiles, state.conversations) {
         if (!agentChosen && c == null) {
-            agent = state.conversations.maxByOrNull { it.conversation.updatedAt }?.conversation?.config?.agent
-                ?: defaultGateway?.agent ?: agent
+            agent = defaultGateway?.let { choice -> choice.agent.takeIf { candidate -> profiles.any { it.agent == candidate && it.id == choice.id } } }
+                ?: state.conversations.maxByOrNull { it.conversation.updatedAt }?.conversation?.config?.agent ?: agent
         }
         if (profiles.isNotEmpty() && profiles.none { it.agent == agent }) {
             agent = defaultGateway?.agent?.takeIf { candidate -> profiles.any { it.agent == candidate } } ?: profiles.first().agent

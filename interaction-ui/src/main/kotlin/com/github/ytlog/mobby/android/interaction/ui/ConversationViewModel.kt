@@ -295,10 +295,26 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
     private val queue = Channel<suspend () -> Unit>(Channel.UNLIMITED)
     private val edits = mutableMapOf<ConversationId, Int>()
     private val minimumRevision = mutableMapOf<ConversationId, Long>()
+    private var repairing: Pair<ConversationId, NextTurnConfig>? = null
     init {
         viewModelScope.launch { for (action in queue) safe(action) }
-        viewModelScope.launch { state.collect { syncComposer() } }
+        viewModelScope.launch { state.collect { syncComposer(); repairSelectedConversation() } }
         viewModelScope.launch { status.map { it.ready }.distinctUntilChanged().collect { safe { refresh() } } }
+    }
+    private fun repairSelectedConversation() {
+        if (!gatewaysLoaded.value) return
+        val conversation = state.value.selected?.conversation ?: return
+        val replacement = ConversationGatewayResolver.repair(conversation.config, gateways.value, defaultGateway.value) ?: return
+        val marker = conversation.id to conversation.config
+        if (repairing == marker) return
+        repairing = marker
+        enqueue {
+            try {
+                val current = state.value.selected?.conversation
+                if (current?.id == conversation.id && current.config == conversation.config)
+                    actions.configure(conversation.id, replacement)
+            } finally { if (repairing == marker) repairing = null }
+        }
     }
     private fun syncComposer() {
         val c = state.value.selected?.conversation ?: return
@@ -350,9 +366,20 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
         if (result is StopResult.Rejected) feedback.send(failure(result.reason))
     }
     suspend fun refresh() {
-        gateways.value = actions.gateways()
+        val profiles = actions.gateways()
+        var selected = actions.defaultGateway()
+        if (profiles.isNotEmpty() && selected?.let { choice -> profiles.any { it.id == choice.id && it.agent == choice.agent && it.model.isNotBlank() } } != true) {
+            ConversationGatewayResolver.preferred(profiles, null)?.let { profile ->
+                when (val result = actions.selectDefaultGateway(profile)) {
+                    OperationResult.Done -> selected = GatewayDefault(profile.agent, profile.id, profile.version)
+                    is OperationResult.Failed -> report(result)
+                }
+            }
+        }
+        gateways.value = profiles
+        defaultGateway.value = selected
         gatewaysLoaded.value = status.value.ready
-        defaultGateway.value = actions.defaultGateway()
+        repairSelectedConversation()
         agents.value = actions.agents()
     }
     fun chooseGateway(profile: GatewayProfile, model: String = profile.model, reasoning: String? = null) = enqueue {
