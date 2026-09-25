@@ -75,30 +75,32 @@ internal fun Modifier.lightInputShadow(corner: Dp): Modifier = drawBehind {
 }
 
 @Composable internal fun AttachmentTile(label: String, icon: AppGlyph, enabled: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Surface(onClick = onClick, enabled = enabled, modifier = modifier.height(100.dp).semantics { contentDescription = label }, shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+    val ink = addInkColor()
+    Surface(onClick = onClick, enabled = enabled, modifier = modifier.height(100.dp).semantics { contentDescription = label }, shape = RoundedCornerShape(18.dp), color = addTileColor(), contentColor = ink) {
         Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-            AppIcon(icon, null, Modifier.size(26.dp))
-            Spacer(Modifier.height(12.dp))
-            Text(label, style = MaterialTheme.typography.bodyMedium)
+            AppIcon(icon, null, Modifier.size(26.dp), tint = if (enabled) ink else ink.copy(alpha = 0.38f))
+            Spacer(Modifier.height(10.dp))
+            Text(label, style = MaterialTheme.typography.bodyMedium, color = if (enabled) ink else ink.copy(alpha = 0.38f))
         }
     }
 }
 
 @Composable internal fun CapabilityRow(title: String, detail: String, icon: AppGlyph, value: String? = null, enabled: Boolean = true, onClick: () -> Unit) {
+    val ink = addInkColor()
     TextButton(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
         enabled = enabled,
-        colors = textButtonColors(onButtonColor()),
+        colors = textButtonColors(ink),
     ) {
-        AppIcon(icon, null, Modifier.size(22.dp))
+        AppIcon(icon, null, Modifier.size(22.dp), tint = ink)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
-            Text(title, style = MaterialTheme.typography.titleMedium)
-            Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(title, style = MaterialTheme.typography.titleMedium, color = ink)
+            Text(detail, style = MaterialTheme.typography.bodySmall, color = ink)
         }
-        if (value != null) Text(value, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        AppIcon(AppIcons.ChevronRight, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (value != null) Text(value, color = ink)
+        AppIcon(AppIcons.ChevronRight, null, Modifier.size(18.dp), tint = ink)
     }
 }
 

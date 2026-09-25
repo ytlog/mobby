@@ -55,6 +55,9 @@ class RuntimeEnvironment(private val context: Context) {
         check(sdk.isInstalled) { AppStrings.apkIsMissingAnExecutableBashResource }
         output(AppStrings.preparingBundledRuntimeFiles)
         prepareFiles(nativeDir, output)
+        SkillStore(sdk.vfs.homeDir).installBundled(listOf("skill-creator", "skill-installer").associateWith { name ->
+            context.assets.open("skills/$name/SKILL.md").bufferedReader().use { it.readText() }
+        })
         workspace.mkdirs()
         File(sdk.vfs.prefixDir, "etc/tls/certs").mkdirs()
         val shell = sdk.executor.resolveBinary("bash").absolutePath

@@ -36,6 +36,9 @@ internal object MobbyColors {
         val drawer = Color(0xFF1F1F1F)
         val button = Color(0xFF292929)
         val onButton = Color(0xFFDADADA)
+        val addSheet = Color(0xFF1F1F1F)
+        val addTile = Color(0xFF2A2A2A)
+        val addInk = Color(0xFFDBDBDB)
         val voiceWash = Color(0xFF1A2A44)
         val voiceCancel = Color(0xFF3A2226)
         val catalog = listOf(
@@ -76,6 +79,9 @@ internal object MobbyColors {
         val menuStroke = Color.Black.copy(alpha = 0.06f)
         val drawer = Color(0xFFF5F5F5)
         val drawerControl = Color.White
+        val addSheet = Color(0xFFF5F5F5)
+        val addTile = Color(0xFFEEEEEE)
+        val addInk = Color(0xFF191919)
         val voiceTrack = Color(0xFFE4EEFF)
         val voiceWash = Color(0xFFD9E8FF)
         val voiceCancel = Color(0xFFFFE4E6)
@@ -137,6 +143,12 @@ internal val MobbyLightScheme: ColorScheme = lightColorScheme(
 @Composable internal fun cardColor(): Color = if (darkChrome()) MobbyColors.Dark.card else MobbyColors.Light.card
 
 @Composable internal fun raisedColor(): Color = cardColor()
+
+@Composable internal fun addSheetColor(): Color = if (darkChrome()) MobbyColors.Dark.addSheet else MobbyColors.Light.addSheet
+
+@Composable internal fun addTileColor(): Color = if (darkChrome()) MobbyColors.Dark.addTile else MobbyColors.Light.addTile
+
+@Composable internal fun addInkColor(): Color = if (darkChrome()) MobbyColors.Dark.addInk else MobbyColors.Light.addInk
 
 @Composable internal fun menuInk(): Color = if (darkChrome()) MobbyColors.Dark.menuInk else MobbyColors.Light.menuInk
 
