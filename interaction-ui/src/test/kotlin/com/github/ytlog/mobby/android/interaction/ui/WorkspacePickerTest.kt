@@ -40,7 +40,8 @@ class WorkspacePickerTest {
             "getDiagnostic" -> flowOf(DiagnosticOutput(null, emptyList()))
             "agents" -> listOf(AgentOption(AgentId.CLAUDE_CODE, mapOf("claude-fixture" to emptySet()), null, true, emptySet()))
             "gateways" -> listOf(
-                GatewayProfile(AgentId.CODEX, "CODEX", 1, "https://example.test/v1", "model", "RESPONSES", true),
+                GatewayProfile(AgentId.CODEX, "CODEX", 1, "https://example.test/v1", "model", "RESPONSES", true,
+                    listOf(GatewayModel("model", "model"))),
                 GatewayProfile(AgentId.CLAUDE_CODE, "CLAUDE", 1, "https://example.test/v1", "claude-fixture", "MESSAGES", true,
                     listOf(GatewayModel("claude-fixture", "claude-fixture"))))
             "defaultGateway" -> GatewayDefault(gatewayDefault, if (gatewayDefault == AgentId.CODEX) "CODEX" else "CLAUDE", 1)
@@ -202,6 +203,14 @@ class WorkspacePickerTest {
         compose.onNodeWithText("Claude Code").performScrollTo().performClick()
         compose.onNodeWithText("仍在当前对话中继续", substring = true).assertExists()
         compose.onNodeWithText("应用").assertExists()
+    }
+    @Test fun `agent menu shows gateway without repeating its model list`() {
+        val vm = vm()
+        val conversation = Conversation(ConversationId("c"), NextTurnConfig(AgentId.CODEX, "model", null, "default", "CODEX"))
+        compose.setContent { MaterialTheme { AgentConfigMenu(true, {}, conversation, vm) } }
+        compose.onNodeWithText("example.test").assertExists()
+        compose.onNodeWithText("example.test · model · 1 个模型").assertDoesNotExist()
+        compose.onNodeWithText("model").assertExists()
     }
     @Test fun `project default save survives recreation without duplicate requests`() {
         val vm = vm()

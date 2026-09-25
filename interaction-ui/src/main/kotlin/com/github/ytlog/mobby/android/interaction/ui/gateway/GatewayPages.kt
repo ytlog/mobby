@@ -131,17 +131,20 @@ internal fun gatewayBaseAddress(value: String): String = value.trim().trimEnd('/
 }
 
 internal fun gatewaySummary(profile: GatewayProfile): String {
-    val providerId = GatewayProviders.match(profile.agent, profile.endpoint)
-    val provider = (if (profile.temporary) AppStrings.localModelService else null)
-        ?: GatewayProviders.find(providerId)?.label
-        ?: runCatching { java.net.URI(profile.endpoint).host }.getOrNull()
-        ?: AppStrings.custom
     val catalog = when {
         profile.catalogError != null -> AppStrings.modelListNotUpdated
         profile.models.isNotEmpty() -> AppStrings.models(profile.models.size)
         else -> null
     }
-    return listOfNotNull(provider, profile.model.takeIf { it.isNotBlank() }, catalog).joinToString(" · ")
+    return listOfNotNull(gatewayLabel(profile), profile.model.takeIf { it.isNotBlank() }, catalog).joinToString(" · ")
+}
+
+internal fun gatewayLabel(profile: GatewayProfile): String {
+    val providerId = GatewayProviders.match(profile.agent, profile.endpoint)
+    return (if (profile.temporary) AppStrings.localModelService else null)
+        ?: GatewayProviders.find(providerId)?.label
+        ?: runCatching { java.net.URI(profile.endpoint).host }.getOrNull()
+        ?: AppStrings.custom
 }
 
 @Composable private fun GatewayFormAction(label: String, busy: Boolean, enabled: Boolean, loadingTag: String, onClick: () -> Unit) {

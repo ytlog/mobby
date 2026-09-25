@@ -33,7 +33,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.github.ytlog.mobby.android.interaction.domain.*
-import com.github.ytlog.mobby.android.interaction.ui.gateway.gatewaySummary
+import com.github.ytlog.mobby.android.interaction.ui.gateway.gatewayLabel
 import com.github.ytlog.mobby.android.interaction.domain.gateway.GatewayProfile
 import com.github.ytlog.mobby.android.interaction.domain.gateway.GatewayDefault
 import com.github.ytlog.mobby.android.interaction.domain.gateway.ConversationGatewayResolver
@@ -109,7 +109,7 @@ import kotlinx.coroutines.*
             }
             MenuSection(AppStrings.gateway) {
                 profiles.filter { it.agent == agent }.forEach { gateway ->
-                    MenuOption(gatewaySummary(gateway), gatewayId == gateway.id) { gatewayId = gateway.id; model = gateway.model; reasoning = null }
+                    MenuOption(gatewayLabel(gateway), gatewayId == gateway.id) { gatewayId = gateway.id; model = gateway.model; reasoning = null }
                 }
                 if (profiles.none { it.agent == agent }) MenuCaption(AppStrings.noGatewayAvailableOpenGatewaySettings)
             }
