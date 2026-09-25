@@ -156,8 +156,13 @@ class LocalModelService : Service() {
         val request = try { Protocol.parse(call.receiveText(), protocol) }
         catch (e: Exception) { call.respondText(Protocol.error(e.message ?: "Invalid request"), ContentType.Application.Json, HttpStatusCode.BadRequest); return }
         if (engine.current() != request.model) { call.respondText(Protocol.error("Model is not loaded"), ContentType.Application.Json, HttpStatusCode.Conflict); return }
-        val id = "local-${UUID.randomUUID()}"
+        val prefix = when (protocol) { "responses" -> "resp_"; "messages" -> "msg_"; else -> "chatcmpl_" }
+        val id = "$prefix${UUID.randomUUID().toString().replace("-", "")}"
         val created = System.currentTimeMillis() / 1000
+        if (request.toolContext != null) {
+            inferTools(call, protocol, request, id, created)
+            return
+        }
         if (!request.stream) {
             try {
                 val text = StringBuilder()
@@ -223,6 +228,31 @@ class LocalModelService : Service() {
                     }
                 }
             } catch (e: Exception) { runCatching { send("error", Protocol.error(e.message ?: "Generation failed", "server_error")) } }
+        }
+    }
+
+    private suspend fun inferTools(call: ApplicationCall, protocol: String, request: InferenceRequest, id: String, created: Long) {
+        val context = requireNotNull(request.toolContext)
+        val completed = try {
+            val job = currentCoroutineContext()[Job]
+            val raw = withContext(Dispatchers.IO) { engine.generateTools(request.model, context, request.maxTokens) { job?.isActive != false } }
+            val turn = ToolResponses.parse(raw, context)
+            ToolResponses.completion(protocol, id, request.model, created, turn)
+        } catch (e: Exception) {
+            call.respondText(Protocol.error(e.message ?: "Tool generation failed", "server_error"), ContentType.Application.Json, HttpStatusCode.ServiceUnavailable)
+            return
+        }
+        if (!request.stream) {
+            call.respondText(completed.toString(), ContentType.Application.Json)
+            return
+        }
+        call.respondTextWriter(contentType = ContentType.Text.EventStream) {
+            ToolResponses.events(protocol, completed).forEach { (event, payload) ->
+                if (event != null) write("event: $event\n")
+                write("data: $payload\n\n")
+            }
+            if (protocol == "chat") write("data: [DONE]\n\n")
+            flush()
         }
     }
 

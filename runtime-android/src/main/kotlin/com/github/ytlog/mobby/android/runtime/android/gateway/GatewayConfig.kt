@@ -22,6 +22,7 @@ data class GatewayConfig(
     val endpoint: String = "", val model: String = "", val key: String = "",
     val protocol: GatewayProtocol = GatewayProtocol.RESPONSES,
     val models: List<GatewayModel> = emptyList(), val catalogError: String? = null,
+    val localAgentProfile: Boolean = false,
 ) {
     override fun toString() = "GatewayConfig(protocol=$protocol, credentials=[redacted])"
     fun accepts(modelId: String) = modelId == model || models.any { it.id == modelId }
@@ -54,6 +55,7 @@ data class GatewayConfig(
             models.forEach { item -> addJsonObject { put("id", item.id); put("name", item.name) } }
         }
         catalogError?.let { put("catalogError", it) }
+        if (localAgentProfile) put("localAgentProfile", true)
     }.toString()
     companion object {
         fun parse(value: String): GatewayConfig {
@@ -72,7 +74,7 @@ data class GatewayConfig(
                 ?.takeIf { it.length <= 200 && it.none { char -> char.isISOControl() } }
             return GatewayConfig(obj.getValue("endpoint").jsonPrimitive.content, obj.getValue("model").jsonPrimitive.content,
                 obj.getValue("key").jsonPrimitive.content, GatewayProtocol.valueOf(obj.getValue("protocol").jsonPrimitive.content.uppercase()),
-                models, catalogError)
+                models, catalogError, obj["localAgentProfile"]?.jsonPrimitive?.booleanOrNull == true)
         }
     }
 }
@@ -104,7 +106,7 @@ data class GatewayRecord(
     fun config(mode: AgentMode): GatewayConfig {
         val protocol = mode.gatewayProtocol()
         return GatewayConfig(requireNotNull(routes[protocol]) { AppStrings.gatewayDoesNotSupportThisAgent }, model, key,
-            protocol, models, catalogError)
+            protocol, models, catalogError, id == LocalModelGateway.ID)
     }
     fun validate() {
         require(id.matches(Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")) && routes.isNotEmpty())

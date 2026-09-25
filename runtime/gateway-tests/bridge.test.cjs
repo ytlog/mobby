@@ -41,6 +41,23 @@ test('all Agent/protocol combinations use only the authenticated local bridge',(
   }
 });
 
+test('local Codex profile disables only unavailable provider-hosted tools at launch',()=>{
+  const bridge={url:'http://127.0.0.1:32123',token:'local-only-token'};
+  const config={endpoint:'http://127.0.0.1:11435/v1',protocol:'responses',model:'qwen',key:'fake',localAgentProfile:true};
+  const local=agentLaunch('CODEX',['exec'],config,{},bridge);
+  assert.ok(local.args.includes('web_search="disabled"'));
+  assert.ok(local.args.includes('features.multi_agent=false'));
+  const remote=agentLaunch('CODEX',['exec'],{...config,localAgentProfile:false},{},bridge);
+  assert.ok(!remote.args.includes('web_search="disabled"'));
+  assert.ok(!remote.args.includes('features.multi_agent=false'));
+  const claude=agentLaunch('CLAUDE',['-p'],{...config,protocol:'messages'}, {},bridge);
+  assert.equal(claude.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS,'1024');
+  assert.equal(claude.env.CLAUDE_CODE_DISABLE_THINKING,'1');
+  assert.equal(claude.env.CLAUDE_CODE_EFFORT_LEVEL,'unset');
+  const opencode=agentLaunch('OPEN_CODE',['run'],config,{},bridge);
+  assert.deepEqual(JSON.parse(opencode.env.OPENCODE_CONFIG_CONTENT).provider.openai.models.qwen.limit,{context:32768,output:1024});
+});
+
 test('same-protocol auxiliary requests preserve body, query and native headers',async()=>{
   for(const [protocol,suffix] of [['responses','/compact'],['messages','/count_tokens']]) {
     const body={model:'original',input:[{type:'compaction',encrypted_content:'opaque'}],messages:[],custom_field:{retain:true}};

@@ -27,6 +27,7 @@ class LocalModelGatewayTest {
         val active = store.list().single()
         assertEquals(LocalModelGateway.ID, active.id)
         assertEquals("qwen-test", active.model)
+        assertTrue(GatewayConfig.parse(active.config(AgentMode.CODEX).json()).localAgentProfile)
         assertThrows(IllegalArgumentException::class.java) { store.save(active) }
         assertThrows(IllegalArgumentException::class.java) { store.delete(active.id) }
         store.selectDefault(GatewayChoice(active.id, AgentMode.CODEX))

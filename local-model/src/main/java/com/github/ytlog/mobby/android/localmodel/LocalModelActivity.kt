@@ -172,7 +172,7 @@ class LocalModelActivity : ComponentActivity() {
                         }
                         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                             Text(label("下载并加载模型后，会自动出现在网关中。停止模型或服务后，临时网关会移除。", "Downloaded and loaded models appear in gateways automatically. The temporary gateway disappears when the model or service stops."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(label("目前仅支持纯文本；Agent 工具调用和图片暂不支持。", "Text only for now; agent tools and images are not supported."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(label("支持具备工具模板的模型生成 Agent 工具调用；图片暂不支持。", "Models with tool templates can generate agent tool calls; images are not supported."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             ModelSection(label("服务", "Service")) {
                                 Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Column(Modifier.weight(1f)) {

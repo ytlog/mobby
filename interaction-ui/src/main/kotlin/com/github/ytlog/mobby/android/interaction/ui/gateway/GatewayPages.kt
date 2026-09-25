@@ -88,7 +88,7 @@ internal fun gatewayBaseAddress(value: String): String = value.trim().trimEnd('/
                             Text(gatewaySummary(representative), style = MaterialTheme.typography.bodyLarge)
                             Text(entry.value.joinToString(" · ") { it.agent.label() }, style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            val status = listOfNotNull(if (representative.temporary) AppStrings.temporaryTextOnlyGateway else null,
+                            val status = listOfNotNull(if (representative.temporary) AppStrings.temporaryLocalGateway else null,
                                 if (isCurrent) AppStrings.currentConversation else null, if (defaultGateway?.id == representative.id) AppStrings.defaultForNewConversations else null).joinToString(" · ")
                             if (status.isNotBlank()) Text(status, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                         }

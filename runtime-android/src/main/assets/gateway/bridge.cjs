@@ -103,6 +103,9 @@ function agentLaunch(mode, args, config, environment, bridge) {
     Object.assign(env, {ANTHROPIC_BASE_URL:base, ANTHROPIC_AUTH_TOKEN:token, ANTHROPIC_API_KEY:'', ANTHROPIC_MODEL:config.model,
       ANTHROPIC_DEFAULT_OPUS_MODEL:config.model, ANTHROPIC_DEFAULT_SONNET_MODEL:config.model, ANTHROPIC_DEFAULT_HAIKU_MODEL:config.model,
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC:'1'});
+    if (config.localAgentProfile) Object.assign(env, {
+      CLAUDE_CODE_MAX_OUTPUT_TOKENS:'1024', CLAUDE_CODE_DISABLE_THINKING:'1', CLAUDE_CODE_EFFORT_LEVEL:'unset'
+    });
   } else if (mode === 'CODEX') {
     env.MOBBY_GATEWAY_TOKEN = token;
     const options = [
@@ -111,6 +114,9 @@ function agentLaunch(mode, args, config, environment, bridge) {
       'model_providers.mobby.env_key="MOBBY_GATEWAY_TOKEN"', 'model_providers.mobby.wire_api="responses"',
       'model_providers.mobby.requires_openai_auth=false', 'model_providers.mobby.supports_websockets=false'
     ];
+    // Provider-hosted tools are unavailable on the independent local model server.
+    // Configure Codex before it constructs its request; the bridge never strips tool fields.
+    if (config.localAgentProfile) options.push('web_search="disabled"', 'features.multi_agent=false');
     agentArgs.unshift(...options.flatMap(value => ['-c', value]));
   } else if (mode === 'OPEN_CODE') {
     // Built-in openai provider always calls Responses. The inline config points only at the local bridge.
@@ -122,7 +128,7 @@ function agentLaunch(mode, args, config, environment, bridge) {
         model:'openai/' + config.model,
         provider:{openai:{
           options:{baseURL:base + '/v1', apiKey:'{env:OPENAI_API_KEY}'},
-          models:{[config.model]:{name:config.model}}
+          models:{[config.model]:{name:config.model,...(config.localAgentProfile ? {limit:{context:32768,output:1024}} : {})}}
         }}
       })
     });

@@ -1,5 +1,6 @@
 #include <jni.h>
 #include <llama.h>
+#include <chat.h>
 #include <algorithm>
 #include <memory>
 #include <stdexcept>
@@ -122,4 +123,124 @@ Java_com_github_ytlog_mobby_android_localmodel_llama_LlamaNative_generate(
         if (llama_decode(ctx.get(), batch) != 0) { fail(env, "Generation decode failed"); return -1; }
     }
     return generated;
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_github_ytlog_mobby_android_localmodel_llama_LlamaNative_generateTools(
+    JNIEnv *env, jclass, jlong handle, jstring messages_json, jstring tools_json, jstring choice,
+    jboolean parallel, jboolean enable_thinking, jfloat temperature, jfloat top_p, jint max_tokens, jobject sink) {
+    try {
+        auto *model = reinterpret_cast<llama_model *>(handle);
+        if (!model || max_tokens < 1 || max_tokens > 1024 || temperature < 0 || temperature > 2 || top_p <= 0 || top_p > 1)
+            throw std::runtime_error("Invalid generation arguments");
+        const auto messages = common_json::parse(get(env, messages_json));
+        const auto tools = common_json::parse(get(env, tools_json));
+        common_chat_templates_inputs input;
+        input.messages = common_chat_msgs_parse_oaicompat(messages);
+        input.tools = common_chat_tools_parse_oaicompat(tools);
+        input.parallel_tool_calls = parallel;
+        input.enable_thinking = enable_thinking;
+        const std::string selected = get(env, choice);
+        if (selected == "none") input.tool_choice = COMMON_CHAT_TOOL_CHOICE_NONE;
+        else if (selected == "required" || selected.rfind("required:", 0) == 0) {
+            input.tool_choice = COMMON_CHAT_TOOL_CHOICE_REQUIRED;
+            if (selected.rfind("required:", 0) == 0) {
+                const auto name = selected.substr(9);
+                auto found = std::find_if(input.tools.begin(), input.tools.end(), [&](const common_chat_tool & tool) { return tool.name == name; });
+                if (found == input.tools.end()) throw std::runtime_error("Unknown required tool");
+                input.tools = {*found};
+            }
+        } else if (selected != "auto") throw std::runtime_error("Unsupported tool choice");
+        auto templates = common_chat_templates_init(model, "");
+        auto params = common_chat_templates_apply(templates.get(), input);
+        if (params.format == COMMON_CHAT_FORMAT_CONTENT_ONLY && !input.tools.empty() && input.tool_choice != COMMON_CHAT_TOOL_CHOICE_NONE)
+            throw std::runtime_error("Model chat template does not support tool calls");
+        if (params.prompt.empty() || params.prompt.size() > 256 * 1024) throw std::runtime_error("Invalid or oversized tool prompt");
+        const auto *vocab = llama_model_get_vocab(model);
+        const int32_t context_limit = 32768;
+        int32_t needed = -llama_tokenize(vocab, params.prompt.data(), params.prompt.size(), nullptr, 0, true, true);
+        if (needed <= 0 || needed > context_limit - max_tokens) throw std::runtime_error("Prompt exceeds context budget");
+        const int32_t context_size = std::max<int32_t>(4096, ((needed + max_tokens + 1023) / 1024) * 1024);
+        std::vector<llama_token> tokens(needed);
+        if (llama_tokenize(vocab, params.prompt.data(), params.prompt.size(), tokens.data(), tokens.size(), true, true) < 0)
+            throw std::runtime_error("Tokenization failed");
+        jclass sink_class = env->GetObjectClass(sink);
+        jmethodID on_start = env->GetMethodID(sink_class, "onStart", "(I)Z");
+        jmethodID on_token = env->GetMethodID(sink_class, "onToken", "()Z");
+        if (!on_start || !on_token) return nullptr;
+        if (!env->CallBooleanMethod(sink, on_start, needed) || env->ExceptionCheck()) {
+            if (!env->ExceptionCheck()) throw std::runtime_error("Generation cancelled");
+            return nullptr;
+        }
+        auto cp = llama_context_default_params();
+        cp.n_ctx = context_size; cp.n_batch = 512; cp.n_ubatch = 512;
+        std::unique_ptr<llama_context, decltype(&llama_free)> ctx(llama_init_from_model(model, cp), llama_free);
+        if (!ctx) throw std::runtime_error("Could not create llama context");
+        auto sp = llama_sampler_chain_default_params();
+        std::unique_ptr<llama_sampler, decltype(&llama_sampler_free)> sampler(llama_sampler_chain_init(sp), llama_sampler_free);
+        if (!params.grammar.empty()) {
+            llama_sampler *grammar = nullptr;
+            if (params.grammar_lazy) {
+                std::vector<std::string> words;
+                std::vector<llama_token> trigger_tokens;
+                for (const auto & trigger : params.grammar_triggers) {
+                    if (trigger.type == COMMON_GRAMMAR_TRIGGER_TYPE_WORD) words.push_back(trigger.value);
+                    else if (trigger.type == COMMON_GRAMMAR_TRIGGER_TYPE_TOKEN) trigger_tokens.push_back(trigger.token);
+                    else throw std::runtime_error("Model uses an unsupported tool grammar trigger");
+                }
+                if (words.empty() && trigger_tokens.empty()) throw std::runtime_error("Model tool grammar has no trigger");
+                std::vector<const char *> word_ptrs;
+                for (const auto & word : words) word_ptrs.push_back(word.c_str());
+                grammar = llama_sampler_init_grammar_lazy(vocab, params.grammar.c_str(), "root",
+                    word_ptrs.data(), word_ptrs.size(), trigger_tokens.data(), trigger_tokens.size());
+            } else grammar = llama_sampler_init_grammar(vocab, params.grammar.c_str(), "root");
+            if (!grammar) throw std::runtime_error("Invalid tool grammar");
+            llama_sampler_chain_add(sampler.get(), grammar);
+        }
+        if (temperature == 0) llama_sampler_chain_add(sampler.get(), llama_sampler_init_greedy());
+        else {
+            if (top_p < 1) llama_sampler_chain_add(sampler.get(), llama_sampler_init_top_p(top_p, 1));
+            llama_sampler_chain_add(sampler.get(), llama_sampler_init_temp(temperature));
+            llama_sampler_chain_add(sampler.get(), llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
+        }
+        for (size_t pos = 0; pos < tokens.size(); pos += 512) {
+            if (!env->CallBooleanMethod(sink, on_token) || env->ExceptionCheck()) {
+                if (!env->ExceptionCheck()) throw std::runtime_error("Generation cancelled");
+                return nullptr;
+            }
+            auto n = static_cast<int32_t>(std::min<size_t>(512, tokens.size() - pos));
+            auto batch = llama_batch_get_one(tokens.data() + pos, n);
+            if (llama_decode(ctx.get(), batch) != 0) throw std::runtime_error("Prompt decode failed");
+        }
+        std::string output;
+        int generated = 0;
+        for (; generated < max_tokens; ++generated) {
+            if (!env->CallBooleanMethod(sink, on_token) || env->ExceptionCheck()) {
+                if (!env->ExceptionCheck()) throw std::runtime_error("Generation cancelled");
+                return nullptr;
+            }
+            llama_token token = llama_sampler_sample(sampler.get(), ctx.get(), -1);
+            if (llama_vocab_is_eog(vocab, token)) break;
+            std::vector<char> piece(1024);
+            int n = llama_token_to_piece(vocab, token, piece.data(), piece.size(), 0, true);
+            if (n < 0) throw std::runtime_error("Token piece too large");
+            output.append(piece.data(), n);
+            auto batch = llama_batch_get_one(&token, 1);
+            if (llama_decode(ctx.get(), batch) != 0) throw std::runtime_error("Generation decode failed");
+        }
+        common_chat_parser_params parser(params);
+        if (!params.parser.empty()) parser.parser.load(params.parser);
+        auto answer = common_chat_parse(output, false, parser);
+        common_json result = {
+            {"content", answer.content}, {"input_tokens", needed}, {"output_tokens", generated},
+            {"length", generated == max_tokens}, {"tool_calls", common_json::array()}
+        };
+        for (const auto & tool : answer.tool_calls) {
+            result["tool_calls"].push_back({{"id", tool.id}, {"name", tool.name}, {"arguments", tool.arguments}});
+        }
+        return env->NewStringUTF(result.dump().c_str());
+    } catch (const std::exception & e) {
+        fail(env, e.what());
+        return nullptr;
+    }
 }

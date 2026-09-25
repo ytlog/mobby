@@ -36,4 +36,14 @@ internal class ModelEngine(private val store: LocalModelStore) {
                 override fun onToken(text: String) = sink(text)
             })
     }
+
+    @Synchronized fun generateTools(id: String, context: ToolContext, maxTokens: Int, keepGoing: () -> Boolean): String {
+        check(loaded?.id == id && handle != 0L) { "Model is not loaded" }
+        return LlamaNative.generateTools(handle, context.messages.toString(), context.tools.toString(), context.choice,
+            context.parallel, context.enableThinking, context.temperature, context.topP, maxTokens,
+            object : LlamaNative.ToolSink {
+                override fun onStart(inputTokens: Int) = keepGoing()
+                override fun onToken() = keepGoing()
+            })
+    }
 }
