@@ -84,20 +84,24 @@ class LocalModelService : Service() {
             }
             get("/local/v1/engines") {
                 if (!permitted(call)) return@get
-                call.respondText("""{"engines":[{"id":"llama","packaged":true,"formats":["gguf"]},{"id":"mlc","packaged":false,"reason":"MLC Android runtime and compiled model library not packaged"}]}""", ContentType.Application.Json)
+                call.respondText("""{"engines":[{"id":"llama","packaged":true,"formats":["gguf"]}]}""", ContentType.Application.Json)
             }
             get("/local/v1/catalog/models") {
                 if (!permitted(call)) return@get
                 val backend = call.request.queryParameters["backend"] ?: "llama"
                 if (backend != "llama") { call.respondText(Protocol.error("Backend not packaged"), ContentType.Application.Json, HttpStatusCode.ServiceUnavailable); return@get }
                 try {
-                    val candidates = withContext(Dispatchers.IO) { store.catalog(call.request.queryParameters["family"]) }
+                    val candidates = withContext(Dispatchers.IO) { store.catalog(call.request.queryParameters["family"], call.request.queryParameters["source"] ?: "modelscope") }
                     call.respondText(Protocol.json.encodeToString(candidates), ContentType.Application.Json)
                 } catch (e: Exception) { call.respondText(Protocol.error(e.message ?: "Catalog unavailable"), ContentType.Application.Json, HttpStatusCode.BadGateway) }
             }
             get("/local/v1/models") {
                 if (!permitted(call)) return@get
                 call.respondText(Protocol.json.encodeToString(store.models()), ContentType.Application.Json)
+            }
+            get("/local/v1/operations") {
+                if (!permitted(call, true)) return@get
+                call.respondText(Protocol.json.encodeToString(store.operations.values.sortedBy { it.id }), ContentType.Application.Json)
             }
             post("/local/v1/installs") {
                 if (!permitted(call, true)) return@post

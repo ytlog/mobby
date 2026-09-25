@@ -10,8 +10,7 @@ android {
 }
 dependencies {
     implementation(project(":local-model-backend-llama"))
-    implementation(project(":local-model-backend-mlc"))
-    if (findProject(":mlc4j") != null) implementation(project(":mlc4j"))
+    implementation(project(":localization"))
     implementation(platform("androidx.compose:compose-bom:2024.04.01"))
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.compose.material3:material3")

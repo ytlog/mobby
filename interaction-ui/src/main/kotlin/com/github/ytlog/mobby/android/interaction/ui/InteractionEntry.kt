@@ -69,7 +69,7 @@ import kotlinx.coroutines.flow.*
 import kotlin.math.roundToInt
 
 class InteractionHostActions(
-    val share: (String) -> Unit, val shortcut: (String, String) -> Unit, val appearance: (Boolean) -> Unit, val pet: (Boolean) -> Unit = {}, val localModels: () -> Unit = {},
+    val share: (String) -> Unit, val shortcut: (String, String) -> Unit, val appearance: (Boolean) -> Unit, val pet: (Boolean) -> Unit = {}, val localModels: (Boolean) -> Unit = {},
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -164,7 +164,7 @@ class InteractionHostActions(
                 ) {
                     when (route) {
                         "projects" -> ProjectPage(vm) { route = "conversation" }
-                        "settings" -> SettingsPage(system, appearance, { value -> vm.enqueue { vm.report(actions.setAppearance(value)) } }, { navigate(it) }, { route = "conversation" }, vm, petEnabled, petPermitted, hostActions.pet, hostActions.localModels)
+                        "settings" -> SettingsPage(system, appearance, { value -> vm.enqueue { vm.report(actions.setAppearance(value)) } }, { navigate(it) }, { route = "conversation" }, vm, petEnabled, petPermitted, hostActions.pet, { hostActions.localModels(dark) })
                         "gateway" -> GatewayPage(vm) { route = "settings" }
                         "history-limits" -> EventHistoryPage(actions::eventHistoryLimits, actions::saveEventHistoryLimits) { route = "settings" }
                         "diagnostic" -> DiagnosticPage(vm) { route = "settings" }

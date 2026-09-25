@@ -32,9 +32,9 @@ class LocalModelSmokeTest {
         val engines = request("/local/v1/engines", token)
         assertTrue(engines.contains("\"id\":\"llama\""))
         val catalog = request("/local/v1/catalog/models?family=Qwen", token)
-        assertTrue("No Qwen GGUF candidates: $catalog", catalog.contains("Qwen3-0.6B") && catalog.contains("sha256"))
+        assertTrue("No Qwen GGUF candidates: $catalog", catalog.contains("Qwen3-0.6B") && catalog.contains("qwen2.5-0.5b") && catalog.contains("sha256"))
         val gemma = request("/local/v1/catalog/models?family=Gemma", token)
-        assertTrue("No Gemma GGUF candidates: $gemma", gemma.contains("gemma-3-270m"))
+        assertTrue("No Gemma GGUF candidates: $gemma", gemma.contains("gemma-3-270m") && gemma.contains("gemma-3-1b"))
         request("/local/v1/server/stop", token, "POST")
     }
 

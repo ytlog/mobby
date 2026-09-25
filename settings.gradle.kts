@@ -18,8 +18,4 @@ include(":localization")
 
 include(":device-interaction", ":device-interaction-ui")
 
-include(":local-model", ":local-model-backend-llama", ":local-model-backend-mlc")
-if (file("local_model_mlc/mlc4j/build.gradle").exists()) {
-    include(":mlc4j")
-    project(":mlc4j").projectDir = file("local_model_mlc/mlc4j")
-}
+include(":local-model", ":local-model-backend-llama")
