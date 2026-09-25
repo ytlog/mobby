@@ -25,6 +25,22 @@ import java.util.concurrent.ConcurrentHashMap
 @Serializable internal data class InstalledModel(val id: String, val engine: String, val path: String, val size: Long, val sha256: String, val displayName: String = "", val quantization: String = "")
 @Serializable internal data class InstallProgress(val id: String, val status: String, val received: Long, val total: Long, val modelId: String = "", val error: String? = null)
 
+internal object MobileGgufPolicy {
+    private val quantizations = setOf("q4_k_m", "q5_k_m", "q8_0")
+    private val mobileQ4Repos = setOf("ggml-org/Qwen3.5-0.8B-GGUF", "ggml-org/gemma-4-E2B-it-GGUF")
+
+    fun quantization(path: String): String = path.removeSuffix(".gguf").substringAfterLast('-').uppercase()
+
+    fun supports(repo: String, path: String, size: Long): Boolean {
+        if (!path.matches(Regex("[A-Za-z0-9._-]+[.]gguf"))) return false
+        if (path.startsWith("mmproj-", true) || path.startsWith("mtp-", true)) return false
+        if (repo in mobileQ4Repos && quantization(path).equals("Q4_0", true)) {
+            return size in 1..3_000_000_000
+        }
+        return quantization(path).lowercase() in quantizations && size in 1..1_150_000_000
+    }
+}
+
 internal class LocalModelStore(context: Context) {
     private val root = File(context.filesDir, "local-models").apply { mkdirs() }
     private val json = Json { ignoreUnknownKeys = true }
@@ -32,17 +48,14 @@ internal class LocalModelStore(context: Context) {
     val operations = ConcurrentHashMap<String, InstallProgress>()
     private data class Source(val family: String, val name: String)
     private val repos = mapOf(
+        "ggml-org/Qwen3.5-0.8B-GGUF" to Source("Qwen", "Qwen 3.5 · 0.8B"),
         "Qwen/Qwen2.5-0.5B-Instruct-GGUF" to Source("Qwen", "Qwen 2.5 · 0.5B Instruct"),
         "Qwen/Qwen3-0.6B-GGUF" to Source("Qwen", "Qwen 3 · 0.6B"),
+        "ggml-org/gemma-4-E2B-it-GGUF" to Source("Gemma", "Gemma 4 · E2B Instruct"),
         "ggml-org/gemma-3-270m-it-GGUF" to Source("Gemma", "Gemma 3 · 270M Instruct"),
         "ggml-org/gemma-3-1b-it-GGUF" to Source("Gemma", "Gemma 3 · 1B Instruct"),
     )
     private val activeIds = mutableSetOf<String>()
-    private val quantizations = setOf("q4_k_m", "q5_k_m", "q8_0")
-
-    private fun quantization(path: String): String = path.removeSuffix(".gguf").substringAfterLast('-').uppercase()
-    private fun supported(path: String, size: Long): Boolean =
-        path.matches(Regex("[A-Za-z0-9._-]+[.]gguf")) && quantization(path).lowercase() in quantizations && size in 1..1_150_000_000
 
     private fun id(family: String, path: String): String =
         "${family.lowercase()}-${path.removeSuffix(".gguf").lowercase().replace(Regex("[^a-z0-9-]"), "-")}"
@@ -97,9 +110,9 @@ internal class LocalModelStore(context: Context) {
     fun catalog(family: String?, provider: String = "modelscope"): List<Candidate> = repos.flatMap { (repo, source) ->
         if (family != null && !source.family.equals(family, true)) return@flatMap emptyList()
         artifacts(repo, provider).mapNotNull { file ->
-            if (!file.sha.matches(Regex("[0-9a-f]{64}")) || !file.revision.matches(Regex("[0-9a-f]{40}")) || !supported(file.path, file.size)) return@mapNotNull null
+            if (!file.sha.matches(Regex("[0-9a-f]{64}")) || !file.revision.matches(Regex("[0-9a-f]{40}")) || !MobileGgufPolicy.supports(repo, file.path, file.size)) return@mapNotNull null
             Candidate(id(source.family, file.path), "llama", source.family, repo, file.revision,
-                file.path, file.size, file.sha, true, source.name, quantization(file.path), provider)
+                file.path, file.size, file.sha, true, source.name, MobileGgufPolicy.quantization(file.path), provider)
         }
     }
 
@@ -109,11 +122,11 @@ internal class LocalModelStore(context: Context) {
         require(source.family == candidate.family && candidate.engine == "llama" && candidate.installable)
         require(ModelDownloadSource.fromId(candidate.source) != null)
         require(candidate.revision.matches(Regex("[0-9a-f]{40}")))
-        require(candidate.id == id(candidate.family, candidate.path) && supported(candidate.path, candidate.size))
+        require(candidate.id == id(candidate.family, candidate.path) && MobileGgufPolicy.supports(candidate.repo, candidate.path, candidate.size))
         val found = artifacts(candidate.repo, candidate.source, candidate.revision).firstOrNull { it.path == candidate.path }
             ?: error("Artifact disappeared")
         require(found.sha == candidate.sha256 && found.size == candidate.size && found.sha.matches(Regex("[0-9a-f]{64}")))
-        return candidate.copy(displayName = source.name, quantization = quantization(candidate.path))
+        return candidate.copy(displayName = source.name, quantization = MobileGgufPolicy.quantization(candidate.path))
     }
 
     fun install(candidate: Candidate): String {

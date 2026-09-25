@@ -6,7 +6,7 @@
 
 `:app` 只依赖 `:local-model` 并打开它的管理页面。服务在同 APK 的 `:local_model` 独立进程运行，监听 `127.0.0.1:11435`。管理页通过 HTTP 查询、下载和加载模型；显式 Android Intent 只负责启动前台 Service。模块不依赖现有 Node 桥接或 Agent 代码。服务进程跳过宿主 Application 的运行时初始化。
 
-当前唯一后端是固定提交的 llama.cpp arm64 CPU，支持单文件 GGUF。在线目录查询 `Qwen/Qwen2.5-0.5B-Instruct-GGUF`、`Qwen/Qwen3-0.6B-GGUF`、`ggml-org/gemma-3-270m-it-GGUF` 和 `ggml-org/gemma-3-1b-it-GGUF`，按引擎格式、量化格式、文件大小和 SHA-256 元数据筛选。可选来源为[魔搭 ModelScope](https://modelscope.cn/)、[Hugging Face](https://huggingface.co/) 和 [HF 镜像](https://hf-mirror.com/)；中文首次使用默认魔搭，英文首次使用默认 Hugging Face。用户手动选择会保存在模块设置中，模型列表与下载都只使用所选来源，不自动切源。下载先写临时文件，校验长度和 SHA-256 后才登记为已安装。模型权重不打包进 APK。
+当前唯一后端是固定提交的 llama.cpp arm64 CPU，支持单文件 GGUF。在线目录查询千问 2.5 0.5B、千问 3 0.6B、[千问 3.5 0.8B](https://huggingface.co/ggml-org/Qwen3.5-0.8B-GGUF)、Gemma 3 270M/1B 和 [Gemma 4 E2B](https://huggingface.co/ggml-org/gemma-4-E2B-it-GGUF) 的 GGUF 仓库，按引擎格式、量化格式、文件大小和 SHA-256 元数据筛选。千问 3.5 可选 Q4_0（约 563 MB）和 Q8_0（约 834 MB）；Gemma 4 E2B 只选 Q4_0（约 2.84 GB）。当前只支持文本推理，因此不下载这两个多模态模型的视觉 projector 或 Gemma 4 的 MTP 文件；图片输入仍不可用。Gemma 4 还需要足够的设备存储和运行内存，具体手机能否顺利加载需要实机验证。可选来源为[魔搭 ModelScope](https://modelscope.cn/)、[Hugging Face](https://huggingface.co/) 和 [HF 镜像](https://hf-mirror.com/)；中文首次使用默认魔搭，英文首次使用默认 Hugging Face。用户手动选择会保存在模块设置中，模型列表与下载都只使用所选来源，不自动切源。下载先写临时文件，校验长度和 SHA-256 后才登记为已安装。模型权重不打包进 APK。
 
 管理页沿用宿主设置页的明暗配色、圆角分组、标题和按钮层级。使用顺序：打开“设置 → 本地模型服务”后页面自动启动服务并显示千问列表；切换“Gemma”查看另一组；在“下载来源”选择手机可访问的网站；点击某个量化版本的“下载”，进度和大小会在卡片内显示；完成后在“已下载”中点击“加载”；最后复制地址、推理密钥和模型 ID，填入同一部手机上客户端的自定义网关。服务地址只监听本机；其他设备不能直接访问。页面重新打开时会恢复尚在运行的下载进度。
 
