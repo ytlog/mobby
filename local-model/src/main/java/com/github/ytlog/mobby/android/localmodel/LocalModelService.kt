@@ -82,6 +82,7 @@ class LocalModelService : Service() {
                 if (!permitted(call)) return@get
                 call.respondText(buildJsonObject {
                     put("instanceId", instanceId); put("status", "LISTENING"); put("port", port); put("loadedModel", engine.current())
+                    put("backend", engine.backend())
                     engine.telemetry.snapshot()?.let { put("inference", it.json()) }
                 }.toString(), ContentType.Application.Json)
             }

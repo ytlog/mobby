@@ -96,6 +96,12 @@ Java_com_github_ytlog_mobby_android_localmodel_llama_LlamaNative_unload(JNIEnv *
     delete reinterpret_cast<ModelSession *>(handle);
 }
 
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_github_ytlog_mobby_android_localmodel_llama_LlamaNative_backend(JNIEnv *env, jclass, jlong handle) {
+    if (!reinterpret_cast<ModelSession *>(handle)) { fail(env, "Model is not loaded"); return nullptr; }
+    return env->NewStringUTF("CPU");
+}
+
 extern "C" JNIEXPORT jint JNICALL
 Java_com_github_ytlog_mobby_android_localmodel_llama_LlamaNative_generate(
     JNIEnv *env, jclass, jlong handle, jobjectArray roles, jobjectArray contents, jint max_tokens, jobject sink) {

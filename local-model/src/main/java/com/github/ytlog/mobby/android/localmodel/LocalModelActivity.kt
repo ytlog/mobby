@@ -55,6 +55,7 @@ class LocalModelActivity : ComponentActivity() {
     private var candidates by mutableStateOf<List<Candidate>>(emptyList())
     private var installed by mutableStateOf<List<InstalledModel>>(emptyList())
     private var loaded by mutableStateOf<String?>(null)
+    private var backend by mutableStateOf<String?>(null)
     private var inference by mutableStateOf<JsonObject?>(null)
     private var progress by mutableStateOf<InstallProgress?>(null)
     private var modelMutation by mutableStateOf<Pair<String, Boolean>?>(null)
@@ -112,12 +113,15 @@ class LocalModelActivity : ComponentActivity() {
         val health = withContext(Dispatchers.IO) { json.parseToJsonElement(request("/local/v1/health")).jsonObject }
         ready = health["status"]?.jsonPrimitive?.content == "LISTENING"
         loaded = health["loadedModel"]?.jsonPrimitive?.contentOrNull
+        backend = health["backend"]?.jsonPrimitive?.contentOrNull
         inference = health["inference"] as? JsonObject
         installed = withContext(Dispatchers.IO) { json.decodeFromString(request("/local/v1/models")) }
     }
 
     private suspend fun refreshInference() {
         val health = withContext(Dispatchers.IO) { json.parseToJsonElement(request("/local/v1/health")).jsonObject }
+        loaded = health["loadedModel"]?.jsonPrimitive?.contentOrNull
+        backend = health["backend"]?.jsonPrimitive?.contentOrNull
         inference = health["inference"] as? JsonObject
     }
 
@@ -242,6 +246,9 @@ class LocalModelActivity : ComponentActivity() {
                                             Column(Modifier.weight(1f)) {
                                                 Text(model.displayName.ifBlank { model.id }, style = MaterialTheme.typography.bodyLarge)
                                                 Text("${model.quantization} · ${model.size / 1_048_576} MiB" + if (loaded == model.id) label(" · 已加入网关", " · in gateways") else "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                if (loaded == model.id && backend != null) {
+                                                    Text(label("运行后端：llama.cpp · ", "Active backend: llama.cpp · ") + backend, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                                                }
                                             }
                                             val busy = modelMutation?.first == model.id
                                             if (loaded == model.id) OutlinedButton(enabled = modelMutation == null, onClick = { action { changeModel(model.id, false) } }) {
