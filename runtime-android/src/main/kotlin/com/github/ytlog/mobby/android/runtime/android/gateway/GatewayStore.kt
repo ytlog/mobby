@@ -43,26 +43,38 @@ class GatewayStore(context: Context) {
         Json.parseToJsonElement(decrypt(encrypted)).jsonArray.map { it.jsonPrimitive.content }
     }.orEmpty()
     fun load(id: String, version: Long? = null): GatewayRecord {
+        if (id == LocalModelGateway.ID) {
+            val live = requireNotNull(LocalModelGateway.liveRecord()) { AppStrings.gatewayNotFound }
+            require(version == null || version == live.version) { AppStrings.gatewayVersionNotFound }
+            return live
+        }
         require(id in ids()) { AppStrings.gatewayNotFound }
         val current = GatewayRecord.parse(decrypt(requireNotNull(prefs.getString(id, null)) { AppStrings.gatewayNotFound }))
         if (version == null || version == current.version) return current
         val encoded = requireNotNull(prefs.getString("$id:$version", null)) { AppStrings.gatewayVersionNotFound }
         return GatewayRecord.parse(decrypt(encoded))
     }
-    fun list(): List<GatewayRecord> = ids().map(::load)
-    fun default(): GatewayChoice? = prefs.getString("default", null)?.let { GatewayChoice.parse(decrypt(it)) }
+    fun list(): List<GatewayRecord> = ids().map(::load) + listOfNotNull(LocalModelGateway.liveRecord())
+    private fun savedDefault(): GatewayChoice? = prefs.getString("default", null)?.let { GatewayChoice.parse(decrypt(it)) }
+    fun default(): GatewayChoice? = LocalModelGateway.choice() ?: savedDefault()
     fun selectDefault(choice: GatewayChoice) = synchronized(writeLock) {
+        if (choice.id == LocalModelGateway.ID) {
+            LocalModelGateway.select(choice.mode)
+            return@synchronized
+        }
         require(choice.mode in load(choice.id).modes()) { AppStrings.gatewayDoesNotSupportThisAgent }
         check(prefs.edit().putString("default", encrypt(choice.json())).commit()) { AppStrings.couldNotSaveDefaultGateway }
+        LocalModelGateway.clearSelection()
     }
     fun save(record: GatewayRecord): GatewayRecord = synchronized(writeLock) {
+        require(record.id != LocalModelGateway.ID)
         record.validate()
         val ids = ids()
         val existing = if (record.id in ids) load(record.id) else null
         val saved = record.copy(version = (existing?.version ?: 0) + 1)
         val edit = prefs.edit()
         if (existing != null) edit.putString("${record.id}:${existing.version}", prefs.getString(record.id, null))
-        if (default()?.id == record.id && default()?.mode !in saved.modes()) edit.remove("default")
+        if (savedDefault()?.id == record.id && savedDefault()?.mode !in saved.modes()) edit.remove("default")
         val updated = if (existing == null) ids + record.id else ids
         check(edit.putString(record.id, encrypt(saved.json()))
             .putString("index", encrypt(JsonArray(updated.map(::JsonPrimitive)).toString()))
@@ -70,11 +82,12 @@ class GatewayStore(context: Context) {
         saved
     }
     fun delete(id: String) = synchronized(writeLock) {
+        require(id != LocalModelGateway.ID)
         require(id in ids())
         val updated = ids() - id
         val edit = prefs.edit().remove(id).putString("index", encrypt(JsonArray(updated.map(::JsonPrimitive)).toString()))
         prefs.all.keys.filter { it.startsWith("$id:") }.forEach(edit::remove)
-        if (default()?.id == id) edit.remove("default")
+        if (savedDefault()?.id == id) edit.remove("default")
         check(edit.commit()) { AppStrings.couldNotDeleteGateway }
     }
 }

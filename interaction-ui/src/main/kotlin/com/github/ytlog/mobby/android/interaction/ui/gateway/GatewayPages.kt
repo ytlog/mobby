@@ -37,7 +37,12 @@ internal fun gatewayBaseAddress(value: String): String = value.trim().trimEnd('/
     val agents by vm.agents.collectAsStateWithLifecycle()
     var editing by rememberSaveable { mutableStateOf<String?>(null) }
     var notice by rememberSaveable { mutableStateOf("") }
-    LaunchedEffect(Unit) { vm.enqueue { vm.refresh() } }
+    LaunchedEffect(Unit) {
+        while (true) {
+            vm.enqueue { vm.refresh() }
+            withContext(Dispatchers.IO) { delay(5_000) }
+        }
+    }
     if (editing == null) GatewayList(profiles, notice, defaultGateway, state.selected?.conversation?.config, agents, back,
         select = vm::chooseGateway, open = { editing = it ?: "new"; notice = "" })
     else key(editing) {
@@ -83,12 +88,15 @@ internal fun gatewayBaseAddress(value: String): String = value.trim().trimEnd('/
                             Text(gatewaySummary(representative), style = MaterialTheme.typography.bodyLarge)
                             Text(entry.value.joinToString(" · ") { it.agent.label() }, style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            val status = listOfNotNull(if (isCurrent) AppStrings.currentConversation else null, if (defaultGateway?.id == representative.id) AppStrings.defaultForNewConversations else null).joinToString(" · ")
+                            val status = listOfNotNull(if (representative.temporary) AppStrings.temporaryTextOnlyGateway else null,
+                                if (isCurrent) AppStrings.currentConversation else null, if (defaultGateway?.id == representative.id) AppStrings.defaultForNewConversations else null).joinToString(" · ")
                             if (status.isNotBlank()) Text(status, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                         }
                         if (selected) AppIcon(AppIcons.Check, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
-                        ActionIcon(AppStrings.editGateway, { open(entry.key) }, AppIcons.Edit, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Spacer(Modifier.width(8.dp))
+                        if (!representative.temporary) {
+                            ActionIcon(AppStrings.editGateway, { open(entry.key) }, AppIcons.Edit, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(Modifier.width(8.dp))
+                        }
                     }
                     if (selected && expandedGatewayId == representative.id && selectedProfile != null) {
                         val models = (selectedProfiles.flatMap { it.models } + GatewayModel(selectedProfile.model, selectedProfile.model))
@@ -120,7 +128,8 @@ internal fun gatewayBaseAddress(value: String): String = value.trim().trimEnd('/
 
 internal fun gatewaySummary(profile: GatewayProfile): String {
     val providerId = GatewayProviders.match(profile.agent, profile.endpoint)
-    val provider = GatewayProviders.find(providerId)?.label
+    val provider = (if (profile.temporary) AppStrings.localModelService else null)
+        ?: GatewayProviders.find(providerId)?.label
         ?: runCatching { java.net.URI(profile.endpoint).host }.getOrNull()
         ?: AppStrings.custom
     val catalog = when {

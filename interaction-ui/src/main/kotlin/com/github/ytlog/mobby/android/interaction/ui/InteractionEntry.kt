@@ -75,12 +75,13 @@ class InteractionHostActions(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable fun InteractionEntry(
     actions: InteractionUseCases, hostActions: InteractionHostActions, conversationNavigation: String? = null,
-    petEnabled: Boolean = false, petPermitted: Boolean = false,
+    petEnabled: Boolean = false, petPermitted: Boolean = false, gatewayRefresh: Int = 0,
 ) {
     val factory = remember(actions) { object : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST") override fun <T : ViewModel> create(modelClass: Class<T>): T = ConversationViewModel(actions) as T
     } }
     val vm: ConversationViewModel = viewModel(factory = factory)
+    LaunchedEffect(gatewayRefresh) { if (gatewayRefresh > 0) vm.enqueue { vm.refresh() } }
     val state by vm.state.collectAsStateWithLifecycle()
     val system by vm.status.collectAsStateWithLifecycle()
     val agentOptions by vm.agents.collectAsStateWithLifecycle()

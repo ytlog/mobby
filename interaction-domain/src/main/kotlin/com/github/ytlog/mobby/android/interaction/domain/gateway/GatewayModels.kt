@@ -6,7 +6,7 @@ data class GatewayModel(val id: String, val name: String)
 data class GatewayAddresses(val responses: String, val messages: String = "") {
     fun forAgent(agent: AgentId): String = if (agent == AgentId.CLAUDE_CODE) messages.ifBlank { responses } else responses
 }
-data class GatewayProfile(val agent: AgentId, val id: String, val version: Long, val endpoint: String, val model: String, val protocol: String, val hasCredential: Boolean, val models: List<GatewayModel> = emptyList(), val catalogError: String? = null)
+data class GatewayProfile(val agent: AgentId, val id: String, val version: Long, val endpoint: String, val model: String, val protocol: String, val hasCredential: Boolean, val models: List<GatewayModel> = emptyList(), val catalogError: String? = null, val temporary: Boolean = false)
 data class GatewayDefault(val agent: AgentId, val id: String, val version: Long)
 data class GatewayCheckReport(val passed: Boolean, val message: String)
 data class GatewayInspectionResult(val model: String, val models: List<GatewayModel>,

@@ -11,7 +11,7 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-internal class LocalModelAuth(private val context: Context) {
+class LocalModelAuth(private val context: Context) {
     private val prefs = context.getSharedPreferences("local_model_auth", Context.MODE_PRIVATE)
     private val alias = "mobby.localmodel.tokens"
 
@@ -39,7 +39,9 @@ internal class LocalModelAuth(private val context: Context) {
         return String(cipher.doFinal(bytes.copyOfRange(12, bytes.size)), Charsets.UTF_8)
     }
 
-    @Synchronized fun token(scope: String): String {
+    fun inferenceToken(): String = token("inference")
+
+    @Synchronized internal fun token(scope: String): String {
         prefs.getString(scope, null)?.let { return decrypt(it) }
         val random = ByteArray(32).also(SecureRandom()::nextBytes)
         val value = Base64.encodeToString(random, Base64.NO_WRAP or Base64.URL_SAFE)

@@ -28,6 +28,7 @@ class MainActivity : ComponentActivity() {
     private var conversationNavigation by mutableStateOf<String?>(null)
     private var petEnabled by mutableStateOf(false)
     private var petPermitted by mutableStateOf(false)
+    private var gatewayRefresh by mutableStateOf(0)
     private var pendingPet = false
     private val taskNotificationPermission = registerForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
@@ -71,7 +72,7 @@ class MainActivity : ComponentActivity() {
                 startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
             }
         })
-        setContent { InteractionEntry(actions, host, conversationNavigation, petEnabled, petPermitted) }
+        setContent { InteractionEntry(actions, host, conversationNavigation, petEnabled, petPermitted, gatewayRefresh = gatewayRefresh) }
         if (android.os.Build.VERSION.SDK_INT >= 33) {
             val notice = getPreferences(MODE_PRIVATE)
             if (!notice.getBoolean("task-notification-requested", false) &&
@@ -87,6 +88,7 @@ class MainActivity : ComponentActivity() {
     }
     override fun onResume() {
         super.onResume()
+        gatewayRefresh++
         val allowed = Settings.canDrawOverlays(this)
         petPermitted = allowed
         app.setPetPermitted(allowed)

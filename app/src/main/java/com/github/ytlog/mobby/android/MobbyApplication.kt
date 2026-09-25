@@ -53,6 +53,9 @@ class MobbyApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         if (isLocalModelProcess()) return
+        com.github.ytlog.mobby.android.runtime.android.gateway.LocalModelGateway.configure(
+            com.github.ytlog.mobby.android.localmodel.LocalModelAuth(this).inferenceToken()
+        )
         com.github.ytlog.mobby.android.interaction.ui.LanguagePreferences.initialize(this)
         runtime = RuntimeHost(this) {
             PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)

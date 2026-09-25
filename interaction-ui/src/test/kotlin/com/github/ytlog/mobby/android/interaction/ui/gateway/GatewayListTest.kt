@@ -60,6 +60,14 @@ class GatewayListTest {
 
     @After fun cleanup() { compose.runOnIdle { store.clear() }; scope.cancel() }
 
+    @Test fun `temporary local model is labeled and cannot open persistent editor`() {
+        val local = profile.copy(id = "temporary", endpoint = "http://127.0.0.1:11435/v1", model = "qwen-test", models = listOf(GatewayModel("qwen-test", "qwen-test")), temporary = true)
+        page(listOf(local))
+        compose.onNodeWithText("本地模型服务 · qwen-test · 1 个模型").assertExists()
+        compose.onNodeWithText("临时 · 仅文本").assertExists()
+        compose.onAllNodesWithContentDescription("编辑网关").assertCountEquals(0)
+    }
+
     @Test fun `gateway page lists a configured gateway and opens its editor`() {
         page(listOf(profile))
         compose.onNodeWithText("服务：OpenRouter").assertDoesNotExist()

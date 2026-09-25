@@ -4,10 +4,10 @@ import com.github.ytlog.mobby.android.localmodel.llama.LlamaNative
 
 internal data class PromptMessage(val role: String, val content: String)
 internal class ModelEngine(private val store: LocalModelStore) {
-    private var loaded: InstalledModel? = null
+    @Volatile private var loaded: InstalledModel? = null
     private var handle = 0L
 
-    @Synchronized fun current(): String? = loaded?.id
+    fun current(): String? = loaded?.id
 
     @Synchronized fun load(id: String): String {
         val model = store.models().firstOrNull { it.id == id } ?: error("Model is not installed")

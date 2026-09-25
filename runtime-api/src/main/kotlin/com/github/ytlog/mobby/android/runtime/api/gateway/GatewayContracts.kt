@@ -9,6 +9,7 @@ data class GatewayProfileSummary(
     val ref: GatewayProfileRef, val agent: AgentId, val endpoint: String, val model: String,
     val protocol: GatewayProtocol, val hasCredential: Boolean,
     val models: List<GatewayModelSummary> = emptyList(), val catalogError: String? = null,
+    val temporary: Boolean = false,
 )
 /** Short-lived memory only; never include in a DTO toString, journal, Flow, or SavedState. */
 class SecretInput(value: CharArray) {

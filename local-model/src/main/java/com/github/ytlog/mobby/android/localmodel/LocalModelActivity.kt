@@ -5,15 +5,20 @@ import android.content.ClipboardManager
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
@@ -47,6 +52,7 @@ class LocalModelActivity : ComponentActivity() {
     private var installed by mutableStateOf<List<InstalledModel>>(emptyList())
     private var loaded by mutableStateOf<String?>(null)
     private var progress by mutableStateOf<InstallProgress?>(null)
+    private var showConnectionDetails by mutableStateOf(false)
     private var activeOperation: String? = null
 
     private fun request(path: String, method: String = "GET", body: String? = null): String {
@@ -125,19 +131,24 @@ class LocalModelActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val dark = intent.getBooleanExtra(EXTRA_DARK, false)
+        val systemBar = if (dark) 0xFF111213.toInt() else 0xFFFAFAFA.toInt()
+        enableEdgeToEdge(statusBarStyle = if (dark) SystemBarStyle.dark(systemBar) else SystemBarStyle.light(systemBar, systemBar),
+            navigationBarStyle = if (dark) SystemBarStyle.dark(systemBar) else SystemBarStyle.light(systemBar, systemBar))
         source = sourcePreference.selected(AppLanguage.current)
         action { startService() }
         setContent {
-            LocalModelTheme(intent.getBooleanExtra(EXTRA_DARK, false)) {
+            LocalModelTheme(dark) {
                 val clipboard = getSystemService(ClipboardManager::class.java)
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    Column(Modifier.fillMaxSize()) {
+                    Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
                         Box(Modifier.fillMaxWidth().height(56.dp), contentAlignment = Alignment.Center) {
-                            TextButton(onClick = ::finish, modifier = Modifier.align(Alignment.CenterStart)) { Text(label("返回", "Back")) }
+                            IconButton(onClick = ::finish, modifier = Modifier.align(Alignment.CenterStart)) { Text("‹", style = MaterialTheme.typography.headlineMedium) }
                             Text(label("本地模型服务", "Local model service"), style = MaterialTheme.typography.titleMedium)
                         }
                         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                            Text(label("选择并下载模型，加载后就能在本机通过 HTTP 使用。", "Choose and download a model, then load it for HTTP use on this phone."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(label("下载并加载模型后，会自动出现在网关中。停止模型或服务后，临时网关会移除。", "Downloaded and loaded models appear in gateways automatically. The temporary gateway disappears when the model or service stops."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(label("目前仅支持纯文本；Agent 工具调用和图片暂不支持。", "Text only for now; agent tools and images are not supported."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             ModelSection(label("服务", "Service")) {
                                 Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Column(Modifier.weight(1f)) {
@@ -152,14 +163,17 @@ class LocalModelActivity : ComponentActivity() {
                             if (ready) {
                                 if (installed.isNotEmpty()) ModelSection(label("已下载 · 点击加载", "Downloaded · tap to load")) {
                                     installed.forEachIndexed { index, model ->
-                                        if (index > 0) HorizontalDivider(Modifier.padding(start = 16.dp), color = MaterialTheme.colorScheme.outline)
+                                        if (index > 0) ModelDivider()
                                         Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                             Column(Modifier.weight(1f)) {
                                                 Text(model.displayName.ifBlank { model.id }, style = MaterialTheme.typography.bodyLarge)
-                                                Text("${model.quantization} · ${model.size / 1_048_576} MiB", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                Text("${model.quantization} · ${model.size / 1_048_576} MiB" + if (loaded == model.id) label(" · 已加入网关", " · in gateways") else "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                             }
-                                            if (loaded == model.id) Text(label("使用中", "Loaded"), color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
-                                            else TextButton(onClick = { action {
+                                            if (loaded == model.id) OutlinedButton(onClick = { action {
+                                                withContext(Dispatchers.IO) { request("/local/v1/models/unload", "POST", "{}") }
+                                                refresh()
+                                            } }) { Text(label("停止模型", "Unload")) }
+                                            else OutlinedButton(onClick = { action {
                                                 withContext(Dispatchers.IO) { request("/local/v1/loads", "POST", json.encodeToString(mapOf("model" to model.id))) }
                                                 refresh()
                                             } }) { Text(label("加载", "Load")) }
@@ -170,55 +184,63 @@ class LocalModelActivity : ComponentActivity() {
                                     Text(label("可下载模型", "Models to download"), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                                         listOf("Qwen", "Gemma").forEach { name ->
-                                            FilterChip(selected = family == name, enabled = !listing, onClick = { family = name; candidates = emptyList(); action { listModels() } }, label = { Text(if (name == "Qwen") label("千问", "Qwen") else "Gemma") })
+                                            ModelChip(if (name == "Qwen") label("千问", "Qwen") else "Gemma", family == name, !listing) { family = name; candidates = emptyList(); action { listModels() } }
                                         }
                                         if (listing) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                                     }
                                     Text(label("下载来源", "Download source"), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                         ModelDownloadSource.values().forEach { option ->
-                                            FilterChip(selected = source == option, enabled = !listing, onClick = { action {
-                                                check(withContext(Dispatchers.IO) { sourcePreference.select(option) }) { label("保存下载来源失败", "Could not save download source") }
-                                                source = option; candidates = emptyList(); listModels()
-                                            } }, label = { Text(when (option) {
+                                            ModelChip(when (option) {
                                                 ModelDownloadSource.MODELSCOPE -> label("魔搭", "ModelScope")
                                                 ModelDownloadSource.HUGGING_FACE -> "Hugging Face"
                                                 ModelDownloadSource.HF_MIRROR -> label("HF 镜像", "HF mirror")
-                                            }) })
+                                            }, source == option, !listing) { action {
+                                                check(withContext(Dispatchers.IO) { sourcePreference.select(option) }) { label("保存下载来源失败", "Could not save download source") }
+                                                source = option; candidates = emptyList(); listModels()
+                                            } }
                                         }
                                     }
                                     Text(label("手动选择会保存；列表与下载都使用所选来源。文件会经过 SHA-256 校验。", "Your choice is saved; listing and downloads use that source. Files are SHA-256 verified."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     if (candidates.isEmpty() && !listing) Text(label("暂无模型，请检查网络后重试。", "No models found. Check your connection and retry."), style = MaterialTheme.typography.bodySmall)
-                                    candidates.forEach { item ->
+                                    if (candidates.isNotEmpty()) ModelSection(null) { candidates.forEachIndexed { index, item ->
+                                        if (index > 0) ModelDivider()
                                         val existing = installed.any { it.id == item.id }
                                         val downloading = progress?.modelId == item.id && progress?.status in listOf("queued", "downloading")
-                                        ModelSection(null) {
                                             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                                Text(item.displayName, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
-                                                Text("${item.quantization} · ${item.size / 1_048_576} MiB · ${item.repo}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                    Column(Modifier.weight(1f)) {
+                                                        Text(item.displayName, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                                                        Text("${item.quantization} · ${item.size / 1_048_576} MiB", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                    }
+                                                    if (!downloading) OutlinedButton(enabled = !existing && activeOperation == null, onClick = { action {
+                                                        val response = withContext(Dispatchers.IO) { request("/local/v1/installs", "POST", json.encodeToString(item)) }
+                                                        val id = json.parseToJsonElement(response).jsonObject["operationId"]?.jsonPrimitive?.content ?: error("Missing operation ID")
+                                                        progress = InstallProgress(id, "queued", 0, item.size, item.id)
+                                                        monitor(id)
+                                                    } }) { Text(if (existing) label("已下载", "Downloaded") else label("下载", "Download")) }
+                                                }
+                                                Text(item.repo, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                                 if (downloading) {
                                                     val current = progress!!
                                                     LinearProgressIndicator(progress = (current.received.toFloat() / current.total.coerceAtLeast(1)).coerceIn(0f, 1f), modifier = Modifier.fillMaxWidth())
                                                     Text("${current.received / 1_048_576} / ${current.total / 1_048_576} MiB", style = MaterialTheme.typography.bodySmall)
-                                                } else TextButton(enabled = !existing && activeOperation == null, onClick = { action {
-                                                    val response = withContext(Dispatchers.IO) { request("/local/v1/installs", "POST", json.encodeToString(item)) }
-                                                    val id = json.parseToJsonElement(response).jsonObject["operationId"]?.jsonPrimitive?.content ?: error("Missing operation ID")
-                                                    progress = InstallProgress(id, "queued", 0, item.size, item.id)
-                                                    monitor(id)
-                                                } }) { Text(if (existing) label("已下载", "Downloaded") else label("下载", "Download")) }
+                                                }
                                             }
-                                        }
-                                    }
+                                    } }
                                     TextButton(onClick = { action { listModels() } }, enabled = !listing) { Text(label("刷新模型列表", "Refresh model list")) }
                                 }
-                                ModelSection(label("连接本地网关", "Connect to local gateway")) {
+                                TextButton(onClick = { showConnectionDetails = !showConnectionDetails }) {
+                                    Text(label("其他客户端接入", "Other client access"))
+                                }
+                                if (showConnectionDetails) ModelSection(null) {
                                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        Text(if (loaded == null) label("先下载并加载一个模型，再将地址和密钥填入自定义网关。", "Download and load a model, then add this address and key to a custom gateway.") else label("已加载模型，可将地址和密钥填入自定义网关。", "Model loaded. Add this address and key to a custom gateway."), style = MaterialTheme.typography.bodySmall)
+                                        Text(label("本机外的客户端无法直接访问此地址。", "This address is available only on this device."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                         Text(BASE_URL, style = MaterialTheme.typography.bodyMedium)
                                         loaded?.let { Text("${label("模型 ID", "Model ID")}: $it", style = MaterialTheme.typography.bodySmall) }
                                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                             TextButton(onClick = { clipboard.setPrimaryClip(ClipData.newPlainText("Local model URL", BASE_URL)) }) { Text(label("复制地址", "Copy URL")) }
-                                            TextButton(onClick = { clipboard.setPrimaryClip(ClipData.newPlainText("Local model key", auth.token("inference"))) }) { Text(label("复制密钥", "Copy key")) }
+                                            TextButton(onClick = { clipboard.setPrimaryClip(ClipData.newPlainText("Local model key", auth.inferenceToken())) }) { Text(label("复制密钥", "Copy key")) }
                                         }
                                         loaded?.let { id -> TextButton(onClick = { clipboard.setPrimaryClip(ClipData.newPlainText("Local model ID", id)) }) { Text(label("复制模型 ID", "Copy model ID")) } }
                                     }
@@ -239,6 +261,21 @@ class LocalModelActivity : ComponentActivity() {
 @Composable private fun ModelSection(title: String?, content: @Composable ColumnScope.() -> Unit) {
     Column(Modifier.fillMaxWidth()) {
         if (title != null) Text(title, Modifier.padding(start = 16.dp, bottom = 8.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Surface(Modifier.fillMaxWidth(), shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface) { Column(content = content) }
+        val dark = MaterialTheme.colorScheme.background == Color(0xFF121212)
+        Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = if (dark) Color(0xFF1E1E1E) else Color.White) { Column(content = content) }
+    }
+}
+
+@Composable private fun ModelDivider() {
+    HorizontalDivider(Modifier.padding(start = 16.dp), color = MaterialTheme.colorScheme.outline)
+}
+
+@Composable private fun ModelChip(text: String, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    val dark = MaterialTheme.colorScheme.background == Color(0xFF121212)
+    Surface(onClick = onClick, enabled = enabled, shape = RoundedCornerShape(20.dp),
+        color = if (selected) (if (dark) Color(0xFF292929) else Color.White) else Color.Transparent,
+        border = if (selected) BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.28f)) else null,
+        contentColor = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant) {
+        Text(text, Modifier.padding(horizontal = 14.dp, vertical = 7.dp), style = MaterialTheme.typography.bodyMedium)
     }
 }

@@ -224,7 +224,7 @@ internal class RuntimeSystemAdapter(private val context: android.content.Context
             is AdminResult.Success -> DataResult.Loaded(GatewayCheckReport(result.value.outcome == GatewayCheckOutcome.SUCCEEDED, result.value.message()))
         }
     override suspend fun gateways(): List<GatewayProfile> = when (val result = admin.listGatewayProfiles()) {
-        is AdminResult.Success -> result.value.map { GatewayProfile(DomainAgent.valueOf(it.agent.name), it.ref.id, it.ref.version, it.endpoint, it.model, it.protocol.name, it.hasCredential, it.models.map { model -> GatewayModel(model.id, model.name) }, it.catalogError) }
+        is AdminResult.Success -> result.value.map { GatewayProfile(DomainAgent.valueOf(it.agent.name), it.ref.id, it.ref.version, it.endpoint, it.model, it.protocol.name, it.hasCredential, it.models.map { model -> GatewayModel(model.id, model.name) }, it.catalogError, it.temporary) }
         is AdminResult.Failed -> throw IllegalStateException(result.error.message())
     }
     override suspend fun defaultGateway(): GatewayDefault? = when (val result = admin.defaultGateway()) {

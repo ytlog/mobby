@@ -47,7 +47,7 @@ internal class GatewayAdmin(private val context: Context) {
         return GatewayProfileSummary(GatewayProfileRef(record.id, record.version),
             mode.productAgent(),
             config.endpoint, config.model, com.github.ytlog.mobby.android.runtime.api.gateway.GatewayProtocol.valueOf(config.protocol.name), config.key.isNotEmpty(),
-            config.models.map { GatewayModelSummary(it.id, it.name) }, config.catalogError)
+            config.models.map { GatewayModelSummary(it.id, it.name) }, config.catalogError, record.id == LocalModelGateway.ID)
     }
     suspend fun inspectGateway(request: InspectGatewayRequest): AdminResult<GatewayInspectionSummary> = withContext(Dispatchers.IO) {
         val chars = request.credential?.consume()
