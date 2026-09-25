@@ -57,7 +57,7 @@ class MainActivity : ComponentActivity() {
             val background = mobbySystemBarColor(dark)
             val style = if (dark) SystemBarStyle.dark(background) else SystemBarStyle.light(background, background)
             enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
-        }, localModels = { dark -> startActivity(Intent(this, com.github.ytlog.mobby.android.localmodel.LocalModelActivity::class.java).putExtra(com.github.ytlog.mobby.android.localmodel.LocalModelActivity.EXTRA_DARK, dark)) }, pet = { want ->
+        }, pet = { want ->
             if (!want) {
                 pendingPet = false
                 petEnabled = false

@@ -69,7 +69,7 @@ import kotlinx.coroutines.flow.*
 import kotlin.math.roundToInt
 
 class InteractionHostActions(
-    val share: (String) -> Unit, val shortcut: (String, String) -> Unit, val appearance: (Boolean) -> Unit, val pet: (Boolean) -> Unit = {}, val localModels: (Boolean) -> Unit = {},
+    val share: (String) -> Unit, val shortcut: (String, String) -> Unit, val appearance: (Boolean) -> Unit, val pet: (Boolean) -> Unit = {},
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -170,9 +170,8 @@ class InteractionHostActions(
                         "settings" -> SettingsPage(system, appearance, { value -> vm.enqueue { vm.report(actions.setAppearance(value)) } }, { next ->
                             if (next == "gateway") { gatewayStartAdding = false; gatewayFromIntro = false }
                             navigate(next)
-                        }, { route = "conversation" }, vm, petEnabled, petPermitted, hostActions.pet, { hostActions.localModels(dark) })
-                        "gateway" -> GatewayPage(vm, startAdding = gatewayStartAdding,
-                            openLocalModels = { hostActions.localModels(dark) }) { route = if (gatewayFromIntro) "conversation" else "settings" }
+                        }, { route = "conversation" }, vm, petEnabled, petPermitted, hostActions.pet)
+                        "gateway" -> GatewayPage(vm, startAdding = gatewayStartAdding) { route = if (gatewayFromIntro) "conversation" else "settings" }
                         "history-limits" -> EventHistoryPage(actions::eventHistoryLimits, actions::saveEventHistoryLimits) { route = "settings" }
                         "diagnostic" -> DiagnosticPage(vm) { route = "settings" }
                         "archived" -> ArchivedPage(state, vm) { route = "settings" }

@@ -63,6 +63,7 @@ class SettingsSectionTest {
             }
         }
         val storage = compose.onNodeWithText("存储与保留").fetchSemanticsNode().boundsInRoot
+        compose.onNodeWithText("本地模型服务").assertDoesNotExist()
         val shell = compose.onNodeWithText("Shell 诊断").fetchSemanticsNode().boundsInRoot
         val check = compose.onNodeWithText("重新检查运行环境").fetchSemanticsNode().boundsInRoot
         assertTrue(storage.bottom < shell.top)

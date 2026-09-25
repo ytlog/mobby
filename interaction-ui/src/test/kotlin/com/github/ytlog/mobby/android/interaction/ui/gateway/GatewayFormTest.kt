@@ -23,23 +23,12 @@ class GatewayFormTest {
         setOf(AgentId.CODEX, AgentId.OPEN_CODE), null)
     private fun field(label: String) = compose.onNode(hasSetTextAction() and hasText(label))
 
-    @Test fun `local service choice opens setup and returning offers loaded temporary model`() {
-        var opened = 0
-        var selected: GatewayProfile? = null
-        var profiles by mutableStateOf(emptyList<GatewayProfile>())
-        compose.setContent { MaterialTheme { GatewayForm(profiles, { runBlocking { it() } },
+    @Test fun `local service is absent from add gateway choices`() {
+        compose.setContent { MaterialTheme { GatewayForm(emptyList(), { runBlocking { it() } },
             { GatewaySaveResult.Failed("unused") }, { DataResult.Failed("unused") }, {}, {},
-            { DataResult.Failed("unused") }, editingId = "", openLocalModels = { opened++ }, chooseLocal = { selected = it }) } }
+            { DataResult.Failed("unused") }, editingId = "") } }
         compose.onNodeWithText("服务：自定义").performClick()
-        compose.onNodeWithText("本地模型服务").performClick()
-        assertEquals(1, opened)
-        compose.onNodeWithText("尚未加载本地模型。完成配置后返回此页。").assertExists()
-        val local = GatewayProfile(AgentId.CODEX, "local", 1, "http://127.0.0.1:11435/v1", "qwen-test", "RESPONSES", true,
-            listOf(GatewayModel("qwen-test", "qwen-test")), temporary = true)
-        compose.runOnIdle { profiles = listOf(local) }
-        compose.onNodeWithText("本地模型已就绪：qwen-test").assertExists()
-        compose.onNodeWithText("选用本地模型").performClick()
-        assertEquals(local, selected)
+        compose.onNodeWithText("本地模型服务").assertDoesNotExist()
     }
 
     @Test fun `typing a base path one segment at a time keeps its slash`() {

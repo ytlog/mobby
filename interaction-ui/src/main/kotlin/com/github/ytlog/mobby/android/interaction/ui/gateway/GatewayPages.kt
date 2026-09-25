@@ -31,8 +31,9 @@ internal fun gatewayBaseAddress(value: String): String = value.trim().trimEnd('/
     .replace(Regex("(?i)/(?:responses|messages|chat/completions)$"), "")
 
 @Composable internal fun GatewayPage(vm: ConversationViewModel, startAdding: Boolean = false,
-                                     openLocalModels: () -> Unit = {}, back: () -> Unit) {
+                                     back: () -> Unit) {
     val profiles by vm.gateways.collectAsStateWithLifecycle()
+    val visibleProfiles = profiles.filterNot { it.temporary }
     val state by vm.state.collectAsStateWithLifecycle()
     val defaultGateway by vm.defaultGateway.collectAsStateWithLifecycle()
     val agents by vm.agents.collectAsStateWithLifecycle()
@@ -44,15 +45,15 @@ internal fun gatewayBaseAddress(value: String): String = value.trim().trimEnd('/
             withContext(Dispatchers.IO) { delay(5_000) }
         }
     }
-    if (editing == null) GatewayList(profiles, notice, defaultGateway, state.selected?.conversation?.config, agents, back,
+    if (editing == null) GatewayList(visibleProfiles, notice, defaultGateway, state.selected?.conversation?.config, agents, back,
         select = vm::chooseGateway, open = { editing = it ?: "new"; notice = "" })
     else key(editing) {
-        GatewayForm(profiles, vm::enqueue, vm.actions::saveGateway, vm.actions::inspectGateway, vm::refresh, { editing = null }, vm.actions::checkGateway,
+        GatewayForm(visibleProfiles, vm::enqueue, vm.actions::saveGateway, vm.actions::inspectGateway, vm::refresh, { editing = null }, vm.actions::checkGateway,
             editingId = editing.takeUnless { it == "new" } ?: "", delete = vm.actions::deleteGateway,
             onSaved = { message ->
             notice = message
             editing = null
-        }, openLocalModels = openLocalModels, chooseLocal = { vm.chooseGateway(it) })
+        })
     }
 }
 
@@ -150,7 +151,7 @@ internal fun gatewaySummary(profile: GatewayProfile): String {
     editingId: String? = profiles.singleOrNull()?.id,
     delete: suspend (String) -> OperationResult = { OperationResult.Failed(AppStrings.cannotDelete) },
     onSaved: ((String) -> Unit)? = null,
-    openLocalModels: () -> Unit = {}, chooseLocal: (GatewayProfile) -> Unit = {}) {
+) {
     val group = profiles.filter { it.id == editingId }
     val saved = group.firstOrNull()
     var providerId by remember { mutableStateOf(GatewayProviders.CUSTOM) }
@@ -205,26 +206,6 @@ internal fun gatewaySummary(profile: GatewayProfile): String {
     val inspected = inspection
     val savedMatches = saved != null && model.trim() == saved.model && !keyEdited &&
         group.all { candidates().forAgent(it.agent) == it.endpoint }
-    if (providerId == GatewayProviders.LOCAL) {
-        val local = profiles.firstOrNull { it.temporary && it.model.isNotBlank() }
-        Column(Modifier.fillMaxSize()) {
-            PageHeader(AppStrings.addGateway, back)
-            Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                SettingsCaption(AppStrings.localGatewaySetupHelp)
-                SettingsGroup {
-                    SettingsAction(AppStrings.openLocalModelSetup) { openLocalModels() }
-                }
-                if (local != null) {
-                    SettingsCaption(AppStrings.localGatewayReady(local.model))
-                    SettingsGroup {
-                        SettingsAction(AppStrings.useLocalModel) { chooseLocal(local); back() }
-                    }
-                } else SettingsCaption(AppStrings.localGatewayNeedsLoadedModel)
-            }
-        }
-        return
-    }
     Column(Modifier.fillMaxSize()) {
         PageHeader(if (!editingId.isNullOrBlank()) AppStrings.editGateway else AppStrings.addGateway, back)
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
@@ -239,14 +220,13 @@ internal fun gatewaySummary(profile: GatewayProfile): String {
                 FrostedMenu(providerExpanded, { providerExpanded = false }, providerAnchor) {
                     Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState()).padding(bottom = 12.dp)) {
                         MenuSection(AppStrings.selectService) {
-                        (listOf(GatewayProviders.LOCAL to AppStrings.localModelService) + GatewayProviders.all.map { it.id to it.label } +
+                        (GatewayProviders.all.map { it.id to it.label } +
                             (GatewayProviders.CUSTOM to AppStrings.custom)).forEach { (id, label) ->
                             MenuOption(label, id == providerId) {
                                     providerId = id
                                     GatewayProviders.find(id)?.let { baseEndpoint = gatewayBaseAddress(it.candidates().responses) }
                                     providerExpanded = false
                                     changed()
-                                    if (id == GatewayProviders.LOCAL) openLocalModels()
                                 }
                         }
                         }
