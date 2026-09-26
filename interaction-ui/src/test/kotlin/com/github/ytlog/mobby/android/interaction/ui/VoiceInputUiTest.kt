@@ -53,6 +53,15 @@ class VoiceInputUiTest {
         compose.onNodeWithContentDescription("语音输入").assertIsDisplayed()
     }
 
+    @Test fun `running agent keeps stop available and shows append action when draft has text`() {
+        val events = mutableListOf<String>()
+        compose.setContent { MaterialTheme { bar(stop = true, sendEnabled = true,
+            onSend = { events += "append" }, onStop = { events += "stop" }) } }
+        compose.onNodeWithContentDescription("追加消息").assertIsDisplayed().performClick()
+        compose.onNodeWithContentDescription("停止当前任务").assertIsDisplayed().performClick()
+        assertEquals(listOf("append", "stop"), events)
+    }
+
     @Test fun `short press asks to hold and long press arms cancel before release`() {
         val events = mutableListOf<String>()
         compose.setContent {
@@ -172,6 +181,10 @@ class VoiceInputUiTest {
         voiceMode: Boolean = false,
         recording: Boolean = false,
         cancelArmed: Boolean = false,
+        stop: Boolean = false,
+        sendEnabled: Boolean = false,
+        onSend: () -> Unit = {},
+        onStop: () -> Unit = {},
         onEnterVoice: () -> Unit = {},
         onExitVoice: () -> Unit = {},
         onHoldTap: () -> Unit = {},
@@ -187,12 +200,12 @@ class VoiceInputUiTest {
             transcript = "",
             enabled = true,
             micAvailable = true,
-            stop = false,
+            stop = stop,
             stopEnabled = true,
-            sendEnabled = false,
+            sendEnabled = sendEnabled,
             onAdd = {},
-            onStop = {},
-            onSend = {},
+            onStop = onStop,
+            onSend = onSend,
             onEnterVoice = onEnterVoice,
             onExitVoice = onExitVoice,
             onHoldTap = onHoldTap,

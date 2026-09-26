@@ -340,10 +340,12 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
         enqueue {
             when (val prepared = actions.prepareSend(id)) {
                 is PrepareTurnResult.Rejected -> feedback.send(failure(prepared.reason))
+                is PrepareTurnResult.Queued -> Unit
                 is PrepareTurnResult.Prepared -> viewModelScope.launch { safe {
                     when (val result = actions.sendPrepared(prepared.turn)) {
                         is Submission.Rejected -> feedback.send(failure(result.reason))
                         Submission.Unconfirmed -> feedback.send(AppStrings.requestResultUnconfirmedDraftPreservedCheckTheOriginalRequest)
+                        is Submission.Queued -> Unit
                         is Submission.Accepted -> Unit
                     }
                 } }
@@ -362,10 +364,12 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
             opened()
             when (val prepared = actions.prepareSend(id)) {
                 is PrepareTurnResult.Rejected -> feedback.send(failure(prepared.reason))
+                is PrepareTurnResult.Queued -> Unit
                 is PrepareTurnResult.Prepared -> viewModelScope.launch { safe {
                     when (val result = actions.sendPrepared(prepared.turn)) {
                         is Submission.Rejected -> feedback.send(failure(result.reason))
                         Submission.Unconfirmed -> feedback.send(AppStrings.requestResultUnconfirmedDraftPreservedCheckTheOriginalRequest)
+                        is Submission.Queued -> Unit
                         is Submission.Accepted -> Unit
                     }
                 } }

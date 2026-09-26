@@ -621,7 +621,7 @@ private val DrawerRowHeight = 40.dp
             micAvailable = micAvailable,
             stop = stop,
             stopEnabled = active?.phase != ExecutionPhase.CANCELLING,
-            sendEnabled = !unavailable && system.ready && system.connected && !system.diagnosticBusy && state.occupied == null && detail.conversation.draft.pendingAttachment == null && (composer.value.text.isNotBlank() || detail.conversation.draft.attachments.isNotEmpty()),
+            sendEnabled = !unavailable && system.ready && system.connected && !system.diagnosticBusy && detail.conversation.draft.pendingAttachment == null && (composer.value.text.isNotBlank() || detail.conversation.draft.attachments.isNotEmpty()),
             onAdd = onAdd,
             onStop = { active?.execution?.let(vm::stop) },
             onSend = vm::send,
@@ -707,7 +707,7 @@ internal fun Turn.showsSeparateActivity(): Boolean = occupied || pending
             t.permissions.forEach { add("permission:${t.id.value}:${it.id}:${it.revision}") }
             t.skillProposals.forEach { add("artifact:${t.id.value}:${it.ref}") }
             if (t.creatingSkill && !t.occupied && t.skillProposals.isEmpty() && !t.proposalsLoading) add("creator:${t.id.value}")
-            if (t.failure != null || t.phase in listOf(ExecutionPhase.CANCELLED, ExecutionPhase.TIMED_OUT, ExecutionPhase.INTERRUPTED, ExecutionPhase.OUTCOME_UNKNOWN, ExecutionPhase.AWAITING_APPROVAL)) add("status:${t.id.value}")
+            if (t.queued || t.failure != null || t.phase in listOf(ExecutionPhase.CANCELLED, ExecutionPhase.TIMED_OUT, ExecutionPhase.INTERRUPTED, ExecutionPhase.OUTCOME_UNKNOWN, ExecutionPhase.AWAITING_APPROVAL)) add("status:${t.id.value}")
         }
         activityTurn?.let { add("activity:${it.id.value}") }
     }
@@ -798,7 +798,8 @@ internal fun Turn.showsSeparateActivity(): Boolean = occupied || pending
                     Text(AppStrings.noSkillDraftToSaveThisTurnContinueDescribing, style = MaterialTheme.typography.bodySmall)
                 }
                 if ("status:${turn.id.value}" in keys) item(key = "status:${turn.id.value}") {
-                    val statusInk = if (darkChrome()) MobbyColors.Dark.statusAccent else MobbyColors.Light.statusAccent
+                    val statusInk = if (turn.queued) MaterialTheme.colorScheme.primary
+                        else if (darkChrome()) MobbyColors.Dark.statusAccent else MobbyColors.Light.statusAccent
                     Surface(
                         color = if (darkChrome()) MobbyColors.Dark.statusCard else MobbyColors.Light.statusCard,
                         contentColor = MaterialTheme.colorScheme.onSurface,
@@ -807,10 +808,15 @@ internal fun Turn.showsSeparateActivity(): Boolean = occupied || pending
                     ) {
                         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
-                                AppIcon(AppIcons.Error, null, Modifier.padding(top = 1.dp).size(20.dp), tint = statusInk)
-                                Text(turn.failure ?: turn.phase.label(), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                                AppIcon(if (turn.queued) AppIcons.Send else AppIcons.Error, null, Modifier.padding(top = 1.dp).size(20.dp), tint = statusInk)
+                                Text(turn.failure ?: if (turn.queued) AppStrings.queuedMessageWaiting else turn.phase.label(), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                             }
-                            if (!turn.occupied) OutlinedButton(
+                            if (turn.queued) OutlinedButton(
+                                onClick = { vm.enqueue { vm.actions.cancelQueued(turn.id) } },
+                                modifier = Modifier.align(Alignment.End),
+                                shape = RoundedCornerShape(10.dp),
+                            ) { Text(AppStrings.cancelQueuedMessage, style = MaterialTheme.typography.labelLarge) }
+                            else if (!turn.occupied) OutlinedButton(
                                 onClick = { vm.enqueue { vm.actions.restoreDraft(detail.conversation.id, turn) } },
                                 modifier = Modifier.align(Alignment.End),
                                 shape = RoundedCornerShape(10.dp),

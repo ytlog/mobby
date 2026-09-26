@@ -30,6 +30,7 @@ data class TurnExecution(val turnId: TurnId, val conversationId: ConversationId,
 enum class Failure { PENDING_ATTACHMENT, INPUT_TOO_LARGE, BUSY, INVALID_CONFIG, UNSUPPORTED_CAPABILITY, UNAVAILABLE, EMPTY_DRAFT, PENDING_SUBMISSION }
 sealed interface Submission {
     data class Accepted(val executionId: ExecutionId) : Submission
+    data class Queued(val turnId: TurnId) : Submission
     data class Rejected(val reason: Failure, val activeExecution: ExecutionId? = null) : Submission
     /** Response lost: retain this request and look it up, never generate a replacement request. */
     data object Unconfirmed : Submission
@@ -62,6 +63,7 @@ interface ExecutionPort {
 }
 sealed interface PrepareTurnResult {
     data class Prepared(val turn: TurnExecution) : PrepareTurnResult
+    data class Queued(val turnId: TurnId) : PrepareTurnResult
     data class Rejected(val reason: Failure) : PrepareTurnResult
 }
 interface ConversationRepository {
@@ -75,6 +77,7 @@ class SubmitTurnUseCase(private val repository: ConversationRepository, private 
     suspend operator fun invoke(conversationId: ConversationId, turnId: TurnId): Submission =
         when (val prepared = repository.prepareTurn(conversationId, turnId)) {
             is PrepareTurnResult.Rejected -> Submission.Rejected(prepared.reason)
+            is PrepareTurnResult.Queued -> Submission.Queued(prepared.turnId)
             is PrepareTurnResult.Prepared -> execution.submit(prepared.turn).also { repository.recordSubmission(prepared.turn, it) }
         }
 
@@ -91,6 +94,11 @@ class StopRunUseCase(private val execution: ExecutionPort) {
 object ConversationRules {
     fun afterSubmission(current: Draft, submittedRevision: Long, result: Submission): Draft =
         if (result is Submission.Accepted && current.revision == submittedRevision)
+            afterQueue(current, submittedRevision)
+        else current
+
+    fun afterQueue(current: Draft, queuedRevision: Long): Draft =
+        if (current.revision == queuedRevision)
             Draft(revision = current.revision + 1, capabilities = current.capabilities.filter { it.startsWith("plugin:device:") }.toSet())
         else current
 

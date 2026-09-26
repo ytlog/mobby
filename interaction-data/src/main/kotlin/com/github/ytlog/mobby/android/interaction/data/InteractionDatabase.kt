@@ -15,7 +15,7 @@ internal data class TurnRow(
     @PrimaryKey val id: String, val conversationId: String, val userText: String, val frozen: String,
     val createdAt: Long, val runId: String? = null, val snapshot: String? = null,
     val pending: Boolean = true, val occupied: Boolean = true, val error: String? = null,
-    val expanded: Boolean? = null, val expandedSteps: String = "[]"
+    val expanded: Boolean? = null, val expandedSteps: String = "[]", val queued: Boolean = false
 )
 @Entity(tableName = "chunks", indices = [Index("runId")])
 internal data class ChunkRow(@PrimaryKey val ref: String, val runId: String, val text: String, @ColumnInfo(defaultValue = "0") val expired: Boolean = false)
@@ -60,6 +60,7 @@ internal data class TurnWithChunks(
     @Query("SELECT * FROM turns WHERE conversationId=:id AND occupied=1 ORDER BY createdAt,id LIMIT 1") suspend fun earliestOccupied(id: String): TurnRow?
     @Query("SELECT * FROM turns WHERE runId=:runId LIMIT 1") suspend fun turnByRun(runId: String): TurnRow?
     @Query("SELECT * FROM turns WHERE id=:id") suspend fun turn(id: String): TurnRow?
+    @Query("SELECT * FROM turns WHERE queued=1 AND pending=0 ORDER BY rowid LIMIT 1") suspend fun earliestQueued(): TurnRow?
     @Query("SELECT * FROM turns WHERE pending=1 OR occupied=1") suspend fun unfinished(): List<TurnRow>
     @Query("SELECT * FROM chunks WHERE ref=:ref") suspend fun chunk(ref: String): ChunkRow?
     @Query("""SELECT t.id AS turnId,t.runId,t.snapshot,t.createdAt,SUM(length(CAST(c.text AS BLOB))) AS bytes

@@ -470,7 +470,10 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectVo
             } else {
                 textField()
                 when {
-                    stop -> ActionIcon(AppStrings.stopCurrentTask, onStop, AppIcons.Stop, enabled = stopEnabled, filled = true)
+                    stop -> {
+                        if (sendEnabled) ActionIcon(AppStrings.queueNextMessage, onSend, AppIcons.Send, enabled = true, filled = true)
+                        ActionIcon(AppStrings.stopCurrentTask, onStop, AppIcons.Stop, enabled = stopEnabled)
+                    }
                     micAvailable -> HoldIcon(AppStrings.voiceInput, AppIcons.Mic, enabled, "voice-mic", onEnterVoice, onHoldStart, onHoldMove, onHoldEnd)
                     else -> ActionIcon(AppStrings.sendTask, onSend, AppIcons.Send, enabled = sendEnabled, filled = true)
                 }

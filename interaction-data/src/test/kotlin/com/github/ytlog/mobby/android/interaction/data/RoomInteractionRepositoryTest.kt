@@ -97,6 +97,95 @@ class RoomInteractionRepositoryTest {
         } finally { language.current = com.github.ytlog.mobby.android.localization.AppLanguage.CHINESE }
     }
 
+    @Test fun `message submitted while an agent runs is queued and sent after that turn ends`() = runBlocking {
+        val conversation = state().selected!!.conversation
+        repository.editDraft(conversation.id, "first", 5, 5)
+        val first = (repository.prepareTurn(conversation.id, TurnId("first-turn")) as PrepareTurnResult.Prepared).turn
+        runtime.admit(first)
+        repository.recordSubmission(first, Submission.Accepted(ExecutionId(first.turnId.value)))
+        state { it.selected?.turns?.singleOrNull()?.occupied == true }
+
+        repository.editDraft(conversation.id, "follow up", 9, 9)
+        assertTrue(repository.prepareTurn(conversation.id, TurnId("queued-turn")) is PrepareTurnResult.Queued)
+        assertEquals("", db.dao().conversation(conversation.id.value)!!.domain().draft.text)
+        assertEquals("follow up", db.dao().turn("queued-turn")!!.userText)
+        assertTrue(db.dao().turn("queued-turn")!!.queued)
+        assertEquals(0, runtime.submissions)
+
+        runtime.acceptSubmissions = true
+        runtime.snapshots[first.turnId.value] = runtime.snapshots.getValue(first.turnId.value).copy(
+            phase = RunPhase.SUCCEEDED, sessionRef = SessionRef("session-1"), terminalEvidence = TerminalEvidence(true, 0))
+        repository.refreshExecution(ExecutionId(first.turnId.value))
+        withTimeout(10_000) { while (db.dao().turn("queued-turn")?.runId == null) delay(20) }
+        assertEquals(1, runtime.submissions)
+        assertEquals(SessionRef("session-1"), runtime.submittedRequests.single().sessionRef)
+        assertFalse(db.dao().turn("queued-turn")!!.queued)
+        assertEquals("follow up", db.dao().turn("queued-turn")!!.userText)
+    }
+
+    @Test fun `cancelling a queued message keeps later draft edits and prevents dispatch`() = runBlocking {
+        val conversation = state().selected!!.conversation
+        repository.editDraft(conversation.id, "first", 5, 5)
+        val first = (repository.prepareTurn(conversation.id, TurnId("active-turn")) as PrepareTurnResult.Prepared).turn
+        runtime.admit(first)
+        repository.recordSubmission(first, Submission.Accepted(ExecutionId(first.turnId.value)))
+        repository.editDraft(conversation.id, "next", 4, 4)
+        assertTrue(repository.prepareTurn(conversation.id, TurnId("cancel-me")) is PrepareTurnResult.Queued)
+        repository.editDraft(conversation.id, "still editing", 13, 13)
+        assertEquals(OperationResult.Done, repository.cancelQueued(TurnId("cancel-me")))
+        assertEquals("still editing", db.dao().conversation(conversation.id.value)!!.domain().draft.text)
+
+        runtime.acceptSubmissions = true
+        runtime.snapshots[first.turnId.value] = runtime.snapshots.getValue(first.turnId.value).copy(
+            phase = RunPhase.SUCCEEDED, terminalEvidence = TerminalEvidence(true, 0))
+        repository.refreshExecution(ExecutionId(first.turnId.value))
+        delay(100)
+        assertEquals(0, runtime.submissions)
+        assertEquals("next", db.dao().turn("cancel-me")!!.userText)
+        assertFalse(db.dao().turn("cancel-me")!!.queued)
+    }
+
+    @Test fun `a queued request claimed before restart is recovered without losing the message`() = runBlocking {
+        val conversation = state().selected!!.conversation
+        repository.editDraft(conversation.id, "send after restart", 18, 18)
+        val frozen = db.dao().conversation(conversation.id.value)!!.body
+        db.dao().save(TurnRow("restart-queued", conversation.id.value, "send after restart", frozen, 12,
+            pending = true, occupied = true, queued = true))
+        scope.coroutineContext[Job]!!.cancelAndJoin()
+        db.close()
+        runtime.acceptSubmissions = true
+        start()
+        withTimeout(10_000) { while (db.dao().turn("restart-queued")?.runId == null) delay(20) }
+        assertEquals(1, runtime.submissions)
+        assertEquals("send after restart", runtime.submittedRequests.single().inputParts.filterIsInstance<InputPart.Text>().single().text)
+    }
+
+    @Test fun `queued turns for different agents execute in order with their frozen agent`() = runBlocking {
+        val firstConversation = state().selected!!.conversation
+        repository.editDraft(firstConversation.id, "start", 5, 5)
+        val first = (repository.prepareTurn(firstConversation.id, TurnId("agent-first")) as PrepareTurnResult.Prepared).turn
+        runtime.admit(first)
+        repository.recordSubmission(first, Submission.Accepted(ExecutionId(first.turnId.value)))
+        val claude = repository.create(firstConversation.config.copy(agent = DomainAgent.CLAUDE_CODE))
+        val openCode = repository.create(firstConversation.config.copy(agent = DomainAgent.OPEN_CODE))
+        repository.editDraft(claude, "claude follow up", 16, 16)
+        repository.editDraft(openCode, "opencode follow up", 18, 18)
+        assertTrue(repository.prepareTurn(claude, TurnId("agent-second")) is PrepareTurnResult.Queued)
+        assertTrue(repository.prepareTurn(openCode, TurnId("agent-third")) is PrepareTurnResult.Queued)
+        runtime.acceptSubmissions = true
+        runtime.snapshots[first.turnId.value] = runtime.snapshots.getValue(first.turnId.value).copy(
+            phase = RunPhase.SUCCEEDED, terminalEvidence = TerminalEvidence(true, 0))
+        repository.refreshExecution(ExecutionId(first.turnId.value))
+        withTimeout(10_000) { while (runtime.submittedRequests.size < 1) delay(20) }
+        assertEquals(RuntimeAgent.CLAUDE_CODE, runtime.submittedRequests[0].agentId)
+        assertEquals(1, runtime.submittedRequests.size)
+        runtime.snapshots["agent-second"] = runtime.snapshots.getValue("agent-second").copy(
+            phase = RunPhase.SUCCEEDED, terminalEvidence = TerminalEvidence(true, 0))
+        repository.refreshExecution(ExecutionId("agent-second"))
+        withTimeout(10_000) { while (runtime.submittedRequests.size < 2) delay(20) }
+        assertEquals(RuntimeAgent.OPEN_CODE, runtime.submittedRequests[1].agentId)
+    }
+
     @Test fun `initial page loads forty turns and older pages preserve range when a new reply arrives`() = runBlocking {
         val c = seedHistory(110)
         scope.coroutineContext[Job]!!.cancelAndJoin(); db.close(); start()
@@ -271,6 +360,9 @@ class RoomInteractionRepositoryTest {
         assertEquals("first", accepted.selected!!.turns.single().userText)
         repository.recordSubmission(prepared, Submission.Accepted(ExecutionId("first")))
         assertEquals("next", db.dao().conversation(c.id.value)!!.domain().draft.text)
+        runtime.snapshots[prepared.turnId.value] = runtime.snapshots.getValue(prepared.turnId.value).copy(
+            phase = RunPhase.SUCCEEDED, terminalEvidence = TerminalEvidence(true, 0))
+        repository.refreshExecution(ExecutionId(prepared.turnId.value))
         val second = (repository.prepareTurn(c.id, TurnId("second")) as PrepareTurnResult.Prepared).turn
         repository.recordSubmission(second, Submission.Rejected(Failure.BUSY))
         assertEquals("next", db.dao().conversation(c.id.value)!!.domain().draft.text)
@@ -397,6 +489,7 @@ class RoomInteractionRepositoryTest {
         assertEquals("请用 /skill-creator 帮我创建技能，要求是：", creator.draft.text)
         assertEquals(creator.draft.text.length, creator.draft.selectionStart)
         assertEquals(setOf("skill:CODEX:BUILTIN:skill-creator:hash"), creator.draft.capabilities)
+        repository.recordSubmission(prepared, Submission.Rejected(Failure.BUSY))
         val firstCreator = (repository.prepareTurn(created, TurnId("creator-first")) as PrepareTurnResult.Prepared).turn
         repository.recordSubmission(firstCreator, Submission.Rejected(Failure.BUSY))
         repository.setSkill(created, "skill:CODEX:BUILTIN:skill-creator:hash", false)
@@ -665,6 +758,8 @@ class RoomInteractionRepositoryTest {
         override val connection = MutableStateFlow(ConnectionState.CONNECTED)
         val snapshots = mutableMapOf<String, RunSnapshot>()
         var submissions = 0
+        val submittedRequests = mutableListOf<RunRequest>()
+        var acceptSubmissions = false
         fun admit(turn: TurnExecution) { snapshots[turn.turnId.value] = initialSnapshot(turn) }
         fun initialSnapshot(turn: TurnExecution): RunSnapshot {
             val request = turn.request()
@@ -672,7 +767,15 @@ class RoomInteractionRepositoryTest {
                 RunConfigSnapshot(request.agentId, request.workspaceRef, request.modelId, request.reasoningLevel, request.gatewayProfileRef, request.capabilityRefs))
         }
         override suspend fun capabilities() = CapabilityResult.Available(RuntimeCapabilities("test", emptyList()))
-        override suspend fun submit(request: RunRequest): SubmitResult { submissions++; return SubmitResult.Rejected(RuntimeError(ErrorCode.BUSY)) }
+        override suspend fun submit(request: RunRequest): SubmitResult {
+            submissions++
+            submittedRequests += request
+            if (!acceptSubmissions) return SubmitResult.Rejected(RuntimeError(ErrorCode.BUSY))
+            val config = RunConfigSnapshot(request.agentId, request.workspaceRef, request.modelId, request.reasoningLevel,
+                request.gatewayProfileRef, request.capabilityRefs)
+            snapshots[request.requestId.value] = RunSnapshot(RunId(request.requestId.value), RunPhase.RUNNING, 1, 1, config)
+            return SubmitResult.Accepted(RunId(request.requestId.value), config)
+        }
         override suspend fun findByRequest(requestId: RequestId): RequestLookup = if (requestId.value in snapshots) RequestLookup.Found(RunId(requestId.value)) else RequestLookup.NotFound
         override suspend fun cancel(request: CancelRequest) = CommandResult.Accepted
         val decisions = mutableListOf<ApprovalDecision>()

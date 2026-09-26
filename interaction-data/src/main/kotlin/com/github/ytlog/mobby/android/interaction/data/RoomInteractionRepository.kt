@@ -29,7 +29,7 @@ internal class RoomInteractionRepository(
     private val outputCache = OutputCache(db, client, cacheBudgetBytes)
     private val projects = ProjectManager(db, now, id)
     private val conversations = ConversationManager(db, now, id)
-    private val turns = TurnManager(db, now, system, client, scope, outputCache)
+    private val turns = TurnManager(db, now, system, client, scope, outputCache, execution)
     private val drafts = DraftManager(db)
     private val messages = MessageManager()
     private val importRecovery = CompletableDeferred<Unit>()
@@ -110,6 +110,7 @@ internal class RoomInteractionRepository(
     companion object { const val PAGE_SIZE = 40 }
 
     init {
+        scope.launch { system.status.filter { it.ready && it.connected }.collect { turns.dispatchQueued() } }
         scope.launch {
             try {
                 db.withTransaction {
@@ -135,10 +136,16 @@ internal class RoomInteractionRepository(
                 }
                 client.connection.filter { it == ConnectionState.CONNECTED }.collect {
                     for (turn in dao.unfinished()) {
-                        if (turn.pending && !turns.isInFlight(turn.id)) recordSubmission(turn.execution(), execution.lookup(TurnId(turn.id)))
+                        if (turn.pending && !turns.isInFlight(turn.id)) {
+                            val found = execution.lookup(TurnId(turn.id))
+                            if (turn.queued && found is Submission.Rejected && found.reason == Failure.UNAVAILABLE)
+                                turns.requeueUnsent(TurnId(turn.id))
+                            else recordSubmission(turn.execution(), found)
+                        }
                         else if (turn.runId != null) turns.observe(turn.id, turn.runId)
                     }
                     outputCache.reconcile()
+                    turns.dispatchQueued()
                 }
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) { importRecovery.completeExceptionally(e); startupError.value = AppStrings.conversationRecoveryIsIncompleteDataPreservedRestartTheApp }
@@ -177,6 +184,7 @@ internal class RoomInteractionRepository(
     override suspend fun editDraft(id: ConversationId, text: String, selectionStart: Int, selectionEnd: Int) = drafts.editDraft(id, text, selectionStart, selectionEnd)
     override suspend fun configure(id: ConversationId, config: NextTurnConfig) = conversations.configure(id, config)
     override suspend fun prepareTurn(conversationId: ConversationId, turnId: TurnId) = turns.prepareTurn(conversationId, turnId)
+    override suspend fun cancelQueued(turnId: TurnId) = turns.cancelQueued(turnId)
     override suspend fun recordSubmission(turn: TurnExecution, result: Submission) = turns.recordSubmission(turn, result)
     override suspend fun refreshExecution(id: ExecutionId) = turns.refreshExecution(id)
     override suspend fun pendingTurn(conversationId: ConversationId) = turns.pendingTurn(conversationId)

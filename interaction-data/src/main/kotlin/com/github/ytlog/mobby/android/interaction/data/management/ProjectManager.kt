@@ -49,7 +49,7 @@ internal class ProjectManager(private val db: InteractionDatabase, private val n
         val c = dao.conversation(id.value)?.domain()
             ?: return@withTransaction OperationResult.Failed(AppStrings.conversationNotFound)
         if (c.project == project && c.config.workspace == workspace) return@withTransaction OperationResult.Done
-        if (dao.conversationTurns(id.value).any { it.pending || it.occupied })
+        if (dao.conversationTurns(id.value).any { it.pending || it.occupied || it.queued })
             return@withTransaction OperationResult.Failed(AppStrings.projectMoveRequiresIdleConversation)
         if (c.draft.attachments.isNotEmpty() || c.draft.pendingAttachment != null)
             return@withTransaction OperationResult.Failed(AppStrings.projectMoveRequiresNoAttachments)

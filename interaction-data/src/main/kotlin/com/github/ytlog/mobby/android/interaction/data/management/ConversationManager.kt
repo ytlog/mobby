@@ -54,7 +54,7 @@ internal class ConversationManager(private val db: InteractionDatabase, private 
     suspend fun delete(id: ConversationId, deleted: Boolean) = changeVisibility(id) { it.copy(deleted = deleted) }
 
     private suspend fun changeVisibility(id: ConversationId, transform: (Conversation) -> Conversation): OperationResult = db.withTransaction {
-        if (dao.conversationTurns(id.value).any { it.occupied }) return@withTransaction OperationResult.Failed(AppStrings.runningConversationsCannotBeArchivedOrDeleted)
+        if (dao.conversationTurns(id.value).any { it.occupied || it.queued }) return@withTransaction OperationResult.Failed(AppStrings.runningOrQueuedConversationsCannotBeArchivedOrDeleted)
         val c = dao.conversation(id.value)?.domain() ?: return@withTransaction OperationResult.Failed(AppStrings.conversationNotFound)
         dao.save(transform(c).row())
         OperationResult.Done

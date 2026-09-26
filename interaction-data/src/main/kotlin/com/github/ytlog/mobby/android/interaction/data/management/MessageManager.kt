@@ -41,7 +41,7 @@ internal class MessageManager {
             }.orEmpty(),
             snapshot?.outputSegments?.filter { it.messageId.startsWith("diagnostic:") }?.messages().orEmpty(),
             if (error == OutputCache.VERIFICATION_WARNING) listOfNotNull(snapshot?.terminalEvidence?.error?.message(), AppStrings.cannotVerifyHistoricalOutputYetCachePreservedReconnectAnd).joinToString("\n")
-            else error ?: snapshot?.terminalEvidence?.error?.message(), snapshot?.progress?.domain(), pending, occupied, expanded, storageJson.decodeFromString(expandedSteps),
+            else error ?: snapshot?.terminalEvidence?.error?.message(), snapshot?.progress?.domain(), pending, occupied, queued && !pending, expanded, storageJson.decodeFromString(expandedSteps),
             snapshot?.artifacts?.mapNotNull { ref -> content[ref.value]?.takeUnless { it.expired }?.let { SkillProposal(ref.value, it.text, DomainAgent.valueOf(snapshot.acceptedConfig.agentId.name)) } }.orEmpty(),
             storageJson.decodeFromString<StoredConversation>(frozen).creator != null, snapshot?.artifacts?.any { it.value !in content } == true, storageJson.decodeFromString<StoredConversation>(frozen).attachments,
             snapshot?.pendingApprovals?.map { PermissionRequest(it.approvalId, it.revision, it.subject.domain()) }.orEmpty(), snapshot?.deviceOperations.orEmpty(),

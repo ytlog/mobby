@@ -37,7 +37,7 @@ data class Turn(
     val id: TurnId, val userText: String, val execution: ExecutionId?, val phase: ExecutionPhase?,
     val messages: List<Message> = emptyList(), val steps: List<Step> = emptyList(),
     val diagnostics: List<Message> = emptyList(), val failure: String? = null,
-    val progress: ProgressNotice? = null, val pending: Boolean = false, val occupied: Boolean = false,
+    val progress: ProgressNotice? = null, val pending: Boolean = false, val occupied: Boolean = false, val queued: Boolean = false,
     val expanded: Boolean? = null, val expandedSteps: Set<String> = emptySet(),
     val skillProposals: List<SkillProposal> = emptyList(), val creatingSkill: Boolean = false, val proposalsLoading: Boolean = false, val attachments: List<String> = emptyList(),
     val permissions: List<PermissionRequest> = emptyList(), val deviceOperations: List<DeviceRecord> = emptyList(),
@@ -167,6 +167,7 @@ interface SystemPort {
 interface InteractionRepository : ConversationRepository {
     /** Reconcile a stopped run directly with the runtime, independent of streamed event delivery. */
     suspend fun refreshExecution(id: ExecutionId)
+    suspend fun cancelQueued(turnId: TurnId): OperationResult = OperationResult.Failed(AppStrings.unsupportedOperation)
     suspend fun saveProject(project: Project, createOnly: Boolean = false): OperationResult = OperationResult.Failed(AppStrings.thisStorageDoesNotSupportDefaultProjectWorkspaces)
     suspend fun createInProject(config: NextTurnConfig, project: String): ConversationId = error("Project creation is unsupported")
     suspend fun saveSkillProposal(proposal: SkillProposal, markdown: String): DataResult<Skill> = DataResult.Failed(AppStrings.thisConversationDoesNotSupportSavingGeneratedDrafts)
@@ -254,6 +255,7 @@ class InteractionUseCases(
     suspend fun draft(id: ConversationId, text: String, start: Int, end: Int) = repository.editDraft(id, text, start, end)
     suspend fun configure(id: ConversationId, config: NextTurnConfig) = repository.configure(id, config)
     suspend fun prepareSend(id: ConversationId) = repository.prepareTurn(id, TurnId(nextId()))
+    suspend fun cancelQueued(turnId: TurnId) = repository.cancelQueued(turnId)
     suspend fun sendPrepared(turn: TurnExecution): Submission = submissionScope.async {
         execution.submit(turn).also { repository.recordSubmission(turn, it) }
     }.await()
