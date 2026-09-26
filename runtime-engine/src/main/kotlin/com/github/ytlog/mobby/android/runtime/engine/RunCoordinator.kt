@@ -82,6 +82,33 @@ class RunCoordinator(
         catch (e: CancellationException) { throw e }
         catch (_: Exception) { failStorage(); RequestLookup.Unavailable }
     }
+    override suspend fun insert(request: InsertRequest): CommandResult = withContext(NonCancellable) {
+        mutex.withLock {
+            try {
+                val fingerprint = MessageDigest.getInstance("SHA-256").digest(Json.encodeToString(request).toByteArray())
+                    .joinToString("") { "%02x".format(it) }
+                journal.command(request.commandId)?.let {
+                    return@withLock if (it.fingerprint == fingerprint) it.result else CommandResult.Rejected(RuntimeError(ErrorCode.REQUEST_CONFLICT))
+                }
+                val current = journal.snapshot(request.runId)
+                val result = when {
+                    request.text.isBlank() || request.text.toByteArray().size > 64 * 1024 -> CommandResult.Rejected(RuntimeError(ErrorCode.INPUT_TOO_LARGE))
+                    current == null -> CommandResult.Rejected(RuntimeError(ErrorCode.NOT_FOUND))
+                    current.phase.terminal -> CommandResult.AlreadyTerminal
+                    active.value != request.runId || activeRequest == null || stop?.value != null ||
+                        current.phase !in setOf(RunPhase.RUNNING, RunPhase.AWAITING_APPROVAL) ->
+                        CommandResult.Rejected(RuntimeError(ErrorCode.NOT_READY, true))
+                    else -> when (runCatching { process.offerInsertion(activeRequest!!, request.text) }.getOrDefault(InsertionOffer.NOT_READY)) {
+                        InsertionOffer.ACCEPTED -> CommandResult.Accepted
+                        InsertionOffer.NOT_READY -> CommandResult.Rejected(RuntimeError(ErrorCode.NOT_READY, true))
+                        InsertionOffer.UNSUPPORTED -> CommandResult.Rejected(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
+                    }
+                }
+                journal.recordCommand(CommandRecord(request.commandId, fingerprint, result))
+                result
+            } catch (_: Exception) { failStorage(); CommandResult.Rejected(RuntimeError(ErrorCode.STORAGE_FULL)) }
+        }
+    }
     override suspend fun snapshot(runId: RunId): SnapshotResult = mutex.withLock {
         if (!healthy) return@withLock SnapshotResult.Unavailable(RuntimeError(ErrorCode.STORAGE_FULL))
         try { journal.snapshot(runId)?.let { SnapshotResult.Found(it) } ?: SnapshotResult.Unavailable(RuntimeError(ErrorCode.NOT_FOUND)) }

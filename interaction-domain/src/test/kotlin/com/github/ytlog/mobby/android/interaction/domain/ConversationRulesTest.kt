@@ -173,6 +173,7 @@ class ConversationRulesTest {
     }
     private open class StubExecution : ExecutionPort {
         override suspend fun submit(turn: TurnExecution): Submission = error("not configured")
+        override suspend fun insert(insertion: PreparedInsertion): Submission = error("not configured")
         override suspend fun lookup(turnId: TurnId): Submission = Submission.Unconfirmed
         override suspend fun cancel(executionId: ExecutionId): StopResult = StopResult.Accepted
         override fun observe(executionId: ExecutionId) = emptyFlow<ExecutionFact>()
@@ -180,6 +181,8 @@ class ConversationRulesTest {
     /** Models the repository's atomic transaction contract; production Room comes in stage 3. */
     private class MemoryRepository(var current: Conversation) : ConversationRepository {
         private var pending: TurnExecution? = null
+        override suspend fun prepareInsertion(conversationId: ConversationId, turnId: TurnId): PrepareInsertionResult = error("not configured")
+        override suspend fun recordInsertion(insertion: PreparedInsertion, result: Submission) = error("not configured")
         override suspend fun prepareTurn(conversationId: ConversationId, turnId: TurnId): PrepareTurnResult {
             check(current.id == conversationId)
             if (pending != null) return PrepareTurnResult.Rejected(Failure.PENDING_SUBMISSION)

@@ -18,6 +18,9 @@ interface RuntimeClient {
      * Busy never queues work. Reject incompatible major versions and unsupported input/capabilities.
      */
     suspend fun submit(request: RunRequest): SubmitResult
+    /** Insert text into the active run. Accepted means the live adapter accepted the command,
+     * not that the model has processed it. Never falls back to a new turn or a queue. */
+    suspend fun insert(request: InsertRequest): CommandResult
     suspend fun findByRequest(requestId: RequestId): RequestLookup
     /** Idempotent by commandId + payload. Accepted means CANCELLING, not CANCELLED.
      * A completed run returns AlreadyTerminal; a previously accepted cancellation beats late success.
@@ -112,6 +115,8 @@ sealed interface RequestLookup {
 enum class CancelReason { USER_REQUEST }
 @Serializable
 data class CancelRequest(val commandId: CommandId, val runId: RunId, val reason: CancelReason = CancelReason.USER_REQUEST)
+@Serializable
+data class InsertRequest(val commandId: CommandId, val runId: RunId, val text: String)
 @Serializable
 enum class ApprovalChoice { ALLOW_ONCE, DENY }
 @Serializable

@@ -254,9 +254,29 @@ class InteractionUseCases(
     }
     suspend fun draft(id: ConversationId, text: String, start: Int, end: Int) = repository.editDraft(id, text, start, end)
     suspend fun configure(id: ConversationId, config: NextTurnConfig) = repository.configure(id, config)
-    suspend fun prepareSend(id: ConversationId) = repository.prepareTurn(id, TurnId(nextId()))
+    /** One Agent-independent entry point: queue a normal turn or insert into this conversation's live turn. */
+    suspend fun prepareMessage(id: ConversationId, mode: MessageDeliveryMode): PreparedMessage = when (mode) {
+        MessageDeliveryMode.QUEUE -> when (val result = repository.prepareTurn(id, TurnId(nextId()))) {
+            is PrepareTurnResult.Prepared -> PreparedMessage.Turn(result.turn)
+            is PrepareTurnResult.Queued -> PreparedMessage.Queued(result.turnId)
+            is PrepareTurnResult.Rejected -> PreparedMessage.Rejected(result.reason)
+        }
+        MessageDeliveryMode.INSERT -> when (val result = repository.prepareInsertion(id, TurnId(nextId()))) {
+            is PrepareInsertionResult.Prepared -> PreparedMessage.Insertion(result.insertion)
+            is PrepareInsertionResult.Rejected -> PreparedMessage.Rejected(result.reason)
+        }
+    }
+    suspend fun deliverMessage(message: PreparedMessage): Submission = when (message) {
+        is PreparedMessage.Turn -> sendPrepared(message.turn)
+        is PreparedMessage.Insertion -> insertPrepared(message.insertion)
+        is PreparedMessage.Queued -> Submission.Queued(message.turnId)
+        is PreparedMessage.Rejected -> Submission.Rejected(message.reason)
+    }
+    private suspend fun insertPrepared(insertion: PreparedInsertion): Submission = submissionScope.async {
+        execution.insert(insertion).also { repository.recordInsertion(insertion, it) }
+    }.await()
     suspend fun cancelQueued(turnId: TurnId) = repository.cancelQueued(turnId)
-    suspend fun sendPrepared(turn: TurnExecution): Submission = submissionScope.async {
+    private suspend fun sendPrepared(turn: TurnExecution): Submission = submissionScope.async {
         execution.submit(turn).also { repository.recordSubmission(turn, it) }
     }.await()
     suspend fun reconcile(id: ConversationId) = SubmitTurnUseCase(repository, execution).reconcile(id)

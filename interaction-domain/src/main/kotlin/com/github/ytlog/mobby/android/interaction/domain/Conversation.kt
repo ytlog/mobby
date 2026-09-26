@@ -27,6 +27,18 @@ data class Conversation(
     val sessions: Map<AgentId, String> = emptyMap()
 )
 data class TurnExecution(val turnId: TurnId, val conversationId: ConversationId, val draft: Draft, val config: NextTurnConfig, val session: String?, val creatingSkill: Boolean = false, val projectRules: String = "")
+data class PreparedInsertion(val turn: TurnExecution, val target: ExecutionId)
+enum class MessageDeliveryMode { QUEUE, INSERT }
+sealed interface PreparedMessage {
+    data class Turn(val turn: TurnExecution) : PreparedMessage
+    data class Insertion(val insertion: PreparedInsertion) : PreparedMessage
+    data class Queued(val turnId: TurnId) : PreparedMessage
+    data class Rejected(val reason: Failure) : PreparedMessage
+}
+sealed interface PrepareInsertionResult {
+    data class Prepared(val insertion: PreparedInsertion) : PrepareInsertionResult
+    data class Rejected(val reason: Failure) : PrepareInsertionResult
+}
 enum class Failure { PENDING_ATTACHMENT, INPUT_TOO_LARGE, BUSY, INVALID_CONFIG, UNSUPPORTED_CAPABILITY, UNAVAILABLE, EMPTY_DRAFT, PENDING_SUBMISSION }
 sealed interface Submission {
     data class Accepted(val executionId: ExecutionId) : Submission
@@ -56,6 +68,7 @@ data class PermissionDecision(val commandId: String, val key: PermissionKey, val
 interface ExecutionPort {
     suspend fun respondToDevice(request: com.github.ytlog.mobby.android.deviceinteraction.model.DeviceInteractionResponse): OperationResult = OperationResult.Failed(AppStrings.unsupportedOperation)
     suspend fun submit(turn: TurnExecution): Submission
+    suspend fun insert(insertion: PreparedInsertion): Submission
     suspend fun lookup(turnId: TurnId): Submission
     suspend fun cancel(executionId: ExecutionId): StopResult
     suspend fun resolvePermission(decision: PermissionDecision): OperationResult = OperationResult.Failed(AppStrings.thisRuntimeDoesNotSupportApprovals)
@@ -69,6 +82,8 @@ sealed interface PrepareTurnResult {
 interface ConversationRepository {
     /** Atomic: freeze draft/config and persist pending request. Reject if one is unresolved. */
     suspend fun prepareTurn(conversationId: ConversationId, turnId: TurnId): PrepareTurnResult
+    suspend fun prepareInsertion(conversationId: ConversationId, turnId: TurnId): PrepareInsertionResult
+    suspend fun recordInsertion(insertion: PreparedInsertion, result: Submission)
     /** Atomic: persist result; clear only matching draft revision on Accepted. Keep unconfirmed pending. */
     suspend fun recordSubmission(turn: TurnExecution, result: Submission)
     suspend fun pendingTurn(conversationId: ConversationId): TurnExecution?

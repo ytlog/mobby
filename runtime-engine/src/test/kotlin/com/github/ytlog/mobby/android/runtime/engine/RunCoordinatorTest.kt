@@ -49,6 +49,39 @@ class RunCoordinatorTest {
     private fun process(block: suspend (RunRequest, StateFlow<StopCause?>, suspend (String, Boolean) -> Unit) -> ProcessResult) = object : ProcessPort {
         override suspend fun execute(request: RunRequest, stop: StateFlow<StopCause?>, devices: DeviceOperationPort, output: suspend (String, Boolean) -> Unit) = block(request, stop, output)
     }
+    @Test fun `insertion targets only the live run and a command is delivered once`() = runTest {
+        val journal = MemoryJournal()
+        val exit = CompletableDeferred<Unit>()
+        val inserted = mutableListOf<String>()
+        val process = object : ProcessPort {
+            override fun offerInsertion(requestId: RequestId, text: String): InsertionOffer {
+                if (requestId != RequestId("request")) return InsertionOffer.NOT_READY
+                inserted += text
+                return InsertionOffer.ACCEPTED
+            }
+            override suspend fun execute(request: RunRequest, stop: StateFlow<StopCause?>, devices: DeviceOperationPort,
+                output: suspend (String, Boolean) -> Unit): ProcessResult {
+                exit.await()
+                output("""{"type":"turn.completed"}""", false)
+                return ProcessResult(0, true)
+            }
+        }
+        val runtime = RunCoordinator(backgroundScope, environment, process, journal, MemoryOutput())
+        runtime.recover()
+        val id = (runtime.submit(request()) as SubmitResult.Accepted).runId
+        runCurrent()
+        val command = InsertRequest(CommandId("message-1"), id, "more context")
+        assertEquals(CommandResult.Accepted, runtime.insert(command))
+        assertEquals(CommandResult.Accepted, runtime.insert(command))
+        assertEquals(listOf("more context"), inserted)
+        assertEquals(ErrorCode.REQUEST_CONFLICT,
+            (runtime.insert(command.copy(text = "changed")) as CommandResult.Rejected).error.code)
+        assertEquals(ErrorCode.NOT_FOUND,
+            (runtime.insert(InsertRequest(CommandId("other"), RunId("missing"), "text")) as CommandResult.Rejected).error.code)
+        exit.complete(Unit); runCurrent()
+        assertEquals(CommandResult.AlreadyTerminal, runtime.insert(InsertRequest(CommandId("after"), id, "late")))
+        assertEquals(listOf("more context"), inserted)
+    }
     @Test fun `device facts are durable before dispatch and duplicate admission never dispatches again`() = runTest {
         val journal = MemoryJournal()
         val process = object : ProcessPort {

@@ -23,6 +23,42 @@ internal class TurnManager(private val db: InteractionDatabase, private val now:
     private val observers = mutableMapOf<String, Job>()
     private val dispatchLock = Mutex()
     fun isInFlight(id: String) = id in inFlight
+    suspend fun prepareInsertion(conversationId: ConversationId, turnId: TurnId): PrepareInsertionResult = db.withTransaction {
+        val c = dao.conversation(conversationId.value)?.domain() ?: return@withTransaction PrepareInsertionResult.Rejected(Failure.UNAVAILABLE)
+        if (c.archived || c.deleted) return@withTransaction PrepareInsertionResult.Rejected(Failure.UNAVAILABLE)
+        if (dao.conversationTurns(c.id.value).any { it.pending }) return@withTransaction PrepareInsertionResult.Rejected(Failure.PENDING_SUBMISSION)
+        if (c.draft.pendingAttachment != null) return@withTransaction PrepareInsertionResult.Rejected(Failure.PENDING_ATTACHMENT)
+        if (c.draft.text.isBlank()) return@withTransaction PrepareInsertionResult.Rejected(Failure.EMPTY_DRAFT)
+        if (c.draft.attachments.isNotEmpty()) return@withTransaction PrepareInsertionResult.Rejected(Failure.UNSUPPORTED_CAPABILITY)
+        val active = dao.earliestOccupied(c.id.value)?.takeIf { it.runId != null && !it.pending && !it.queued }
+            ?: return@withTransaction PrepareInsertionResult.Rejected(Failure.UNAVAILABLE)
+        if (dao.turn(turnId.value) != null) return@withTransaction PrepareInsertionResult.Rejected(Failure.PENDING_SUBMISSION)
+        val target = ExecutionId(active.runId!!)
+        val turn = TurnExecution(turnId, c.id, c.draft, c.config, c.session)
+        dao.save(TurnRow(turnId.value, c.id.value, c.draft.text, storageJson.encodeToString(StoredConversation.from(c)), now(),
+            pending = true, occupied = false, insertionRunId = target.value))
+        PrepareInsertionResult.Prepared(PreparedInsertion(turn, target))
+    }
+    suspend fun recordInsertion(insertion: PreparedInsertion, result: Submission) {
+        db.withTransaction {
+            val row = dao.turn(insertion.turn.turnId.value)?.takeIf { it.pending && it.insertionRunId == insertion.target.value }
+                ?: return@withTransaction
+            when (result) {
+                is Submission.Accepted -> {
+                    dao.save(row.copy(pending = false, error = null))
+                    val c = requireNotNull(dao.conversation(row.conversationId)).domain()
+                    dao.save(c.copy(draft = ConversationRules.afterSubmission(c.draft, insertion.turn.draft.revision, result), updatedAt = now()).row())
+                }
+                is Submission.Rejected -> dao.save(row.copy(pending = false, error = when (result.reason) {
+                    Failure.UNSUPPORTED_CAPABILITY -> AppStrings.thisAgentDoesNotSupportThisCapabilityYet
+                    Failure.INPUT_TOO_LARGE -> AppStrings.requestRejectedTextAndAttachmentsExceedTheInputLimit
+                    else -> AppStrings.requestRejectedDraftPreservedCheckTheConnectionAndRetry
+                }))
+                Submission.Unconfirmed -> dao.save(row.copy(error = AppStrings.requestResultIsUnconfirmedCheckTheOriginalRequestDo))
+                is Submission.Queued -> error("A direct insertion cannot be queued")
+            }
+        }
+    }
     suspend fun prepareTurn(conversationId: ConversationId, turnId: TurnId): PrepareTurnResult {
         val before = dao.conversation(conversationId.value)?.domain() ?: return PrepareTurnResult.Rejected(Failure.UNAVAILABLE)
         val selected = before.project?.let { dao.project(it) }?.let { storageJson.decodeFromString<List<String>>(it.skills).toSet() }.orEmpty()
@@ -129,7 +165,7 @@ internal class TurnManager(private val db: InteractionDatabase, private val now:
             dao.save(it.copy(pending = false, occupied = false, error = null))
         }
     }
-    suspend fun pendingTurn(conversationId: ConversationId): TurnExecution? = dao.conversationTurns(conversationId.value).firstOrNull { it.pending }?.execution()
+    suspend fun pendingTurn(conversationId: ConversationId): TurnExecution? = dao.conversationTurns(conversationId.value).firstOrNull { it.pending && it.insertionRunId == null }?.execution()
     suspend fun refreshExecution(id: ExecutionId) {
         val row = dao.turnByRun(id.value) ?: return
         val deadline = System.nanoTime() + 3_000_000_000L

@@ -49,6 +49,13 @@ internal fun TurnExecution.request() = RunRequest(RequestId(turnId.value), Runti
         listOf(InputPart.Text(draft.text)) + draft.attachments.map { InputPart.Resource(ResourceRef(it)) }, config.model,
     GatewayProfileRef(config.gatewayProfile, config.gatewayVersion), config.reasoning, session?.let(::SessionRef), draft.capabilities.map(::CapabilityRef).toSet(), requestedOutput = if (creatingSkill) RequestedOutput.SKILL_PROPOSAL else RequestedOutput.TEXT)
 internal class RuntimeExecutionAdapter(private val client: RuntimeClient) : ExecutionPort {
+    override suspend fun insert(insertion: PreparedInsertion): Submission = try {
+        when (val result = client.insert(InsertRequest(CommandId(insertion.turn.turnId.value), RunId(insertion.target.value), insertion.turn.draft.text))) {
+            CommandResult.Accepted -> Submission.Accepted(insertion.target)
+            CommandResult.AlreadyTerminal -> Submission.Rejected(Failure.UNAVAILABLE)
+            is CommandResult.Rejected -> Submission.Rejected(result.error.failure())
+        }
+    } catch (e: CancellationException) { throw e } catch (_: Exception) { Submission.Unconfirmed }
     override suspend fun respondToDevice(request: com.github.ytlog.mobby.android.deviceinteraction.model.DeviceInteractionResponse): OperationResult =
         when (val result = client.respondToDevice(request)) {
             CommandResult.Accepted, CommandResult.AlreadyTerminal -> OperationResult.Done

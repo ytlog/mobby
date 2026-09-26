@@ -5,6 +5,7 @@ import kotlinx.coroutines.flow.StateFlow
 import com.github.ytlog.mobby.android.deviceinteraction.model.DeviceOperationPort
 
 enum class StopCause { USER, TIMEOUT, HOST_STOP, STORAGE_FAILURE, PROTOCOL_FAILURE }
+enum class InsertionOffer { ACCEPTED, NOT_READY, UNSUPPORTED }
 data class ProcessResult(val exitCode: Int?, val terminationConfirmed: Boolean, val error: ErrorCode? = null, val retained: Boolean = false)
 /** A live CLI can take another turn only when the process, engine, workspace, model, gateway, skills and output mode are unchanged. */
 data class LiveSessionBinding(
@@ -16,6 +17,8 @@ data class LiveSessionBinding(
         requestedOutput == request.requestedOutput && sessionId == request.sessionRef?.value
 }
 interface ProcessPort {
+    /** True only if a live adapter accepts this text for the named request. */
+    fun offerInsertion(requestId: RequestId, text: String): InsertionOffer = InsertionOffer.UNSUPPORTED
     fun offerDeviceResponse(request: com.github.ytlog.mobby.android.deviceinteraction.model.DeviceInteractionResponse): Boolean = false
     /** Returns when the turn ends. A retained process stays open for a compatible follow-up; stop is explicit. */
     suspend fun execute(request: RunRequest, stop: StateFlow<StopCause?>, devices: DeviceOperationPort, output: suspend (String, Boolean) -> Unit): ProcessResult

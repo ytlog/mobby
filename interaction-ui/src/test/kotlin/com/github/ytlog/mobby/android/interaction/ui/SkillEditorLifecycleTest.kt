@@ -56,6 +56,7 @@ class SkillEditorLifecycleTest {
         } }
         val execution = object : ExecutionPort {
             override suspend fun submit(turn: TurnExecution): Submission = error("unused")
+            override suspend fun insert(insertion: PreparedInsertion): Submission = error("unused")
             override suspend fun lookup(turnId: TurnId): Submission = error("unused")
             override suspend fun cancel(executionId: ExecutionId): StopResult { stops++; return StopResult.Accepted }
             override fun observe(executionId: ExecutionId): Flow<ExecutionFact> = emptyFlow()

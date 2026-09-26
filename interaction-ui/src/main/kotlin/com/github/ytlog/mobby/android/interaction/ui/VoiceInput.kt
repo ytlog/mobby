@@ -443,6 +443,7 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectVo
     onAdd: () -> Unit,
     onStop: () -> Unit,
     onSend: () -> Unit,
+    onInsert: () -> Unit,
     onEnterVoice: () -> Unit,
     onExitVoice: () -> Unit,
     onHoldTap: () -> Unit,
@@ -452,6 +453,7 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectVo
     textField: @Composable RowScope.() -> Unit,
 ) {
     val hold = voiceMode && micAvailable && !stop
+    var deliveryMenu by remember { mutableStateOf(false) }
     Box(Modifier.fillMaxWidth()) {
         if (recording) VoiceRecordingOverlay(cancelArmed, level, transcript, Modifier.align(Alignment.BottomCenter))
         ComposerShell(
@@ -471,7 +473,15 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectVo
                 textField()
                 when {
                     stop -> {
-                        if (sendEnabled) ActionIcon(AppStrings.queueNextMessage, onSend, AppIcons.Send, enabled = true, filled = true)
+                        if (sendEnabled) {
+                            Box {
+                                ActionIcon(AppStrings.chooseMessageDelivery, { deliveryMenu = true }, AppIcons.Send, enabled = true, filled = true)
+                                DropdownMenu(expanded = deliveryMenu, onDismissRequest = { deliveryMenu = false }) {
+                                    DropdownMenuItem(text = { Text(AppStrings.insertCurrentMessage) }, onClick = { deliveryMenu = false; onInsert() })
+                                    DropdownMenuItem(text = { Text(AppStrings.queueNextMessage) }, onClick = { deliveryMenu = false; onSend() })
+                                }
+                            }
+                        }
                         ActionIcon(AppStrings.stopCurrentTask, onStop, AppIcons.Stop, enabled = stopEnabled)
                     }
                     micAvailable -> HoldIcon(AppStrings.voiceInput, AppIcons.Mic, enabled, "voice-mic", onEnterVoice, onHoldStart, onHoldMove, onHoldEnd)

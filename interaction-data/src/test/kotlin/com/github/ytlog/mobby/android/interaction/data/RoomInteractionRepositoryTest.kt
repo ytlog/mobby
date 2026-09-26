@@ -122,6 +122,35 @@ class RoomInteractionRepositoryTest {
         assertFalse(db.dao().turn("queued-turn")!!.queued)
         assertEquals("follow up", db.dao().turn("queued-turn")!!.userText)
     }
+    @Test fun `direct insertion records the user message and never turns into a queued run`() = runBlocking {
+        val conversation = state().selected!!.conversation
+        repository.editDraft(conversation.id, "first", 5, 5)
+        val first = (repository.prepareTurn(conversation.id, TurnId("active-turn")) as PrepareTurnResult.Prepared).turn
+        runtime.admit(first)
+        repository.recordSubmission(first, Submission.Accepted(ExecutionId(first.turnId.value)))
+        state { it.selected?.turns?.singleOrNull()?.occupied == true }
+
+        repository.editDraft(conversation.id, "more context", 12, 12)
+        val insertion = (repository.prepareInsertion(conversation.id, TurnId("insert-1")) as PrepareInsertionResult.Prepared).insertion
+        assertEquals(ExecutionId("active-turn"), insertion.target)
+        val result = RuntimeExecutionAdapter(runtime).insert(insertion)
+        assertEquals(Submission.Accepted(insertion.target), result)
+        repository.recordInsertion(insertion, result)
+        assertEquals("", db.dao().conversation(conversation.id.value)!!.domain().draft.text)
+        assertEquals("more context", db.dao().turn("insert-1")!!.userText)
+        assertFalse(db.dao().turn("insert-1")!!.queued)
+        assertEquals(0, runtime.submissions)
+
+        repository.editDraft(conversation.id, "unsupported", 11, 11)
+        runtime.allowInsertion = false
+        val rejected = (repository.prepareInsertion(conversation.id, TurnId("insert-2")) as PrepareInsertionResult.Prepared).insertion
+        val refusal = RuntimeExecutionAdapter(runtime).insert(rejected)
+        assertEquals(Submission.Rejected(Failure.UNSUPPORTED_CAPABILITY), refusal)
+        repository.recordInsertion(rejected, refusal)
+        assertEquals("unsupported", db.dao().conversation(conversation.id.value)!!.domain().draft.text)
+        assertFalse(db.dao().turn("insert-2")!!.queued)
+        assertEquals(0, runtime.submissions)
+    }
 
     @Test fun `cancelling a queued message keeps later draft edits and prevents dispatch`() = runBlocking {
         val conversation = state().selected!!.conversation
@@ -760,6 +789,7 @@ class RoomInteractionRepositoryTest {
         var submissions = 0
         val submittedRequests = mutableListOf<RunRequest>()
         var acceptSubmissions = false
+        var allowInsertion = true
         fun admit(turn: TurnExecution) { snapshots[turn.turnId.value] = initialSnapshot(turn) }
         fun initialSnapshot(turn: TurnExecution): RunSnapshot {
             val request = turn.request()
@@ -777,6 +807,10 @@ class RoomInteractionRepositoryTest {
             return SubmitResult.Accepted(RunId(request.requestId.value), config)
         }
         override suspend fun findByRequest(requestId: RequestId): RequestLookup = if (requestId.value in snapshots) RequestLookup.Found(RunId(requestId.value)) else RequestLookup.NotFound
+        override suspend fun insert(request: InsertRequest): CommandResult =
+            if (!allowInsertion) CommandResult.Rejected(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
+            else if (snapshots[request.runId.value]?.phase == RunPhase.RUNNING) CommandResult.Accepted
+            else CommandResult.Rejected(RuntimeError(ErrorCode.NOT_READY))
         override suspend fun cancel(request: CancelRequest) = CommandResult.Accepted
         val decisions = mutableListOf<ApprovalDecision>()
         var permissionResult: CommandResult = CommandResult.Rejected(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))

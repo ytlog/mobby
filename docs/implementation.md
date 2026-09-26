@@ -910,7 +910,7 @@ Android `applicationId` 与应用源码包现为 `com.github.ytlog.mobby.android
 
 ## 增加 OpenCode（2026-09-23）
 
-会话里可以再选 OpenCode 1.18.32。模型请求仍走本地 Node 桥接，协议固定为 Responses，与 Codex 使用同一组网关服务；不提供协议转换。现在为兼容的连续轮次保留一个仅绑定 `127.0.0.1`、使用随机口令的 `opencode serve --pure` 进程；每轮用 `opencode run --attach` 作为 JSON 事件客户端，继续使用同一个 OpenCode 会话，不重新启动服务。提示词在 `--` 之后，图片用 `--file` 传入绝对路径；每轮使用 `--auto`，不写持久权限规则。`step_finish` 的 `reason=stop` 才算这一轮成功；`error` 算失败；`tool-calls` 与 `unknown` 不结束本轮。该 CLI 在终态后可能继续挂住，所以只结束事件客户端，保留服务进程。停止或进程失效时由 Runtime 进程组回收服务与客户端。会话 id 允许下划线，例如 `ses_Ab12`。技能写入 `~/.config/opencode/skills`，提示使用 `/name` 和 skill 工具。推理原文不进入时间线。当前运行中追加的后续消息仍按队列提交；OpenCode 1.18.32 的 [`prompt_async` 忙碌会话缺陷](https://github.com/anomalyco/opencode/issues/46842) 可能导致只保存消息、不执行，不能把 HTTP 204 当作实时 steer 成功。
+会话里可以再选 OpenCode 1.18.32。模型请求仍走本地 Node 桥接，协议固定为 Responses，与 Codex 使用同一组网关服务；不提供协议转换。现在为兼容的连续轮次保留一个仅绑定 `127.0.0.1`、使用随机口令的 `opencode serve --pure` 进程；每轮用 `opencode run --attach` 作为 JSON 事件客户端，继续使用同一个 OpenCode 会话，不重新启动服务。提示词在 `--` 之后，图片用 `--file` 传入绝对路径；每轮使用 `--auto`，不写持久权限规则。`step_finish` 的 `reason=stop` 才算这一轮成功；`error` 算失败；`tool-calls` 与 `unknown` 不结束本轮。该 CLI 在终态后可能继续挂住，所以只结束事件客户端，保留服务进程。停止或进程失效时由 Runtime 进程组回收服务与客户端。会话 id 允许下划线，例如 `ses_Ab12`。技能写入 `~/.config/opencode/skills`，提示使用 `/name` 和 skill 工具。推理原文不进入时间线。OpenCode 1.18.32 的 [`prompt_async` 忙碌会话缺陷](https://github.com/anomalyco/opencode/issues/46842) 可能导致只保存消息、不执行，因此直接插入明确返回不支持，仍可使用排队发送。
 
 官方 npm 的 ARM64 musl 程序是 ET_EXEC，Android 不能直接执行。锁文件改为校验 C04-wq/opencode-termux `v1.18.32-0` 的 `opencode-termux-aarch64.tar.gz`（SHA-256 `7300ab26c8eb0c5f24081792478ba76b05c365ece8638c171a24d6fe80109abe`）。`runtime/opencode_launcher.c` 是 PIE 入口：清掉 `LD_PRELOAD`，把 `PREFIX/lib/opencode` 加到 `LD_LIBRARY_PATH` 前面，再由随包的静态 `ld-musl-aarch64.so.1` 加载真正的 `opencode`。`--version` 失败只关闭 OpenCode 能力，不把整个运行环境标成未就绪。已在连接的手机上用隔离环境核对 `opencode --version`、`serve --help` 和服务的会话 HTTP 接口；尚未用真实网关验收连续轮次。
 
@@ -998,4 +998,6 @@ JDK 17 离线验证覆盖设备插件 16 项、悬浮球 9 项、Runtime Android
 
 Codex、Claude Code、OpenCode 运行时，输入框仍允许编辑与发送。发送的新消息冻结当时的 Agent、模型、网关、工作区、附件及技能，持久化为排队轮次，清空对应草稿；当前轮次结束后依次自动提交。停止当前轮次不会悄悄丢弃队列。排队卡片可取消，取消后可把原消息恢复到输入框；已有草稿编辑不会被覆盖。应用重启时会先核对未确认提交，再继续排队消息，避免重复执行。
 
-当前统一交互是“追加下一条”，不把消息直接注入正在生成的轮次。Codex 的运行中 steer 与 Claude Code/OpenCode 的接入能力不同，作为独立功能处理，不能把排队提示显示成已实时送达。
+上层统一使用 `InteractionUseCases.prepareMessage(conversationId, mode)` 与 `deliverMessage(prepared)`，`mode` 为 `QUEUE` 或 `INSERT`，不调用具体 Agent API。排队轮次由 `TurnManager` 持久化并在当前任务结束后提交。直接插入只接受当前会话内正在运行的任务和文本消息；它把消息 ID 与目标执行 ID 持久化，以相同 ID 调用 `RuntimeClient.insert`，失败时保留草稿，不会转成排队。重复命令只投递一次。`Accepted` 表示实时适配器接收命令，不表示模型已处理。
+
+Codex 通过 app-server `turn/steer` 插入当前 turn；Claude Code 通过仍打开的 stream-json 输入发送用户消息。OpenCode 当前版本不提供可靠的忙碌会话 steer，返回 `UNSUPPORTED_CAPABILITY`。输入框运行中通过发送菜单选择“排队发送”或“插入当前运行”，停止按钮始终保留；插入附件暂不支持，会明确拒绝。Codex 和 Claude Code 的真 CLI 运行中插入仍需设备验收，尤其要核对 Claude Code 进程重启后的上下文保留情况。

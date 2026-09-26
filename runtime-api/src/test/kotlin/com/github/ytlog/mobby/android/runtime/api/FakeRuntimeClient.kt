@@ -46,6 +46,14 @@ internal class FakeRuntimeClient : RuntimeClient {
     override suspend fun findByRequest(requestId: RequestId): RequestLookup = mutex.withLock {
         requests[requestId]?.let { RequestLookup.Found(it.second) } ?: RequestLookup.NotFound
     }
+    override suspend fun insert(request: InsertRequest): CommandResult = mutex.withLock {
+        command(request.commandId, request) {
+            val state = journals[request.runId]?.value?.snapshots?.last()
+                ?: return@command CommandResult.Rejected(RuntimeError(ErrorCode.NOT_FOUND))
+            if (state.phase.terminal) CommandResult.AlreadyTerminal
+            else CommandResult.Rejected(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
+        }
+    }
     override suspend fun cancel(request: CancelRequest): CommandResult = mutex.withLock {
         command(request.commandId, request) {
             val state = journals[request.runId]?.value?.snapshots?.last()

@@ -53,13 +53,16 @@ class VoiceInputUiTest {
         compose.onNodeWithContentDescription("语音输入").assertIsDisplayed()
     }
 
-    @Test fun `running agent keeps stop available and shows append action when draft has text`() {
+    @Test fun `running agent offers queue insert and stop as separate actions`() {
         val events = mutableListOf<String>()
         compose.setContent { MaterialTheme { bar(stop = true, sendEnabled = true,
-            onSend = { events += "append" }, onStop = { events += "stop" }) } }
-        compose.onNodeWithContentDescription("追加消息").assertIsDisplayed().performClick()
+            onSend = { events += "queue" }, onInsert = { events += "insert" }, onStop = { events += "stop" }) } }
+        compose.onNodeWithContentDescription("选择发送方式").assertIsDisplayed().performClick()
+        compose.onNodeWithText("排队发送").assertIsDisplayed().performClick()
+        compose.onNodeWithContentDescription("选择发送方式").performClick()
+        compose.onNodeWithText("插入当前运行").assertIsDisplayed().performClick()
         compose.onNodeWithContentDescription("停止当前任务").assertIsDisplayed().performClick()
-        assertEquals(listOf("append", "stop"), events)
+        assertEquals(listOf("queue", "insert", "stop"), events)
     }
 
     @Test fun `short press asks to hold and long press arms cancel before release`() {
@@ -184,6 +187,7 @@ class VoiceInputUiTest {
         stop: Boolean = false,
         sendEnabled: Boolean = false,
         onSend: () -> Unit = {},
+        onInsert: () -> Unit = {},
         onStop: () -> Unit = {},
         onEnterVoice: () -> Unit = {},
         onExitVoice: () -> Unit = {},
@@ -206,6 +210,7 @@ class VoiceInputUiTest {
             onAdd = {},
             onStop = onStop,
             onSend = onSend,
+            onInsert = onInsert,
             onEnterVoice = onEnterVoice,
             onExitVoice = onExitVoice,
             onHoldTap = onHoldTap,

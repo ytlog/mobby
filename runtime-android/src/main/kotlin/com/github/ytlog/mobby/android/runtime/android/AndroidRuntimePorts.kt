@@ -29,6 +29,13 @@ internal class AndroidRuntimePorts(
     private val liveState = MutableStateFlow(false)
     val live: StateFlow<Boolean> = liveState.asStateFlow()
     @Volatile private var control: AgentSession? = null
+    @Volatile private var activeInput: RequestId? = null
+    override fun offerInsertion(requestId: RequestId, text: String): InsertionOffer {
+        if (activeInput != requestId) return InsertionOffer.NOT_READY
+        val session = control ?: return InsertionOffer.NOT_READY
+        if (!session.supportsInsertion) return InsertionOffer.UNSUPPORTED
+        return if (session.insert(text)) InsertionOffer.ACCEPTED else InsertionOffer.NOT_READY
+    }
     override fun offerDeviceResponse(request: DeviceInteractionResponse) =
         com.github.ytlog.mobby.android.device.DeviceCapture.respond(request.operationId, request.response)
     override fun offerApproval(requestId: RequestId, approvalId: String, choice: ApprovalChoice) = control?.offer(requestId, approvalId, choice) == true
@@ -103,7 +110,9 @@ internal class AndroidRuntimePorts(
             if (reusable != null) {
                 val prepared = assemble(request, reusable.extras)
                 files = prepared.files
-                reusable.run(prepared.turn, stop, submit = true) { line, error -> output(sanitize(line, config), error) }
+                activeInput = request.requestId
+                try { reusable.run(prepared.turn, stop, submit = true) { line, error -> output(sanitize(line, config), error) } }
+                finally { activeInput = null }
             } else {
                 shutdownLive()
                 start(request, config, stop, devices) { line, error -> output(sanitize(line, config), error) }
@@ -215,7 +224,9 @@ internal class AndroidRuntimePorts(
             launched = true
             agent.exit = exit
             gate.withLock { held = agent }
-            return try { agent.run(ready.turn, stop, submit = false, output) } finally { ready.files?.close() }
+            activeInput = request.requestId
+            return try { agent.run(ready.turn, stop, submit = false, output) }
+                finally { activeInput = null; ready.files?.close() }
         } catch (e: Exception) {
             if (!launched) {
                 releaseBridge()

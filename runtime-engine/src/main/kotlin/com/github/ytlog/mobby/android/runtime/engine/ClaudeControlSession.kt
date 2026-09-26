@@ -8,6 +8,7 @@ import java.util.UUID
 
 /** Claude Code stream-json transport behind [AgentSession]. */
 class ClaudeControlSession : AgentSession {
+    override val supportsInsertion = true
     private val initializeId = "initialize-${UUID.randomUUID()}"
     private val queue = Channel<ByteArray>(18)
     override val input = queue.receiveAsFlow()
@@ -36,6 +37,11 @@ class ClaudeControlSession : AgentSession {
         enqueue(turn.claudeWireMessage())
     }
     @Synchronized override fun takeTurnEnded(): Boolean = turnEnded.also { if (it) turnEnded = false }
+    @Synchronized override fun insert(text: String): Boolean {
+        if (finished || !initialized || !turnOpen || text.isBlank()) return false
+        val message = AgentTurn(RequestId(UUID.randomUUID().toString()), text).claudeWireMessage()
+        return queue.trySend((message.toString() + "\n").toByteArray()).isSuccess
+    }
     @Synchronized override fun release() { if (!finished) queue.close() }
     @Synchronized override fun onStdout(line: String, autoAllow: Boolean): List<String> {
         if (finished) return emptyList()

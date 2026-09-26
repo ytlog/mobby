@@ -335,14 +335,14 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
         return formatted?.takeIf { it.isNotBlank() } ?: raw
     }
     fun enqueue(action: suspend () -> Unit) { queue.trySend(action) }
-    fun send() {
+    fun send(mode: MessageDeliveryMode = MessageDeliveryMode.QUEUE) {
         val id = composer.value.conversation ?: return
         enqueue {
-            when (val prepared = actions.prepareSend(id)) {
-                is PrepareTurnResult.Rejected -> feedback.send(failure(prepared.reason))
-                is PrepareTurnResult.Queued -> Unit
-                is PrepareTurnResult.Prepared -> viewModelScope.launch { safe {
-                    when (val result = actions.sendPrepared(prepared.turn)) {
+            when (val prepared = actions.prepareMessage(id, mode)) {
+                is PreparedMessage.Rejected -> feedback.send(failure(prepared.reason))
+                is PreparedMessage.Queued -> Unit
+                else -> viewModelScope.launch { safe {
+                    when (val result = actions.deliverMessage(prepared)) {
                         is Submission.Rejected -> feedback.send(failure(result.reason))
                         Submission.Unconfirmed -> feedback.send(AppStrings.requestResultUnconfirmedDraftPreservedCheckTheOriginalRequest)
                         is Submission.Queued -> Unit
@@ -362,11 +362,11 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
             val id = actions.create(config, project)
             actions.draft(id, text, text.length, text.length)
             opened()
-            when (val prepared = actions.prepareSend(id)) {
-                is PrepareTurnResult.Rejected -> feedback.send(failure(prepared.reason))
-                is PrepareTurnResult.Queued -> Unit
-                is PrepareTurnResult.Prepared -> viewModelScope.launch { safe {
-                    when (val result = actions.sendPrepared(prepared.turn)) {
+            when (val prepared = actions.prepareMessage(id, MessageDeliveryMode.QUEUE)) {
+                is PreparedMessage.Rejected -> feedback.send(failure(prepared.reason))
+                is PreparedMessage.Queued -> Unit
+                else -> viewModelScope.launch { safe {
+                    when (val result = actions.deliverMessage(prepared)) {
                         is Submission.Rejected -> feedback.send(failure(result.reason))
                         Submission.Unconfirmed -> feedback.send(AppStrings.requestResultUnconfirmedDraftPreservedCheckTheOriginalRequest)
                         is Submission.Queued -> Unit

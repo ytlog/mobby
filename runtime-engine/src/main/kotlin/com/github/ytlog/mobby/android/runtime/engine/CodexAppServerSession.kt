@@ -11,6 +11,7 @@ import kotlinx.serialization.json.*
  * `thread/resume` is used only when this process is created for a saved session.
  */
 class CodexAppServerSession(private val cwd: String, private val model: String, private val resumeThreadId: String?) : AgentSession {
+    override val supportsInsertion = true
     private val queue = Channel<ByteArray>(18)
     override val input = queue.receiveAsFlow()
     private var nextId = 1
@@ -21,6 +22,8 @@ class CodexAppServerSession(private val cwd: String, private val model: String, 
     private var turnEnded = false
     private var finished = false
     private var sessionId: String? = null
+    private var activeTurnId: String? = null
+    private val steerIds = mutableSetOf<String>()
     private val messageText = mutableMapOf<String, String>()
     private val reasoningSummary = mutableMapOf<String, String>()
     private val reasoningContent = mutableMapOf<String, String>()
@@ -36,7 +39,24 @@ class CodexAppServerSession(private val cwd: String, private val model: String, 
         check(!finished && !turnOpen && queued == null) { "Codex cannot accept another turn" }
         require(turn.images.all { it.path.startsWith("/") && '\u0000' !in it.path })
         queued = turn
+        activeTurnId = null
         if (step == Step.READY) sendTurn()
+    }
+    @Synchronized override fun insert(text: String): Boolean {
+        val thread = sessionId ?: return false
+        val turn = activeTurnId ?: return false
+        if (finished || !turnOpen || text.isBlank() || steerIds.size >= 16) return false
+        val request = id()
+        val payload = buildJsonObject {
+            put("id", request); put("method", "turn/steer")
+            putJsonObject("params") {
+                put("threadId", thread); put("expectedTurnId", turn)
+                putJsonArray("input") { add(buildJsonObject { put("type", "text"); put("text", text) }) }
+            }
+        }
+        if (!queue.trySend((payload.toString() + "\n").toByteArray()).isSuccess) return false
+        steerIds += request
+        return true
     }
     @Synchronized override fun takeTurnEnded(): Boolean = turnEnded.also { if (it) turnEnded = false }
     @Synchronized override fun release() { if (!finished) queue.close() }
@@ -46,6 +66,7 @@ class CodexAppServerSession(private val cwd: String, private val model: String, 
         val value = runCatching { Json.parseToJsonElement(line) as? JsonObject }.getOrNull() ?: return emptyList()
         val id = (value["id"] as? JsonPrimitive)?.contentOrNull
         if (id != null && (value.containsKey("result") || value.containsKey("error"))) {
+            if (steerIds.remove(id)) return if (value.containsKey("error")) fail(value["error"].toString()) else emptyList()
             if (id != pending) return emptyList()
             pending = null
             if (value.containsKey("error")) return fail(value["error"].toString())
@@ -64,12 +85,16 @@ class CodexAppServerSession(private val cwd: String, private val model: String, 
                     sendTurn()
                     listOf(event("thread.started") { put("thread_id", threadId) })
                 }
-                Step.TURN -> { step = Step.READY; emptyList() }
+                Step.TURN -> {
+                    activeTurnId = (value["result"] as? JsonObject)?.get("turn")?.jsonObject?.text("id") ?: activeTurnId
+                    step = Step.READY; emptyList()
+                }
                 Step.READY -> emptyList()
             }
         }
         val method = value.text("method") ?: return emptyList()
         val params = value["params"] as? JsonObject
+        if (method == "turn/started") activeTurnId = (params?.get("turn") as? JsonObject)?.text("id") ?: activeTurnId
         if (method == "turn/completed") {
             val turn = params?.get("turn") as? JsonObject
             val status = turn?.text("status")
@@ -77,6 +102,8 @@ class CodexAppServerSession(private val cwd: String, private val model: String, 
             turnEnded = true
             step = Step.READY
             pending = null
+            activeTurnId = null
+            steerIds.clear()
             return when (status) {
                 null, "completed" -> listOf(event("turn.completed"))
                 else -> listOf(event("turn.failed") { put("error", checkNotNull(turn).get("error") ?: JsonPrimitive(status)) })
@@ -149,6 +176,8 @@ class CodexAppServerSession(private val cwd: String, private val model: String, 
         turnEnded = true
         step = Step.READY
         queued = null
+        activeTurnId = null
+        steerIds.clear()
         return listOf(event("turn.failed") { putJsonObject("error") { put("message", message) } })
     }
     private fun unifiedItem(item: JsonObject): JsonObject = buildJsonObject {

@@ -624,7 +624,8 @@ private val DrawerRowHeight = 40.dp
             sendEnabled = !unavailable && system.ready && system.connected && !system.diagnosticBusy && detail.conversation.draft.pendingAttachment == null && (composer.value.text.isNotBlank() || detail.conversation.draft.attachments.isNotEmpty()),
             onAdd = onAdd,
             onStop = { active?.execution?.let(vm::stop) },
-            onSend = vm::send,
+            onSend = { vm.send() },
+            onInsert = { vm.send(MessageDeliveryMode.INSERT) },
             onEnterVoice = {
                 hint = null
                 capture.error = null

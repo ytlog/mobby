@@ -15,7 +15,8 @@ internal data class TurnRow(
     @PrimaryKey val id: String, val conversationId: String, val userText: String, val frozen: String,
     val createdAt: Long, val runId: String? = null, val snapshot: String? = null,
     val pending: Boolean = true, val occupied: Boolean = true, val error: String? = null,
-    val expanded: Boolean? = null, val expandedSteps: String = "[]", val queued: Boolean = false
+    val expanded: Boolean? = null, val expandedSteps: String = "[]", val queued: Boolean = false,
+    val insertionRunId: String? = null
 )
 @Entity(tableName = "chunks", indices = [Index("runId")])
 internal data class ChunkRow(@PrimaryKey val ref: String, val runId: String, val text: String, @ColumnInfo(defaultValue = "0") val expired: Boolean = false)

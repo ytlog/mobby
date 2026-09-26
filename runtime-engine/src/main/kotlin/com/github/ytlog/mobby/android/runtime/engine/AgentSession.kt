@@ -40,10 +40,13 @@ fun AgentTurn.claudeWireMessage(): JsonObject = buildJsonObject {
  * [onStdout] returns only the shared event lines; Claude and Codex wire messages stay inside the implementation.
  */
 interface AgentSession : Closeable {
+    val supportsInsertion: Boolean get() = false
     val input: Flow<ByteArray>
     fun sessionId(): String?
     fun onStdout(line: String, autoAllow: Boolean = false): List<String>
     fun submit(turn: AgentTurn)
+    /** Insert text while the current turn is open; false means unsupported or no longer active. */
+    fun insert(text: String): Boolean = false
     fun offer(requestId: RequestId, approvalId: String, choice: ApprovalChoice): Boolean
     fun takeTurnEnded(): Boolean
     fun release()
