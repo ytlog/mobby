@@ -507,6 +507,8 @@ private val DrawerRowHeight = 40.dp
     val haptic = LocalHapticFeedback.current
     val focusRequester = remember { FocusRequester() }
     val capture = rememberVoiceCapture()
+    val voiceScope = rememberCoroutineScope()
+    val pauseFormatJob = remember { mutableStateOf<Job?>(null) }
     val snapshot = remember { mutableStateOf<ComposerState?>(null) }
     var voiceMode by rememberSaveable(detail.conversation.id.value) { mutableStateOf(false) }
     var holding by remember { mutableStateOf(false) }
@@ -519,15 +521,28 @@ private val DrawerRowHeight = 40.dp
         else capture.error = null
     }
     SideEffect {
+        capture.onPause = { raw ->
+            pauseFormatJob.value?.cancel()
+            pauseFormatJob.value = voiceScope.launch {
+                val formatted = vm.formatVoice(detail.conversation.config, raw)
+                capture.showFormatted(raw, formatted)
+            }
+        }
         capture.onTranscript = transcript@{ text ->
+            pauseFormatJob.value?.cancel()
             val original = snapshot.value ?: return@transcript
             snapshot.value = null
-            val problem = vm.sendVoice(original, text)
-            if (problem != null) capture.error = problem else voiceMode = false
+            voiceScope.launch {
+                val formatted = if (capture.formattedSource == text && capture.formattedTranscript.isNotBlank())
+                    capture.formattedTranscript else vm.formatVoice(detail.conversation.config, text)
+                val problem = vm.sendVoice(original, formatted)
+                if (problem != null) capture.error = problem else voiceMode = false
+            }
         }
     }
     DisposableEffect(detail.conversation.id) {
         onDispose {
+            pauseFormatJob.value?.cancel()
             holding = false
             cancelArmed = false
             snapshot.value = null
@@ -601,6 +616,7 @@ private val DrawerRowHeight = 40.dp
             recording = holding && capture.phase == "recording",
             cancelArmed = cancelArmed,
             level = capture.level,
+            transcript = capture.displayTranscript,
             enabled = !unavailable,
             micAvailable = micAvailable,
             stop = stop,

@@ -32,6 +32,16 @@ internal class GatewayAdmin(private val context: Context) {
         try { AdminResult.Success(GatewayStore(context).default()?.let { GatewaySelection(it.mode.productAgent(), GatewayProfileRef(it.id, GatewayStore(context).load(it.id).version)) }) }
         catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.INVALID_CONFIG)) }
     }
+    suspend fun formatSpeech(profile: GatewayProfileRef, agent: AgentId, text: String): AdminResult<String> = withContext(Dispatchers.IO) {
+        try {
+            val mode = agent.launchMode()
+            val config = GatewayStore(context).load(profile.id, profile.version).config(mode).also { it.validateFor(mode) }
+            val formatted = GatewaySpeechFormatter().format(config, text)
+            if (formatted.isNullOrBlank()) AdminResult.Failed(RuntimeError(ErrorCode.PROTOCOL_ERROR, true))
+            else AdminResult.Success(formatted)
+        } catch (e: CancellationException) { throw e }
+        catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.PROTOCOL_ERROR, true)) }
+    }
     suspend fun selectDefaultGateway(selection: GatewaySelection): AdminResult<Unit> = withContext(Dispatchers.IO) {
         try {
             val mode = selection.agent.launchMode()

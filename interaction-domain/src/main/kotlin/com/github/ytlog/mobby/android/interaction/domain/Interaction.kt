@@ -157,6 +157,7 @@ interface SystemPort {
     suspend fun saveGateway(edit: GatewayEdit): GatewaySaveResult
     suspend fun fetchGatewayModels(edit: GatewayEdit): DataResult<GatewayCatalogResult>
     suspend fun defaultGateway(): GatewayDefault?
+    suspend fun formatSpeech(config: NextTurnConfig, text: String): String? = null
     suspend fun selectDefaultGateway(profile: GatewayProfile): OperationResult
     suspend fun deleteGateway(id: String): OperationResult
     suspend fun initialize(): OperationResult
@@ -344,6 +345,7 @@ class InteractionUseCases(
     suspend fun checkGateway(profile: GatewayProfile) = system.checkGateway(profile)
     suspend fun gateways() = system.gateways()
     suspend fun defaultGateway() = system.defaultGateway()
+    suspend fun formatSpeech(config: NextTurnConfig, text: String) = system.formatSpeech(config, text)
     suspend fun selectDefaultGateway(profile: GatewayProfile) = system.selectDefaultGateway(profile)
     suspend fun deleteGateway(id: String) = system.deleteGateway(id)
     suspend fun saveGateway(edit: GatewayEdit): GatewaySaveResult {

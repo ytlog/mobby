@@ -15,6 +15,8 @@ interface SpeechEngine {
 
     fun listen(
         onLevel: (Float) -> Unit,
+        onPartial: (String) -> Unit,
+        onSegment: (String) -> Unit,
         onFinal: (String) -> Unit,
         onError: (String) -> Unit,
     )
@@ -25,5 +27,5 @@ interface SpeechEngine {
 
 object SpeechEngines {
     /** Creates the engine. Native code and the model stay unloaded until [SpeechEngine.prepare] or [SpeechEngine.listen]. */
-    fun create(context: Context): SpeechEngine = VoskSpeechEngine(context.applicationContext)
+    fun create(context: Context): SpeechEngine = SherpaSpeechEngine(context.applicationContext)
 }

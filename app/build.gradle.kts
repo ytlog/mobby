@@ -45,7 +45,13 @@ android {
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
-    packaging { jniLibs { useLegacyPackaging = true; keepDebugSymbols += "**/*.so" } }
+    packaging { jniLibs {
+        useLegacyPackaging = true
+        keepDebugSymbols += "**/*.so"
+        // OnlineRecognizer loads only the JNI library, whose sole bundled dependency is ONNX Runtime.
+        excludes += "**/libsherpa-onnx-c-api.so"
+        excludes += "**/libsherpa-onnx-cxx-api.so"
+    } }
 }
 dependencies {
     implementation(project(":local-model"))

@@ -44,6 +44,8 @@
 
 ## 语音识别
 
-应用内识别使用 Maven 依赖 `com.alphacephei:vosk-android:0.3.47`（Apache-2.0）及其传递依赖 `net.java.dev.jna:jna:5.13.0`（Apache-2.0）。上游：[vosk-api](https://github.com/alphacep/vosk-api)。依赖由 Gradle 获取，不把 AAR 或本地库提交进仓库。
+应用内识别使用 [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) 1.13.8（Apache-2.0）的 Android AAR。构建时按固定 SHA-256 获取 AAR；安装包只保留 arm64-v8a 的 JNI 与 ONNX Runtime 库，未使用的 C/C++ API 库不打包，AAR 不提交进仓库。
 
-中文小模型 `vosk-model-small-cn-0.22`（Apache-2.0）不放入安装包。用户第一次按住说话时从 https://alphacephei.com/vosk/models/vosk-model-small-cn-0.22.zip 下载到应用私有目录，并用 SHA-256 `3af8b0e7e0f835ae9d414ce5df580237a3cfb08d586c9fbbb0f7ff29ad5b14ba` 校验。模型文件不提交进仓库。
+流式中文模型 [sherpa-onnx-streaming-zipformer-zh-14M-2023-02-23](https://huggingface.co/csukuangfj/sherpa-onnx-streaming-zipformer-zh-14M-2023-02-23)（Apache-2.0）不放入安装包。首次语音输入时下载官方归档并校验 SHA-256；只提取 int8 encoder、int8 joiner、decoder 和 tokens，随后删除归档。没有第二套本地语音模型或文字整理模型。归档及模型文件不提交进仓库。
+
+归档提取使用 `org.apache.commons:commons-compress:1.27.1`（Apache-2.0），由 Gradle 获取，不提交构建缓存。

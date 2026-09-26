@@ -209,6 +209,7 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
     override suspend fun listGatewayProfiles() = gatewayAdmin.listGatewayProfiles()
     override suspend fun fetchGatewayModels(request: FetchGatewayModelsRequest) = gatewayAdmin.fetchGatewayModels(request)
     override suspend fun defaultGateway() = gatewayAdmin.defaultGateway()
+    override suspend fun formatSpeech(profile: GatewayProfileRef, agent: AgentId, text: String) = gatewayAdmin.formatSpeech(profile, agent, text)
     override suspend fun selectDefaultGateway(selection: GatewaySelection) = gatewayAdmin.selectDefaultGateway(selection)
     override suspend fun saveGatewayProfile(request: SaveGatewayRequest) = gatewayAdmin.saveGatewayProfile(request)
     override suspend fun deleteGatewayProfile(id: String) = gatewayAdmin.deleteGatewayProfile(id)

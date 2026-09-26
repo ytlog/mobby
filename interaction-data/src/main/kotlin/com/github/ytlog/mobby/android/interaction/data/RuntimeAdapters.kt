@@ -233,6 +233,11 @@ internal class RuntimeSystemAdapter(private val context: android.content.Context
         is AdminResult.Success -> result.value?.let { GatewayDefault(DomainAgent.valueOf(it.agent.name), it.profile.id, it.profile.version) }
         is AdminResult.Failed -> throw IllegalStateException(result.error.message())
     }
+    override suspend fun formatSpeech(config: NextTurnConfig, text: String): String? =
+        when (val result = admin.formatSpeech(GatewayProfileRef(config.gatewayProfile, config.gatewayVersion), RuntimeAgent.valueOf(config.agent.name), text)) {
+            is AdminResult.Success -> result.value
+            is AdminResult.Failed -> null
+        }
     override suspend fun selectDefaultGateway(profile: GatewayProfile): OperationResult =
         admin.selectDefaultGateway(GatewaySelection(RuntimeAgent.valueOf(profile.agent.name), GatewayProfileRef(profile.id, profile.version))).operation()
     override suspend fun deleteGateway(id: String): OperationResult = admin.deleteGatewayProfile(id).operation()

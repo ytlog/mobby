@@ -184,6 +184,7 @@ class VoiceInputUiTest {
             recording = recording,
             cancelArmed = cancelArmed,
             level = 0.2f,
+            transcript = "",
             enabled = true,
             micAvailable = true,
             stop = false,

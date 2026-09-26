@@ -327,6 +327,13 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
         send()
         return null
     }
+    suspend fun formatVoice(config: NextTurnConfig, raw: String): String {
+        if (config.gatewayProfile.isBlank()) return raw
+        val formatted = try { withTimeoutOrNull(10_000) { actions.formatSpeech(config, raw) } }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { null }
+        return formatted?.takeIf { it.isNotBlank() } ?: raw
+    }
     fun enqueue(action: suspend () -> Unit) { queue.trySend(action) }
     fun send() {
         val id = composer.value.conversation ?: return

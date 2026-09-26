@@ -118,7 +118,13 @@ internal class VoiceCapture(context: Context) {
     var level by mutableFloatStateOf(0f)
     var error by mutableStateOf<String?>(null)
     var transfer by mutableStateOf<VoiceModelTransfer?>(null)
+    var liveTranscript by mutableStateOf("")
+    var formattedTranscript by mutableStateOf("")
+    var formattedSource by mutableStateOf("")
+    val displayTranscript: String get() = if (formattedSource.isNotBlank() && liveTranscript.startsWith(formattedSource))
+        formattedTranscript + liveTranscript.removePrefix(formattedSource) else liveTranscript
     var onTranscript: (String) -> Unit = {}
+    var onPause: (String) -> Unit = {}
     private val app = context.applicationContext
     private val audio = app.getSystemService(AudioManager::class.java)
     private var engine: SpeechEngine? = null
@@ -133,6 +139,9 @@ internal class VoiceCapture(context: Context) {
         speech.stop(false)
         error = null
         level = 0f
+        liveTranscript = ""
+        formattedTranscript = ""
+        formattedSource = ""
         val token = ++generation
         listening = true
         if (speech.ready) {
@@ -187,6 +196,9 @@ internal class VoiceCapture(context: Context) {
         abandonFocus()
         phase = "idle"
         level = 0f
+        liveTranscript = ""
+        formattedTranscript = ""
+        formattedSource = ""
         transfer = null
         if (active && reason != null) error = reason
     }
@@ -207,11 +219,14 @@ internal class VoiceCapture(context: Context) {
         transfer = null
         engine?.listen(
             onLevel = { if (token == generation && phase == "recording") level = it },
+            onPartial = { if (token == generation && phase == "recording") liveTranscript = it },
+            onSegment = { if (token == generation && phase == "recording" && liveTranscript.isNotBlank()) onPause(liveTranscript) },
             onFinal = { text ->
                 if (token != generation) return@listen
                 abandonFocus()
                 phase = "idle"
                 level = 0f
+                liveTranscript = ""
                 transfer = null
                 listening = false
                 generation++
@@ -231,12 +246,22 @@ internal class VoiceCapture(context: Context) {
         abandonFocus()
         phase = "idle"
         level = 0f
+        liveTranscript = ""
+        formattedTranscript = ""
+        formattedSource = ""
         transfer = null
         error = message
     }
 
     private fun abandonFocus() {
         audio.abandonAudioFocusRequest(focus)
+    }
+
+    fun showFormatted(source: String, formatted: String) {
+        if (phase == "recording" && source.length >= formattedSource.length && liveTranscript.startsWith(source) && formatted.isNotBlank()) {
+            formattedSource = source
+            formattedTranscript = formatted
+        }
     }
 }
 
@@ -366,7 +391,7 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectVo
     }
 }
 
-@Composable internal fun VoiceRecordingOverlay(cancelArmed: Boolean, level: Float, modifier: Modifier = Modifier) {
+@Composable internal fun VoiceRecordingOverlay(cancelArmed: Boolean, level: Float, transcript: String, modifier: Modifier = Modifier) {
     val wash = voiceWash(cancelArmed)
     val hint = if (cancelArmed) AppStrings.releaseToCancel else AppStrings.releaseToSendSwipeUpToCancel
     Box(
@@ -374,6 +399,7 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectVo
         contentAlignment = Alignment.BottomCenter,
     ) {
         Column(Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, bottom = 88.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            if (transcript.isNotBlank()) Text(transcript, color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodyLarge, maxLines = 3)
             Text(hint, color = if (cancelArmed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
             Spacer(Modifier.height(16.dp))
             VoiceSpectrum(level, cancelArmed, Modifier.fillMaxWidth())
@@ -408,6 +434,7 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectVo
     recording: Boolean,
     cancelArmed: Boolean,
     level: Float,
+    transcript: String,
     enabled: Boolean,
     micAvailable: Boolean,
     stop: Boolean,
@@ -426,7 +453,7 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectVo
 ) {
     val hold = voiceMode && micAvailable && !stop
     Box(Modifier.fillMaxWidth()) {
-        if (recording) VoiceRecordingOverlay(cancelArmed, level, Modifier.align(Alignment.BottomCenter))
+        if (recording) VoiceRecordingOverlay(cancelArmed, level, transcript, Modifier.align(Alignment.BottomCenter))
         ComposerShell(
             Modifier.alpha(if (recording) 0f else 1f).align(Alignment.BottomCenter)
                 .then(if (recording) Modifier.clearAndSetSemantics {} else Modifier),
