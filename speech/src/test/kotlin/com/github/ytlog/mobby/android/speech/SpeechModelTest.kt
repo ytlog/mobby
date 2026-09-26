@@ -22,6 +22,7 @@ class SpeechModelTest {
     @Test fun `only required files are installed and archive is removed`() {
         val root = tempDir()
         val oldModel = File(root, "vosk-model-small-cn-0.22").apply { mkdirs() }
+        val oldChinese = File(root, "sherpa-onnx-streaming-zipformer-zh-14M-2023-02-23").apply { mkdirs() }
         val archive = archive()
         var fetches = 0
         val store = SpeechModelStore(root, sha256(archive)) { destination, _ ->
@@ -33,17 +34,20 @@ class SpeechModelTest {
         assertEquals(SpeechModel.REQUIRED, store.modelDirectory().list()?.toSet())
         assertFalse(File(root, SpeechModel.PARTIAL).exists())
         assertFalse(oldModel.exists())
+        assertFalse(oldChinese.exists())
         store.ensure()
         assertEquals(1, fetches)
     }
 
     @Test fun `bad checksum removes partial and does not install`() {
         val root = tempDir()
+        val oldChinese = File(root, "sherpa-onnx-streaming-zipformer-zh-14M-2023-02-23").apply { mkdirs() }
         val archive = archive()
         val store = SpeechModelStore(root, "0000") { destination, _ -> archive.copyTo(destination, overwrite = true) }
         assertEquals(SpeechModelException.Kind.CHECKSUM,
             assertThrows(SpeechModelException::class.java) { store.ensure() }.kind)
         assertFalse(store.ready())
+        assertTrue(oldChinese.exists())
         assertFalse(File(root, SpeechModel.PARTIAL).exists())
     }
 

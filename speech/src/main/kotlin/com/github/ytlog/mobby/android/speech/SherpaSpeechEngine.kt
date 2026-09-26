@@ -159,11 +159,10 @@ private object SpeechRecognizerHolder {
     @Volatile var recognizer: OnlineRecognizer? = null
 
     suspend fun load(store: SpeechModelStore, onProgress: (Long, Long) -> Unit, onLoading: () -> Unit) {
-        store.removeLegacyCache()
         if (recognizer != null) return
         mutex.withLock {
             if (recognizer != null) return@withLock
-            if (!store.ready()) store.ensure(onProgress)
+            store.ensure(onProgress)
             onLoading()
             val dir = store.modelDirectory()
             val config = OnlineRecognizerConfig(

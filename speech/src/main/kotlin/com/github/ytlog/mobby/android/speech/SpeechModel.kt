@@ -5,13 +5,14 @@ import java.io.FileInputStream
 import java.security.MessageDigest
 import kotlin.math.sqrt
 
-/** Apache-2.0 streaming Chinese model; no other ASR model is installed. */
+/** Apache-2.0 streaming Chinese/English model; only its quantized inference files are installed. */
 internal object SpeechModel {
-    const val DIRECTORY = "sherpa-onnx-streaming-zipformer-zh-14M-2023-02-23"
+    const val DIRECTORY = "sherpa-onnx-streaming-zipformer-small-bilingual-zh-en-2023-02-16"
     const val URL = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/$DIRECTORY.tar.bz2"
-    const val SHA256 = "2cbd71b640d9c37d3784f29367333a4577b0398b62e9deeed418170b081cba8b"
-    const val ARCHIVE_BYTES = 74_004_050L
+    const val SHA256 = "2b7c63322b32e5e0f2526043a1103366119ca58dd615cd7105a37c01db9553d7"
+    const val ARCHIVE_BYTES = 458_187_351L
     const val PARTIAL = "$DIRECTORY.tar.bz2.partial"
+    val OBSOLETE = setOf("vosk-model-small-cn-0.22", "sherpa-onnx-streaming-zipformer-zh-14M-2023-02-23")
     val REQUIRED = setOf("encoder-epoch-99-avg-1.int8.onnx", "decoder-epoch-99-avg-1.onnx", "joiner-epoch-99-avg-1.int8.onnx", "tokens.txt")
 }
 

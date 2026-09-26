@@ -3,7 +3,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <application android:usesCleartextTraffic="true" android:name=".MobbyApplication" android:label="mobby" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:allowBackup="false" android:fullBackupContent="false" android:dataExtractionRules="@xml/data_extraction_rules" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:supportsRtl="true">
-        <activity android:name=".MainActivity" android:enableOnBackInvokedCallback="true" android:exported="true" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize">
+        <activity android:name=".MainActivity" android:enableOnBackInvokedCallback="true" tools:targetApi="33" android:exported="true" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity>
     </application>

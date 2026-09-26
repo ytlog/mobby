@@ -60,9 +60,16 @@ object DeviceHost {
             else -> AppStrings.allowAccessToFirst(spec.name)
         }
     }
-    fun mediaPermissions(): List<String> = if (Build.VERSION.SDK_INT >= 33) listOf(
-        Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO, Manifest.permission.READ_MEDIA_AUDIO,
-    ) else listOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+    fun mediaPermissions(): List<String> = when {
+        Build.VERSION.SDK_INT >= 34 -> listOf(
+            Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO,
+            Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED, Manifest.permission.READ_MEDIA_AUDIO,
+        )
+        Build.VERSION.SDK_INT >= 33 -> listOf(
+            Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO, Manifest.permission.READ_MEDIA_AUDIO,
+        )
+        else -> listOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+    }
     private fun mediaGranted(context: Context): Boolean {
         if (Build.VERSION.SDK_INT >= 34 && allowed(context, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)) return true
         return mediaPermissions().any { allowed(context, it) }

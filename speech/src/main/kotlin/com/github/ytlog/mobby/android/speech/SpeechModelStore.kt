@@ -16,11 +16,16 @@ internal class SpeechModelStore(
 ) {
     fun modelDirectory(): File = File(root, SpeechModel.DIRECTORY)
     fun ready(): Boolean = SpeechModel.REQUIRED.all { File(modelDirectory(), it).isFile }
-    fun removeLegacyCache() { File(root, "vosk-model-small-cn-0.22").deleteRecursively() }
+    private fun removeObsoleteModels() {
+        SpeechModel.OBSOLETE.forEach { File(root, it).deleteRecursively() }
+        File(root, "sherpa-onnx-streaming-zipformer-zh-14M-2023-02-23.tar.bz2.partial").delete()
+    }
 
     fun ensure(onProgress: (Long, Long) -> Unit = { _, _ -> }) {
-        removeLegacyCache()
-        if (ready()) return
+        if (ready()) {
+            removeObsoleteModels()
+            return
+        }
         if (!root.isDirectory && !root.mkdirs()) throw SpeechModelException(SpeechModelException.Kind.INCOMPLETE)
         val archive = File(root, SpeechModel.PARTIAL)
         fetch(archive, onProgress)
@@ -47,6 +52,7 @@ internal class SpeechModelStore(
             modelDirectory().deleteRecursively()
             if (!staging.renameTo(modelDirectory())) throw SpeechModelException(SpeechModelException.Kind.INCOMPLETE)
             archive.delete()
+            removeObsoleteModels()
         } catch (error: Exception) {
             archive.delete()
             if (error is SpeechModelException) throw error
