@@ -425,40 +425,45 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectVo
     textField: @Composable RowScope.() -> Unit,
 ) {
     val hold = voiceMode && micAvailable && !stop
-    val dark = darkChrome()
     Box(Modifier.fillMaxWidth()) {
         if (recording) VoiceRecordingOverlay(cancelArmed, level, Modifier.align(Alignment.BottomCenter))
-        Surface(
-            Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = if (dark) 0.dp else 12.dp, bottom = 10.dp)
-                .then(if (dark) Modifier else Modifier.lightInputShadow(28.dp))
-                .alpha(if (recording) 0f else 1f).align(Alignment.BottomCenter)
+        ComposerShell(
+            Modifier.alpha(if (recording) 0f else 1f).align(Alignment.BottomCenter)
                 .then(if (recording) Modifier.clearAndSetSemantics {} else Modifier),
-            shape = RoundedCornerShape(28.dp),
-            color = buttonColor(),
-            contentColor = onButtonColor(),
-            shadowElevation = if (dark) floatingElevation() else 0.dp,
-            tonalElevation = 0.dp,
         ) {
-            Row(Modifier.fillMaxWidth().padding(4.dp), verticalAlignment = Alignment.Bottom) {
-                ActionIcon(AppStrings.addContentAndCapabilities, onAdd, AppIcons.Plus, enabled = enabled && !recording)
-                if (hold) {
-                    Box(
-                        Modifier.weight(1f).heightIn(min = 48.dp).testTag("hold-to-speak").voiceHold(enabled, onHoldTap, onHoldStart, onHoldMove, onHoldEnd),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(AppStrings.holdToSpeak2, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
-                    }
-                    ActionIcon(AppStrings.keyboardInput, onExitVoice, AppIcons.Keyboard, enabled = enabled)
-                } else {
-                    textField()
-                    when {
-                        stop -> ActionIcon(AppStrings.stopCurrentTask, onStop, AppIcons.Stop, enabled = stopEnabled, filled = true)
-                        micAvailable -> HoldIcon(AppStrings.voiceInput, AppIcons.Mic, enabled, "voice-mic", onEnterVoice, onHoldStart, onHoldMove, onHoldEnd)
-                        else -> ActionIcon(AppStrings.sendTask, onSend, AppIcons.Send, enabled = sendEnabled, filled = true)
-                    }
+            ActionIcon(AppStrings.addContentAndCapabilities, onAdd, AppIcons.Plus, enabled = enabled && !recording)
+            if (hold) {
+                Box(
+                    Modifier.weight(1f).heightIn(min = 48.dp).testTag("hold-to-speak").voiceHold(enabled, onHoldTap, onHoldStart, onHoldMove, onHoldEnd),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(AppStrings.holdToSpeak2, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                }
+                ActionIcon(AppStrings.keyboardInput, onExitVoice, AppIcons.Keyboard, enabled = enabled)
+            } else {
+                textField()
+                when {
+                    stop -> ActionIcon(AppStrings.stopCurrentTask, onStop, AppIcons.Stop, enabled = stopEnabled, filled = true)
+                    micAvailable -> HoldIcon(AppStrings.voiceInput, AppIcons.Mic, enabled, "voice-mic", onEnterVoice, onHoldStart, onHoldMove, onHoldEnd)
+                    else -> ActionIcon(AppStrings.sendTask, onSend, AppIcons.Send, enabled = sendEnabled, filled = true)
                 }
             }
         }
+    }
+}
+
+@Composable internal fun ComposerShell(modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
+    val dark = darkChrome()
+    Surface(
+        modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = if (dark) 0.dp else 12.dp, bottom = 10.dp)
+            .then(if (dark) Modifier else Modifier.lightInputShadow(28.dp)),
+        shape = RoundedCornerShape(28.dp),
+        color = buttonColor(),
+        contentColor = onButtonColor(),
+        shadowElevation = if (dark) floatingElevation() else 0.dp,
+        tonalElevation = 0.dp,
+    ) {
+        Row(Modifier.fillMaxWidth().padding(4.dp), verticalAlignment = Alignment.Bottom, content = content)
     }
 }
 

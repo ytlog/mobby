@@ -60,16 +60,14 @@ import kotlinx.coroutines.launch
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
                 }
             }
-            Surface(Modifier.fillMaxWidth().padding(12.dp), shape = RoundedCornerShape(24.dp), color = buttonColor(), contentColor = onButtonColor()) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    BasicTextField(message, { message = it }, Modifier.weight(1f).heightIn(min = 42.dp), maxLines = 4,
-                        textStyle = MaterialTheme.typography.bodyLarge.copy(color = onButtonColor()), cursorBrush = SolidColor(onButtonColor()),
-                        decorationBox = { inner -> Box { if (message.isEmpty()) Text(AppStrings.projectChatPlaceholder(name), color = MaterialTheme.colorScheme.onSurfaceVariant); inner() } })
-                    ActionIcon(AppStrings.send, {
-                        val text = message.trim()
-                        if (text.isNotEmpty()) vm.sendInProject(name, text) { message = ""; openedNewConversation() }
-                    }, AppIcons.Send)
-                }
+            ComposerShell {
+                BasicTextField(message, { message = it }, Modifier.weight(1f).heightIn(min = ToolbarControl).padding(start = 12.dp, top = 10.dp, bottom = 10.dp), maxLines = 5,
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = onButtonColor()), cursorBrush = SolidColor(onButtonColor()),
+                    decorationBox = { inner -> Box { if (message.isEmpty()) Text(AppStrings.projectChatPlaceholder(name), color = MaterialTheme.colorScheme.onSurfaceVariant); inner() } })
+                ActionIcon(AppStrings.sendTask, {
+                    val text = message.trim()
+                    if (text.isNotEmpty()) vm.sendInProject(name, text) { message = ""; openedNewConversation() }
+                }, AppIcons.Send, enabled = message.isNotBlank(), filled = true)
             }
         } else {
             Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
