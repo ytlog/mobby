@@ -16,6 +16,7 @@ import com.k2fsa.sherpa.onnx.OnlineRecognizer
 import com.k2fsa.sherpa.onnx.OnlineRecognizerConfig
 import com.k2fsa.sherpa.onnx.OnlineTransducerModelConfig
 import java.io.File
+import java.util.Locale
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.cancellation.CancellationException
@@ -28,7 +29,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 internal class SherpaSpeechEngine(context: Context) : SpeechEngine {
-    private val store = SpeechModelStore(File(context.filesDir, "speech"))
+    private val store = SpeechModelStore(File(context.filesDir, "speech"), preferDomestic = Locale.getDefault().country.equals("CN", ignoreCase = true))
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val main = Handler(Looper.getMainLooper())
     private val listeners = CopyOnWriteArrayList<PrepareListener>()

@@ -12,6 +12,10 @@ import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream
 internal class SpeechModelStore(
     private val root: File,
     private val expectedSha256: String = SpeechModel.SHA256,
+    private val preferDomestic: Boolean = false,
+    private val mirrorFiles: Map<String, SpeechFile> = SpeechModel.MODELSCOPE_FILES,
+    private val mirrorBase: String = SpeechModel.MODELSCOPE_BASE,
+    private val mirrorDownload: (String, File, Long, (Long, Long) -> Unit) -> Unit = ::downloadFile,
     private val fetch: (File, (Long, Long) -> Unit) -> Unit = ::download,
 ) {
     fun modelDirectory(): File = File(root, SpeechModel.DIRECTORY)
@@ -27,13 +31,59 @@ internal class SpeechModelStore(
             return
         }
         if (!root.isDirectory && !root.mkdirs()) throw SpeechModelException(SpeechModelException.Kind.INCOMPLETE)
+        val sources = if (preferDomestic) listOf(::installFromModelScope, ::installFromArchive)
+            else listOf(::installFromArchive, ::installFromModelScope)
+        var failure: SpeechModelException? = null
+        for (source in sources) {
+            try {
+                source(onProgress)
+                removeObsoleteModels()
+                return
+            } catch (error: SpeechModelException) {
+                if (failure == null || failure.kind == SpeechModelException.Kind.NETWORK) failure = error
+            }
+        }
+        throw failure ?: SpeechModelException(SpeechModelException.Kind.NETWORK)
+    }
+
+    private fun installFromModelScope(onProgress: (Long, Long) -> Unit) {
+        val staging = File(root, "${SpeechModel.DIRECTORY}.modelscope.installing")
+        if (!staging.isDirectory && !staging.mkdirs()) throw SpeechModelException(SpeechModelException.Kind.INCOMPLETE)
+        val total = mirrorFiles.values.sumOf { it.bytes }
+        var completed = 0L
+        for ((name, spec) in mirrorFiles) {
+            if (name !in SpeechModel.REQUIRED) throw SpeechModelException(SpeechModelException.Kind.INCOMPLETE)
+            val file = File(staging, name)
+            if (file.length() != spec.bytes || !sha256(file).equals(spec.sha256, ignoreCase = true)) {
+                file.delete()
+                val partial = File(staging, "$name.partial")
+                mirrorDownload("$mirrorBase$name", partial, spec.bytes) { current, _ ->
+                    onProgress(completed + current, total)
+                }
+                if (partial.length() != spec.bytes || !sha256(partial).equals(spec.sha256, ignoreCase = true)) {
+                    partial.delete()
+                    throw SpeechModelException(SpeechModelException.Kind.CHECKSUM)
+                }
+                if (!partial.renameTo(file)) throw SpeechModelException(SpeechModelException.Kind.INCOMPLETE)
+            }
+            completed += spec.bytes
+            onProgress(completed, total)
+        }
+        if (mirrorFiles.keys != SpeechModel.REQUIRED) throw SpeechModelException(SpeechModelException.Kind.INCOMPLETE)
+        staging.listFiles()?.filter { it.name !in SpeechModel.REQUIRED }?.forEach { it.deleteRecursively() }
+        modelDirectory().deleteRecursively()
+        if (!staging.renameTo(modelDirectory())) throw SpeechModelException(SpeechModelException.Kind.INCOMPLETE)
+        File(root, SpeechModel.PARTIAL).delete()
+    }
+
+    private fun installFromArchive(onProgress: (Long, Long) -> Unit) {
         val archive = File(root, SpeechModel.PARTIAL)
         fetch(archive, onProgress)
         if (!archive.isFile || !sha256(archive).equals(expectedSha256, ignoreCase = true)) {
             archive.delete()
             throw SpeechModelException(SpeechModelException.Kind.CHECKSUM)
         }
-        val staging = File(root, "${SpeechModel.DIRECTORY}.installing")
+        val staging = File(root, "${SpeechModel.DIRECTORY}.archive.installing")
         staging.deleteRecursively()
         if (!staging.mkdirs()) {
             archive.delete()
@@ -52,7 +102,7 @@ internal class SpeechModelStore(
             modelDirectory().deleteRecursively()
             if (!staging.renameTo(modelDirectory())) throw SpeechModelException(SpeechModelException.Kind.INCOMPLETE)
             archive.delete()
-            removeObsoleteModels()
+            File(root, "${SpeechModel.DIRECTORY}.modelscope.installing").deleteRecursively()
         } catch (error: Exception) {
             archive.delete()
             if (error is SpeechModelException) throw error
@@ -62,13 +112,17 @@ internal class SpeechModelStore(
 }
 
 private fun download(destination: File, onProgress: (Long, Long) -> Unit) {
-    if (destination.length() > SpeechModel.ARCHIVE_BYTES) destination.delete()
-    if (destination.length() == SpeechModel.ARCHIVE_BYTES) {
-        onProgress(SpeechModel.ARCHIVE_BYTES, SpeechModel.ARCHIVE_BYTES)
+    downloadFile(SpeechModel.URL, destination, SpeechModel.ARCHIVE_BYTES, onProgress)
+}
+
+private fun downloadFile(url: String, destination: File, expectedBytes: Long, onProgress: (Long, Long) -> Unit) {
+    if (destination.length() > expectedBytes) destination.delete()
+    if (destination.length() == expectedBytes) {
+        onProgress(expectedBytes, expectedBytes)
         return
     }
     val offset = destination.length()
-    val connection = (URL(SpeechModel.URL).openConnection() as HttpURLConnection).apply {
+    val connection = (URL(url).openConnection() as HttpURLConnection).apply {
         instanceFollowRedirects = true
         connectTimeout = 20_000
         readTimeout = 60_000
@@ -86,9 +140,10 @@ private fun download(destination: File, onProgress: (Long, Long) -> Unit) {
                 while (true) {
                     val count = input.read(buffer)
                     if (count < 0) break
+                    if (read + count > expectedBytes) throw SpeechModelException(SpeechModelException.Kind.CHECKSUM)
                     output.write(buffer, 0, count)
                     read += count
-                    onProgress(read, SpeechModel.ARCHIVE_BYTES)
+                    onProgress(read, expectedBytes)
                 }
             }
         }
@@ -97,4 +152,5 @@ private fun download(destination: File, onProgress: (Long, Long) -> Unit) {
     } catch (_: java.io.IOException) {
         throw SpeechModelException(SpeechModelException.Kind.NETWORK)
     } finally { connection.disconnect() }
+    if (destination.length() != expectedBytes) throw SpeechModelException(SpeechModelException.Kind.NETWORK)
 }

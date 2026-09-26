@@ -43,12 +43,47 @@ class SpeechModelTest {
         val root = tempDir()
         val oldChinese = File(root, "sherpa-onnx-streaming-zipformer-zh-14M-2023-02-23").apply { mkdirs() }
         val archive = archive()
-        val store = SpeechModelStore(root, "0000") { destination, _ -> archive.copyTo(destination, overwrite = true) }
+        val store = SpeechModelStore(root, "0000", mirrorDownload = { _, _, _, _ ->
+            throw SpeechModelException(SpeechModelException.Kind.NETWORK)
+        }) { destination, _ -> archive.copyTo(destination, overwrite = true) }
         assertEquals(SpeechModelException.Kind.CHECKSUM,
             assertThrows(SpeechModelException::class.java) { store.ensure() }.kind)
         assertFalse(store.ready())
         assertTrue(oldChinese.exists())
         assertFalse(File(root, SpeechModel.PARTIAL).exists())
+    }
+
+    @Test fun `domestic source installs verified files without fetching large archive`() {
+        val root = tempDir()
+        val files = testMirrorFiles()
+        var archiveFetched = false
+        val progress = mutableListOf<Pair<Long, Long>>()
+        val store = SpeechModelStore(root, preferDomestic = true, mirrorFiles = files,
+            mirrorDownload = { url, destination, _, callback ->
+                val name = url.substringAfterLast('=')
+                val bytes = name.toByteArray()
+                destination.writeBytes(bytes)
+                callback(bytes.size.toLong(), bytes.size.toLong())
+            }) { _, _ -> archiveFetched = true }
+        store.ensure { read, total -> progress += read to total }
+        assertTrue(store.ready())
+        assertFalse(archiveFetched)
+        assertEquals(SpeechModel.REQUIRED, store.modelDirectory().list()?.toSet())
+        assertEquals(files.values.sumOf { it.bytes } to files.values.sumOf { it.bytes }, progress.last())
+    }
+
+    @Test fun `domestic download failure falls back to verified archive`() {
+        val root = tempDir()
+        val archive = archive()
+        var archiveFetched = false
+        val store = SpeechModelStore(root, sha256(archive), preferDomestic = true,
+            mirrorDownload = { _, _, _, _ -> throw SpeechModelException(SpeechModelException.Kind.NETWORK) }) { destination, _ ->
+            archiveFetched = true
+            archive.copyTo(destination, overwrite = true)
+        }
+        store.ensure()
+        assertTrue(archiveFetched)
+        assertTrue(store.ready())
     }
 
     @Test fun `normalization preserves english spaces`() {
@@ -73,6 +108,12 @@ class SpeechModelTest {
             }
         }
         return file
+    }
+
+    private fun testMirrorFiles(): Map<String, SpeechFile> = SpeechModel.REQUIRED.associateWith { name ->
+        val bytes = name.toByteArray()
+        val file = File.createTempFile("speech-file", ".bin").apply { writeBytes(bytes); deleteOnExit() }
+        SpeechFile(bytes.size.toLong(), sha256(file))
     }
 
     private fun tempDir(): File = File.createTempFile("speech", "").apply {
