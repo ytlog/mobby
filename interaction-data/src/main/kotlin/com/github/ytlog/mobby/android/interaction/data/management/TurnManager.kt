@@ -73,6 +73,16 @@ internal class TurnManager(private val db: InteractionDatabase, private val now:
         if (result is Submission.Accepted) observe(turn.turnId.value, result.executionId.value)
     }
     suspend fun pendingTurn(conversationId: ConversationId): TurnExecution? = dao.conversationTurns(conversationId.value).firstOrNull { it.pending }?.execution()
+    suspend fun refreshExecution(id: ExecutionId) {
+        val row = dao.turnByRun(id.value) ?: return
+        val deadline = System.nanoTime() + 3_000_000_000L
+        do {
+            val snapshot = (client.snapshot(RunId(id.value)) as? SnapshotResult.Found)?.snapshot ?: return
+            saveProjection(row.id, snapshot)
+            if (!RunProjection.occupied(snapshot)) return
+            delay(100)
+        } while (System.nanoTime() < deadline)
+    }
     suspend fun expansion(turnId: TurnId, expanded: Boolean) = db.withTransaction {
         dao.turn(turnId.value)?.let { dao.save(it.copy(expanded = expanded)) }; Unit
     }
@@ -111,7 +121,8 @@ internal class TurnManager(private val db: InteractionDatabase, private val now:
     private suspend fun saveProjection(turnId: String, snapshot: RunSnapshot) {
         val parts = snapshot.outputSegments + snapshot.steps.flatMap { it.output }
         val chunks = mutableListOf<ChunkRow>()
-        for (ref in (parts.map { it.ref } + snapshot.artifacts).distinct()) if (dao.chunk(ref.value) == null) {
+        val cached = dao.chunkRefs(snapshot.runId.value).toHashSet()
+        for (ref in (parts.map { it.ref } + snapshot.artifacts).distinct()) if (ref.value !in cached) {
             if (dao.outputCacheExpired(snapshot.runId.value)) {
                 chunks += ChunkRow(ref.value, snapshot.runId.value, "", true)
                 continue

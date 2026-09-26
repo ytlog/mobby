@@ -178,6 +178,7 @@ internal class RoomInteractionRepository(
     override suspend fun configure(id: ConversationId, config: NextTurnConfig) = conversations.configure(id, config)
     override suspend fun prepareTurn(conversationId: ConversationId, turnId: TurnId) = turns.prepareTurn(conversationId, turnId)
     override suspend fun recordSubmission(turn: TurnExecution, result: Submission) = turns.recordSubmission(turn, result)
+    override suspend fun refreshExecution(id: ExecutionId) = turns.refreshExecution(id)
     override suspend fun pendingTurn(conversationId: ConversationId) = turns.pendingTurn(conversationId)
     override suspend fun updateGateway(profile: GatewayProfile) = conversations.updateGateway(profile)
     override suspend fun rename(id: ConversationId, title: String) = conversations.rename(id, title)

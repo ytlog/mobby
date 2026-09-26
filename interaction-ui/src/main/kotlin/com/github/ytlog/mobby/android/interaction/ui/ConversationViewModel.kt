@@ -365,9 +365,12 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
             }
         }
     }
-    fun stop(id: ExecutionId) = enqueue {
-        val result = actions.stop(id)
-        if (result is StopResult.Rejected) feedback.send(failure(result.reason))
+    fun stop(id: ExecutionId) {
+        // Stop must not wait behind draft writes or other UI commands in the serial queue.
+        viewModelScope.launch { safe {
+            val result = actions.stop(id)
+            if (result is StopResult.Rejected) feedback.send(failure(result.reason))
+        } }
     }
     suspend fun refresh() {
         val profiles = actions.gateways()

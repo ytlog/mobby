@@ -276,6 +276,22 @@ class RoomInteractionRepositoryTest {
         assertEquals("next", db.dao().conversation(c.id.value)!!.domain().draft.text)
         assertFalse(db.dao().turn("second")!!.occupied)
     }
+    @Test fun `stopping refreshes terminal runtime state without waiting for the event observer`() = runBlocking {
+        val conversation = state().selected!!.conversation
+        repository.editDraft(conversation.id, "stop me", 7, 7)
+        val turn = (repository.prepareTurn(conversation.id, TurnId("stopped")) as PrepareTurnResult.Prepared).turn
+        runtime.admit(turn)
+        repository.recordSubmission(turn, Submission.Accepted(ExecutionId("stopped")))
+        state { it.selected?.turns?.singleOrNull()?.occupied == true }
+        runtime.snapshots["stopped"] = runtime.snapshots.getValue("stopped").copy(
+            phase = RunPhase.CANCELLED, lastSequence = 20, terminalEvidence = TerminalEvidence(true, null))
+
+        repository.refreshExecution(ExecutionId("stopped"))
+
+        val stopped = state { it.selected?.turns?.singleOrNull()?.phase == ExecutionPhase.CANCELLED }
+        assertFalse(stopped.selected!!.turns.single().occupied)
+        assertEquals(20L, db.dao().turn("stopped")!!.snapshot?.let { storageJson.decodeFromString<RunSnapshot>(it).lastSequence })
+    }
     @Test fun `conversation selection keeps each draft and cross agent starts fresh context`() = runBlocking {
         val c = state().selected!!.conversation
         repository.editDraft(c.id, "draft A", 3, 3)

@@ -164,6 +164,8 @@ interface SystemPort {
     suspend fun stopShell(): OperationResult
 }
 interface InteractionRepository : ConversationRepository {
+    /** Reconcile a stopped run directly with the runtime, independent of streamed event delivery. */
+    suspend fun refreshExecution(id: ExecutionId)
     suspend fun saveProject(project: Project, createOnly: Boolean = false): OperationResult = OperationResult.Failed(AppStrings.thisStorageDoesNotSupportDefaultProjectWorkspaces)
     suspend fun createInProject(config: NextTurnConfig, project: String): ConversationId = error("Project creation is unsupported")
     suspend fun saveSkillProposal(proposal: SkillProposal, markdown: String): DataResult<Skill> = DataResult.Failed(AppStrings.thisConversationDoesNotSupportSavingGeneratedDrafts)
@@ -256,7 +258,11 @@ class InteractionUseCases(
     }.await()
     suspend fun reconcile(id: ConversationId) = SubmitTurnUseCase(repository, execution).reconcile(id)
     suspend fun respondToDevice(request: DeviceInteractionResponse) = execution.respondToDevice(request)
-    suspend fun stop(id: ExecutionId) = StopRunUseCase(execution)(id)
+    suspend fun stop(id: ExecutionId): StopResult {
+        val result = StopRunUseCase(execution)(id)
+        if (result == StopResult.Accepted || result == StopResult.AlreadyTerminal) repository.refreshExecution(id)
+        return result
+    }
     suspend fun resolvePermission(decision: PermissionDecision) = submissionScope.async { execution.resolvePermission(decision) }.await()
     suspend fun skills(agent: AgentId) = system.skills(agent)
     suspend fun plugins() = system.plugins()

@@ -70,6 +70,7 @@ internal data class TurnWithChunks(
         GROUP BY t.id ORDER BY t.createdAt,t.id LIMIT :limit""")
     suspend fun outputCacheCandidates(conversationId: String?, afterTime: Long?, afterId: String, limit: Int): List<OutputCacheCandidate>
     @Query("SELECT ref FROM chunks WHERE runId=:runId AND expired=0 ORDER BY ref") suspend fun availableChunkRefs(runId: String): List<String>
+    @Query("SELECT ref FROM chunks WHERE runId=:runId") suspend fun chunkRefs(runId: String): List<String>
     @Query("SELECT EXISTS(SELECT 1 FROM expired_output_cache WHERE runId=:runId)") suspend fun outputCacheExpired(runId: String): Boolean
     @Query("UPDATE chunks SET text='',expired=1 WHERE runId=:runId") suspend fun expireOutputCache(runId: String)
     @Query("SELECT EXISTS(SELECT 1 FROM chunks WHERE ref=:ref AND expired=0)") suspend fun chunkAvailable(ref: String): Boolean
