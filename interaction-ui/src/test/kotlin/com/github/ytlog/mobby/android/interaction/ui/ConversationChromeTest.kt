@@ -93,8 +93,11 @@ class ConversationChromeTest {
         releaseFinalReply.countDown()
         compose.waitForIdle()
         compose.onNodeWithText("END OF FINAL REPLY").assertIsDisplayed()
+        compose.onNodeWithContentDescription("最新消息").assertDoesNotExist()
 
         compose.onNode(hasScrollToIndexAction()).performTouchInput { swipeDown() }
+        compose.waitForIdle()
+        compose.onNodeWithContentDescription("最新消息").assertIsDisplayed()
         compose.onNode(hasScrollToIndexAction()).performScrollToIndex(10)
         compose.waitForIdle()
         assertTranscriptClearOfChrome()

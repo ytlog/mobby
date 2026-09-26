@@ -835,7 +835,7 @@ internal fun Turn.showsSeparateActivity(): Boolean = occupied || pending
                 }
             }
         }
-        if (!follow && detail.turns.isNotEmpty()) FilledTonalButton(
+        if (!follow && list.canScrollForward && detail.turns.isNotEmpty()) FilledTonalButton(
             onClick = { follow = true },
             modifier = Modifier.align(Alignment.BottomEnd)
                 .padding(if (darkChrome()) followPadding else PaddingValues(20.dp))
