@@ -79,7 +79,7 @@ class StructuredSkillOutputTest {
             when (agent) {
                 AgentId.CLAUDE_CODE -> assertEquals(SkillGeneration.schema, args[args.indexOf("--json-schema") + 1])
                 AgentId.CODEX -> { assertFalse(args.contains("--output-schema")); assertFalse(args.contains("/private/schema.json")); assertTrue(args.contains("app-server")) }
-                AgentId.OPEN_CODE -> { assertFalse(args.contains("--json-schema")); assertFalse(args.contains("--output-schema")); assertTrue(args.contains("run")) }
+                AgentId.OPEN_CODE -> { assertFalse(args.contains("--json-schema")); assertFalse(args.contains("--output-schema")); assertTrue(args.contains("serve")) }
             }
             assertFalse("--json-schema" in AgentCommand.arguments(request.copy(requestedOutput = RequestedOutput.TEXT), "/agent", "prompt"))
             assertFalse("--output-schema" in AgentCommand.arguments(request.copy(requestedOutput = RequestedOutput.TEXT), "/agent", "prompt"))

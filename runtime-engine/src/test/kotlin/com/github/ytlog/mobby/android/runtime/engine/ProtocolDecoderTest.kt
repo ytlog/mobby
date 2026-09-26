@@ -1,6 +1,7 @@
 package com.github.ytlog.mobby.android.runtime.engine
 
 import com.github.ytlog.mobby.android.runtime.api.*
+import kotlinx.coroutines.flow.first
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -147,10 +148,9 @@ class ProtocolDecoderTest {
                     assertTrue(args.contains("app-server"))
                 }
                 AgentId.OPEN_CODE -> {
-                    assertEquals("--flag; $(command)\ntext", args.last())
-                    assertTrue(args.windowed(2).contains(listOf("--session", "session-123")))
-                    assertTrue(args.windowed(2).contains(listOf("--format", "json")))
-                    assertTrue(args.contains("--auto"))
+                    assertFalse(args.contains("--flag; $(command)\ntext"))
+                    assertFalse(args.contains("session-123"))
+                    assertTrue(args.contains("serve"))
                     assertFalse(args.any { "dangerously-skip-permissions" in it })
                 }
             }
@@ -186,17 +186,17 @@ class ProtocolDecoderTest {
         assertTrue(decoder.decode("""{"type":"step_finish","sessionID":"ses_Ab12","part":{"type":"step-finish","reason":"stop"}}""").filterIsInstance<AgentFact.Completed>().single().success)
         assertFalse(decoder.decode("""{"type":"error","sessionID":"ses_Ab12","error":{"name":"Provider"}}""").filterIsInstance<AgentFact.Completed>().single().success)
     }
-    @Test fun `opencode resumes by session and attaches image files without skipping permissions`() {
+    @Test fun `opencode keeps session and image files in the stdin command`() = kotlinx.coroutines.runBlocking {
         val image = "/private/shot.png"
-        val args = AgentCommand.arguments(
-            RunRequest(RequestId("r"), AgentId.OPEN_CODE, WorkspaceRef("default"), emptyList(), "vendor/model", GatewayProfileRef("OPEN_CODE", 1), sessionRef = SessionRef("ses_Ab12")),
-            "/agent", "look", listOf(image))
-        assertEquals("look", args.last())
-        assertTrue(args.windowed(2).contains(listOf("--session", "ses_Ab12")))
-        assertTrue(args.windowed(2).contains(listOf("--file", image)))
-        assertTrue(args.windowed(2).contains(listOf("-m", "openai/vendor/model")))
-        assertTrue(args.contains("--auto"))
-        assertFalse(args.any { "skip-permissions" in it || "bypass" in it })
+        val request = RunRequest(RequestId("r"), AgentId.OPEN_CODE, WorkspaceRef("default"), emptyList(), "vendor/model", GatewayProfileRef("OPEN_CODE", 1), sessionRef = SessionRef("ses_Ab12"))
+        val connection = AgentSessions.connect(request, "/agent", "/workspace", AgentTurn(RequestId("r"), "look", listOf(TurnImage("image/png", image, ""))))
+        assertTrue(connection.arguments.contains("serve"))
+        val command = connection.session.input.first().decodeToString()
+        assertTrue(command.contains("\"sessionId\":\"ses_Ab12\""))
+        assertTrue(command.contains(image))
+        assertTrue(command.contains("\"model\":\"vendor/model\""))
+        assertTrue(command.contains("\"text\":\"look\""))
+        connection.session.close()
     }
     @Test fun `file and shell steps publish typed fields and a later result does not replace them`() {
         val decoder = ProtocolDecoder(AgentId.CLAUDE_CODE)

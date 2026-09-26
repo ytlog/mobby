@@ -64,7 +64,7 @@ object AgentSessions {
         val session: AgentSession = when (request.agentId) {
             AgentId.CLAUDE_CODE -> ClaudeControlSession()
             AgentId.CODEX -> CodexAppServerSession(cwd, request.modelId, request.sessionRef?.value)
-            AgentId.OPEN_CODE -> OpenCodeRunSession()
+            AgentId.OPEN_CODE -> OpenCodeServerSession(request.modelId, request.sessionRef?.value)
         }
         session.submit(turn)
         val arguments = AgentCommand.arguments(

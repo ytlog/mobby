@@ -547,15 +547,7 @@ object AgentCommand {
                 else { add("--"); add(prompt) }
                 if (approvals) addAll(listOf("--permission-prompt-tool", "stdio"))
             }
-            AgentId.OPEN_CODE -> buildList {
-                // One prompt per process. The next message cold-starts with --session.
-                add(executable); add("run"); add("--format"); add("json"); add("--pure"); add("--auto")
-                request.reasoningLevel?.let { add("--variant"); add(it) }
-                if (session != null) addAll(listOf("--session", session))
-                imagePaths.forEach { addAll(listOf("--file", it)) }
-                add("-m"); add("openai/${request.modelId}")
-                add("--"); add(prompt)
-            }
+            AgentId.OPEN_CODE -> listOf(executable, "serve", "--pure", "--hostname", "127.0.0.1")
         }
     }
 }

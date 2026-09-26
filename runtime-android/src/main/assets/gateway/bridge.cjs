@@ -153,6 +153,10 @@ async function main() {
   let child;
   try {
     launch = agentLaunch(mode, args, config, process.env, bridge);
+    if (mode === 'OPEN_CODE') {
+      await require('./opencode-live.cjs').runOpenCodeLive(executable, launch.args, launch.env, bridge);
+      return;
+    }
     if (process.env.MOBBY_AGENT_INPUT_FILE) input = openAgentInput(process.env.MOBBY_AGENT_INPUT_FILE);
     child = spawn(executable, launch.args, {env:launch.env, stdio:input === undefined ? 'inherit' : [input, 1, 2]});
   } catch (error) { bridge.close(); throw error; }

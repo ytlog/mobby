@@ -910,9 +910,9 @@ Android `applicationId` 与应用源码包现为 `com.github.ytlog.mobby.android
 
 ## 增加 OpenCode（2026-09-23）
 
-会话里可以再选 OpenCode 1.18.32。模型请求仍走本地 Node 桥接，协议固定为 Responses，与 Codex 使用同一组网关服务；不提供协议转换。每一轮执行 `opencode run --format json --pure --auto`，提示词在 `--` 之后，图片用 `--file` 传入绝对路径。`step_finish` 的 `reason=stop` 才算这一轮成功；`error` 算失败；`tool-calls` 与 `unknown` 不结束本轮。该 CLI 一轮只收一条提示并可能在结束后挂住，因此不保留进程，下一轮用 `--session` 冷启动。会话 id 允许下划线，例如 `ses_Ab12`。技能写入 `~/.config/opencode/skills`，提示使用 `/name` 和 skill 工具。推理原文不进入时间线。
+会话里可以再选 OpenCode 1.18.32。模型请求仍走本地 Node 桥接，协议固定为 Responses，与 Codex 使用同一组网关服务；不提供协议转换。现在为兼容的连续轮次保留一个仅绑定 `127.0.0.1`、使用随机口令的 `opencode serve --pure` 进程；每轮用 `opencode run --attach` 作为 JSON 事件客户端，继续使用同一个 OpenCode 会话，不重新启动服务。提示词在 `--` 之后，图片用 `--file` 传入绝对路径；每轮使用 `--auto`，不写持久权限规则。`step_finish` 的 `reason=stop` 才算这一轮成功；`error` 算失败；`tool-calls` 与 `unknown` 不结束本轮。该 CLI 在终态后可能继续挂住，所以只结束事件客户端，保留服务进程。停止或进程失效时由 Runtime 进程组回收服务与客户端。会话 id 允许下划线，例如 `ses_Ab12`。技能写入 `~/.config/opencode/skills`，提示使用 `/name` 和 skill 工具。推理原文不进入时间线。当前运行中追加的后续消息仍按队列提交；OpenCode 1.18.32 的 [`prompt_async` 忙碌会话缺陷](https://github.com/anomalyco/opencode/issues/46842) 可能导致只保存消息、不执行，不能把 HTTP 204 当作实时 steer 成功。
 
-官方 npm 的 ARM64 musl 程序是 ET_EXEC，Android 不能直接执行。锁文件改为校验 C04-wq/opencode-termux `v1.18.32-0` 的 `opencode-termux-aarch64.tar.gz`（SHA-256 `7300ab26c8eb0c5f24081792478ba76b05c365ece8638c171a24d6fe80109abe`）。`runtime/opencode_launcher.c` 是 PIE 入口：清掉 `LD_PRELOAD`，把 `PREFIX/lib/opencode` 加到 `LD_LIBRARY_PATH` 前面，再由随包的静态 `ld-musl-aarch64.so.1` 加载真正的 `opencode`。`--version` 失败只关闭 OpenCode 能力，不把整个运行环境标成未就绪。尚未在手机上跑通 `opencode --version` 或真实网关任务。
+官方 npm 的 ARM64 musl 程序是 ET_EXEC，Android 不能直接执行。锁文件改为校验 C04-wq/opencode-termux `v1.18.32-0` 的 `opencode-termux-aarch64.tar.gz`（SHA-256 `7300ab26c8eb0c5f24081792478ba76b05c365ece8638c171a24d6fe80109abe`）。`runtime/opencode_launcher.c` 是 PIE 入口：清掉 `LD_PRELOAD`，把 `PREFIX/lib/opencode` 加到 `LD_LIBRARY_PATH` 前面，再由随包的静态 `ld-musl-aarch64.so.1` 加载真正的 `opencode`。`--version` 失败只关闭 OpenCode 能力，不把整个运行环境标成未就绪。已在连接的手机上用隔离环境核对 `opencode --version`、`serve --help` 和服务的会话 HTTP 接口；尚未用真实网关验收连续轮次。
 
 ## 设备插件替换「使用当前手机」（2026-09-23）
 

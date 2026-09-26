@@ -91,6 +91,9 @@ class RuntimeEnvironment(private val context: Context) {
         File(context.filesDir, "gateway-strings.cjs").outputStream().use { target ->
             context.assets.open("gateway/gateway-strings.cjs").use { it.copyTo(target) }
         }
+        File(context.filesDir, "opencode-live.cjs").outputStream().use { target ->
+            context.assets.open("gateway/opencode-live.cjs").use { it.copyTo(target) }
+        }
         if (dependenciesReady) output(AppStrings.dependenciesInstalledAndVerifiedConfigureAddressProtocolModelAnd)
         output(AppStrings.workingDirectory(workspace.absolutePath))
     }
