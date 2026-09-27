@@ -399,8 +399,7 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
         val target = related.firstOrNull { it.agent == currentAgent }
             ?: related.firstOrNull { it.agent == defaultGateway.value?.agent }
             ?: profile
-        val selectedModel = model.takeIf { candidate -> related.any { it.models.any { item -> item.id == candidate } || it.model == candidate } }
-            ?: target.model
+        val selectedModel = model.takeIf(target::offers) ?: target.model
         state.value.selected?.conversation?.let { conversation ->
             actions.configure(conversation.id, NextTurnConfig(target.agent, selectedModel, reasoning, conversation.config.workspace, target.id, target.version))
         }

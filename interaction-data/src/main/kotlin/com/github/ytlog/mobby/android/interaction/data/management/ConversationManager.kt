@@ -39,8 +39,11 @@ internal class ConversationManager(private val db: InteractionDatabase, private 
     suspend fun updateGateway(profile: GatewayProfile) = db.withTransaction {
         for (row in dao.allConversations()) {
             val c = row.domain()
-            if (c.config.agent == profile.agent && c.config.gatewayProfile == profile.id)
-                dao.save(c.copy(config = c.config.copy(model = profile.model, gatewayVersion = profile.version, reasoning = null)).row())
+            if (c.config.agent == profile.agent && c.config.gatewayProfile == profile.id) {
+                val retained = profile.offers(c.config.model)
+                dao.save(c.copy(config = c.config.copy(model = if (retained) c.config.model else profile.model,
+                    gatewayVersion = profile.version, reasoning = c.config.reasoning.takeIf { retained })).row())
+            }
         }
     }
 

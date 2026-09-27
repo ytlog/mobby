@@ -105,7 +105,7 @@ class WorkspacePickerTest {
         val firstUse = ConversationGatewayResolver.newConversation(AgentId.OPEN_CODE, current, emptyList(), profiles, GatewayDefault(AgentId.CODEX, "CODEX", 1))
         Assert.assertNull(firstUse)
     }
-    @Test fun `new conversation uses selected default gateway and its default model before recent conversations`() {
+    @Test fun `new conversation falls back to selected gateway default when recent model is unavailable`() {
         val recent = Conversation(ConversationId("recent"), NextTurnConfig(AgentId.CODEX, "old-model", null, "default", "OLD"), updatedAt = 40)
         val profiles = listOf(
             GatewayProfile(AgentId.CODEX, "OLD", 1, "https://old.test/v1", "old-model", "RESPONSES", true),

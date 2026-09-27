@@ -499,6 +499,16 @@ class RoomInteractionRepositoryTest {
         assertEquals("new-model", db.dao().conversation(c.id.value)!!.domain().config.model)
         assertEquals(0L, prepared.config.gatewayVersion)
     }
+    @Test fun `gateway edit keeps a selected model when it remains in the gateway catalog`() = runBlocking {
+        val c = state().selected!!.conversation
+        repository.configure(c.id, c.config.copy(model = "chosen", reasoning = "high"))
+        repository.updateGateway(GatewayProfile(DomainAgent.CODEX, "CODEX", 2, "", "new-default", "RESPONSES", false,
+            listOf(GatewayModel("new-default", "Default"), GatewayModel("chosen", "Chosen"))))
+        val config = db.dao().conversation(c.id.value)!!.domain().config
+        assertEquals("chosen", config.model)
+        assertEquals("high", config.reasoning)
+        assertEquals(2L, config.gatewayVersion)
+    }
     @Test fun `skill choice is draft scoped and creator binding can be removed`() = runBlocking {
         val c = state().selected!!.conversation
         val skill = "skill:CODEX:USER:review:hash"

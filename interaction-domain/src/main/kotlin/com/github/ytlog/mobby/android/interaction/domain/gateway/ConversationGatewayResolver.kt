@@ -7,9 +7,6 @@ import com.github.ytlog.mobby.android.interaction.domain.NextTurnConfig
 
 /** Resolves gateway and model choices without holding a second, mutable "current model". */
 object ConversationGatewayResolver {
-    private fun GatewayProfile.offers(modelId: String): Boolean = modelId.isNotBlank() &&
-        (modelId == model || models.any { it.id == modelId })
-
     fun preferred(profiles: List<GatewayProfile>, selected: GatewayDefault?): GatewayProfile? =
         selected?.let { choice -> profiles.firstOrNull { it.id == choice.id && it.agent == choice.agent && it.model.isNotBlank() } }
             ?: profiles.firstOrNull { it.model.isNotBlank() }
@@ -25,25 +22,22 @@ object ConversationGatewayResolver {
         return updated.takeIf { it != config }
     }
 
-    /** New conversations use the selected gateway's default model; another Agent can reuse its last valid choice. */
+    /** Use the selected gateway and the last model it still offers, or its default model. */
     fun newConversation(
         agent: AgentId, current: Conversation?, conversations: List<ConversationSummary>,
         profiles: List<GatewayProfile>, defaultGateway: GatewayDefault?,
     ): NextTurnConfig? {
-        val preferred = preferred(profiles, defaultGateway)
-        if (defaultGateway != null && preferred?.id == defaultGateway.id && preferred.agent == agent && defaultGateway.agent == agent)
-            return NextTurnConfig(agent, preferred.model, null, "default", preferred.id, preferred.version)
         val recent = (listOfNotNull(current) + conversations.map { it.conversation })
             .filter { !it.deleted && it.config.agent == agent }
             .maxByOrNull { it.updatedAt }
             ?.config
-        val lastProfile = profiles.firstOrNull { it.agent == agent && it.id == recent?.gatewayProfile && it.model.isNotBlank() }
-        if (recent != null && lastProfile != null) return recent.copy(
-            model = recent.model.takeIf { lastProfile.offers(it) } ?: lastProfile.model,
-            gatewayVersion = lastProfile.version,
-            reasoning = recent.reasoning.takeIf { lastProfile.offers(recent.model) })
-        val gateway = profiles.firstOrNull { it.agent == agent && it.model.isNotBlank() }
-            ?: return null
-        return NextTurnConfig(agent, gateway.model, null, "default", gateway.id, gateway.version)
+        val selectedProfile = defaultGateway?.takeIf { it.agent == agent }?.let { choice ->
+            profiles.firstOrNull { it.agent == agent && it.id == choice.id && it.model.isNotBlank() }
+        }
+        val recentProfile = profiles.firstOrNull { it.agent == agent && it.id == recent?.gatewayProfile && it.model.isNotBlank() }
+        val gateway = selectedProfile ?: recentProfile ?: profiles.firstOrNull { it.agent == agent && it.model.isNotBlank() } ?: return null
+        val model = recent?.model?.takeIf(gateway::offers) ?: gateway.model
+        val reasoning = recent?.reasoning?.takeIf { recent.gatewayProfile == gateway.id && model == recent.model }
+        return NextTurnConfig(agent, model, reasoning, "default", gateway.id, gateway.version)
     }
 }
