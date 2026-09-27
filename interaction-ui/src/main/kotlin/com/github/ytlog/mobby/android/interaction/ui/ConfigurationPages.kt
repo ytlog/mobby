@@ -260,9 +260,6 @@ private val pluginCatalogTabs get() = listOf(AppStrings.phone, AppStrings.commun
 @OptIn(ExperimentalFoundationApi::class)
 @Composable internal fun PluginPage(
     vm: ConversationViewModel,
-    requestedPluginRef: String? = null,
-    requestedConversationId: String? = null,
-    onPluginApplied: (Boolean) -> Unit = {},
     onBack: () -> Unit,
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
@@ -270,8 +267,7 @@ private val pluginCatalogTabs get() = listOf(AppStrings.phone, AppStrings.commun
     val catalogue by vm.plugins.collectAsStateWithLifecycle()
     val error by vm.pluginsError.collectAsStateWithLifecycle()
     val loading by vm.pluginsLoading.collectAsStateWithLifecycle()
-    val pagerState = rememberPagerState(initialPage = if (requestedPluginRef == "plugin:device:media" || requestedPluginRef == "plugin:device:storage") 2 else 0,
-        pageCount = { pluginCatalogTabs.size })
+    val pagerState = rememberPagerState(pageCount = { pluginCatalogTabs.size })
     val scope = rememberCoroutineScope()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val context = LocalContext.current
@@ -297,14 +293,6 @@ private val pluginCatalogTabs get() = listOf(AppStrings.phone, AppStrings.commun
         val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_RESUME) vm.loadPlugins() }
         lifecycle.addObserver(observer)
         onDispose { lifecycle.removeObserver(observer) }
-    }
-    LaunchedEffect(requestedPluginRef, requestedConversationId, conversation?.id, catalogue, loading) {
-        if (requestedPluginRef == null || loading) return@LaunchedEffect
-        val targetConversation = conversation?.takeIf { it.id.value == requestedConversationId } ?: return@LaunchedEffect
-        val chosen = catalogue.firstOrNull { it.ref == requestedPluginRef && it.available } ?: return@LaunchedEffect
-        val result = vm.actions.setPlugin(targetConversation.id, chosen, true)
-        vm.report(result)
-        onPluginApplied(result == OperationResult.Done)
     }
     Column(Modifier.fillMaxSize()) {
         PageHeader(AppStrings.plugins, onBack)

@@ -95,31 +95,4 @@ class PluginPageTest {
         compose.waitUntil(5_000) { compose.onAllNodesWithText("屏幕").fetchSemanticsNodes().isNotEmpty() }
     }
 
-    @Test fun `requested plugin joins the conversation after access becomes available`() {
-        val conversation = Conversation(ConversationId("c"), NextTurnConfig(AgentId.CODEX, "model", null, "default", "CODEX"))
-        val interaction = MutableStateFlow(InteractionState(loading = false, selected = ConversationDetail(conversation, emptyList())))
-        var available = false
-        val written = mutableListOf<String>()
-        val system = stub<SystemPort> { name, _ -> when (name) {
-            "getStatus" -> flowOf(SystemStatus(true, true))
-            "getDiagnostic" -> flowOf(DiagnosticOutput(null, emptyList()))
-            "agents" -> emptyList<AgentOption>()
-            "gateways" -> emptyList<GatewayProfile>()
-            "plugins" -> DataResult.Loaded(listOf(plugin.copy(available = available, unavailableReason = if (available) null else plugin.unavailableReason)))
-            else -> error(name)
-        } }
-        val repository = stub<InteractionRepository> { name, args -> when {
-            name == "getState" -> interaction
-            name.startsWith("setSkill") -> { written += args[1] as String; Unit }
-            else -> error(name)
-        } }
-        val vm = ConversationViewModel(InteractionUseCases(repository, stub { name, _ -> error(name) }, system, { "id" }, CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate), stub { name, _ -> error(name) }))
-        var applied = false
-        compose.setContent { MaterialTheme { PluginPage(vm, plugin.ref, conversation.id.value, { applied = it }) {} } }
-        compose.waitUntil(5_000) { compose.onAllNodesWithText("开启").fetchSemanticsNodes().isNotEmpty() }
-        assertTrue(written.isEmpty())
-        compose.runOnIdle { available = true; vm.loadPlugins() }
-        compose.waitUntil(5_000) { applied }
-        assertEquals(listOf(plugin.ref), written)
-    }
 }

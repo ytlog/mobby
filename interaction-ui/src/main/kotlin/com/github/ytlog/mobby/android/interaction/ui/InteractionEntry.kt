@@ -108,8 +108,6 @@ class InteractionHostActions(
     var gatewayIntroSeen by rememberSaveable { mutableStateOf(false) }
     var gatewayStartAdding by rememberSaveable { mutableStateOf(false) }
     var gatewayFromIntro by rememberSaveable { mutableStateOf(false) }
-    var pendingPluginSelection by rememberSaveable { mutableStateOf<String?>(null) }
-    var pendingPluginConversation by rememberSaveable { mutableStateOf<String?>(null) }
     var toolbarAnchor by remember { mutableStateOf(IntRect.Zero) }
     val skillProposal by vm.skillProposal.collectAsStateWithLifecycle()
     val skillProposalSaved by vm.skillProposalSaved.collectAsStateWithLifecycle()
@@ -147,15 +145,15 @@ class InteractionHostActions(
         route = when (route) {
             "gateway" -> if (gatewayFromIntro) "conversation" else "settings"
             "history-limits", "diagnostic", "archived" -> "settings"
-            "plugins" -> if (pendingPluginSelection != null) "conversation" else "add"
+            "plugins" -> "add"
             "skills" -> "add"
             "projects" -> projectsBackRoute
             "project-detail" -> "conversation"
             else -> "conversation"
         }
-        if (route != "plugins") { pendingPluginSelection = null; pendingPluginConversation = null }
     }
     MaterialTheme(colorScheme = colors) {
+        val selectPlugin = rememberDirectPluginSelector(vm, state.selected?.conversation)
         val camera = rememberCameraCapture(actions, { captured ->
             actions.importAttachment(ConversationId(captured.conversation), captured.workspace, requireNotNull(captured.attachmentUri))
         }, { message -> vm.report(OperationResult.Failed(message)) })
@@ -195,15 +193,7 @@ class InteractionHostActions(
                         "diagnostic" -> DiagnosticPage(vm) { route = "settings" }
                         "archived" -> ArchivedPage(state, vm) { route = "settings" }
                         "skills" -> SkillsPage(vm, onBack = { route = "add" }, onConversation = { route = "conversation" })
-                        "plugins" -> PluginPage(vm, pendingPluginSelection, pendingPluginConversation, onPluginApplied = { applied ->
-                            pendingPluginSelection = null
-                            pendingPluginConversation = null
-                            if (applied) route = "conversation"
-                        }) {
-                            route = if (pendingPluginSelection != null) "conversation" else "add"
-                            pendingPluginSelection = null
-                            pendingPluginConversation = null
-                        }
+                        "plugins" -> PluginPage(vm) { route = "add" }
                         else -> Column(Modifier.fillMaxSize().then(swipe)) {
                             ConversationToolbar(
                                 state.selected?.conversation, vm,
@@ -235,25 +225,7 @@ class InteractionHostActions(
                                             Timeline(
                                                 detail, vm, Modifier.fillMaxSize(),
                                                 read = { title, text -> reading = title to text }, hostActions = hostActions, proposal = vm::openSkillProposal,
-                                                onSelectPlugin = { ref ->
-                                                    vm.enqueue {
-                                                        when (val result = actions.plugins()) {
-                                                            is DataResult.Loaded -> {
-                                                                val plugin = result.value.firstOrNull { it.ref == ref }
-                                                                when {
-                                                                    plugin == null -> vm.report(OperationResult.Failed(AppStrings.unknownPlugin))
-                                                                    plugin.available -> vm.report(actions.setPlugin(detail.conversation.id, plugin, true))
-                                                                    else -> {
-                                                                        pendingPluginSelection = ref
-                                                                        pendingPluginConversation = detail.conversation.id.value
-                                                                        navigate("plugins")
-                                                                    }
-                                                                }
-                                                            }
-                                                            is DataResult.Failed -> vm.report(OperationResult.Failed(result.message))
-                                                        }
-                                                    }
-                                                },
+                                                onSelectPlugin = selectPlugin,
                                             )
                                         }
                                     }
