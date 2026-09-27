@@ -52,12 +52,12 @@ internal fun Modifier.lightInputShadow(corner: Dp): Modifier = drawBehind {
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable internal fun ActionIcon(label: String, onClick: () -> Unit, icon: AppGlyph, enabled: Boolean = true, filled: Boolean = false, tint: Color = Color.Unspecified, buttonSize: Dp = ToolbarControl, glyphSize: Dp = 22.dp) {
+@Composable internal fun ActionIcon(label: String, onClick: () -> Unit, icon: AppGlyph, enabled: Boolean = true, filled: Boolean = false, tint: Color = Color.Unspecified, buttonSize: Dp = ToolbarControl, glyphSize: Dp = if (filled) 20.dp else 22.dp) {
     val ink = if (tint == Color.Unspecified) onButtonColor() else tint
     CompositionLocalProvider(LocalMinimumInteractiveComponentEnforcement provides false) {
     IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.size(buttonSize)) {
-        if (filled) Box(Modifier.size(32.dp).background(if (darkChrome()) buttonColor() else MaterialTheme.colorScheme.onSurface, CircleShape), contentAlignment = Alignment.Center) {
-            AppIcon(icon, label, Modifier.size(16.dp), tint = if (darkChrome()) ink else MaterialTheme.colorScheme.surface)
+        if (filled) Box(Modifier.size(32.dp).alpha(if (enabled) 1f else 0.38f).background(onButtonColor(), CircleShape), contentAlignment = Alignment.Center) {
+            AppIcon(icon, label, Modifier.size(glyphSize), tint = buttonColor())
         } else AppIcon(icon, label, Modifier.size(glyphSize), tint = if (enabled) ink else ink.copy(alpha = 0.38f))
     }
     }

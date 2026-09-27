@@ -464,7 +464,7 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectVo
                                 }
                             }
                         }
-                        ActionIcon(AppStrings.stopCurrentTask, onStop, AppIcons.Stop, enabled = stopEnabled)
+                        ActionIcon(AppStrings.stopCurrentTask, onStop, AppIcons.Stop, enabled = stopEnabled, filled = true, glyphSize = 16.dp)
                     }
                     micAvailable -> HoldIcon(AppStrings.voiceInput, AppIcons.Mic, enabled, "voice-mic", onEnterVoice, onHoldStart, onHoldMove, onHoldEnd)
                     else -> ActionIcon(AppStrings.sendTask, onSend, AppIcons.Send, enabled = sendEnabled, filled = true)
