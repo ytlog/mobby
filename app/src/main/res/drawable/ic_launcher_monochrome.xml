@@ -7,11 +7,18 @@
     <group
         android:pivotX="54"
         android:pivotY="54"
-        android:scaleX="0.78"
-        android:scaleY="0.78">
+        android:scaleX="0.82"
+        android:scaleY="0.82">
         <path
             android:fillColor="@android:color/transparent"
-            android:pathData="M54,54 C45,41 38,34 29,37 C20,39 17,51 22,61 C27,72 37,73 45,63 C55,50 59,37 72,36 C84,35 91,44 87,57 C83,70 70,73 62,63 C58,59 56,56 54,54"
+            android:pathData="M36,27 C56,17 78,27 83,47 C88,67 74,84 54,84 C37,84 24,71 25,54 C26,43 31,34 40,29"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="12"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+        <path
+            android:fillColor="@android:color/transparent"
+            android:pathData="M40,29 C52,23 59,33 58,47 C57,61 65,74 77,75"
             android:strokeColor="#FFFFFF"
             android:strokeWidth="11"
             android:strokeLineCap="round"
