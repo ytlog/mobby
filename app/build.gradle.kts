@@ -1,4 +1,4 @@
-plugins { id("com.android.application"); kotlin("android") }
+plugins { id("com.android.application"); kotlin("android"); kotlin("plugin.compose") }
 
 val releaseStoreFile = providers.environmentVariable("MOBBY_RELEASE_STORE_FILE").orNull
 val releaseStorePassword = providers.environmentVariable("MOBBY_RELEASE_STORE_PASSWORD").orNull
@@ -11,7 +11,7 @@ require(releaseSigningValues.all { it.isNullOrBlank() } || releaseSigningValues.
 
 android {
     namespace = "com.github.ytlog.mobby.android"
-    compileSdk = 35
+    compileSdk = 36
     ndkVersion = "27.2.12479018"
     defaultConfig {
         // Install identity. Changing it again creates a separate app and does not read the previous install's data.
@@ -24,7 +24,6 @@ android {
         ndk { abiFilters += "arm64-v8a" }
     }
     buildFeatures { compose = true }
-    composeOptions { kotlinCompilerExtensionVersion = "1.5.0" }
     signingConfigs {
         if (!releaseStoreFile.isNullOrBlank()) {
             create("mobbyRelease") {
@@ -64,7 +63,7 @@ dependencies {
     androidTestImplementation(project(":runtime-engine"))
     implementation(project(":runtime-android"))
     androidTestImplementation(project(":termux-core"))
-    implementation(platform("androidx.compose:compose-bom:2024.04.01"))
+    implementation(platform("androidx.compose:compose-bom:2025.06.00"))
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")

@@ -182,6 +182,12 @@ internal class RuntimeSystemAdapter(private val context: android.content.Context
             PluginAccess.valueOf(item.access.name), item.permissions,
             item.grant?.let { PluginGrant(it.ref.value, it.label, it.available, it.reason, it.permissions) })
     } }
+    override suspend fun appFunctions() = admin.listAppFunctions().result { directory ->
+        AppFunctionDirectory(com.github.ytlog.mobby.android.interaction.domain.AppFunctionAvailability.valueOf(directory.availability.name), directory.functions.map { item ->
+            PublishedAppFunction(item.ref.value, item.packageName, item.appName, item.functionId, item.description, item.enabled, item.unavailableReason,
+                item.parameters.map { com.github.ytlog.mobby.android.interaction.domain.AppFunctionParameter(it.name, it.description, it.required, it.type) })
+        })
+    }
     override suspend fun readSkill(ref: String) = admin.readSkill(CapabilityRef(ref)).result { it.domain() }
     override suspend fun previewSkill(markdown: String) = admin.previewSkill(markdown).result { it.domain() }
     override suspend fun previewManualSkill(agent: DomainAgent, name: String, description: String, body: String) = admin.previewManualSkill(ManualSkillRequest(RuntimeAgent.valueOf(agent.name), name, description, body)).result { it.domain() }

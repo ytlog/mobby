@@ -85,8 +85,8 @@ class DeviceCardActions(
                 if (DeviceButton.RESPOND in operation.availableActions && actions.respond != null && !stopping && !operation.status.terminal)
                     operation.requiresAttention?.allowedResponses?.filter { it in setOf("cancel", "continue", "confirm") }?.forEach { response ->
                         TextButton(onClick = { actions.respond.invoke(response) }) { Text(when (response) {
-                            "cancel" -> DeviceLabels.text("取消采集", "Cancel capture")
-                            "confirm" -> DeviceLabels.text("确认使用", "Use capture")
+                            "cancel" -> if (operation.plugin == "appfunction") DeviceLabels.text("取消调用", "Cancel call") else DeviceLabels.text("取消采集", "Cancel capture")
+                            "confirm" -> if (operation.plugin == "appfunction") DeviceLabels.text("确认调用", "Confirm call") else DeviceLabels.text("确认使用", "Use capture")
                             else -> DeviceLabels.text("继续", "Continue")
                         }) }
                     }
@@ -243,6 +243,9 @@ private fun screenScreenshotReason(status: String): String = when (status) {
     if (operation.result?.kind == "text") {
         val text = operation.result!!.data.text("text")
         Text(text, style = MaterialTheme.typography.bodySmall, maxLines = if (expanded) Int.MAX_VALUE else 4)
+    } else if (operation.result?.kind == "app_function") {
+        val value = operation.result!!.data["value"]?.toString().orEmpty()
+        Text(value, style = MaterialTheme.typography.bodySmall, maxLines = if (expanded) Int.MAX_VALUE else 6)
     } else if (operation.result != null) Caption(DeviceLabels.text("此结果类型尚不支持展示，可展开查看记录。", "This result type is not supported; expand its record."))
 }
 

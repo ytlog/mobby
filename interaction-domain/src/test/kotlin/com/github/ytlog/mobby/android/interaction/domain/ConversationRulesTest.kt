@@ -50,9 +50,10 @@ class ConversationRulesTest {
         assertEquals(empty.project, changed.project)
         assertNull(changed.creator)
         assertEquals(setOf("skill"), empty.draft.capabilities)
-        val withPlugin = empty.copy(draft = empty.draft.copy(capabilities = setOf("skill", "plugin:device:screen", "plugin:PHONE:ACCESSIBILITY")))
+        val appFunction = "plugin:appfunction:Y29tLmV4YW1wbGUuYXBwCmZ1bmN0aW9u"
+        val withPlugin = empty.copy(draft = empty.draft.copy(capabilities = setOf("skill", "plugin:device:screen", appFunction, "plugin:PHONE:ACCESSIBILITY")))
         val kept = ConversationRules.applyConfig(withPlugin, config.copy(agent = AgentId.CLAUDE_CODE))
-        assertEquals(setOf("plugin:device:screen"), kept.draft.capabilities)
+        assertEquals(setOf("plugin:device:screen", appFunction), kept.draft.capabilities)
         assertEquals(withPlugin.draft.revision + 1, kept.draft.revision)
         val pluginOnly = empty.copy(draft = empty.draft.copy(capabilities = setOf("plugin:device:screen")))
         val unchanged = ConversationRules.applyConfig(pluginOnly, config.copy(agent = AgentId.CLAUDE_CODE))

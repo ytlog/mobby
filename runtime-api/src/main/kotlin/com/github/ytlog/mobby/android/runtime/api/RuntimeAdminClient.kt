@@ -25,6 +25,7 @@ interface RuntimeAdminClient {
     val environment: StateFlow<EnvironmentSnapshot>
     suspend fun listSkills(agent: AgentId): AdminResult<List<SkillSummary>>
     suspend fun listPlugins(): AdminResult<List<PluginSummary>> = AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
+    suspend fun listAppFunctions(): AdminResult<AppFunctionCatalogSummary> = AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
     suspend fun readSkill(ref: CapabilityRef): AdminResult<SkillPreview>
     suspend fun previewManualSkill(request: ManualSkillRequest): AdminResult<SkillPreview>
     suspend fun previewSkill(markdown: String): AdminResult<SkillPreview>
@@ -65,6 +66,11 @@ data class PluginSummary(
     val available: Boolean, val access: PluginAccessKind, val permissions: List<String> = emptyList(),
     val grant: PluginGrantSummary? = null, val reason: String? = null,
 )
+enum class AppFunctionAvailability { AVAILABLE, UNSUPPORTED_DEVICE, PERMISSION_DENIED, SYSTEM_DENIED, QUERY_FAILED }
+data class AppFunctionParameterSummary(val name: String, val description: String, val required: Boolean, val type: String)
+data class AppFunctionSummary(val ref: CapabilityRef, val packageName: String, val appName: String, val functionId: String,
+    val description: String, val enabled: Boolean, val unavailableReason: String?, val parameters: List<AppFunctionParameterSummary>)
+data class AppFunctionCatalogSummary(val availability: AppFunctionAvailability, val functions: List<AppFunctionSummary> = emptyList())
 
 /** Transient bytes only; persisted requests contain the returned controlled reference. */
 class ImportResourceRequest(val workspaceRef: WorkspaceRef, val name: String, val bytes: ByteArray) {

@@ -1,7 +1,7 @@
 plugins { id("com.android.library"); kotlin("android"); kotlin("plugin.serialization") }
 android {
     namespace = "com.github.ytlog.mobby.android.runtime.android"
-    compileSdk = 35
+    compileSdk = 36
     defaultConfig { minSdk = 26 }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
@@ -11,6 +11,7 @@ android {
     }
 }
 dependencies {
+    implementation(project(":plugin:appfunction"))
     implementation(project(":device-interaction"))
     implementation(project(":localization"))
     implementation("androidx.exifinterface:exifinterface:1.3.7")

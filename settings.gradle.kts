@@ -23,3 +23,5 @@ include(":localization")
 include(":device-interaction", ":device-interaction-ui")
 
 include(":local-model", ":local-model-backend-llama")
+include(":plugin:appfunction")
+project(":plugin:appfunction").projectDir = file("app-functions")

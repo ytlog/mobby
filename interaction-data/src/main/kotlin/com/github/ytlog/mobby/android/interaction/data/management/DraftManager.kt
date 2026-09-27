@@ -44,7 +44,7 @@ internal class DraftManager(private val db: InteractionDatabase) {
         c.copy(draft = c.draft.copy(revision = c.draft.revision + 1, attachments = refs))
     }
     suspend fun setSkill(id: ConversationId, ref: String, enabled: Boolean) = mutate(id) { c ->
-        require(!enabled || ref.startsWith("skill:${c.config.agent.name}:") || ref.startsWith("plugin:device:"))
+        require(!enabled || ref.startsWith("skill:${c.config.agent.name}:") || ref.startsWith("plugin:device:") || ref.startsWith("plugin:appfunction:"))
         val refs = if (enabled) c.draft.capabilities + ref else c.draft.capabilities.filterNot {
             it == ref || ref.startsWith("plugin:device:") && it.startsWith("$ref:")
         }.toSet()

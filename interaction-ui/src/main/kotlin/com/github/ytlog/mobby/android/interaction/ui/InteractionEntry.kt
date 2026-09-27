@@ -146,6 +146,7 @@ class InteractionHostActions(
             "gateway" -> if (gatewayFromIntro) "conversation" else "settings"
             "history-limits", "diagnostic", "archived" -> "settings"
             "plugins" -> "add"
+            "app-functions" -> "add"
             "skills" -> "add"
             "projects" -> projectsBackRoute
             "project-detail" -> "conversation"
@@ -194,6 +195,7 @@ class InteractionHostActions(
                         "archived" -> ArchivedPage(state, vm) { route = "settings" }
                         "skills" -> SkillsPage(vm, onBack = { route = "add" }, onConversation = { route = "conversation" })
                         "plugins" -> PluginPage(vm) { route = "add" }
+                        "app-functions" -> AppFunctionPage(vm) { route = "add" }
                         else -> Column(Modifier.fillMaxSize().then(swipe)) {
                             ConversationToolbar(
                                 state.selected?.conversation, vm,
@@ -263,7 +265,8 @@ class InteractionHostActions(
                                 if (target != null) { fileTarget = target.id.value; fileWorkspace = target.config.workspace; route = "conversation"; filePicker.launch(arrayOf("*/*")) }
                             }
                         }
-                        CapabilityRow(AppStrings.plugins, AppStrings.connectDeviceCapabilitiesToExpandYourTasks, AppIcons.Plugin) { route = "plugins" }
+                        CapabilityRow(AppStrings.devicePlugins, AppStrings.connectDeviceCapabilitiesToExpandYourTasks, AppIcons.Plugin) { route = "plugins" }
+                        CapabilityRow(AppStrings.appFunctions, AppStrings.appFunctionsDescription, AppIcons.Plugin) { route = "app-functions" }
                         CapabilityRow(AppStrings.skills, AppStrings.reuseExpertiseForSpecificTasks, AppIcons.Skill) { route = "skills" }
                         Spacer(Modifier.height(16.dp))
                     }
@@ -906,7 +909,12 @@ private fun Modifier.conversationEdgeFade(color: Color, topFade: Dp, bottomFade:
     )
 }
 
-internal fun capabilityLabel(ref: String) = when (ref.removePrefix("plugin:device:")) {
+internal fun capabilityLabel(ref: String): String {
+    if (ref.startsWith("plugin:appfunction:")) return runCatching {
+        val identity = String(java.util.Base64.getUrlDecoder().decode(ref.removePrefix("plugin:appfunction:")), Charsets.UTF_8)
+        AppStrings.appFunctions + " · " + identity.substringAfter('\n').substringAfterLast('#').substringAfterLast('.')
+    }.getOrDefault(AppStrings.appFunctions)
+    return when (ref.removePrefix("plugin:device:")) {
     "screen" -> AppStrings.screen
     "sms" -> AppStrings.sms
     "sms:send" -> AppStrings.sendSms
@@ -924,6 +932,7 @@ internal fun capabilityLabel(ref: String) = when (ref.removePrefix("plugin:devic
     "clipboard:write" -> AppStrings.writeToClipboard
     "office" -> AppStrings.officeDocuments
     else -> ref.split(':').getOrNull(3) ?: AppStrings.skills
+}
 }
 
 @Composable internal fun InteractionViewport(content: @Composable BoxWithConstraintsScope.() -> Unit) {

@@ -44,6 +44,9 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
     val plugins = MutableStateFlow<List<Plugin>>(emptyList())
     val pluginsError = MutableStateFlow<String?>(null)
     val pluginsLoading = MutableStateFlow(false)
+    val appFunctions = MutableStateFlow(AppFunctionDirectory(AppFunctionAvailability.UNSUPPORTED_DEVICE))
+    val appFunctionsError = MutableStateFlow<String?>(null)
+    val appFunctionsLoading = MutableStateFlow(false)
     val permissionBusy = MutableStateFlow<Set<PermissionKey>>(emptySet())
     val permissionSubmitted = MutableStateFlow<Set<PermissionKey>>(emptySet())
     private val permissionAttempts = mutableMapOf<PermissionKey, PermissionDecision>()
@@ -271,6 +274,22 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
             } catch (e: CancellationException) { throw e }
             catch (_: Exception) { if (operation == pluginCatalogueOperation) pluginsError.value = AppStrings.pluginCatalogueReadIncompletePleaseRetry }
             finally { if (operation == pluginCatalogueOperation) pluginsLoading.value = false }
+        }
+    }
+    private var appFunctionCatalogueOperation = 0L
+    fun loadAppFunctions() {
+        val operation = ++appFunctionCatalogueOperation
+        appFunctionsLoading.value = true; appFunctionsError.value = null
+        viewModelScope.launch {
+            try {
+                val result = actions.appFunctions()
+                if (operation == appFunctionCatalogueOperation) when (result) {
+                    is DataResult.Loaded -> appFunctions.value = result.value
+                    is DataResult.Failed -> appFunctionsError.value = result.message
+                }
+            } catch (e: CancellationException) { throw e }
+            catch (_: Exception) { if (operation == appFunctionCatalogueOperation) appFunctionsError.value = AppStrings.appFunctionsQueryFailed }
+            finally { if (operation == appFunctionCatalogueOperation) appFunctionsLoading.value = false }
         }
     }
     val feedback = Channel<String>(Channel.BUFFERED)

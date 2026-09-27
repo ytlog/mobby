@@ -107,6 +107,11 @@ data class Plugin(
     val category: String = CatalogIds.PHONE, val access: PluginAccess = PluginAccess.NONE,
     val permissions: List<String> = emptyList(), val grant: PluginGrant? = null,
 )
+enum class AppFunctionAvailability { AVAILABLE, UNSUPPORTED_DEVICE, PERMISSION_DENIED, SYSTEM_DENIED, QUERY_FAILED }
+data class AppFunctionParameter(val name: String, val description: String, val required: Boolean, val type: String)
+data class PublishedAppFunction(val ref: String, val packageName: String, val appName: String, val functionId: String,
+    val description: String, val enabled: Boolean, val unavailableReason: String?, val parameters: List<AppFunctionParameter>)
+data class AppFunctionDirectory(val availability: AppFunctionAvailability, val functions: List<PublishedAppFunction> = emptyList())
 interface SystemPort {
     suspend fun workspaces(): DataResult<List<WorkspaceOption>> = DataResult.Failed(AppStrings.thisRuntimeDoesNotSupportWorkspaceSelection)
     suspend fun createWorkspace(name: String): DataResult<WorkspaceOption> = DataResult.Failed(AppStrings.thisRuntimeDoesNotSupportCreatingWorkspaces)
@@ -123,6 +128,7 @@ interface SystemPort {
     suspend fun attachment(workspace: String, ref: String): DataResult<Attachment>
     suspend fun skills(agent: AgentId): DataResult<List<Skill>>
     suspend fun plugins(): DataResult<List<Plugin>> = DataResult.Loaded(emptyList())
+    suspend fun appFunctions(): DataResult<AppFunctionDirectory> = DataResult.Loaded(AppFunctionDirectory(AppFunctionAvailability.UNSUPPORTED_DEVICE))
     suspend fun readSkill(ref: String): DataResult<SkillContent>
     suspend fun previewSkill(markdown: String): DataResult<SkillContent>
     suspend fun previewManualSkill(agent: AgentId, name: String, description: String, body: String): DataResult<SkillContent>
@@ -268,6 +274,7 @@ class InteractionUseCases(
     suspend fun resolvePermission(decision: PermissionDecision) = submissionScope.async { execution.resolvePermission(decision) }.await()
     suspend fun skills(agent: AgentId) = system.skills(agent)
     suspend fun plugins() = system.plugins()
+    suspend fun appFunctions() = system.appFunctions()
     suspend fun readSkill(ref: String) = system.readSkill(ref)
     suspend fun previewSkill(markdown: String) = system.previewSkill(markdown)
     suspend fun previewManualSkill(agent: AgentId, name: String, description: String, body: String) = system.previewManualSkill(agent, name, description, body)
@@ -292,6 +299,17 @@ class InteractionUseCases(
                 return OperationResult.Failed(plugin.unavailableReason ?: AppStrings.grantPermissionBeforeUse)
         }
         repository.setSkill(id, plugin.ref, enabled)
+        return OperationResult.Done
+    }
+    suspend fun setAppFunction(id: ConversationId, function: PublishedAppFunction, enabled: Boolean): OperationResult {
+        if (enabled) {
+            val current = (system.appFunctions() as? DataResult.Loaded)?.value
+                ?: return OperationResult.Failed(AppStrings.pluginCatalogueUnavailablePleaseRetry)
+            if (current.availability != AppFunctionAvailability.AVAILABLE ||
+                current.functions.none { it.ref == function.ref && it.enabled })
+                return OperationResult.Failed(AppStrings.appFunctionNoLongerAvailable)
+        }
+        repository.setSkill(id, function.ref, enabled)
         return OperationResult.Done
     }
     suspend fun setPluginGrant(id: ConversationId, plugin: Plugin, enabled: Boolean): OperationResult {

@@ -26,6 +26,7 @@ object DeviceLabels {
             "camera" -> text("拍摄照片", "Take photo"); "microphone" -> text("录音", "Record audio")
             "location" -> text("位置", "Location"); "sensors" -> text("传感器", "Sensors")
             "clipboard" -> text("剪贴板", "Clipboard"); "office" -> text("Office 文档", "Office document")
+            "appfunction" -> text("应用功能", "App function")
             else -> text("设备任务", "Device task")
         }
         val actionName = when (action) {
@@ -33,12 +34,14 @@ object DeviceLabels {
             "send" -> text("发送", "Send"); "create" -> text("新建", "Create"); "update" -> text("修改", "Update")
             "delete" -> text("删除", "Delete"); "write" -> text("写入", "Write"); "copy" -> text("复制", "Copy")
             "export" -> text("导出", "Export"); "click", "tap" -> text("点击", "Tap"); "type" -> text("输入", "Type")
+            "invoke" -> text("调用", "Invoke")
             "back" -> text("返回", "Back"); "home" -> text("回到桌面", "Home"); "recents" -> text("最近应用", "Recent apps")
             else -> ""
         }
         return if (actionName.isBlank()) name else "$name · $actionName"
     }
     fun phase(operation: DeviceOperation): String = when (operation.phaseCode) {
+        "appfunction.confirm" -> text("请核对目标应用与参数后确认调用", "Review target app and arguments before calling")
         "capture.photo" -> text("请拍摄照片", "Take a photo")
         "capture.record" -> text("正在录音，完成后确认素材", "Recording; confirm when ready")
         "capture.confirm" -> text("请确认使用或重新采集", "Confirm or capture again")

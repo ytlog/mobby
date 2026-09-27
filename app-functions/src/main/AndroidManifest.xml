@@ -1,0 +1,8 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.EXECUTE_APP_FUNCTIONS" />
+    <queries>
+        <intent>
+            <action android:name="android.app.appfunctions.AppFunctionService" />
+        </intent>
+    </queries>
+</manifest>

@@ -22,7 +22,7 @@ internal val storageJson = Json { encodeDefaults = true }
     val sessions: Map<String, String> = emptyMap(), val projectRules: String = ""
 ) {
     fun domain() = Conversation(ConversationId(id), NextTurnConfig(AgentId.valueOf(agent), model, reasoning, workspace, gatewayProfile, gatewayVersion),
-        Draft(draftRevision, text, selectionStart, selectionEnd, attachments, capabilities.filter { !it.startsWith("plugin:") || it.startsWith("plugin:device:") }.toSet(), pendingAttachment?.domain()), hasTurns, session, title, pinned, project, archived, deleted, anchor, anchorOffset, updatedAt, creator,
+        Draft(draftRevision, text, selectionStart, selectionEnd, attachments, capabilities.filter { !it.startsWith("plugin:") || it.startsWith("plugin:device:") || it.startsWith("plugin:appfunction:") }.toSet(), pendingAttachment?.domain()), hasTurns, session, title, pinned, project, archived, deleted, anchor, anchorOffset, updatedAt, creator,
         sessions = sessions.mapKeys { (key, _) -> AgentId.valueOf(key) })
     companion object {
         fun from(c: Conversation, projectRules: String = "") = StoredConversation(c.id.value, c.config.agent.name, c.config.model, c.config.reasoning, c.config.workspace,

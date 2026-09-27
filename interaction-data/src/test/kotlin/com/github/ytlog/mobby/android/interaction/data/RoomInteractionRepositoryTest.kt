@@ -540,15 +540,19 @@ class RoomInteractionRepositoryTest {
         val c = state().selected!!.conversation
         repository.editDraft(c.id, "use the phone", 13, 13)
         repository.setSkill(c.id, "plugin:device:screen", true)
-        assertEquals(setOf("plugin:device:screen"), repository.conversation(c.id).draft.capabilities)
+        val appFunction = "plugin:appfunction:Y29tLmV4YW1wbGUuYXBwCmZ1bmN0aW9u"
+        repository.setSkill(c.id, appFunction, true)
+        assertEquals(setOf("plugin:device:screen", appFunction), repository.conversation(c.id).draft.capabilities)
         val switched = repository.configure(c.id, c.config.copy(agent = DomainAgent.CLAUDE_CODE, gatewayProfile = "CLAUDE_CODE"))
-        assertEquals(setOf("plugin:device:screen"), repository.conversation(switched).draft.capabilities)
+        assertEquals(setOf("plugin:device:screen", appFunction), repository.conversation(switched).draft.capabilities)
         val prepared = (repository.prepareTurn(switched, TurnId("phone-run")) as PrepareTurnResult.Prepared).turn
-        assertEquals(setOf("plugin:device:screen"), prepared.draft.capabilities)
+        assertEquals(setOf("plugin:device:screen", appFunction), prepared.draft.capabilities)
         assertEquals(DomainAgent.CLAUDE_CODE, prepared.config.agent)
         repository.setSkill(switched, "plugin:device:screen", false)
+        assertEquals(setOf(appFunction), repository.conversation(switched).draft.capabilities)
+        assertEquals(setOf("plugin:device:screen", appFunction), prepared.draft.capabilities)
+        repository.setSkill(switched, appFunction, false)
         assertTrue(repository.conversation(switched).draft.capabilities.isEmpty())
-        assertEquals(setOf("plugin:device:screen"), prepared.draft.capabilities)
         var rejected = false
         try {
             repository.setSkill(c.id, "plugin:PHONE:ACCESSIBILITY", true)
@@ -557,8 +561,8 @@ class RoomInteractionRepositoryTest {
         }
         assertTrue(rejected)
         val stored = StoredConversation("id", "CODEX", "model", null, "workspace", "CODEX", 0,
-            capabilities = setOf("plugin:PHONE:ACCESSIBILITY", "plugin:device:screen", "skill:CODEX:USER:review:hash"))
-        assertEquals(setOf("plugin:device:screen", "skill:CODEX:USER:review:hash"), stored.domain().draft.capabilities)
+            capabilities = setOf("plugin:PHONE:ACCESSIBILITY", "plugin:device:screen", appFunction, "skill:CODEX:USER:review:hash"))
+        assertEquals(setOf("plugin:device:screen", appFunction, "skill:CODEX:USER:review:hash"), stored.domain().draft.capabilities)
     }
     @Test fun `unexpected missing output remains a synchronization error rather than retention success`() = runBlocking {
         val c = state().selected!!.conversation

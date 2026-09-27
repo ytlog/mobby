@@ -114,7 +114,7 @@ object ConversationRules {
 
     fun afterQueue(current: Draft, queuedRevision: Long): Draft =
         if (current.revision == queuedRevision)
-            Draft(revision = current.revision + 1, capabilities = current.capabilities.filter { it.startsWith("plugin:device:") }.toSet())
+            Draft(revision = current.revision + 1, capabilities = current.capabilities.filter { it.startsWith("plugin:device:") || it.startsWith("plugin:appfunction:") }.toSet())
         else current
 
     /** Record one engine's CLI session. The active session changes only when that engine is currently selected. */
@@ -128,7 +128,7 @@ object ConversationRules {
         require(config.workspace == current.config.workspace || current.draft.attachments.isEmpty() && current.draft.pendingAttachment == null) { "Remove draft attachments before changing workspace" }
         require(!current.hasTurns || config.workspace == current.config.workspace) { "Existing workspace must be preserved" }
         val sameAgent = current.config.agent == config.agent
-        val kept = if (sameAgent) current.draft.capabilities else current.draft.capabilities.filter { it.startsWith("plugin:device:") }.toSet()
+        val kept = if (sameAgent) current.draft.capabilities else current.draft.capabilities.filter { it.startsWith("plugin:device:") || it.startsWith("plugin:appfunction:") }.toSet()
         val sessions = if (current.session == null) current.sessions else current.sessions + (current.config.agent to current.session)
         return current.copy(config = config,
             draft = if (kept != current.draft.capabilities)

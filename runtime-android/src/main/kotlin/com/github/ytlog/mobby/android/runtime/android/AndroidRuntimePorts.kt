@@ -3,12 +3,17 @@ package com.github.ytlog.mobby.android.runtime.android
 import com.github.ytlog.mobby.android.runtime.android.gateway.*
 
 import android.content.Context
+import android.content.pm.PackageManager
 import com.libtermux.executor.OutputLine
 import com.github.ytlog.mobby.android.runtime.api.*
 import com.github.ytlog.mobby.android.deviceinteraction.model.*
 import com.github.ytlog.mobby.android.device.DeviceCatalog
 import com.github.ytlog.mobby.android.device.DeviceHost
 import com.github.ytlog.mobby.android.device.DeviceSession
+import com.github.ytlog.mobby.android.appfunctions.AppFunctionCatalog
+import com.github.ytlog.mobby.android.appfunctions.AppFunctionHost
+import com.github.ytlog.mobby.android.appfunctions.AppFunctionRefs
+import com.github.ytlog.mobby.android.appfunctions.AppFunctionSkills
 import com.github.ytlog.mobby.android.runtime.engine.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -37,7 +42,7 @@ internal class AndroidRuntimePorts(
         return if (session.insert(text)) InsertionOffer.ACCEPTED else InsertionOffer.NOT_READY
     }
     override fun offerDeviceResponse(request: DeviceInteractionResponse) =
-        com.github.ytlog.mobby.android.device.DeviceCapture.respond(request.operationId, request.response)
+        com.github.ytlog.mobby.android.device.DeviceCapture.respond(request.operationId, request.response) || AppFunctionHost.respond(request)
     override fun offerApproval(requestId: RequestId, approvalId: String, choice: ApprovalChoice) = control?.offer(requestId, approvalId, choice) == true
     suspend fun shutdownLive() {
         val current = gate.withLock { held.also { held = null } }
@@ -70,13 +75,30 @@ internal class AndroidRuntimePorts(
         if (runtime.workspaces.resolve(request.workspaceRef) == null) return@withContext RuntimeError(ErrorCode.PERMISSION_DENIED)
         if (request.reasoningLevel != null)
             return@withContext RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY)
-        val deviceRefs = request.capabilityRefs.map { it.value }.filter { it.startsWith("plugin:") }.toSet()
-        if (deviceRefs.any { !DeviceCatalog.isKnown(it) } || DeviceCatalog.missingParent(deviceRefs) ||
+        val pluginRefs = request.capabilityRefs.map { it.value }.filter { it.startsWith("plugin:") }.toSet()
+        val deviceRefs = pluginRefs.filter { it.startsWith("plugin:device:") }.toSet()
+        val appFunctionRefs = pluginRefs.filter { it.startsWith(AppFunctionRefs.PREFIX) }.toSet()
+        if (pluginRefs.size != deviceRefs.size + appFunctionRefs.size || deviceRefs.any { !DeviceCatalog.isKnown(it) } ||
+            appFunctionRefs.any { AppFunctionRefs.decode(it) == null } || DeviceCatalog.missingParent(deviceRefs) ||
             request.capabilityRefs.any { !it.value.startsWith("plugin:") && skills.resolve(it, request.agentId) == null })
             return@withContext RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY)
         if (deviceRefs.any { !DeviceHost.granted(context, it) })
             return@withContext RuntimeError(ErrorCode.PERMISSION_DENIED)
+        if (appFunctionRefs.isNotEmpty()) {
+            val catalog = AppFunctionCatalog(context)
+            if (!catalog.isSupported()) return@withContext RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY)
+            if (context.checkSelfPermission(AppFunctionCatalog.PERMISSION) != PackageManager.PERMISSION_GRANTED)
+                return@withContext RuntimeError(ErrorCode.PERMISSION_DENIED)
+            for (ref in appFunctionRefs) {
+                val available = try { catalog.isAvailable(ref) }
+                    catch (_: SecurityException) { return@withContext RuntimeError(ErrorCode.PERMISSION_DENIED) }
+                    catch (_: Exception) { return@withContext RuntimeError(ErrorCode.PROTOCOL_ERROR) }
+                if (!available) return@withContext RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY)
+            }
+        }
         if (DeviceCatalog.selected(deviceRefs).any { skills.blocked(request.agentId, it.skillName) })
+            return@withContext RuntimeError(ErrorCode.INVALID_CONFIG)
+        if (appFunctionRefs.any { skills.blocked(request.agentId, AppFunctionSkills.name(it)) })
             return@withContext RuntimeError(ErrorCode.INVALID_CONFIG)
         if (request.requestedOutput == RequestedOutput.SKILL_PROPOSAL && !skills.hasCreator(request.agentId, request.capabilityRefs))
             return@withContext RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY)
@@ -133,7 +155,7 @@ internal class AndroidRuntimePorts(
     }
     private fun assemble(request: RunRequest, extras: List<Pair<String, File>>): PreparedTurn {
         val prepared = resources.prepare(request.inputParts, request.workspaceRef)
-        val skillRefs = request.capabilityRefs.filterNot { DeviceCatalog.isKnown(it.value) }.toSet()
+        val skillRefs = request.capabilityRefs.filterNot { it.value.startsWith("plugin:") }.toSet()
         var prompt = skills.prompt(request.agentId, skillRefs, prepared.prompt, extras)
         val structured = request.requestedOutput == RequestedOutput.SKILL_PROPOSAL
         if (structured) prompt += "\n\n" + SkillGeneration.instruction
@@ -148,6 +170,7 @@ internal class AndroidRuntimePorts(
         val workingDirectory = requireNotNull(runtime.workspaces.resolve(request.workspaceRef))
         val deviceStop = AtomicReference<StateFlow<StopCause?>?>(stop)
         var session: DeviceSession? = null
+        var appFunctionSession: AppFunctionHost.AppFunctionSession? = null
         var bridgeDir: File? = null
         var inbox: File? = null
         val extras = mutableListOf<Pair<String, File>>()
@@ -158,6 +181,7 @@ internal class AndroidRuntimePorts(
             if (bridgeReleased) return@synchronized
             bridgeReleased = true
             session?.close()
+            appFunctionSession?.close()
             staged.forEach { skills.unstage(request.agentId, it) }
             bridgeDir?.deleteRecursively()
             inbox?.deleteRecursively()
@@ -166,12 +190,13 @@ internal class AndroidRuntimePorts(
         var launched = false
         try {
             val deviceRefs = request.capabilityRefs.map { it.value }.filter { DeviceCatalog.isKnown(it) }.toSet()
-            if (deviceRefs.isNotEmpty()) {
+            val appFunctionRefs = request.capabilityRefs.map { it.value }.filter { it.startsWith(AppFunctionRefs.PREFIX) }.toSet()
+            if (deviceRefs.isNotEmpty() || appFunctionRefs.isNotEmpty()) {
                 bridgeDir = File(context.filesDir, "device-bridge/${request.requestId.value}")
                 inbox = File(runtime.sdk.vfs.homeDir, "mobby-plugin-inbox/${request.requestId.value}")
                 inbox!!.mkdirs()
                 val node = File(runtime.sdk.vfs.binDir, "node").absolutePath
-                session = DeviceHost.start(context, bridgeDir!!, inbox!!, workingDirectory, node, deviceRefs, devices,
+                if (deviceRefs.isNotEmpty()) session = DeviceHost.start(context, bridgeDir!!, inbox!!, workingDirectory, node, deviceRefs, devices,
                     registerResource = { file, type ->
                         com.github.ytlog.mobby.android.device.DevicePaths.contained(listOf(workingDirectory, inbox!!), file)
                         PersistentResourceStore(File(context.filesDir, "input-resources"), EventHistorySettingsStore(context)::attachmentBudgetBytes)
@@ -188,7 +213,9 @@ internal class AndroidRuntimePorts(
                         file.writeBytes(store.contentBytes(resource, request.workspaceRef))
                         file.absolutePath
                     }) { deviceStop.get()?.let { it.value != null } ?: true }
-                for (skill in session!!.skills) {
+                if (appFunctionRefs.isNotEmpty()) appFunctionSession = AppFunctionHost.start(context, bridgeDir!!, node,
+                    appFunctionRefs, devices) { if (deviceStop.get()?.value != null) throw CancellationException() }
+                for (skill in session?.skills.orEmpty() + appFunctionSession?.skills.orEmpty()) {
                     val name = skill.parentFile.name
                     val installed = skills.stage(request.agentId, name, skill)
                     if (installed == null) {
@@ -202,7 +229,7 @@ internal class AndroidRuntimePorts(
             val ready = assemble(request, extras)
             prepared = ready
             val connection = AgentSessions.connect(request, runtime.executable(mode(request.agentId)), workingDirectory.absolutePath, ready.turn)
-            val agent = LiveAgent(request, connection.session, extras, deviceStop, session)
+            val agent = LiveAgent(request, connection.session, extras, deviceStop, session, appFunctionSession)
             control = connection.session
             val exit = AtomicReference<Int?>(null)
             agent.job = scope.launch(Dispatchers.IO) {
@@ -261,6 +288,7 @@ private class LiveAgent(
     val extras: List<Pair<String, File>>,
     private val deviceStop: AtomicReference<StateFlow<StopCause?>?>,
     private val deviceSession: DeviceSession?,
+    private val appFunctionSession: AppFunctionHost.AppFunctionSession?,
 ) {
     val inbox = kotlinx.coroutines.channels.Channel<OutputLine>(kotlinx.coroutines.channels.Channel.UNLIMITED)
     lateinit var job: Job
@@ -287,7 +315,8 @@ private class LiveAgent(
                         session.onStdout(line.text, autoAllow = true).forEach { output(it, false) }
                         if (session.takeTurnEnded()) {
                             withContext(Dispatchers.IO) { deviceSession?.awaitIdle { if (stop.value != null) throw CancellationException() } }
-                            return finish(retain = deviceSession == null && stop.value == null && session.sessionId() != null, force = false, acceptProtocolExit = session.abandonAfterTurn())
+                            withContext(Dispatchers.IO) { appFunctionSession?.awaitIdle { if (stop.value != null) throw CancellationException() } }
+                            return finish(retain = deviceSession == null && appFunctionSession == null && stop.value == null && session.sessionId() != null, force = false, acceptProtocolExit = session.abandonAfterTurn())
                         }
                     }
                     is OutputLine.Stderr -> output(line.text, true)
