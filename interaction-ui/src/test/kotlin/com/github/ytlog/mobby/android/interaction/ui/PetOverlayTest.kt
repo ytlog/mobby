@@ -166,9 +166,7 @@ class PetOverlayTest {
         val pet = DesktopPet(context, window, prefs, { stopped = it }, { opened = it })
         pet.update(running("run", title = "整理相册"), foreground = false, enabled = true, permitted = true)
         touch(window.view!!.described("任务悬浮球")!!, 8f, 8f, 8f, 8f)
-        assertEquals("整理相册", (window.view!!.described("停止当前任务")!!.parent.parent as View).let { tray ->
-            (tray as ViewGroup).getChildAt(0) as android.widget.TextView
-        }.text)
+        assertTrue(window.view!!.hasText("整理相册"))
         window.view!!.described("停止当前任务")!!.performClick()
         assertEquals(ExecutionId("run"), stopped)
         assertEquals(petPx(PET_BALL_DP, context.resources.displayMetrics.density).coerceAtLeast(1), window.frame?.width)
@@ -196,7 +194,7 @@ class PetOverlayTest {
         touch(window.view!!.described("任务悬浮球")!!, 8f, 8f, 8f, 8f)
         val stop = window.view!!.described("停止当前任务")!!
         assertFalse(stop.isEnabled)
-        assertEquals("停止中", textUnder(window.view!!, 1))
+        assertTrue(window.view!!.hasText("停止中"))
         stop.performClick()
         assertFalse(stopped)
     }
@@ -228,10 +226,7 @@ class PetOverlayTest {
     private fun event(down: Long, time: Long, action: Int, x: Float, y: Float): MotionEvent =
         MotionEvent.obtain(down, time, action, x, y, 0)
 
-    private fun textUnder(root: View, index: Int): String {
-        val tray = root.described("停止当前任务")!!.parent.parent as ViewGroup
-        return (tray.getChildAt(index) as android.widget.TextView).text.toString()
-    }
+
 }
 
 private class MemoryWindow : PetWindow {
@@ -255,4 +250,9 @@ private fun View.described(text: String): View? {
         for (index in 0 until childCount) getChildAt(index).described(text)?.let { return it }
     }
     return null
+}
+
+private fun View.hasText(value: String): Boolean {
+    if (this is android.widget.TextView && text.toString() == value) return true
+    return this is ViewGroup && (0 until childCount).any { getChildAt(it).hasText(value) }
 }

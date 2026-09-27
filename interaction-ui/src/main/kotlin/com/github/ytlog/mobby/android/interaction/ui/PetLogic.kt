@@ -8,8 +8,7 @@ import com.github.ytlog.mobby.android.interaction.domain.ExecutionPhase
 import com.github.ytlog.mobby.android.interaction.domain.InteractionState
 
 internal const val PET_BALL_DP = 56
-internal const val PET_TRAY_WIDTH_DP = 196
-internal const val PET_TRAY_HEIGHT_DP = 128
+internal const val PET_TRAY_WIDTH_DP = 252
 
 internal data class PetTarget(
     val conversation: ConversationId,

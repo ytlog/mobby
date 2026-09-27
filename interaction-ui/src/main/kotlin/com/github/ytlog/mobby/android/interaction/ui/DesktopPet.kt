@@ -6,17 +6,13 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.PixelFormat
-import android.graphics.drawable.GradientDrawable
 import android.os.SystemClock
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
-import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.LinearLayout
-import android.widget.TextView
-import androidx.compose.ui.graphics.toArgb
 import com.github.ytlog.mobby.android.interaction.domain.ConversationId
 import com.github.ytlog.mobby.android.interaction.domain.ExecutionId
 import com.github.ytlog.mobby.android.interaction.domain.ExecutionPhase
@@ -111,6 +107,7 @@ class DesktopPet internal constructor(
     private var target: PetTarget? = null
     private var rendered: RenderKey? = null
     private var applied: PetFrame? = null
+    private var measuredTrayHeight = 0
     private var screenOperations = 0
     private var dragging = false
     private var dragFrameX = 0
@@ -174,9 +171,18 @@ class DesktopPet internal constructor(
             applied = null
             return
         }
-        val frame = session.place(metrics.screenW, metrics.screenH, metrics.ball, metrics.trayW, metrics.trayH)
-        val key = RenderKey(target?.execution?.value, target?.phase, session.expanded, frame.ballOnRight, target?.title)
-        if (rendered == key && window.attached) {
+        val key = RenderKey(target, session.expanded, metrics)
+        val rebuild = rendered != key || !window.attached
+        val trayWidth = (min(metrics.trayW, metrics.screenW - metrics.ball) - petPx(8, metrics.density)).coerceAtLeast(0)
+        val tray = if (rebuild && session.expanded) tray(target, trayWidth).apply {
+            measure(
+                View.MeasureSpec.makeMeasureSpec(trayWidth, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(metrics.screenH, View.MeasureSpec.AT_MOST),
+            )
+            measuredTrayHeight = measuredHeight
+        } else null
+        val frame = session.place(metrics.screenW, metrics.screenH, metrics.ball, metrics.trayW, measuredTrayHeight)
+        if (!rebuild && applied?.ballOnRight == frame.ballOnRight) {
             if (applied != frame) {
                 applied = frame
                 window.update(frame)
@@ -184,11 +190,11 @@ class DesktopPet internal constructor(
         } else {
             rendered = key
             applied = frame
-            window.attach(petContent(target, frame, metrics), frame)
+            window.attach(petContent(target, frame, metrics, tray), frame)
         }
     }
 
-    private fun petContent(target: PetTarget?, frame: PetFrame, metrics: PetMetrics): View {
+    private fun petContent(target: PetTarget?, frame: PetFrame, metrics: PetMetrics, measuredTray: View?): View {
         val ball = PetBallView(context, target?.phase).apply {
             contentDescription = AppStrings.floatingTaskBubble2
             onTap = {
@@ -214,7 +220,7 @@ class DesktopPet internal constructor(
         }
         if (!session.expanded) return ball
         val gap = petPx(8, metrics.density).coerceAtLeast(0)
-        val tray = tray(target, (frame.width - metrics.ball - gap).coerceAtLeast(0), metrics.density)
+        val tray = measuredTray ?: tray(target, (frame.width - metrics.ball - gap).coerceAtLeast(0))
         return LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -234,66 +240,39 @@ class DesktopPet internal constructor(
         layoutParams = LinearLayout.LayoutParams(width, 1)
     }
 
-    private fun tray(target: PetTarget?, width: Int, density: Float): View {
-        val pad = petPx(12, density)
-        return LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(pad, pad, pad, pad)
-            background = GradientDrawable().apply {
-                setColor(MobbyColors.Dark.card.toArgb())
-                cornerRadius = 16 * density
+    private fun tray(target: PetTarget?, width: Int) = PetTrayView(
+        context, target,
+        onStop = {
+            if (target != null) {
+                session.expanded = false
+                stopRun(target.execution)
+                refresh()
             }
-            layoutParams = LinearLayout.LayoutParams(width, ViewGroup.LayoutParams.MATCH_PARENT)
-            addView(label(target?.title ?: AppStrings.appName, MobbyColors.Dark.ink.toArgb(), 15f, bold = true))
-            addView(label(if (target == null) AppStrings.noRunningTasks else (target.action ?: petStatus(target.phase)), MobbyColors.Dark.muted.toArgb(), 13f, bold = false))
-            addView(LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                if (target != null) addView(action(AppStrings.stop, AppStrings.stopCurrentTask, petCanStop(target.phase)) {
-                    session.expanded = false
-                    stopRun(target.execution)
-                    refresh()
-                })
-                addView(action(if (target == null) AppStrings.returnToApp else AppStrings.open, if (target == null) AppStrings.returnToApp else AppStrings.openConversation, true) {
-                    session.expanded = false
-                    openConversation(target?.conversation)
-                    refresh()
-                })
-                addView(action(AppStrings.collapse, AppStrings.collapseBubble, true) {
-                    session.tuck(target?.execution?.value)
-                    refresh()
-                })
-            })
-        }
-    }
-
-    private fun label(text: String, color: Int, size: Float, bold: Boolean) = TextView(context).apply {
-        this.text = text
-        setTextColor(color)
-        textSize = size
-        maxLines = 1
-        ellipsize = android.text.TextUtils.TruncateAt.END
-        if (bold) setTypeface(typeface, android.graphics.Typeface.BOLD)
-    }
-
-    private fun action(text: String, description: String, enabled: Boolean, onClick: () -> Unit) = TextView(context).apply {
-        this.text = text
-        contentDescription = description
-        isEnabled = enabled
-        textSize = 14f
-        setTextColor(if (enabled) MobbyColors.Dark.onButton.toArgb() else MobbyColors.Dark.muted.toArgb())
-        val pad = petPx(10, resources.displayMetrics.density)
-        setPadding(pad, pad, pad, pad)
-        if (enabled) setOnClickListener { onClick() }
-    }
+        },
+        onOpen = {
+            session.expanded = false
+            openConversation(target?.conversation)
+            refresh()
+        },
+        onTuck = {
+            session.tuck(target?.execution?.value)
+            refresh()
+        },
+    ).apply { layoutParams = LinearLayout.LayoutParams(width, LinearLayout.LayoutParams.MATCH_PARENT) }
 
     private fun metrics(): PetMetrics {
         val display = context.resources.displayMetrics
+        val config = context.resources.configuration
         val ball = petPx(PET_BALL_DP, display.density).coerceAtLeast(1)
-        return PetMetrics(display.widthPixels, display.heightPixels, display.density, ball, petPx(PET_TRAY_WIDTH_DP, display.density), petPx(PET_TRAY_HEIGHT_DP, display.density))
+        return PetMetrics(display.widthPixels, display.heightPixels, display.density, ball,
+            petPx(PET_TRAY_WIDTH_DP, display.density), config.fontScale, config.locales.toLanguageTags())
     }
 
-    private data class PetMetrics(val screenW: Int, val screenH: Int, val density: Float, val ball: Int, val trayW: Int, val trayH: Int)
-    private data class RenderKey(val execution: String?, val phase: ExecutionPhase?, val expanded: Boolean, val ballOnRight: Boolean, val title: String?)
+    private data class PetMetrics(
+        val screenW: Int, val screenH: Int, val density: Float, val ball: Int, val trayW: Int,
+        val fontScale: Float, val locales: String,
+    )
+    private data class RenderKey(val target: PetTarget?, val expanded: Boolean, val metrics: PetMetrics)
 
     companion object {
         const val PREFS = "pet-overlay"
@@ -309,6 +288,9 @@ internal class PetBallView(context: Context, private val phase: ExecutionPhase?)
     var onDrag: (Int, Int) -> Unit = { _, _ -> }
     var onDragEnd: () -> Unit = {}
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val mark = requireNotNull(context.getDrawable(R.drawable.ic_launcher_foreground)).mutate()
+    private val surface = context.getColor(R.color.mobby_brand_surface)
+    private val blue = context.getColor(R.color.mobby_brand_fold)
     private var downRawX = 0f
     private var downRawY = 0f
     private var dragging = false
@@ -351,37 +333,38 @@ internal class PetBallView(context: Context, private val phase: ExecutionPhase?)
 
     override fun onDraw(canvas: Canvas) {
         val density = resources.displayMetrics.density
-        val t = SystemClock.uptimeMillis() / 1000f
-        val cancelling = phase == ExecutionPhase.CANCELLING
-        val bob = if (cancelling) 0f else sin(t * 3.9f) * density * 2.5f
-        val blink = if (SystemClock.uptimeMillis() % 3200 in 2800..2920) 0.15f else 1f
         val cx = width / 2f
-        val cy = height / 2f + bob
-        val radius = min(width, height) / 2f - density
+        val cy = height / 2f
+        val radius = (min(width, height) / 2f - density).coerceAtLeast(0f)
         paint.style = Paint.Style.FILL
-        paint.color = MobbyColors.Dark.button.toArgb()
+        paint.color = surface
         canvas.drawCircle(cx, cy, radius, paint)
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = density
-        paint.color = MobbyColors.Dark.Conversation.toolBorder.toArgb()
-        canvas.drawCircle(cx, cy, radius - density / 2f, paint)
-        paint.style = Paint.Style.FILL
-        paint.color = MobbyColors.Dark.onButton.toArgb()
-        val eye = radius * 0.12f
-        val eyeY = cy - radius * 0.12f
-        canvas.save()
-        canvas.scale(1f, blink, cx - radius * 0.28f, eyeY)
-        canvas.drawCircle(cx - radius * 0.28f, eyeY, eye, paint)
-        canvas.restore()
-        canvas.save()
-        canvas.scale(1f, blink, cx + radius * 0.28f, eyeY)
-        canvas.drawCircle(cx + radius * 0.28f, eyeY, eye, paint)
-        canvas.restore()
-        val pulse = (sin(t * 5.7f) + 1f) / 2f
-        paint.color = if (cancelling) MobbyColors.Dark.error.toArgb() else MobbyColors.Dark.primary.toArgb()
-        paint.alpha = (140 + 115 * pulse).toInt()
-        canvas.drawCircle(cx, cy + radius * 0.38f, eye * (0.7f + 0.3f * pulse), paint)
+        paint.color = blue
+        paint.alpha = 40
+        canvas.drawCircle(cx, cy, (radius - density / 2f).coerceAtLeast(0f), paint)
         paint.alpha = 255
-        if (isAttachedToWindow) postInvalidateOnAnimation()
+
+        // The launcher foreground reserves one sixth per side for adaptive masks.
+        // Remove that padding when drawing the same artwork inside the round bubble.
+        val half = radius * 1.5f
+        mark.setBounds((cx - half).toInt(), (cy - half).toInt(), (cx + half).toInt(), (cy + half).toInt())
+        mark.draw(canvas)
+
+        if (phase != null) {
+            val cancelling = phase == ExecutionPhase.CANCELLING
+            val pulse = (sin(SystemClock.uptimeMillis() / 1000f * 4f) + 1f) / 2f
+            val dotX = cx + radius * 0.68f
+            val dotY = cy + radius * 0.68f
+            paint.style = Paint.Style.FILL
+            paint.color = surface
+            canvas.drawCircle(dotX, dotY, density * 4.5f, paint)
+            paint.color = if (cancelling) 0xFFBA1A1A.toInt() else blue
+            paint.alpha = if (cancelling) 255 else (150 + 105 * pulse).toInt()
+            canvas.drawCircle(dotX, dotY, density * 3f, paint)
+            paint.alpha = 255
+            if (!cancelling && isAttachedToWindow) postInvalidateDelayed(80L)
+        }
     }
 }

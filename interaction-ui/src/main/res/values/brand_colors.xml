@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="mobby_brand_surface">#E7F3FE</color>
+    <color name="mobby_brand_top">#6BB5F1</color>
+    <color name="mobby_brand_front">#3F9AEB</color>
+    <color name="mobby_brand_fold">#3471CE</color>
+</resources>

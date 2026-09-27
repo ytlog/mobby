@@ -11,6 +11,7 @@
 | [项目需求](requirements.md) | 第一阶段本地 Agent 运行验证的目标与范围 |
 | [运行验证方案](design/runtime-test-plan.md) | 初始测试控制台方案；实际实现与验证进展以实施记录为准 |
 | [Android 对话 UI 评审稿](design/conversation-ui-review.html) | 当前交互规范：会话与执行、顶部菜单、输入、插件/技能、Android 行为、实现架构及可点击原型；原生接入进度见实施记录 |
+| [App 图标](design/app-icon.md) | 确认稿、蓝色环带矢量资源、自适应图层与单色图标 |
 | [交互三层架构与 Runtime 技术设计](design/interaction-runtime-architecture.html) | Compose 独立模块、三层职责、Runtime 模块、固定接口与事件协议、数据所有权和迁移验收 |
 | [项目、目录与会话数据](design/project-workspace-management.md) | 项目即执行目录、默认目录、会话迁移、项目 Skill 与数据管理职责 |
 | [本地模型模块与 HTTP API](design/local-model-runtime.md) | 独立 Gradle 模块与专用进程、五组 Agent 协议、模型管理、资源调度与验收；设计提案 |
