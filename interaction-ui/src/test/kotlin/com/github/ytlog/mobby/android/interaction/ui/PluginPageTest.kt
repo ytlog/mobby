@@ -95,7 +95,7 @@ class PluginPageTest {
         compose.waitUntil(5_000) { compose.onAllNodesWithText("屏幕").fetchSemanticsNodes().isNotEmpty() }
     }
 
-    @Test fun `quick entry joins the conversation after access becomes available`() {
+    @Test fun `requested plugin joins the conversation after access becomes available`() {
         val conversation = Conversation(ConversationId("c"), NextTurnConfig(AgentId.CODEX, "model", null, "default", "CODEX"))
         val interaction = MutableStateFlow(InteractionState(loading = false, selected = ConversationDetail(conversation, emptyList())))
         var available = false

@@ -260,9 +260,9 @@ private val pluginCatalogTabs get() = listOf(AppStrings.phone, AppStrings.commun
 @OptIn(ExperimentalFoundationApi::class)
 @Composable internal fun PluginPage(
     vm: ConversationViewModel,
-    quickPluginRef: String? = null,
-    quickConversationId: String? = null,
-    onQuickApplied: (Boolean) -> Unit = {},
+    requestedPluginRef: String? = null,
+    requestedConversationId: String? = null,
+    onPluginApplied: (Boolean) -> Unit = {},
     onBack: () -> Unit,
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
@@ -270,7 +270,7 @@ private val pluginCatalogTabs get() = listOf(AppStrings.phone, AppStrings.commun
     val catalogue by vm.plugins.collectAsStateWithLifecycle()
     val error by vm.pluginsError.collectAsStateWithLifecycle()
     val loading by vm.pluginsLoading.collectAsStateWithLifecycle()
-    val pagerState = rememberPagerState(initialPage = if (quickPluginRef == "plugin:device:media" || quickPluginRef == "plugin:device:storage") 2 else 0,
+    val pagerState = rememberPagerState(initialPage = if (requestedPluginRef == "plugin:device:media" || requestedPluginRef == "plugin:device:storage") 2 else 0,
         pageCount = { pluginCatalogTabs.size })
     val scope = rememberCoroutineScope()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -298,13 +298,13 @@ private val pluginCatalogTabs get() = listOf(AppStrings.phone, AppStrings.commun
         lifecycle.addObserver(observer)
         onDispose { lifecycle.removeObserver(observer) }
     }
-    LaunchedEffect(quickPluginRef, quickConversationId, conversation?.id, catalogue, loading) {
-        if (quickPluginRef == null || loading) return@LaunchedEffect
-        val targetConversation = conversation?.takeIf { it.id.value == quickConversationId } ?: return@LaunchedEffect
-        val chosen = catalogue.firstOrNull { it.ref == quickPluginRef && it.available } ?: return@LaunchedEffect
+    LaunchedEffect(requestedPluginRef, requestedConversationId, conversation?.id, catalogue, loading) {
+        if (requestedPluginRef == null || loading) return@LaunchedEffect
+        val targetConversation = conversation?.takeIf { it.id.value == requestedConversationId } ?: return@LaunchedEffect
+        val chosen = catalogue.firstOrNull { it.ref == requestedPluginRef && it.available } ?: return@LaunchedEffect
         val result = vm.actions.setPlugin(targetConversation.id, chosen, true)
         vm.report(result)
-        onQuickApplied(result == OperationResult.Done)
+        onPluginApplied(result == OperationResult.Done)
     }
     Column(Modifier.fillMaxSize()) {
         PageHeader(AppStrings.plugins, onBack)
