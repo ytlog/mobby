@@ -6,15 +6,17 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class EventOrderingTest {
-    @Test fun `screen actions share one card without losing earlier outcomes`() {
+    @Test fun `screen actions retain their own places between thinking and replies`() {
         fun record(id: String, status: DeviceStatus, order: Long) = DeviceRecord(DeviceOperation(id, id, 1, "screen", "snapshot", "screen_control",
             status, "snapshot", DeviceSubject(), JsonObject(emptyMap())), id, order)
-        val turn = Turn(TurnId("turn"), "look", ExecutionId("run"), ExecutionPhase.RUNNING, occupied = true,
-            deviceOperations = listOf(record("first", DeviceStatus.FAILED, 1), record("second", DeviceStatus.RUNNING, 3)))
-        val card = turn.visibleTranscript().filterIsInstance<TranscriptEntry.Device>().single()
-        assertEquals("second", card.record.operation.operationId)
-        assertEquals(listOf(DeviceStatus.FAILED, DeviceStatus.RUNNING), card.history.map { it.operation.status })
-        assertEquals("first", card.history.first().operation.operationId)
+        val turn = Turn(TurnId("turn"), "look", ExecutionId("run"), ExecutionPhase.SUCCEEDED,
+            messages = listOf(Message("reply", "done", 4)), steps = listOf(Step.Thinking("think", "checking", "SUCCEEDED", 2)),
+            deviceOperations = listOf(record("first", DeviceStatus.FAILED, 1), record("second", DeviceStatus.SUCCEEDED, 3)))
+        val entries = turn.transcript()
+        assertEquals("first", (entries[0] as TranscriptEntry.Device).record.operation.operationId)
+        assertEquals("think", (entries[1] as TranscriptEntry.ToolRun).steps.single().id)
+        assertEquals("second", (entries[2] as TranscriptEntry.Device).record.operation.operationId)
+        assertEquals("reply", (entries[3] as TranscriptEntry.Reply).message.id)
     }
     @Test fun `duplicate and out of order output is not appended`() {
         val id = ExecutionId("run")

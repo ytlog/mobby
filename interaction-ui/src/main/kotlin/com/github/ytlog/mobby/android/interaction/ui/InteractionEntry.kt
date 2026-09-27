@@ -695,9 +695,9 @@ internal fun Turn.showsSeparateActivity(): Boolean = occupied || pending
         if (detail.hasEarlier) add("earlier")
         detail.turns.forEach { t ->
             add("user:${t.id.value}")
-            t.visibleTranscript().forEach { entry ->
+            t.transcript().forEach { entry ->
                 when (entry) {
-                    is TranscriptEntry.Device -> add("device:${t.id.value}:${entry.history.first().operation.operationId}")
+                    is TranscriptEntry.Device -> add("device:${t.id.value}:${entry.record.operation.operationId}")
                     is TranscriptEntry.Reply -> add("message:${t.id.value}:${entry.message.id}")
                     is TranscriptEntry.ToolRun -> add("tools:${t.id.value}:${entry.steps.first().id}")
                 }
@@ -758,17 +758,17 @@ internal fun Turn.showsSeparateActivity(): Boolean = occupied || pending
                 }
             }
             detail.turns.forEach { turn ->
-                val entries = turn.visibleTranscript()
+                val entries = turn.transcript()
                 val lastReply = entries.filterIsInstance<TranscriptEntry.Reply>().lastOrNull()?.message?.id
                 val lastTools = entries.filterIsInstance<TranscriptEntry.ToolRun>().lastOrNull()?.steps?.firstOrNull()?.id
                 item(key = "user:${turn.id.value}") { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { UserMessageBubble { androidx.compose.foundation.text.selection.SelectionContainer { Text(turn.userText) }; AttachmentList(turn.attachments, turn.workspace, vm) } } }
                 entries.forEach { entry ->
                     when (entry) {
-                        is TranscriptEntry.Device -> item(key = "device:${turn.id.value}:${entry.history.first().operation.operationId}") {
-                            com.github.ytlog.mobby.android.deviceinteraction.ConversationDeviceCard(entry.record.operation, turn, detail.conversation, vm, entry.history.map { it.operation })
+                        is TranscriptEntry.Device -> item(key = "device:${turn.id.value}:${entry.record.operation.operationId}") {
+                            com.github.ytlog.mobby.android.deviceinteraction.ConversationDeviceCard(entry.record.operation, turn, detail.conversation, vm)
                         }
                         is TranscriptEntry.ToolRun -> item(key = "tools:${turn.id.value}:${entry.steps.first().id}") {
-                            ExecutionCard(turn, vm, entry.steps, showExtras = entry.steps.first().id == lastTools, read)
+                            ExecutionFlow(turn, vm, entry.steps, showExtras = entry.steps.first().id == lastTools, read)
                         }
                         is TranscriptEntry.Reply -> item(key = "message:${turn.id.value}:${entry.message.id}") {
                             Column {

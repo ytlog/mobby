@@ -1,12 +1,15 @@
 package com.github.ytlog.mobby.android.deviceinteraction.ui
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -23,15 +26,36 @@ class DeviceCardActions(
 
 /** Fixed components only. Rendering/recomposition has no execution, retry or navigation effects. */
 @Composable fun DeviceTaskCard(operation: DeviceOperation, actions: DeviceCardActions, modifier: Modifier = Modifier,
-    history: List<DeviceOperation> = listOf(operation), stopping: Boolean = false, thumbnail: (@Composable (String) -> Unit)? = null) {
-    var expanded by rememberSaveable(history.firstOrNull()?.operationId ?: operation.operationId) { mutableStateOf(false) }
+    stopping: Boolean = false, thumbnail: (@Composable (String) -> Unit)? = null) {
+    var expanded by rememberSaveable(operation.operationId, operation.status.terminal) { mutableStateOf(false) }
     val status = if (stopping && !operation.status.terminal) DeviceLabels.status(DeviceStatus.CANCELLING) else DeviceLabels.phase(operation)
-    Surface(modifier.fillMaxWidth().semantics { contentDescription = DeviceLabels.title(operation.plugin, operation.action); stateDescription = status },
-        shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), color = MaterialTheme.colorScheme.surface) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(DeviceLabels.title(operation.plugin, operation.action), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-            Text(status, style = MaterialTheme.typography.labelMedium, color = if (operation.status == DeviceStatus.FAILED) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+    val title = DeviceLabels.title(operation.plugin, operation.action)
+    val detailsVisible = !operation.status.terminal || expanded
+    Surface(modifier.fillMaxWidth().semantics { contentDescription = title; stateDescription = status },
+        shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        color = MaterialTheme.colorScheme.surface) {
+    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(Modifier.fillMaxWidth().then(if (operation.status.terminal) Modifier.clickable { expanded = !expanded } else Modifier).heightIn(min = 44.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                Text(status, style = MaterialTheme.typography.labelMedium,
+                    color = if (operation.status == DeviceStatus.FAILED || operation.status == DeviceStatus.UNCONFIRMED) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+            }
+            if (operation.status.terminal) {
+                Spacer(Modifier.width(8.dp))
+                val chevron = MaterialTheme.colorScheme.onSurfaceVariant
+                Canvas(Modifier.size(16.dp)) {
+                    val first = if (detailsVisible) Offset(size.width * .2f, size.height * .38f) else Offset(size.width * .38f, size.height * .2f)
+                    val middle = if (detailsVisible) Offset(size.width * .5f, size.height * .68f) else Offset(size.width * .68f, size.height * .5f)
+                    val last = if (detailsVisible) Offset(size.width * .8f, size.height * .38f) else Offset(size.width * .38f, size.height * .8f)
+                    drawLine(chevron, first, middle, 2.dp.toPx())
+                    drawLine(chevron, middle, last, 2.dp.toPx())
+                }
+            }
+        }
+        if (detailsVisible) {
             if (operation.subject.label.isNotBlank()) Text(operation.subject.label, style = MaterialTheme.typography.bodyMedium)
             if (operation.subject.detail.isNotBlank()) Caption(operation.subject.detail)
             when (operation.displayType) {
@@ -42,15 +66,7 @@ class DeviceCardActions(
                 "capture" -> CaptureCard(operation, actions, thumbnail)
                 "measurement", "connection" -> MeasurementCard(operation, expanded)
                 "system_handoff" -> SystemHandoffCard(operation)
-                "screen_control" -> {
-                    ScreenControlCard(operation, expanded)
-                    if (history.size > 1) Caption(DeviceLabels.text("已记录 ${history.size} 个屏幕动作", "${history.size} screen actions recorded"))
-                    if (expanded) history.dropLast(1).forEach { previous ->
-                        HorizontalDivider()
-                        Caption(DeviceLabels.title(previous.plugin, previous.action) + " · " + DeviceLabels.phase(previous))
-                        ScreenControlCard(previous, true)
-                    }
-                }
+                "screen_control" -> ScreenControlCard(operation, expanded)
                 else -> BasicDeviceCard(operation, expanded)
             }
             operation.progress?.let { progress ->
@@ -78,7 +94,6 @@ class DeviceCardActions(
                     TextButton(onClick = actions.openConversation) { Text(DeviceLabels.text("回到对话", "Open conversation")) }
                 if (DeviceButton.INSPECT_EFFECT in operation.availableActions && actions.inspectEffect != null)
                     TextButton(onClick = actions.inspectEffect) { Text(DeviceLabels.text("核对结果", "Check result")) }
-                TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) DeviceLabels.text("收起记录", "Hide details") else DeviceLabels.text("查看记录", "Show details")) }
             }
             if (expanded) {
                 HorizontalDivider()
@@ -87,6 +102,7 @@ class DeviceCardActions(
                 if (operation.displayType !in knownDisplays) Text(operation.result?.data?.toString().orEmpty(), style = MaterialTheme.typography.bodySmall)
             }
         }
+    }
     }
 }
 

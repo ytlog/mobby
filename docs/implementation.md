@@ -1001,3 +1001,9 @@ Codex、Claude Code、OpenCode 运行时，输入框仍允许编辑与发送。�
 上层统一使用 `InteractionUseCases.prepareMessage(conversationId, mode)` 与 `deliverMessage(prepared)`，`mode` 为 `QUEUE` 或 `INSERT`，不调用具体 Agent API。排队轮次由 `TurnManager` 持久化并在当前任务结束后提交。直接插入只接受当前会话内正在运行的任务和文本消息；它把消息 ID 与目标执行 ID 持久化，以相同 ID 调用 `RuntimeClient.insert`，失败时保留草稿，不会转成排队。重复命令只投递一次。`Accepted` 表示实时适配器接收命令，不表示模型已处理。
 
 Codex 通过 app-server `turn/steer` 插入当前 turn；Claude Code 通过仍打开的 stream-json 输入发送用户消息。OpenCode 当前版本不提供可靠的忙碌会话 steer，返回 `UNSUPPORTED_CAPABILITY`。输入框运行中通过发送菜单选择“排队发送”或“插入当前运行”，停止按钮始终保留；插入附件暂不支持，会明确拒绝。Codex 和 Claude Code 的真 CLI 运行中插入仍需设备验收，尤其要核对 Claude Code 进程重启后的上下文保留情况。
+
+## 执行过程时间线（2026-09-27）
+
+对话中的思考、命令、文件操作、其他工具、手机操作和回复按原始事件顺序展示。运行结束不再把步骤移到一张汇总卡，也不把连续屏幕动作集中到另一张卡；思考和工具步骤使用行内记录，手机操作各自保留独立卡片。运行中显示详情，完成后自动折叠，可点标题复查。权限请求与失败状态仍保留独立操作区，避免把需要用户处理的动作藏进折叠记录。具体设备展示模板见[设备交互实施](device-interaction-implementation.md)。
+
+一次运行中，CLI 正常退出并不意味着所有手机操作都已确认。若设备动作的外部效果无法确认，整轮仍标记为「结果未确认」。运行日志中的执行槽仅在 Agent 进程是否已确认退出这一条件下释放；已确认退出的未知设备效果不再阻塞下一轮，未确认退出的任务仍占用执行槽等待核对。

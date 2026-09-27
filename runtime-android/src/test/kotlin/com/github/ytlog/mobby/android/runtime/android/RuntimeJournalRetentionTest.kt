@@ -82,6 +82,18 @@ class RuntimeJournalRetentionTest {
             assertEquals(listOf(uncertain), journal.unfinished())
         }
     }
+    @Test fun `confirmed process exit releases slot even when a device effect is unknown`() = runBlocking {
+        RuntimeJournal(context, generous).use { journal ->
+            val initial = accept(journal, "uncertain-effect", 10)
+            val evidence = TerminalEvidence(true, 0, RuntimeError(ErrorCode.INTERRUPTED))
+            val terminal = initial.copy(phase = RunPhase.OUTCOME_UNKNOWN, revision = 2, lastSequence = 2, terminalEvidence = evidence)
+            journal.append(terminal, event(terminal, 20, RuntimeEvent.RunFinished(terminal.phase, evidence)))
+            assertEquals(terminal, journal.snapshot(initial.runId))
+            assertTrue(journal.unfinished().isEmpty())
+            val next = accept(journal, "next", 30)
+            assertEquals(listOf(next), journal.unfinished())
+        }
+    }
     @Test fun `saved policy is used by the next cleanup without restarting the journal`() = runBlocking {
         context.getSharedPreferences("runtime-storage-policy", 0).edit().clear().commit()
         val key = javax.crypto.KeyGenerator.getInstance("AES").apply { init(256) }.generateKey()

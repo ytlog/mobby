@@ -63,26 +63,6 @@ data class Turn(
         flush()
         return result
     }
-
-    /** Running turns keep text where it arrived. A finished turn keeps one activity group and the last reply. */
-    fun visibleTranscript(): List<TranscriptEntry> {
-        val raw = transcript()
-        val screens = raw.filterIsInstance<TranscriptEntry.Device>().filter { it.record.operation.displayType == "screen_control" }.map { it.record }
-        var screenAdded = false
-        val entries = raw.mapNotNull { entry ->
-            if (entry is TranscriptEntry.Device && entry.record.operation.displayType == "screen_control") {
-                if (screenAdded) null else { screenAdded = true; TranscriptEntry.Device(screens.last(), screens) }
-            } else entry
-        }
-        if (occupied || pending) return entries
-        val activity = entries.filterIsInstance<TranscriptEntry.ToolRun>().flatMap { it.steps }
-        val reply = entries.filterIsInstance<TranscriptEntry.Reply>().lastOrNull { it.message.text.isNotBlank() }
-        return buildList {
-            if (activity.isNotEmpty()) add(TranscriptEntry.ToolRun(activity))
-            addAll(entries.filterIsInstance<TranscriptEntry.Device>())
-            if (reply != null) add(reply)
-        }
-    }
 }
 private sealed interface TranscriptPiece {
     data class Device(val record: DeviceRecord) : TranscriptPiece
@@ -90,7 +70,7 @@ private sealed interface TranscriptPiece {
     data class Tool(val step: Step) : TranscriptPiece
 }
 sealed interface TranscriptEntry {
-    data class Device(val record: DeviceRecord, val history: List<DeviceRecord> = listOf(record)) : TranscriptEntry
+    data class Device(val record: DeviceRecord) : TranscriptEntry
     data class Reply(val message: Message) : TranscriptEntry
     data class ToolRun(val steps: List<Step>) : TranscriptEntry
 }

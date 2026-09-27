@@ -14,7 +14,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
@@ -115,21 +114,12 @@ internal fun stepKindIcon(kind: String): AppGlyph = when (kind.lowercase()) {
         }
     }
 }
-@Composable internal fun ExecutionCard(turn: Turn, vm: ConversationViewModel, steps: List<Step> = turn.steps, showExtras: Boolean = true, read: (String, String) -> Unit) {
+@Composable internal fun ExecutionFlow(turn: Turn, vm: ConversationViewModel, steps: List<Step> = turn.steps, showExtras: Boolean = true, read: (String, String) -> Unit) {
     if (steps.isEmpty()) return
     val expanded = turn.toolGroupExpanded(steps)
     val ink = toolCallInk()
     CompositionLocalProvider(LocalToolCodeActionScale provides 2f / 3f) {
-    Surface(
-        Modifier.fillMaxWidth().testTag("execution-card"),
-        shape = RoundedCornerShape(16.dp),
-        color = toolCallSurface(),
-        contentColor = ink,
-        border = BorderStroke(Dp.Hairline, if (darkChrome()) MobbyColors.Dark.Conversation.toolBorder else MobbyColors.Light.Conversation.toolBorder),
-        tonalElevation = 0.dp,
-        shadowElevation = 0.dp,
-    ) {
-        Column {
+        Column(Modifier.fillMaxWidth().testTag("execution-flow")) {
             Row(
                 Modifier.fillMaxWidth().clickable { vm.enqueue { vm.actions.stepExpansion(turn.id, toolGroupKey(steps), !expanded) } }
                     .heightIn(min = 44.dp).padding(start = 14.dp, end = 10.dp),
@@ -138,8 +128,7 @@ internal fun stepKindIcon(kind: String): AppGlyph = when (kind.lowercase()) {
                 Text(turn.executionHeadline(steps), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = ink)
                 AppIcon(if (expanded) AppIcons.ChevronUp else AppIcons.ChevronRight, if (expanded) AppStrings.expanded else AppStrings.collapsed, Modifier.size(18.dp), tint = ink)
             }
-            if (expanded) {
-            Column(Modifier.padding(start = 2.dp, end = 8.dp, bottom = 8.dp)) {
+            if (expanded) Column(Modifier.padding(start = 2.dp, end = 8.dp, bottom = 8.dp)) {
                 if (showExtras) turn.progress?.let { Text(it.label(), Modifier.padding(horizontal = 12.dp, vertical = 2.dp), style = MaterialTheme.typography.bodySmall, color = ink) }
                 steps.forEach { step -> key(step.id) {
                     val open = step.id in turn.expandedSteps
@@ -182,9 +171,7 @@ internal fun stepKindIcon(kind: String): AppGlyph = when (kind.lowercase()) {
                 } }
                 if (showExtras && turn.diagnosticsActionVisible()) TextButton(onClick = { read(AppStrings.runtimeDiagnostics, turn.diagnostics.joinToString("\n\n") { it.text }) }) { Text(AppStrings.viewDiagnostics(turn.diagnostics.size)) }
             }
-            }
         }
-    }
     }
 }
 

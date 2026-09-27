@@ -1,19 +1,19 @@
-# Android 设备交互卡片实施
+# Android 设备交互时间线实施
 
 对照 `docs/design/android-device-interaction.html` 的 mobby.device/1 设计，本次接入现有设备插件的真实动作；设计中的候选、排除能力不因此获得执行权限。
 
 ## 模块边界
 
 - `device-interaction`：纯 Kotlin 协议、状态约束、固定按钮和文案，包名 `com.github.ytlog.mobby.android.deviceinteraction.model`。不依赖 Android、会话或 Runtime。
-- `device-interaction-ui`：Compose 卡片和资源预览，包名 `com.github.ytlog.mobby.android.deviceinteraction.ui`。只依赖协议与本地化，通过回调表达用户操作。
-- `interaction-ui` 中同根包的 `ConversationDeviceCard` 是装配适配器，绑定会话、停止、响应和资源读取。卡片不持有 ViewModel，不启动设备操作。
+- `device-interaction-ui`：Compose 设备操作卡片和资源预览，包名 `com.github.ytlog.mobby.android.deviceinteraction.ui`。只依赖协议与本地化，通过回调表达用户操作。
+- `interaction-ui` 中同根包的 `ConversationDeviceCard` 是装配适配器，绑定会话、停止、响应和资源读取。记录组件不持有 ViewModel，不启动设备操作。
 - `device-plugins` 保留 Android 执行职责，通过 `DeviceOperationPort` 上报事实；`runtime-engine` 实现逐运行的持久化端口，先保存再允许执行。三个 Agent 使用相同桥接协议。
 
-## 卡片与实际能力
+## 时间线记录与实际能力
 
-七类模板覆盖 `basic`、`message_list`、`message_send`、`media_grid`、`batch_change`、`file_list`、`file_transfer`、`capture`、`record_change`、`measurement`、`connection`、`system_handoff`、`screen_control`。未知展示类型可展开诊断，候选能力使用没有执行按钮的不可用卡。
+展示模板覆盖 `basic`、`message_list`、`message_send`、`media_grid`、`batch_change`、`file_list`、`file_transfer`、`capture`、`record_change`、`measurement`、`connection`、`system_handoff`、`screen_control`。每个设备操作保留独立卡片，按事件顺序插入思考、工具步骤和回复之间；运行时展开详情，终态自动折叠，点标题可重新展开。未知展示类型可展开诊断，候选能力使用没有执行按钮的不可用提示。
 
-现有屏幕、短信、联系人、日历、媒体、目录文件、相机、麦克风、位置、传感器、剪贴板、Office 动作返回结构化结果。相册首屏最多提供六份授权媒体缩略图（Android 10 及以上）；其他条目保留名称和种类。屏幕动作按一轮合并展示，历史状态保留；悬浮条读取相同操作事实。
+现有屏幕、短信、联系人、日历、媒体、目录文件、相机、麦克风、位置、传感器、剪贴板、Office 动作返回结构化结果。相册首屏最多提供六份授权媒体缩略图（Android 10 及以上）；其他条目保留名称和种类。连续屏幕动作各占原始事件位置，历史状态保留；悬浮条读取相同操作事实。
 
 采集面板由真实执行器发起，拍照/录音后可以预览或试听、重采、取消、确认使用。确认后才注册持久资源并返回给 CLI。短信 API 提交、发送回执、送达回执分别处理；当前没有订阅送达回执，不推断送达成功。部分发送、无回执、取消后的不确定副作用不会显示成成功。
 

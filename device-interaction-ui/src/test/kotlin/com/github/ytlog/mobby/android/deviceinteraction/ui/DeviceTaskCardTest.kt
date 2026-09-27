@@ -30,7 +30,7 @@ class DeviceTaskCardTest {
         var display by mutableStateOf("basic")
         var calls = 0
         compose.setContent { MaterialTheme { Box(Modifier.width(280.dp)) {
-            DeviceTaskCard(operation(display), DeviceCardActions(stop = { calls++ }, openResource = { calls++ }, respond = { calls++ }))
+            DeviceTaskCard(operation(display).copy(status = DeviceStatus.RUNNING), DeviceCardActions(stop = { calls++ }, openResource = { calls++ }, respond = { calls++ }))
         } } }
         listOf("basic", "screen_control", "message_list", "message_send", "media_grid", "batch_change", "file_list", "file_transfer",
             "capture", "record_change", "measurement", "connection", "system_handoff", "unknown-future").forEach {
@@ -40,10 +40,19 @@ class DeviceTaskCardTest {
         }
         compose.runOnIdle { assertEquals(0, calls) }
     }
-    @Test fun `terminal card cannot dispatch stop or stale capture response`() {
+    @Test fun `terminal operation cannot dispatch stop or stale capture response`() {
         compose.setContent { MaterialTheme { DeviceTaskCard(operation().copy(availableActions = listOf(DeviceButton.STOP_RUN)),
             DeviceCardActions(stop = { error("terminal must not stop") })) } }
-        compose.onAllNodes(hasClickAction()).assertCountEquals(1) // Details only.
+        compose.onAllNodes(hasClickAction()).assertCountEquals(1) // Expand only.
+    }
+    @Test fun `conversation operation folds on completion and can be reopened`() {
+        var shown by mutableStateOf(operation().copy(status = DeviceStatus.RUNNING))
+        compose.setContent { MaterialTheme { DeviceTaskCard(shown, DeviceCardActions()) } }
+        compose.onNodeWithText("fixture body").assertExists()
+        compose.runOnIdle { shown = shown.copy(status = DeviceStatus.SUCCEEDED) }
+        compose.onNodeWithText("fixture body").assertDoesNotExist()
+        compose.onAllNodes(hasClickAction()).onFirst().performClick()
+        compose.onNodeWithText("fixture body").assertExists()
     }
     @Test fun `unavailable capability offers no execution action`() {
         compose.setContent { MaterialTheme { DeviceUnavailableCard("Candidate", "Not implemented") } }

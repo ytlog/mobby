@@ -14,7 +14,7 @@ import com.github.ytlog.mobby.android.interaction.ui.ConversationViewModel
 import java.util.UUID
 
 /** Composition root adapter: cards know neither ConversationViewModel nor the runtime client. */
-@Composable internal fun ConversationDeviceCard(operation: DeviceOperation, turn: Turn, conversation: Conversation, vm: ConversationViewModel, history: List<DeviceOperation> = listOf(operation)) {
+@Composable internal fun ConversationDeviceCard(operation: DeviceOperation, turn: Turn, conversation: Conversation, vm: ConversationViewModel) {
     var preview by remember { mutableStateOf<String?>(null) }
     val execution = turn.execution
     DeviceTaskCard(operation, DeviceCardActions(
@@ -27,7 +27,7 @@ import java.util.UUID
             } }
             Unit
         } },
-    ), history = history, stopping = turn.phase == ExecutionPhase.CANCELLING, thumbnail = { ref ->
+    ), stopping = turn.phase == ExecutionPhase.CANCELLING, thumbnail = { ref ->
         val bytes by produceState<ByteArray?>(null, ref) {
             value = (vm.actions.previewAttachment(conversation.config.workspace, ref, false) as? DataResult.Loaded)?.value?.bytes
         }

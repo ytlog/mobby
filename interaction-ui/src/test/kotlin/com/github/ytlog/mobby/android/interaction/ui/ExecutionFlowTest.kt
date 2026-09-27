@@ -19,7 +19,7 @@ import java.lang.reflect.Proxy
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
-class ExecutionCardTest {
+class ExecutionFlowTest {
     @get:Rule val compose = createComposeRule()
     private val empty = Turn(TurnId("t"), "请检查超时", null, ExecutionPhase.SUCCEEDED)
     private val step = Step.Command("s1", "ls", "ok", "SUCCEEDED")
@@ -55,8 +55,8 @@ class ExecutionCardTest {
             compose.onAllNodesWithTag("turn-loading").assertCountEquals(1)
             compose.onAllNodesWithContentDescription("正在回复…").assertCountEquals(1)
             val footer = compose.onNodeWithTag("turn-loading").getBoundsInRoot()
-            val card = compose.onNodeWithTag("execution-card").getBoundsInRoot()
-            assertTrue("Loading must be a separate item below the card", footer.top >= card.bottom)
+            val flow = compose.onNodeWithTag("execution-flow").getBoundsInRoot()
+            assertTrue("Loading must follow the execution flow", footer.top >= flow.bottom)
         }
         assertBottom()
         compose.runOnIdle { shown.value = shown.value.copy(steps = listOf(thought.copy(outcome = "SUCCEEDED"), step.copy(outcome = null, order = 2))) }
@@ -78,8 +78,8 @@ class ExecutionCardTest {
         val tool = thinking.copy(steps = listOf(step.copy(outcome = null, order = 2)))
         val model = vm()
         compose.setContent { MaterialTheme { androidx.compose.foundation.layout.Column {
-            ExecutionCard(thinking, model, thinking.steps) { _, _ -> }
-            ExecutionCard(tool, model, tool.steps) { _, _ -> }
+            ExecutionFlow(thinking, model, thinking.steps) { _, _ -> }
+            ExecutionFlow(tool, model, tool.steps) { _, _ -> }
         } } }
         compose.onNodeWithText("Inspect the fixture").assertDoesNotExist()
         compose.onNodeWithText("运行 ls").assertExists()
@@ -163,7 +163,7 @@ class ExecutionCardTest {
     }
 
     @Test fun `zero step completion does not render an empty process card`() {
-        compose.setContent { MaterialTheme { ExecutionCard(empty, vm()) { _, _ -> } } }
+        compose.setContent { MaterialTheme { ExecutionFlow(empty, vm()) { _, _ -> } } }
         compose.onNodeWithText("没有工具执行步骤").assertDoesNotExist()
         compose.onNodeWithText("个步骤", substring = true).assertDoesNotExist()
         compose.onNodeWithText("本机").assertDoesNotExist()
@@ -174,12 +174,12 @@ class ExecutionCardTest {
         val running = empty.copy(phase = ExecutionPhase.RUNNING, occupied = true, steps = listOf(step.copy(outcome = null)))
         assertTrue(running.toolGroupExpanded(running.steps))
         assertFalse(empty.copy(steps = listOf(step)).toolGroupExpanded(listOf(step)))
-        compose.setContent { MaterialTheme { ExecutionCard(running, vm()) { _, _ -> } } }
+        compose.setContent { MaterialTheme { ExecutionFlow(running, vm()) { _, _ -> } } }
         compose.onNodeWithText("运行 ls").assertExists()
     }
 
     @Test fun `a finished step card shows a compact completed header`() {
-        compose.setContent { MaterialTheme { ExecutionCard(empty.copy(steps = listOf(step), expanded = false), vm()) { _, _ -> } } }
+        compose.setContent { MaterialTheme { ExecutionFlow(empty.copy(steps = listOf(step), expanded = false), vm()) { _, _ -> } } }
         compose.onNodeWithText("已完成 1 个步骤").assertExists()
         compose.onNodeWithText("运行 ls").assertDoesNotExist()
         compose.onNodeWithText("本机").assertDoesNotExist()
@@ -188,7 +188,7 @@ class ExecutionCardTest {
 
     @Test fun `expanded steps list the readable tool title not the raw json`() {
         val open = empty.copy(steps = listOf(step), expandedSteps = setOf("tools:s1"))
-        compose.setContent { MaterialTheme { ExecutionCard(open, vm()) { _, _ -> } } }
+        compose.setContent { MaterialTheme { ExecutionFlow(open, vm()) { _, _ -> } } }
         compose.onNodeWithText("已完成 1 个步骤").assertExists()
         compose.onNodeWithText("运行 ls").assertExists()
         compose.onNodeWithText("""{"command":"ls"}""").assertDoesNotExist()
@@ -204,7 +204,7 @@ class ExecutionCardTest {
         val failed = finished.copy(phase = ExecutionPhase.FAILED, failure = "执行失败")
         assertTrue(failed.diagnosticsActionVisible())
         val shown = mutableStateOf(running)
-        compose.setContent { MaterialTheme { ExecutionCard(shown.value, vm()) { _, _ -> } } }
+        compose.setContent { MaterialTheme { ExecutionFlow(shown.value, vm()) { _, _ -> } } }
         compose.onNodeWithText("思考").assertExists()
         compose.onNodeWithText("查看诊断", substring = true).assertDoesNotExist()
         compose.runOnIdle { shown.value = failed }
@@ -216,7 +216,7 @@ class ExecutionCardTest {
             step.copy(outcome = null),
             Step.Thinking("think", "private", null)))
         val shown = mutableStateOf(running)
-        compose.setContent { MaterialTheme { ExecutionCard(shown.value, vm()) { _, _ -> } } }
+        compose.setContent { MaterialTheme { ExecutionFlow(shown.value, vm()) { _, _ -> } } }
         compose.onNodeWithText("执行中").assertExists()
         compose.onNodeWithText("思考").assertExists()
         compose.onNodeWithText("private").assertDoesNotExist()
