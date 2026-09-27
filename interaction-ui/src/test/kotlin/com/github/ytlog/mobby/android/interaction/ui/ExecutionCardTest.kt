@@ -48,7 +48,7 @@ class ExecutionCardTest {
         compose.mainClock.autoAdvance = false
         compose.setContent { MaterialTheme {
             Timeline(ConversationDetail(conversation, listOf(shown.value)), model, androidx.compose.ui.Modifier,
-                read = { _, _ -> }, hostActions = InteractionHostActions({}, { _, _ -> }, {}), proposal = {})
+                read = { _, _ -> }, hostActions = InteractionHostActions({}, { _, _ -> }, {}), proposal = {}, onQuickPlugin = {})
         } }
         fun assertBottom() {
             compose.mainClock.advanceTimeBy(300)

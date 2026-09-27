@@ -108,6 +108,8 @@ class InteractionHostActions(
     var gatewayIntroSeen by rememberSaveable { mutableStateOf(false) }
     var gatewayStartAdding by rememberSaveable { mutableStateOf(false) }
     var gatewayFromIntro by rememberSaveable { mutableStateOf(false) }
+    var pendingQuickPlugin by rememberSaveable { mutableStateOf<String?>(null) }
+    var pendingQuickConversation by rememberSaveable { mutableStateOf<String?>(null) }
     var toolbarAnchor by remember { mutableStateOf(IntRect.Zero) }
     val skillProposal by vm.skillProposal.collectAsStateWithLifecycle()
     val skillProposalSaved by vm.skillProposalSaved.collectAsStateWithLifecycle()
@@ -141,7 +143,18 @@ class InteractionHostActions(
     val colors = if (dark) MobbyDarkScheme else MobbyLightScheme
     LaunchedEffect(vm) { for (message in vm.feedback) snackbar.showSnackbar(message) }
     fun navigate(next: String) { keyboard?.hide(); focus.clearFocus(); drawer = false; route = next }
-    BackHandler(route != "conversation") { route = when (route) { "gateway" -> if (gatewayFromIntro) "conversation" else "settings"; "history-limits", "diagnostic", "archived" -> "settings"; "skills", "plugins" -> "add"; "projects" -> projectsBackRoute; "project-detail" -> "conversation"; else -> "conversation" } }
+    BackHandler(route != "conversation") {
+        route = when (route) {
+            "gateway" -> if (gatewayFromIntro) "conversation" else "settings"
+            "history-limits", "diagnostic", "archived" -> "settings"
+            "plugins" -> if (pendingQuickPlugin != null) "conversation" else "add"
+            "skills" -> "add"
+            "projects" -> projectsBackRoute
+            "project-detail" -> "conversation"
+            else -> "conversation"
+        }
+        if (route != "plugins") { pendingQuickPlugin = null; pendingQuickConversation = null }
+    }
     MaterialTheme(colorScheme = colors) {
         val camera = rememberCameraCapture(actions, { captured ->
             actions.importAttachment(ConversationId(captured.conversation), captured.workspace, requireNotNull(captured.attachmentUri))
@@ -182,7 +195,15 @@ class InteractionHostActions(
                         "diagnostic" -> DiagnosticPage(vm) { route = "settings" }
                         "archived" -> ArchivedPage(state, vm) { route = "settings" }
                         "skills" -> SkillsPage(vm, onBack = { route = "add" }, onConversation = { route = "conversation" })
-                        "plugins" -> PluginPage(vm) { route = "add" }
+                        "plugins" -> PluginPage(vm, pendingQuickPlugin, pendingQuickConversation, onQuickApplied = { applied ->
+                            pendingQuickPlugin = null
+                            pendingQuickConversation = null
+                            if (applied) route = "conversation"
+                        }) {
+                            route = if (pendingQuickPlugin != null) "conversation" else "add"
+                            pendingQuickPlugin = null
+                            pendingQuickConversation = null
+                        }
                         else -> Column(Modifier.fillMaxSize().then(swipe)) {
                             ConversationToolbar(
                                 state.selected?.conversation, vm,
@@ -214,6 +235,25 @@ class InteractionHostActions(
                                             Timeline(
                                                 detail, vm, Modifier.fillMaxSize(),
                                                 read = { title, text -> reading = title to text }, hostActions = hostActions, proposal = vm::openSkillProposal,
+                                                onQuickPlugin = { ref ->
+                                                    vm.enqueue {
+                                                        when (val result = actions.plugins()) {
+                                                            is DataResult.Loaded -> {
+                                                                val plugin = result.value.firstOrNull { it.ref == ref }
+                                                                when {
+                                                                    plugin == null -> vm.report(OperationResult.Failed(AppStrings.unknownPlugin))
+                                                                    plugin.available -> vm.report(actions.setPlugin(detail.conversation.id, plugin, true))
+                                                                    else -> {
+                                                                        pendingQuickPlugin = ref
+                                                                        pendingQuickConversation = detail.conversation.id.value
+                                                                        navigate("plugins")
+                                                                    }
+                                                                }
+                                                            }
+                                                            is DataResult.Failed -> vm.report(OperationResult.Failed(result.message))
+                                                        }
+                                                    }
+                                                },
                                             )
                                         }
                                     }
@@ -674,7 +714,7 @@ internal fun Turn.showsSeparateActivity(): Boolean = occupied || pending
     }
 }
 
-@Composable internal fun Timeline(detail: ConversationDetail, vm: ConversationViewModel, modifier: Modifier, followPadding: PaddingValues = PaddingValues(12.dp), read: (String, String) -> Unit, hostActions: InteractionHostActions, proposal: (SkillProposal) -> Unit) {
+@Composable internal fun Timeline(detail: ConversationDetail, vm: ConversationViewModel, modifier: Modifier, followPadding: PaddingValues = PaddingValues(12.dp), read: (String, String) -> Unit, hostActions: InteractionHostActions, proposal: (SkillProposal) -> Unit, onQuickPlugin: (String) -> Unit) {
     val topFade = if (darkChrome()) ConversationEdgeFade else LightConversationTopFade
     val bottomFade = if (darkChrome()) ConversationEdgeFade else LightConversationBottomFade
     val contentPadding = PaddingValues(start = 16.dp, top = topFade, end = 16.dp, bottom = bottomFade)
@@ -741,6 +781,8 @@ internal fun Turn.showsSeparateActivity(): Boolean = occupied || pending
                 Column(Modifier.fillParentMaxWidth().padding(top = 32.dp, start = 24.dp, end = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(AppStrings.whatWouldYouLikeToDoToday, style = MaterialTheme.typography.headlineMedium, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                     Text(AppStrings.startASpecificTaskWith(detail.conversation.config.agent.label()), Modifier.padding(top = 12.dp).fillMaxWidth(), color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    Spacer(Modifier.height(24.dp))
+                    ConversationQuickActions(detail.conversation.draft.capabilities, onQuickPlugin)
                 }
             }
             detail.turns.forEach { turn ->
