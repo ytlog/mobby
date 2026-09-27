@@ -1,0 +1,266 @@
+[
+  {
+    "name": "demo-coding",
+    "category": "ON-DEVICE CODING",
+    "title": "A packing list.\nBuilt on this phone.",
+    "poster_at": 18,
+    "cuts": [
+      {
+        "source": "coding-preview.mp4",
+        "start": 18,
+        "duration": 2,
+        "focus": [
+          0.5,
+          0.32,
+          1
+        ],
+        "end_focus": [
+          0.5,
+          0.32,
+          1.06
+        ],
+        "caption": "A working web app, built on Android"
+      },
+      {
+        "source": "coding-1.mp4",
+        "start": 120,
+        "duration": 3,
+        "focus": [
+          0.5,
+          0.64,
+          1
+        ],
+        "end_focus": [
+          0.5,
+          0.7,
+          1.12
+        ],
+        "caption": "Codex writes HTML, CSS and JavaScript"
+      },
+      {
+        "source": "coding-2.mp4",
+        "start": 44,
+        "duration": 3,
+        "focus": [
+          0.5,
+          0.47,
+          1
+        ],
+        "end_focus": [
+          0.5,
+          0.49,
+          1.1
+        ],
+        "caption": "A local server runs on the phone"
+      },
+      {
+        "source": "coding-preview.mp4",
+        "start": 1,
+        "duration": 8,
+        "focus": [
+          0.5,
+          0.62,
+          1.02
+        ],
+        "end_focus": [
+          0.5,
+          0.42,
+          1.02
+        ],
+        "caption": "Open the page. Pack a few essentials."
+      },
+      {
+        "source": "coding-preview.mp4",
+        "start": 18,
+        "duration": 3,
+        "focus": [
+          0.5,
+          0.32,
+          1
+        ],
+        "end_focus": [
+          0.5,
+          0.32,
+          1.14
+        ],
+        "caption": "Refresh the page. Your progress stays."
+      }
+    ]
+  },
+  {
+    "name": "demo-phone",
+    "category": "APP CONTROL",
+    "title": "Open Clock.\nStart the stopwatch.",
+    "poster_at": 14.5,
+    "cuts": [
+      {
+        "source": "stopwatch-1.mp4",
+        "start": 80,
+        "duration": 1.5,
+        "focus": [
+          0.5,
+          0.49,
+          1
+        ],
+        "end_focus": [
+          0.5,
+          0.49,
+          1.06
+        ],
+        "caption": "The result: Stopwatch is running"
+      },
+      {
+        "source": "stopwatch-1.mp4",
+        "start": 20,
+        "duration": 2.5,
+        "focus": [
+          0.5,
+          0.32,
+          1
+        ],
+        "end_focus": [
+          0.5,
+          0.32,
+          1.05
+        ],
+        "caption": "One request in mobby"
+      },
+      {
+        "source": "stopwatch-1.mp4",
+        "start": 48,
+        "duration": 2.5,
+        "focus": [
+          0.5,
+          0.58,
+          1
+        ],
+        "end_focus": [
+          0.5,
+          0.75,
+          1
+        ],
+        "caption": "The agent opens Clock"
+      },
+      {
+        "source": "stopwatch-1.mp4",
+        "start": 59,
+        "duration": 3,
+        "focus": [
+          0.65,
+          0.94,
+          1.2
+        ],
+        "end_focus": [
+          0.65,
+          0.9,
+          1.1
+        ],
+        "caption": "Switch to the Stopwatch tab"
+      },
+      {
+        "source": "stopwatch-1.mp4",
+        "start": 75,
+        "duration": 4,
+        "focus": [
+          0.66,
+          0.87,
+          1.3
+        ],
+        "end_focus": [
+          0.65,
+          0.84,
+          1.12
+        ],
+        "caption": "Tap Resume to start timing"
+      },
+      {
+        "source": "stopwatch-1.mp4",
+        "start": 80,
+        "duration": 3.5,
+        "focus": [
+          0.5,
+          0.49,
+          1
+        ],
+        "end_focus": [
+          0.5,
+          0.49,
+          1.12
+        ],
+        "caption": "The stopwatch is running"
+      }
+    ]
+  },
+  {
+    "name": "demo-plugins",
+    "category": "DEVICE PLUGINS",
+    "title": "Your phone.\nYour choice of access.",
+    "poster_at": 8,
+    "cuts": [
+      {
+        "source": "plugins.mp4",
+        "start": 0,
+        "duration": 3.5,
+        "focus": [
+          0.5,
+          0.24,
+          1
+        ],
+        "end_focus": [
+          0.5,
+          0.24,
+          1.12
+        ],
+        "caption": "Choose a capability for this turn"
+      },
+      {
+        "source": "plugins.mp4",
+        "start": 4,
+        "duration": 2.5,
+        "focus": [
+          0.5,
+          0.32,
+          1
+        ],
+        "end_focus": [
+          0.5,
+          0.36,
+          1.04
+        ],
+        "caption": "Messages, contacts and calendar"
+      },
+      {
+        "source": "plugins.mp4",
+        "start": 7,
+        "duration": 3,
+        "focus": [
+          0.5,
+          0.27,
+          1
+        ],
+        "end_focus": [
+          0.5,
+          0.32,
+          1.05
+        ],
+        "caption": "Photos, a chosen folder, or Office files"
+      },
+      {
+        "source": "plugins.mp4",
+        "start": 22,
+        "duration": 4,
+        "focus": [
+          0.5,
+          0.44,
+          1
+        ],
+        "end_focus": [
+          0.5,
+          0.44,
+          1.14
+        ],
+        "caption": "Add Office tools to the conversation"
+      }
+    ]
+  }
+]

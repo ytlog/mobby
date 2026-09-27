@@ -25,7 +25,8 @@
 | [跨 Agent 技能目录](design/portable-skills.md) | App 自带 Skill Creator、Skill Installer 的展示、安装路径与跨 Agent 边界 |
 | [界面语言](localization.md) | 中英文切换、文案维护与测试边界 |
 | [网关接入](gateway.md) | 协议路径、限制和联调范围 |
-| [README 展示素材](media/) | 真机截图、录屏及其来源说明 |
+| [README 展示素材](media/) | 真机录屏、局部放大剪辑、来源与验证说明 |
+| [Weekend Bag 示例](examples/weekend-bag/) | Codex 在 Android 手机上生成的打包清单及原始提示词 |
 | [实施记录](implementation.md) | 已实现内容、交互契约实施检查点、验证证据及待验收事项 |
 
 ## 维护约定
