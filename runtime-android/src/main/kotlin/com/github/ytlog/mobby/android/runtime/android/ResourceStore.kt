@@ -19,7 +19,11 @@ import java.security.MessageDigest
 import java.util.Base64
 
 /** Immutable imported content. External URIs and caller-chosen paths never reach execution. */
-internal class ResourceStore(private val root: File, private val budgetBytes: () -> Long = { DEFAULT_BUDGET_BYTES }) {
+internal abstract class ResourceStore(
+    private val root: File,
+    private val budgetBytes: () -> Long = { DEFAULT_BUDGET_BYTES },
+    private val fallbackRoot: File? = null,
+) {
     @Serializable private data class Document(val name: String, val text: String, val workspace: String = "default")
     @Serializable private data class ImageDocument(val name: String, val mediaType: String, val base64: String, val workspace: String = "default")
     @Serializable private data class BinaryDocument(val name: String, val mediaType: String, val base64: String, val workspace: String)
@@ -60,26 +64,19 @@ internal class ResourceStore(private val root: File, private val budgetBytes: ()
             if (encoded.size.toLong() > limit) throw QuotaExceeded()
             val entries = storageEntries()
             val used = entries.fold(0L) { total, file -> Math.addExact(total, Files.size(file.toPath())) }
-            var needed = (used - (limit - encoded.size)).coerceAtLeast(0)
-            val victims = mutableListOf<File>()
-            if (needed > 0) {
-                for (file in entries.filter { it.name.matches(DIGEST) }
-                    .sortedWith(compareBy<File> { it.lastModified() }.thenBy { it.name })) {
-                    victims += file
-                    needed -= Files.size(file.toPath())
-                    if (needed <= 0) break
-                }
-                if (needed > 0) throw QuotaExceeded()
-            }
+            val needed = (used - (limit - encoded.size)).coerceAtLeast(0)
+            val victims = if (needed > 0) evictionCandidates(entries, needed) else emptyList()
+            if (victims.sumOf { Files.size(it.toPath()) } < needed) throw QuotaExceeded()
             val temporary = File.createTempFile("import-", ".tmp", root)
             try {
                 FileOutputStream(temporary).use { it.write(encoded); it.fd.sync() }
-                victims.forEach { check(it.delete()) { "Could not evict attachment cache entry" } }
+                victims.forEach { check(it.delete()) { "Could not evict resource cache entry" } }
                 Files.move(temporary.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE)
             } finally { temporary.delete() }
         }
         return summary(ResourceRef("$prefix:$digest"), workspace)
     }
+    protected abstract fun evictionCandidates(entries: List<File>, needed: Long): List<File>
     private fun storageEntries(): List<File> = Files.newDirectoryStream(directory().toPath()).use { paths ->
         paths.map { path ->
             check(Files.isRegularFile(path, NOFOLLOW_LINKS)) { "Unexpected attachment storage entry" }
@@ -87,13 +84,24 @@ internal class ResourceStore(private val root: File, private val budgetBytes: ()
         }.toList()
     }
     private fun touch(ref: ResourceRef) {
-        val file = File(directory(), ref.value.substringAfter(':'))
+        val file = resourceFile(ref.value.substringAfter(':'))
         if (!Files.isRegularFile(file.toPath(), NOFOLLOW_LINKS)) throw FileNotFoundException("Attachment was evicted")
-        val key = root.absolutePath
-        val latest = lastAccessByDirectory.getOrPut(key) { storageEntries().maxOfOrNull { it.lastModified() } ?: 0L }
+        val parent = requireNotNull(file.parentFile)
+        val key = parent.absolutePath
+        val latest = lastAccessByDirectory.getOrPut(key) { parent.listFiles()?.maxOfOrNull { it.lastModified() } ?: 0L }
         val next = maxOf(System.currentTimeMillis(), latest + 1)
         Files.setLastModifiedTime(file.toPath(), FileTime.fromMillis(next))
         lastAccessByDirectory[key] = next
+    }
+    private fun resourceFile(digest: String): File {
+        val primary = File(directory(), digest)
+        if (Files.exists(primary.toPath(), NOFOLLOW_LINKS)) return primary
+        val fallback = fallbackRoot?.let { File(it, digest) }
+        if (fallback != null && Files.exists(fallback.toPath(), NOFOLLOW_LINKS)) {
+            require(!Files.isSymbolicLink(requireNotNull(fallbackRoot).toPath()))
+            return fallback
+        }
+        throw FileNotFoundException("Resource is missing or was evicted")
     }
 
     /** Registers executor-owned material before its temporary inbox is removed. */
@@ -129,8 +137,7 @@ internal class ResourceStore(private val root: File, private val budgetBytes: ()
         require(WorkspaceStore.validRef(workspace.value))
         val digest = ref.value.removePrefix("$prefix:")
         require(ref.value == "$prefix:$digest" && digest.matches(Regex("[a-f0-9]{64}")))
-        val file = File(directory(), digest)
-        if (!Files.exists(file.toPath(), NOFOLLOW_LINKS)) throw FileNotFoundException("Attachment was evicted")
+        val file = resourceFile(digest)
         require(Files.isRegularFile(file.toPath(), NOFOLLOW_LINKS) && file.length() <= limit)
         val encoded = file.inputStream().use { input ->
             val out = java.io.ByteArrayOutputStream()

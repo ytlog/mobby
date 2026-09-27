@@ -142,7 +142,7 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
         catch (e: CancellationException) { throw e }
         catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.RESOURCE_MISSING)) }
     }
-    private fun resources() = ResourceStore(java.io.File(filesDir, "input-resources"), EventHistorySettingsStore(this)::attachmentBudgetBytes)
+    private fun resources() = PersistentResourceStore(java.io.File(filesDir, "input-resources"), EventHistorySettingsStore(this)::attachmentBudgetBytes, java.io.File(filesDir, "resource-cache"))
     override suspend fun importResource(request: ImportResourceRequest): AdminResult<ResourceSummary> = withContext(resourceDispatcher) {
         try {
             require(WorkspaceStore.forContext(this@RuntimeService).resolve(request.workspaceRef) != null)

@@ -32,7 +32,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
-internal class DeviceActions(private val context: Context, private val inbox: File, private val workspace: File, private val gate: DeviceActionGate, private val resources: DeviceResourceRegistrar) {
+internal class DeviceActions(private val context: Context, private val inbox: File, private val workspace: File, private val gate: DeviceActionGate, private val resources: DeviceResourceRegistrar, private val cachedResources: DeviceResourceRegistrar) {
     fun perform(plugin: String, action: String, args: Map<String, String>, execution: DeviceExecution): DeviceResult {
         gate.checkActive()
         val spec = DeviceCatalog.all.first { it.id == plugin }
@@ -67,7 +67,7 @@ internal class DeviceActions(private val context: Context, private val inbox: Fi
                     val file = File(directory, "screen.jpg")
                     file.writeBytes(bytes)
                     gate.checkActive()
-                    resources.register(file, "image/jpeg")
+                    cachedResources.register(file, "image/jpeg")
                 } finally { directory.deleteRecursively() }
             } catch (failure: Exception) {
                 if (failure is java.util.concurrent.CancellationException) throw failure
@@ -227,7 +227,7 @@ internal class DeviceActions(private val context: Context, private val inbox: Fi
         val file = File(inbox, "preview-${java.util.UUID.randomUUID()}.jpg")
         return try {
             file.outputStream().use { check(bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, it)) }
-            resources.register(file, "image/jpeg")
+            cachedResources.register(file, "image/jpeg")
         } finally { bitmap.recycle(); file.delete() }
     }
 

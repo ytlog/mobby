@@ -20,6 +20,7 @@ import kotlinx.coroutines.launch
     var outputDays by rememberSaveable { mutableStateOf("") }
     var outputMiB by rememberSaveable { mutableStateOf("") }
     var attachmentMiB by rememberSaveable { mutableStateOf("") }
+    var resourceCacheMiB by rememberSaveable { mutableStateOf("") }
     var initialized by rememberSaveable { mutableStateOf(false) }
     var loaded by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
@@ -31,14 +32,14 @@ import kotlinx.coroutines.launch
         loaded = false; message = null; messageError = true
         try {
             when (val result = load()) {
-                is DataResult.Loaded -> { if (!initialized) { days = result.value.days.toString(); mib = result.value.mib.toString(); outputDays = result.value.outputDays.toString(); outputMiB = result.value.outputMiB.toString(); attachmentMiB = result.value.attachmentMiB.toString(); initialized = true }; loaded = true }
+                is DataResult.Loaded -> { if (!initialized) { days = result.value.days.toString(); mib = result.value.mib.toString(); outputDays = result.value.outputDays.toString(); outputMiB = result.value.outputMiB.toString(); attachmentMiB = result.value.attachmentMiB.toString(); resourceCacheMiB = result.value.resourceCacheMiB.toString(); initialized = true }; loaded = true }
                 is DataResult.Failed -> message = result.message
             }
         } catch (e: CancellationException) { throw e }
         catch (_: Exception) { message = AppStrings.cannotReadStorageSettingsPleaseRetry }
     }
     val valid = days.toIntOrNull()?.let { it in 1..3650 } == true && mib.toIntOrNull()?.let { it in 1..1024 } == true &&
-        outputDays.toIntOrNull()?.let { it in 1..3650 } == true && outputMiB.toIntOrNull()?.let { it in 1..4096 } == true && attachmentMiB.toIntOrNull()?.let { it in 1..8192 } == true
+        outputDays.toIntOrNull()?.let { it in 1..3650 } == true && outputMiB.toIntOrNull()?.let { it in 1..4096 } == true && attachmentMiB.toIntOrNull()?.let { it in 1..8192 } == true && resourceCacheMiB.toIntOrNull()?.let { it in 1..8192 } == true
     Column(Modifier.fillMaxSize()) {
         PageHeader(AppStrings.storageRetention, back)
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -54,6 +55,8 @@ import kotlinx.coroutines.launch
                 SettingsField(outputMiB, { outputMiB = it; message = null }, AppStrings.rawOutputLimitMib, enabled = loaded && !busy)
                 GroupDivider()
                 SettingsField(attachmentMiB, { attachmentMiB = it; message = null }, AppStrings.attachmentStorageLimitMib, enabled = loaded && !busy)
+                GroupDivider()
+                SettingsField(resourceCacheMiB, { resourceCacheMiB = it; message = null }, AppStrings.resourceCacheLimitMib, enabled = loaded && !busy)
             }
             SettingsCaption(AppStrings.attachmentCacheEvictsLeastRecentlyUsed)
             if (!loaded && message == null) SettingsCaption(AppStrings.readingSettings)
@@ -61,7 +64,7 @@ import kotlinx.coroutines.launch
             if (!loaded && message != null) SettingsGroup { SettingsAction(AppStrings.retryReading) { retry++ } }
             SettingsGroup {
                 SettingsAction(if (busy) AppStrings.saving else AppStrings.saveStorageSettings, enabled = loaded && valid && !busy) {
-                    val value = EventHistoryLimits(days.toInt(), mib.toInt(), outputDays.toInt(), outputMiB.toInt(), attachmentMiB.toInt())
+                    val value = EventHistoryLimits(days.toInt(), mib.toInt(), outputDays.toInt(), outputMiB.toInt(), attachmentMiB.toInt(), resourceCacheMiB.toInt())
                     busy = true; message = null; messageError = true
                     scope.launch {
                         try {

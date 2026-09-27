@@ -77,12 +77,12 @@ object DeviceHost {
     private fun allowed(context: Context, permission: String) =
         context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
 
-    fun start(context: Context, root: File, inbox: File, workspace: File, node: String, refs: Set<String>, operations: DeviceOperationPort, registerResource: (File, String) -> String, exportResource: (String) -> String, isCancelled: () -> Boolean = { false }): DeviceSession =
+    fun start(context: Context, root: File, inbox: File, workspace: File, node: String, refs: Set<String>, operations: DeviceOperationPort, registerResource: (File, String) -> String, registerCachedResource: (File, String) -> String, exportResource: (String) -> String, isCancelled: () -> Boolean = { false }): DeviceSession =
         openDeviceSession(refs, ScreenAccessService::stay) {
             val token = DeviceCommands.token()
             val allow = DeviceCatalog.allow(refs)
             val gate = DeviceActionGate(isCancelled)
-            val actions = DeviceActions(context, inbox, workspace, gate, DeviceResourceRegistrar(registerResource))
+            val actions = DeviceActions(context, inbox, workspace, gate, DeviceResourceRegistrar(registerResource), DeviceResourceRegistrar(registerCachedResource))
             val bridge = DeviceBridge(gate::close) { line ->
                 DeviceCommands.handle(line, token, allow, operations, gate::checkActive, exportResource) { plugin, action, args, execution -> actions.perform(plugin, action, args, execution) }
             }

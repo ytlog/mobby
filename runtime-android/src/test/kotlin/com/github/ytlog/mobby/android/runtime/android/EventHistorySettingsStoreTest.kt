@@ -24,6 +24,7 @@ class EventHistorySettingsStoreTest {
         assertEquals(EventHistoryPolicy(7 * 86_400_000L, 8 * 1024L * 1024), reopened.policy())
         assertEquals(OutputRetentionPolicy(14 * 86_400_000L, 64 * 1024L * 1024), reopened.outputPolicy())
         assertEquals(128L * 1024 * 1024, reopened.attachmentBudgetBytes())
+        assertEquals(128L * 1024 * 1024, reopened.resourceCacheBudgetBytes())
         assertEquals("unchanged", gateway.getString("fixture", null))
         for ((days, mib) in listOf(0 to 32, 3651 to 32, 30 to 0, 30 to 1025)) {
             try { store.save(EventHistorySettings(days, mib)); fail("out of range") } catch (_: IllegalArgumentException) { }
@@ -33,7 +34,10 @@ class EventHistorySettingsStoreTest {
             try { store.save(EventHistorySettings(outputRetentionDays = days, outputBudgetMiB = mib)); fail("output range") } catch (_: IllegalArgumentException) { }
         }
         assertEquals(EventHistorySettings(7, 8, 14, 64, 128), reopened.load())
-        for (mib in listOf(0, 8193)) assertThrows(IllegalArgumentException::class.java) { EventHistorySettings(attachmentBudgetMiB = mib) }
+        for (mib in listOf(0, 8193)) {
+            assertThrows(IllegalArgumentException::class.java) { EventHistorySettings(attachmentBudgetMiB = mib) }
+            assertThrows(IllegalArgumentException::class.java) { EventHistorySettings(resourceCacheBudgetMiB = mib) }
+        }
         val prefs = context.getSharedPreferences("runtime-storage-policy", 0)
         assertEquals(setOf("limits"), prefs.all.keys)
         val encrypted = prefs.getString("limits", null)!!
@@ -71,6 +75,21 @@ class EventHistorySettingsStoreTest {
         assertEquals(old, prefs.getString("limits", null))
         store.save(store.load().copy(attachmentBudgetMiB = 1024))
         assertEquals(EventHistorySettings(9, 16, 60, 512, 1024), EventHistorySettingsStore(context) { key }.load())
+        prefs.edit().clear().commit()
+    }
+
+    @Test fun `five field settings preserve attachment quota and add an independent cache default`() {
+        val context = org.robolectric.RuntimeEnvironment.getApplication()
+        val prefs = context.getSharedPreferences("runtime-storage-policy", 0)
+        val key = javax.crypto.KeyGenerator.getInstance("AES").apply { init(256) }.generateKey()
+        val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding").apply { init(javax.crypto.Cipher.ENCRYPT_MODE, key) }
+        val old = android.util.Base64.encodeToString(cipher.iv + cipher.doFinal("9:16:60:512:1024".toByteArray()), android.util.Base64.NO_WRAP)
+        prefs.edit().clear().putString("limits", old).commit()
+        val store = EventHistorySettingsStore(context) { key }
+        assertEquals(EventHistorySettings(9, 16, 60, 512, 1024, 128), store.load())
+        assertEquals(old, prefs.getString("limits", null))
+        store.save(store.load().copy(resourceCacheBudgetMiB = 256))
+        assertEquals(EventHistorySettings(9, 16, 60, 512, 1024, 256), EventHistorySettingsStore(context) { key }.load())
         prefs.edit().clear().commit()
     }
 

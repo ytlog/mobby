@@ -23,7 +23,7 @@
 
 类型化 `DeviceOperationUpdated` 与文本/工具事件共享序列和快照。内部事件携带 `DeviceRecord(operation, fingerprint, order)`；fingerprint/order 是存储排序元数据，不是模型提供的卡片描述。取消与恢复终止未完成操作，不自动重放。等待点响应校验 runId、operationId、interactionId、revision 和固定响应值，并在交付执行器前持久化消费记录。
 
-`operation.status` 查询本轮原请求；`operation.resource` 只允许导出该操作已登记的 resourceRef。图片、录音和文件先保存进现有 ResourceStore，再清理临时 inbox。资源受工作区隔离、完整性验证和附件缓存上限约束；空间不足时按最近使用时间淘汰，已淘汰的引用返回资源缺失。预览失败显示资源不可用，不重新采集。二进制文件目前提供名称/大小和经授权的 CLI 导出；没有增加任意路径或外部 URL 打开入口。
+`operation.status` 查询本轮原请求；`operation.resource` 只允许导出该操作已登记的 resourceRef。拍照、录音和导出的媒体文件先保存进持久附件存储，再清理临时 inbox；截图和自动缩略图写入独立的 LRU 缓存。两类资源均受工作区隔离与完整性验证。持久附件空间不足时拒绝新内容，缓存空间不足时按最近使用时间淘汰旧缓存；已淘汰的引用返回资源缺失。预览失败显示资源不可用，不重新采集。二进制文件目前提供名称/大小和经授权的 CLI 导出；没有增加任意路径或外部 URL 打开入口。
 
 结果结构沿用设计中的 kind/data/resourceRefs。屏幕结果额外携带 `text` 保存可访问性观察；联系人/日历列表在 `file_items.items` 中保留 recordId，后续修改仍走明确 action。Office 写入结果保存文本预览和持久文件引用。
 

@@ -9,8 +9,8 @@ sealed interface AdminResult<out T> {
     data class Success<T>(val value: T) : AdminResult<T>
     data class Failed(val error: RuntimeError) : AdminResult<Nothing>
 }
-data class EventHistorySettings(val retentionDays: Int = 30, val budgetMiB: Int = 32, val outputRetentionDays: Int = 30, val outputBudgetMiB: Int = 256, val attachmentBudgetMiB: Int = 512) {
-    init { require(retentionDays in 1..3650 && budgetMiB in 1..1024 && outputRetentionDays in 1..3650 && outputBudgetMiB in 1..4096 && attachmentBudgetMiB in 1..8192) }
+data class EventHistorySettings(val retentionDays: Int = 30, val budgetMiB: Int = 32, val outputRetentionDays: Int = 30, val outputBudgetMiB: Int = 256, val attachmentBudgetMiB: Int = 512, val resourceCacheBudgetMiB: Int = 128) {
+    init { require(retentionDays in 1..3650 && budgetMiB in 1..1024 && outputRetentionDays in 1..3650 && outputBudgetMiB in 1..4096 && attachmentBudgetMiB in 1..8192 && resourceCacheBudgetMiB in 1..8192) }
 }
 data class WorkspaceSummary(val ref: WorkspaceRef, val name: String)
 interface RuntimeAdminClient {

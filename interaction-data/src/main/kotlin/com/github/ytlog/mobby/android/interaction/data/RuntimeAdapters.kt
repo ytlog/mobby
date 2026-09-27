@@ -207,12 +207,12 @@ internal class RuntimeSystemAdapter(private val context: android.content.Context
         catch (_: Exception) { DataResult.Failed(AppStrings.cannotImportSelectAUtfMarkdownFileUpTo) }
     }
     override suspend fun eventHistoryLimits(): DataResult<EventHistoryLimits> = when (val result = admin.eventHistorySettings()) {
-        is AdminResult.Success -> DataResult.Loaded(EventHistoryLimits(result.value.retentionDays, result.value.budgetMiB, result.value.outputRetentionDays, result.value.outputBudgetMiB, result.value.attachmentBudgetMiB))
+        is AdminResult.Success -> DataResult.Loaded(EventHistoryLimits(result.value.retentionDays, result.value.budgetMiB, result.value.outputRetentionDays, result.value.outputBudgetMiB, result.value.attachmentBudgetMiB, result.value.resourceCacheBudgetMiB))
         is AdminResult.Failed -> DataResult.Failed(if (result.error.code == ErrorCode.DISCONNECTED) AppStrings.disconnectedPleaseRetry else AppStrings.cannotReadStorageSettingsPleaseRetry)
     }
     override suspend fun saveEventHistoryLimits(value: EventHistoryLimits): OperationResult {
         if (value.days !in 1..3650 || value.mib !in 1..1024 || value.outputDays !in 1..3650 || value.outputMiB !in 1..4096 || value.attachmentMiB !in 1..8192) return OperationResult.Failed(AppStrings.storageSettingsAreOutOfRange)
-        return when (val result = admin.saveEventHistorySettings(EventHistorySettings(value.days, value.mib, value.outputDays, value.outputMiB, value.attachmentMiB))) {
+        return when (val result = admin.saveEventHistorySettings(EventHistorySettings(value.days, value.mib, value.outputDays, value.outputMiB, value.attachmentMiB, value.resourceCacheMiB))) {
             is AdminResult.Success -> OperationResult.Done
             is AdminResult.Failed -> OperationResult.Failed(if (result.error.code == ErrorCode.DISCONNECTED) AppStrings.disconnectedSaveUnconfirmed else AppStrings.cannotSaveStorageSettingsPleaseRetry)
         }

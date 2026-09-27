@@ -22,7 +22,7 @@ class ImagePreviewTest {
         val bitmap = Bitmap.createBitmap(1600, 800, Bitmap.Config.ARGB_8888)
         jpeg.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, 90, it) }; bitmap.recycle()
         ExifInterface(jpeg).apply { setAttribute(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_ROTATE_90.toString()); saveAttributes() }
-        val bytes = jpeg.readBytes(); val store = ResourceStore(temporary.newFolder())
+        val bytes = jpeg.readBytes(); val store = PersistentResourceStore(temporary.newFolder())
         val workspace = WorkspaceRef("default")
         val saved = store.save(ImportResourceRequest(workspace, "portrait.jpg", bytes))
         for ((expanded, edge) in listOf(false to 256, true to 1024)) {

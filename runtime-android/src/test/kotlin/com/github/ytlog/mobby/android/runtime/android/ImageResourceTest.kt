@@ -19,10 +19,10 @@ class ImageResourceTest {
     @Test fun `device audio remains readable after inbox deletion and rejects another workspace`() {
         val root = temporary.newFolder()
         val source = temporary.newFile("recording.m4a").apply { writeBytes(byteArrayOf(0, 1, 2, 3, 4)) }
-        val store = ResourceStore(root)
+        val store = PersistentResourceStore(root)
         val summary = store.saveDevice(source, workspace, "audio/mp4")
         source.delete()
-        val restored = ResourceStore(root)
+        val restored = PersistentResourceStore(root)
         assertEquals("audio/mp4", restored.summary(summary.ref, workspace).mediaType)
         assertArrayEquals(byteArrayOf(0, 1, 2, 3, 4), restored.contentBytes(summary.ref, workspace))
         assertThrows(IllegalArgumentException::class.java) { restored.contentBytes(summary.ref, WorkspaceRef("local-12345678-1234-1234-1234-123456789abc")) }
@@ -30,7 +30,7 @@ class ImageResourceTest {
         assertThrows(IllegalArgumentException::class.java) { restored.contentBytes(summary.ref, workspace) }
     }
     @Test fun `image attachments retain bytes and reject a different workspace`() {
-        val store = ResourceStore(temporary.newFolder())
+        val store = PersistentResourceStore(temporary.newFolder())
         val other = WorkspaceRef("local-12345678-1234-1234-1234-123456789abc")
         val image = store.save(ImportResourceRequest(other, "photo.png", png))
         assertArrayEquals(png, store.image(image.ref, other).bytes)
@@ -38,16 +38,16 @@ class ImageResourceTest {
     }
     @Test fun `selected PNG imports as an image instead of invalid UTF8`() {
         val root = temporary.newFolder()
-        val result = ResourceStore(root).save(ImportResourceRequest(workspace, "photo.png", png))
+        val result = PersistentResourceStore(root).save(ImportResourceRequest(workspace, "photo.png", png))
         assertEquals("image/png", result.mediaType)
         assertEquals(png.size, result.sizeBytes)
-        assertEquals(result, ResourceStore(root).save(ImportResourceRequest(workspace, "photo.png", png)))
+        assertEquals(result, PersistentResourceStore(root).save(ImportResourceRequest(workspace, "photo.png", png)))
     }
     @Test fun `image reference reopens intact and mixed input retains image order`() {
-        val root = temporary.newFolder(); val store = ResourceStore(root)
+        val root = temporary.newFolder(); val store = PersistentResourceStore(root)
         val photo = store.save(ImportResourceRequest(workspace, "photo.png", png))
         val text = store.save(ImportResourceRequest(workspace, "notes.txt", "exact text".toByteArray()))
-        val restarted = ResourceStore(root)
+        val restarted = PersistentResourceStore(root)
         assertEquals(photo, restarted.summary(photo.ref, workspace))
         assertArrayEquals(png, restarted.image(photo.ref, workspace).bytes)
         val parts = listOf(InputPart.Text("describe"), InputPart.Resource(photo.ref), InputPart.Resource(text.ref))
@@ -61,7 +61,7 @@ class ImageResourceTest {
         assertThrows(Exception::class.java) { restarted.image(photo.ref, workspace) }
     }
     @Test fun `corrupt oversized and excessive dimension images are rejected without files`() {
-        val root = temporary.newFolder(); val store = ResourceStore(root)
+        val root = temporary.newFolder(); val store = PersistentResourceStore(root)
         for (bytes in listOf(png.copyOf(24), png.copyOf().apply { this[45] = (this[45].toInt() xor 1).toByte() }, png.copyOf(ResourceStore.MAX_IMAGE_BYTES + 1))) {
             assertThrows(Exception::class.java) { store.save(ImportResourceRequest(workspace, "bad.png", bytes)) }
         }
@@ -75,7 +75,7 @@ class ImageResourceTest {
         val bitmap = android.graphics.Bitmap.createBitmap(4, 4, android.graphics.Bitmap.Config.ARGB_8888)
         val output = java.io.ByteArrayOutputStream()
         bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, output); bitmap.recycle()
-        val bytes = output.toByteArray(); val store = ResourceStore(temporary.newFolder())
+        val bytes = output.toByteArray(); val store = PersistentResourceStore(temporary.newFolder())
         val saved = store.save(ImportResourceRequest(workspace, "photo.jpg", bytes))
         assertEquals("image/jpeg", saved.mediaType)
         assertArrayEquals(bytes, store.image(saved.ref, workspace).bytes)
@@ -84,7 +84,7 @@ class ImageResourceTest {
     @Test fun `image preview refreshes cache recency before the next import`() {
         val root = temporary.newFolder()
         var limit = Long.MAX_VALUE
-        val store = ResourceStore(root) { limit }
+        val store = LruResourceStore(root) { limit }
         val first = store.save(ImportResourceRequest(workspace, "a.png", png))
         val second = store.save(ImportResourceRequest(workspace, "b.png", png))
         limit = root.listFiles()!!.sumOf { it.length() }

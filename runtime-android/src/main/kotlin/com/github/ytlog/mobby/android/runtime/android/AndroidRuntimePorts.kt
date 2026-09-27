@@ -45,7 +45,7 @@ internal class AndroidRuntimePorts(
         liveState.value = false
     }
     private val skills get() = SkillStore(runtime.sdk.vfs.homeDir)
-    private val resources get() = ResourceStore(File(context.filesDir, "input-resources"))
+    private val resources get() = PersistentResourceStore(File(context.filesDir, "input-resources"), fallbackRoot = File(context.filesDir, "resource-cache"))
     private val gateways = GatewayStore(context)
     private fun mode(agent: AgentId) = agent.launchMode()
     override suspend fun capabilities(): CapabilityResult = withContext(Dispatchers.IO) {
@@ -174,10 +174,14 @@ internal class AndroidRuntimePorts(
                 session = DeviceHost.start(context, bridgeDir!!, inbox!!, workingDirectory, node, deviceRefs, devices,
                     registerResource = { file, type ->
                         com.github.ytlog.mobby.android.device.DevicePaths.contained(listOf(workingDirectory, inbox!!), file)
-                        ResourceStore(File(context.filesDir, "input-resources"), EventHistorySettingsStore(context)::attachmentBudgetBytes)
+                        PersistentResourceStore(File(context.filesDir, "input-resources"), EventHistorySettingsStore(context)::attachmentBudgetBytes)
+                            .saveDevice(file, request.workspaceRef, type).ref.value
+                    }, registerCachedResource = { file, type ->
+                        com.github.ytlog.mobby.android.device.DevicePaths.contained(listOf(workingDirectory, inbox!!), file)
+                        LruResourceStore(File(context.filesDir, "resource-cache"), EventHistorySettingsStore(context)::resourceCacheBudgetBytes)
                             .saveDevice(file, request.workspaceRef, type).ref.value
                     }, exportResource = { ref ->
-                        val store = ResourceStore(File(context.filesDir, "input-resources"))
+                        val store = resources
                         val resource = ResourceRef(ref)
                         val summary = store.summary(resource, request.workspaceRef)
                         val file = File(inbox, "${java.util.UUID.randomUUID()}-${com.github.ytlog.mobby.android.device.DevicePaths.safeName(summary.name)}")

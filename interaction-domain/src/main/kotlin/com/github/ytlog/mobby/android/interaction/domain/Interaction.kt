@@ -98,7 +98,7 @@ sealed interface DataResult<out T> {
 }
 data class Attachment(val ref: String, val name: String, val sizeBytes: Int, val mediaType: String = "text/plain")
 class AttachmentPreview(val bytes: ByteArray)
-data class EventHistoryLimits(val days: Int = 30, val mib: Int = 32, val outputDays: Int = 30, val outputMiB: Int = 256, val attachmentMiB: Int = 512)
+data class EventHistoryLimits(val days: Int = 30, val mib: Int = 32, val outputDays: Int = 30, val outputMiB: Int = 256, val attachmentMiB: Int = 512, val resourceCacheMiB: Int = 128)
 data class WorkspaceOption(val ref: String, val name: String)
 enum class PluginAccess { NONE, RUNTIME, ACCESSIBILITY, DOCUMENT_TREE }
 data class PluginGrant(val ref: String, val label: String, val available: Boolean, val unavailableReason: String?, val permissions: List<String> = emptyList())
