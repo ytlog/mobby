@@ -119,12 +119,7 @@ internal class VoiceCapture(context: Context) {
     var error by mutableStateOf<String?>(null)
     var transfer by mutableStateOf<VoiceModelTransfer?>(null)
     var liveTranscript by mutableStateOf("")
-    var formattedTranscript by mutableStateOf("")
-    var formattedSource by mutableStateOf("")
-    val displayTranscript: String get() = if (formattedSource.isNotBlank() && liveTranscript.startsWith(formattedSource))
-        formattedTranscript + liveTranscript.removePrefix(formattedSource) else liveTranscript
     var onTranscript: (String) -> Unit = {}
-    var onPause: (String) -> Unit = {}
     private val app = context.applicationContext
     private val audio = app.getSystemService(AudioManager::class.java)
     private var engine: SpeechEngine? = null
@@ -140,8 +135,6 @@ internal class VoiceCapture(context: Context) {
         error = null
         level = 0f
         liveTranscript = ""
-        formattedTranscript = ""
-        formattedSource = ""
         val token = ++generation
         listening = true
         if (speech.ready) {
@@ -197,8 +190,6 @@ internal class VoiceCapture(context: Context) {
         phase = "idle"
         level = 0f
         liveTranscript = ""
-        formattedTranscript = ""
-        formattedSource = ""
         transfer = null
         if (active && reason != null) error = reason
     }
@@ -220,7 +211,6 @@ internal class VoiceCapture(context: Context) {
         engine?.listen(
             onLevel = { if (token == generation && phase == "recording") level = it },
             onPartial = { if (token == generation && phase == "recording") liveTranscript = it },
-            onSegment = { if (token == generation && phase == "recording" && liveTranscript.isNotBlank()) onPause(liveTranscript) },
             onFinal = { text ->
                 if (token != generation) return@listen
                 abandonFocus()
@@ -247,8 +237,6 @@ internal class VoiceCapture(context: Context) {
         phase = "idle"
         level = 0f
         liveTranscript = ""
-        formattedTranscript = ""
-        formattedSource = ""
         transfer = null
         error = message
     }
@@ -257,12 +245,6 @@ internal class VoiceCapture(context: Context) {
         audio.abandonAudioFocusRequest(focus)
     }
 
-    fun showFormatted(source: String, formatted: String) {
-        if (phase == "recording" && source.length >= formattedSource.length && liveTranscript.startsWith(source) && formatted.isNotBlank()) {
-            formattedSource = source
-            formattedTranscript = formatted
-        }
-    }
 }
 
 @Composable internal fun rememberVoiceCapture(): VoiceCapture {

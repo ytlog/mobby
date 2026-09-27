@@ -35,7 +35,6 @@ interface RuntimeAdminClient {
     suspend fun fetchGatewayModels(request: FetchGatewayModelsRequest): AdminResult<GatewayCatalogSummary>
     suspend fun saveGatewayProfile(request: SaveGatewayRequest): AdminResult<GatewayProfileSummary>
     suspend fun defaultGateway(): AdminResult<GatewaySelection?> = AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
-    suspend fun formatSpeech(profile: GatewayProfileRef, agent: AgentId, text: String): AdminResult<String> = AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
     suspend fun selectDefaultGateway(selection: GatewaySelection): AdminResult<Unit> = AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
     suspend fun deleteGatewayProfile(id: String): AdminResult<Unit> = AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
 }

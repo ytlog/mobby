@@ -89,7 +89,6 @@ class RuntimeHost(context: Context, notification: () -> PendingIntent) {
         override suspend fun fetchGatewayModels(request: FetchGatewayModelsRequest) = connected()?.fetchGatewayModels(request) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
         override suspend fun saveGatewayProfile(request: SaveGatewayRequest) = connected()?.saveGatewayProfile(request) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
         override suspend fun defaultGateway() = connected()?.defaultGateway() ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
-        override suspend fun formatSpeech(profile: GatewayProfileRef, agent: AgentId, text: String) = connected()?.formatSpeech(profile, agent, text) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
         override suspend fun selectDefaultGateway(selection: GatewaySelection) = connected()?.selectDefaultGateway(selection) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
         override suspend fun deleteGatewayProfile(id: String) = connected()?.deleteGatewayProfile(id) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
     }

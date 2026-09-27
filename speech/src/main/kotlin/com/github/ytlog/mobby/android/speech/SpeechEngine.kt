@@ -16,7 +16,6 @@ interface SpeechEngine {
     fun listen(
         onLevel: (Float) -> Unit,
         onPartial: (String) -> Unit,
-        onSegment: (String) -> Unit,
         onFinal: (String) -> Unit,
         onError: (String) -> Unit,
     )

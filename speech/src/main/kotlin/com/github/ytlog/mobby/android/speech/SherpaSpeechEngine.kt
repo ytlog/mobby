@@ -64,7 +64,7 @@ internal class SherpaSpeechEngine(context: Context) : SpeechEngine {
     }
 
     @SuppressLint("MissingPermission")
-    override fun listen(onLevel: (Float) -> Unit, onPartial: (String) -> Unit, onSegment: (String) -> Unit,
+    override fun listen(onLevel: (Float) -> Unit, onPartial: (String) -> Unit,
         onFinal: (String) -> Unit, onError: (String) -> Unit) {
         stop(false)
         val recognizer = SpeechRecognizerHolder.recognizer ?: run { onError(AppStrings.speechModelIsNotReady); return }
@@ -107,8 +107,6 @@ internal class SherpaSpeechEngine(context: Context) : SpeechEngine {
                         if (recognizer.isEndpoint(stream)) {
                             if (partial.isNotBlank()) {
                                 committed += partial
-                                val segment = partial
-                                main.post { onSegment(segment) }
                             }
                             recognizer.reset(stream)
                             partial = ""
