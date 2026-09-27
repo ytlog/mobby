@@ -6,6 +6,7 @@
 
 | 文档 | 用途 |
 | --- | --- |
+| [English README](README.en.md) | 英文项目介绍、真实手机演示与快速开始 |
 | [构建与使用](getting-started.md) | 环境要求、构建命令、使用方式、当前状态和开发数据库规则 |
 | [GitHub 手动发布](release.md) | Release 签名密钥、手动触发、版本号、R8 和验收 |
 | [项目需求](requirements.md) | 第一阶段本地 Agent 运行验证的目标与范围 |
@@ -23,7 +24,7 @@
 | [跨 Agent 技能目录](design/portable-skills.md) | App 自带 Skill Creator、Skill Installer 的展示、安装路径与跨 Agent 边界 |
 | [界面语言](localization.md) | 中英文切换、文案维护与测试边界 |
 | [网关接入](gateway.md) | 协议路径、限制和联调范围 |
-| [README 展示素材](media/) | 原创示意图、短动画和可复现的生成脚本 |
+| [README 展示素材](media/) | 真机截图、录屏及其来源说明 |
 | [实施记录](implementation.md) | 已实现内容、交互契约实施检查点、验证证据及待验收事项 |
 
 ## 维护约定
