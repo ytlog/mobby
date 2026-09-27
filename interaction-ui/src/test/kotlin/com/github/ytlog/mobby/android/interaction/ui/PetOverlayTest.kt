@@ -99,6 +99,68 @@ class PetOverlayTest {
         assertNull(window.view!!.described("停止当前任务"))
     }
 
+    @Test fun `finished task remains visible on ball and tray until opened or a new run starts`() {
+        val window = MemoryWindow()
+        val prefs = context.getSharedPreferences("pet-outcome", Context.MODE_PRIVATE)
+        prefs.edit().clear().commit()
+        var opened: ConversationId? = null
+        val pet = DesktopPet(context, window, prefs, {}, { opened = it })
+        pet.update(running("first", title = "整理相册"), foreground = false, enabled = true, permitted = true)
+        pet.update(finished(ExecutionPhase.SUCCEEDED), foreground = false, enabled = true, permitted = true)
+        assertNotNull(window.view!!.described("任务悬浮球，已完成"))
+        window.view!!.described("任务悬浮球，已完成")!!.performClick()
+        assertTrue(window.view!!.hasText("整理相册"))
+        assertTrue(window.view!!.hasText("已完成"))
+        assertNull(window.view!!.described("停止当前任务"))
+        window.view!!.described("回到对话")!!.performClick()
+        assertEquals(ConversationId("c"), opened)
+        pet.update(finished(ExecutionPhase.SUCCEEDED), foreground = true, enabled = true, permitted = true)
+        pet.update(finished(ExecutionPhase.SUCCEEDED), foreground = false, enabled = true, permitted = true)
+        assertNotNull(window.view!!.described("任务悬浮球"))
+        assertNull(window.view!!.described("任务悬浮球，已完成"))
+
+        pet.update(running("second"), foreground = false, enabled = true, permitted = true)
+        pet.update(finished(ExecutionPhase.FAILED), foreground = false, enabled = true, permitted = true)
+        assertNotNull(window.view!!.described("任务悬浮球，失败"))
+        window.view!!.described("任务悬浮球，失败")!!.performClick()
+        assertTrue(window.view!!.hasText("失败"))
+        assertNull(window.view!!.described("停止当前任务"))
+
+        pet.update(running("third"), foreground = false, enabled = true, permitted = true)
+        assertNotNull(window.view!!.described("任务悬浮球"))
+        assertNull(window.view!!.described("任务悬浮球，失败"))
+    }
+
+    @Test fun `task finished while app is open does not show a stale result after leaving`() {
+        val window = MemoryWindow()
+        val prefs = context.getSharedPreferences("pet-foreground-outcome", Context.MODE_PRIVATE)
+        prefs.edit().clear().commit()
+        val pet = DesktopPet(context, window, prefs, {}, {})
+        pet.update(running("run"), foreground = true, enabled = true, permitted = true)
+        pet.update(finished(ExecutionPhase.FAILED), foreground = true, enabled = true, permitted = true)
+        pet.update(finished(ExecutionPhase.FAILED), foreground = false, enabled = true, permitted = true)
+        assertNotNull(window.view!!.described("任务悬浮球"))
+        assertNull(window.view!!.described("任务悬浮球，失败"))
+    }
+
+    @Test fun `completion restores a bubble tucked during the run`() {
+        val window = MemoryWindow()
+        val prefs = context.getSharedPreferences("pet-tucked-outcome", Context.MODE_PRIVATE)
+        prefs.edit().clear().commit()
+        val pet = DesktopPet(context, window, prefs, {}, {})
+        pet.update(running("run"), foreground = false, enabled = true, permitted = true)
+        window.view!!.described("任务悬浮球")!!.performClick()
+        window.view!!.described("收起悬浮球")!!.performClick()
+        assertFalse(window.attached)
+        pet.update(finished(ExecutionPhase.SUCCEEDED), foreground = false, enabled = true, permitted = true)
+        assertNotNull(window.view!!.described("任务悬浮球，已完成"))
+        window.view!!.described("任务悬浮球，已完成")!!.performClick()
+        window.view!!.described("收起悬浮球")!!.performClick()
+        assertFalse(window.attached)
+        pet.update(finished(ExecutionPhase.SUCCEEDED), foreground = false, enabled = true, permitted = true)
+        assertFalse(window.attached)
+    }
+
     @Test fun `pet stays inside the screen and keeps the ball beside the tray`() {
         assertEquals(PetFrame(0, 0, 56, 56, true), petFrame(-20, -5, false, 400, 800, 56, 196, 128))
         assertEquals(PetFrame(344, 744, 56, 56, true), petFrame(999, 999, false, 400, 800, 56, 196, 128))
@@ -120,7 +182,7 @@ class PetOverlayTest {
         assertTrue(petShouldShow(false, true, true, false))
         assertEquals("停止中", petStatus(ExecutionPhase.CANCELLING))
         assertEquals("等待确认", petStatus(ExecutionPhase.AWAITING_APPROVAL))
-        assertEquals("正在执行", petStatus(ExecutionPhase.FAILED))
+        assertEquals("失败", petStatus(ExecutionPhase.FAILED))
         assertFalse(petCanStop(ExecutionPhase.CANCELLING))
         assertTrue(petCanStop(ExecutionPhase.RUNNING))
         val occupied = running("run")
@@ -209,6 +271,15 @@ class PetOverlayTest {
         )),
     )
 
+    private fun finished(phase: ExecutionPhase) = InteractionState(
+        loading = false,
+        conversations = listOf(ConversationSummary(
+            Conversation(ConversationId("c"), NextTurnConfig(AgentId.CODEX, "model", null, "default", "CODEX"), title = "整理相册"),
+            phase,
+            occupied = false,
+        )),
+    )
+
     private fun draw(view: View, size: Int) {
         val spec = View.MeasureSpec.makeMeasureSpec(size, View.MeasureSpec.EXACTLY)
         view.measure(spec, spec)
@@ -245,7 +316,7 @@ private class MemoryWindow : PetWindow {
 }
 
 private fun View.described(text: String): View? {
-    if (contentDescription == text) return this
+    if (contentDescription == text || contentDescription?.startsWith("$text，") == true) return this
     if (this is ViewGroup) {
         for (index in 0 until childCount) getChildAt(index).described(text)?.let { return it }
     }

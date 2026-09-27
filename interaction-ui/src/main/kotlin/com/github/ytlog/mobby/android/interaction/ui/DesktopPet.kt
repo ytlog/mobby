@@ -105,6 +105,8 @@ class DesktopPet internal constructor(
 
     private val session = PetSession()
     private var target: PetTarget? = null
+    private var lastActive: PetTarget? = null
+    private var finished: PetTarget? = null
     private var rendered: RenderKey? = null
     private var applied: PetFrame? = null
     private var measuredTrayHeight = 0
@@ -127,7 +129,23 @@ class DesktopPet internal constructor(
         lastForeground = foreground
         lastEnabled = enabled
         lastPermitted = permitted
-        target = petTarget(state)
+        val active = petTarget(state)
+        if (active != null) {
+            lastActive = active
+            finished = null
+        } else if (lastActive != null) {
+            val previous = requireNotNull(lastActive)
+            val row = state.conversations.firstOrNull { it.conversation.id == previous.conversation }
+            if (row != null && petTerminal(row.phase)) {
+                if (!foreground) {
+                    finished = previous.copy(title = row.conversation.title.ifBlank { previous.title }, phase = row.phase, action = null)
+                    session.reveal()
+                }
+                lastActive = null
+            }
+        }
+        if (foreground) finished = null
+        target = active ?: finished
         val visible = session.visible(target, foreground, enabled, permitted)
         if (!visible || screenOperations > 0) {
             dragging = false
@@ -196,7 +214,8 @@ class DesktopPet internal constructor(
 
     private fun petContent(target: PetTarget?, frame: PetFrame, metrics: PetMetrics, measuredTray: View?): View {
         val ball = PetBallView(context, target?.phase).apply {
-            contentDescription = AppStrings.floatingTaskBubble2
+            contentDescription = if (target != null)
+                "${AppStrings.floatingTaskBubble2}，${petStatus(target.phase)}" else AppStrings.floatingTaskBubble2
             onTap = {
                 session.expanded = !session.expanded
                 refresh()
@@ -250,6 +269,7 @@ class DesktopPet internal constructor(
             }
         },
         onOpen = {
+            if (target != null && petTerminal(target.phase)) finished = null
             session.expanded = false
             openConversation(target?.conversation)
             refresh()
@@ -353,18 +373,37 @@ internal class PetBallView(context: Context, private val phase: ExecutionPhase?)
         mark.draw(canvas)
 
         if (phase != null) {
+            val terminal = petTerminal(phase)
             val cancelling = phase == ExecutionPhase.CANCELLING
+            val badge = terminal || cancelling || phase == ExecutionPhase.AWAITING_APPROVAL
             val pulse = (sin(SystemClock.uptimeMillis() / 1000f * 4f) + 1f) / 2f
             val dotX = cx + radius * 0.68f
             val dotY = cy + radius * 0.68f
             paint.style = Paint.Style.FILL
             paint.color = surface
-            canvas.drawCircle(dotX, dotY, density * 4.5f, paint)
-            paint.color = if (cancelling) 0xFFBA1A1A.toInt() else blue
-            paint.alpha = if (cancelling) 255 else (150 + 105 * pulse).toInt()
-            canvas.drawCircle(dotX, dotY, density * 3f, paint)
+            canvas.drawCircle(dotX, dotY, density * if (badge) 8f else 4.5f, paint)
+            paint.color = when (phase) {
+                ExecutionPhase.SUCCEEDED -> 0xFF16804A.toInt()
+                ExecutionPhase.FAILED, ExecutionPhase.TIMED_OUT, ExecutionPhase.INTERRUPTED -> 0xFFBA1A1A.toInt()
+                ExecutionPhase.CANCELLED, ExecutionPhase.OUTCOME_UNKNOWN, ExecutionPhase.AWAITING_APPROVAL -> 0xFF8A6416.toInt()
+                else -> if (cancelling) 0xFFBA1A1A.toInt() else blue
+            }
+            paint.alpha = if (badge) 255 else (150 + 105 * pulse).toInt()
+            canvas.drawCircle(dotX, dotY, density * if (badge) 6.5f else 3f, paint)
             paint.alpha = 255
-            if (!cancelling && isAttachedToWindow) postInvalidateDelayed(80L)
+            if (badge) {
+                paint.color = 0xFFFFFFFF.toInt()
+                paint.textAlign = Paint.Align.CENTER
+                paint.textSize = density * 9f
+                paint.typeface = android.graphics.Typeface.DEFAULT_BOLD
+                val glyph = when (phase) {
+                    ExecutionPhase.SUCCEEDED -> "✓"
+                    ExecutionPhase.OUTCOME_UNKNOWN, ExecutionPhase.AWAITING_APPROVAL -> "?"
+                    ExecutionPhase.CANCELLED, ExecutionPhase.CANCELLING -> "−"
+                    else -> "!"
+                }
+                canvas.drawText(glyph, dotX, dotY - (paint.ascent() + paint.descent()) / 2f, paint)
+            } else if (!cancelling && isAttachedToWindow) postInvalidateDelayed(80L)
         }
     }
 }

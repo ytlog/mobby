@@ -37,10 +37,21 @@ internal fun petTarget(state: InteractionState): PetTarget? {
 internal fun petStatus(phase: ExecutionPhase?): String = when (phase) {
     ExecutionPhase.CANCELLING -> AppStrings.stopping2
     ExecutionPhase.AWAITING_APPROVAL -> AppStrings.awaitingConfirmation
+    ExecutionPhase.SUCCEEDED -> AppStrings.taskCompleted
+    ExecutionPhase.FAILED -> AppStrings.failed
+    ExecutionPhase.CANCELLED -> AppStrings.stopped
+    ExecutionPhase.TIMED_OUT -> AppStrings.timedOut
+    ExecutionPhase.INTERRUPTED -> AppStrings.interrupted
+    ExecutionPhase.OUTCOME_UNKNOWN -> AppStrings.resultUnconfirmed
     else -> AppStrings.running2
 }
 
-internal fun petCanStop(phase: ExecutionPhase?) = phase != ExecutionPhase.CANCELLING
+internal fun petTerminal(phase: ExecutionPhase?) = phase in setOf(
+    ExecutionPhase.SUCCEEDED, ExecutionPhase.FAILED, ExecutionPhase.CANCELLED,
+    ExecutionPhase.TIMED_OUT, ExecutionPhase.INTERRUPTED, ExecutionPhase.OUTCOME_UNKNOWN,
+)
+
+internal fun petCanStop(phase: ExecutionPhase?) = phase != ExecutionPhase.CANCELLING && !petTerminal(phase)
 
 internal fun petShouldShow(
     foreground: Boolean,
@@ -136,5 +147,10 @@ internal class PetSession {
         tuckedExecution = execution
         expanded = false
         frame = null
+    }
+
+    fun reveal() {
+        tucked = false
+        tuckedExecution = null
     }
 }

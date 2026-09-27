@@ -67,14 +67,14 @@ internal class PetTrayView(
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(2), dp(4), 0, dp(14))
             addView(View(context).apply {
-                background = shape(if (stopping) red else if (target == null) secondary else blue, 3)
+                background = shape(if (stopping || target?.phase in listOf(ExecutionPhase.FAILED, ExecutionPhase.TIMED_OUT, ExecutionPhase.INTERRUPTED)) red else if (target == null) secondary else blue, 3)
                 importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
             }, LinearLayout.LayoutParams(dp(6), dp(6)).apply { marginEnd = dp(8) })
             addView(label(
                 if (target == null) AppStrings.noRunningTasks
-                else if (stopping) petStatus(target.phase)
+                else if (stopping || petTerminal(target.phase)) petStatus(target.phase)
                 else target.action ?: petStatus(target.phase),
-                if (stopping) red else secondary, 12f,
+                if (stopping || target?.phase in listOf(ExecutionPhase.FAILED, ExecutionPhase.TIMED_OUT, ExecutionPhase.INTERRUPTED)) red else secondary, 12f,
             ).apply { maxLines = 2 }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         })
         card.addView(LinearLayout(context).apply {
@@ -85,7 +85,7 @@ internal class PetTrayView(
                 if (target == null) AppStrings.returnToApp else AppStrings.openConversation,
                 R.drawable.pet_open, blue, blueSurface, true, onOpen,
             ), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            if (target != null) {
+            if (target != null && !petTerminal(target.phase)) {
                 addView(View(context), LinearLayout.LayoutParams(dp(8), 1))
                 addView(action(
                     if (stopping) AppStrings.stopping2 else AppStrings.stop,

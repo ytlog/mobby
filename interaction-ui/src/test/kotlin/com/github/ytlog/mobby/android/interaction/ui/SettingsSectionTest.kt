@@ -82,7 +82,7 @@ class SettingsSectionTest {
         compose.onNodeWithText("桌面悬浮球").performScrollTo().performClick()
         compose.waitForIdle()
         assertEquals(true, requested)
-        compose.onNodeWithText("离开应用后显示悬浮球。点按可返回应用；有任务执行时可停止任务或回到对话，拖动可调整位置。").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("离开应用后显示悬浮球。球上标记任务状态；点按可查看详情、停止当前任务或回到对话，拖动可调整位置。").performScrollTo().assertIsDisplayed()
     }
 
     @Test fun `desktop pet explains a missing overlay permission`() {
