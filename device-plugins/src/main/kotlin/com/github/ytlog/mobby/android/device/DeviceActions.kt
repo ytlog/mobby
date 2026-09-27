@@ -62,12 +62,13 @@ internal class DeviceActions(private val context: Context, private val inbox: Fi
         var status = screenshot.status
         val ref = screenshot.jpeg?.let { bytes ->
             try {
-                val file = File.createTempFile("screen-", ".jpg", inbox)
+                val directory = java.nio.file.Files.createTempDirectory(inbox.toPath(), "screen-").toFile()
                 try {
+                    val file = File(directory, "screen.jpg")
                     file.writeBytes(bytes)
                     gate.checkActive()
                     resources.register(file, "image/jpeg")
-                } finally { file.delete() }
+                } finally { directory.deleteRecursively() }
             } catch (failure: Exception) {
                 if (failure is java.util.concurrent.CancellationException) throw failure
                 status = "resource_storage_failed"

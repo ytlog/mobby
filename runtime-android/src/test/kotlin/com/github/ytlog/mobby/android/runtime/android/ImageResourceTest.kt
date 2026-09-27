@@ -81,4 +81,18 @@ class ImageResourceTest {
         assertArrayEquals(bytes, store.image(saved.ref, workspace).bytes)
     }
 
+    @Test fun `image preview refreshes cache recency before the next import`() {
+        val root = temporary.newFolder()
+        var limit = Long.MAX_VALUE
+        val store = ResourceStore(root) { limit }
+        val first = store.save(ImportResourceRequest(workspace, "a.png", png))
+        val second = store.save(ImportResourceRequest(workspace, "b.png", png))
+        limit = root.listFiles()!!.sumOf { it.length() }
+        assertTrue(store.preview(first.ref, workspace, false).isNotEmpty())
+        val third = store.save(ImportResourceRequest(workspace, "c.png", png))
+        assertThrows(java.io.FileNotFoundException::class.java) { store.image(second.ref, workspace) }
+        assertArrayEquals(png, store.image(first.ref, workspace).bytes)
+        assertArrayEquals(png, store.image(third.ref, workspace).bytes)
+    }
+
 }

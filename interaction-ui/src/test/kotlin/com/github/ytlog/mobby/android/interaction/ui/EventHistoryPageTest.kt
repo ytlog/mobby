@@ -32,12 +32,12 @@ class EventHistoryPageTest {
         compose.onNodeWithText("保存存储设置").assertIsNotEnabled()
         assertTrue(saved.isEmpty())
         compose.onNodeWithText("原始输出上限（MiB，1–4096）").performScrollTo().performTextReplacement("64")
-        compose.onNodeWithText("附件存储上限（MiB，1–8192）").performScrollTo().performTextReplacement("0")
+        compose.onNodeWithText("附件缓存上限（MiB，1–8192）").performScrollTo().performTextReplacement("0")
         restoration.emulateSavedInstanceStateRestore()
         compose.onNodeWithText("保存存储设置").assertIsNotEnabled()
-        compose.onNodeWithText("附件存储上限（MiB，1–8192）").performScrollTo().performTextReplacement("128")
+        compose.onNodeWithText("附件缓存上限（MiB，1–8192）").performScrollTo().performTextReplacement("128")
         compose.onNodeWithText("保存存储设置").assertIsEnabled().performScrollTo().performClick()
-        compose.onNodeWithText("已保存；日志与输出在后续维护时清理，附件上限在下次导入时生效").assertExists()
+        compose.onNodeWithText("已保存；日志与输出在后续维护时清理，附件缓存上限在下次新内容写入时生效").assertExists()
         assertEquals(listOf(EventHistoryLimits(7, 8, 14, 64, 128)), saved)
     }
     @Test fun `load and save failures remain visible and never report success`() {
@@ -48,6 +48,6 @@ class EventHistoryPageTest {
         compose.onNodeWithText("重试读取").performScrollTo().performClick()
         compose.onNodeWithText("保存存储设置").assertIsEnabled().performScrollTo().performClick()
         compose.onNodeWithText("保存失败").assertExists()
-        compose.onNodeWithText("已保存；日志与输出在后续维护时清理，附件上限在下次导入时生效").assertDoesNotExist()
+        compose.onNodeWithText("已保存；日志与输出在后续维护时清理，附件缓存上限在下次新内容写入时生效").assertDoesNotExist()
     }
 }

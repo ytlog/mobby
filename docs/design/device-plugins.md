@@ -106,7 +106,7 @@ CLI 中的 Node 不能调用 Android API。模型阅读技能文件，用 Bash �
 
 屏幕插件没有调用任意 Android API 的动作。打开屏幕插件不会同时获得短信或相册。
 
-屏幕截图通过 Android 11 起的无障碍 `takeScreenshot` 获取，服务声明 `canTakeScreenshot`。截图缩到最长边不超过 1800 像素并保存为 JPEG，作为 `screen_observation.observationRef` 与 `resourceRefs` 返回；Agent 使用同一技能的 `resource` 命令取得收件箱路径，卡片可预览图片。截图在屏幕动作完成后尝试，未获取时 `screenshotStatus` 说明原因，已执行动作仍按真实结果报告。受保护窗口、截图频率限制、系统拒绝或存储预算耗尽都可能导致没有图片。Android 10 及以下只返回窗口树文本。
+屏幕截图通过 Android 11 起的无障碍 `takeScreenshot` 获取，服务声明 `canTakeScreenshot`。截图缩到最长边不超过 1800 像素并保存为 JPEG，作为 `screen_observation.observationRef` 与 `resourceRefs` 返回；Agent 使用同一技能的 `resource` 命令取得收件箱路径，卡片可预览图片。截图在屏幕动作完成后尝试，未获取时 `screenshotStatus` 说明原因，已执行动作仍按真实结果报告。受保护窗口、截图频率限制、系统拒绝或单张图片超过缓存上限都可能导致没有图片。截图与其他附件共用最近使用淘汰的缓存，旧截图引用可能失效。Android 10 及以下只返回窗口树文本。
 
 包含屏幕插件的一轮，从设备桥接建立到该轮结束保持屏幕常亮。无障碍服务放一块不接收焦点和触摸的 1 像素窗口，并持有屏幕唤醒锁；窗口和锁都在桥接关闭时放开，启动失败或服务被系统拆掉时同样放开。不修改系统息屏时间，不申请悬浮窗权限，不解除锁屏。这一轮没有屏幕插件时不持有。应用设置里的桌面悬浮球是用户另外授权的一块小悬浮窗，不属于插件，也不代替这块 1 像素窗口。
 

@@ -55,7 +55,7 @@ import kotlinx.coroutines.launch
                 GroupDivider()
                 SettingsField(attachmentMiB, { attachmentMiB = it; message = null }, AppStrings.attachmentStorageLimitMib, enabled = loaded && !busy)
             }
-            SettingsCaption(AppStrings.newImportsPauseWhenAttachmentStorageIsFullExisting)
+            SettingsCaption(AppStrings.attachmentCacheEvictsLeastRecentlyUsed)
             if (!loaded && message == null) SettingsCaption(AppStrings.readingSettings)
             message?.let { SettingsCaption(it, error = messageError) }
             if (!loaded && message != null) SettingsGroup { SettingsAction(AppStrings.retryReading) { retry++ } }

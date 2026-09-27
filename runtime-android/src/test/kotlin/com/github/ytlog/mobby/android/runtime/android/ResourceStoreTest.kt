@@ -33,28 +33,52 @@ class ResourceStoreTest {
         assertTrue(prompt.contains("review.md")); assertTrue(prompt.contains("中文")); assertFalse(File(root, "x").exists())
         assertEquals(1, root.listFiles()!!.size)
     }
-    @Test fun `storage quota rejects new imports without deleting existing attachments and allows reuse after reduction`() {
+    @Test fun `new imports evict least recently used attachments and reads refresh recency`() {
+        val root = temporary.newFolder()
+        var limit = Long.MAX_VALUE
+        val store = ResourceStore(root) { limit }
+        val a = ImportResourceRequest(workspace, "a", "one".toByteArray())
+        val b = ImportResourceRequest(workspace, "b", "two".toByteArray())
+        val c = ImportResourceRequest(workspace, "c", "new".toByteArray())
+        val first = store.save(a)
+        val size = root.listFiles()!!.single().length()
+        limit = size * 2
+        val second = store.save(b)
+        assertEquals("one", store.read(first.ref, workspace).second)
+        val third = store.save(c)
+        assertThrows(java.io.FileNotFoundException::class.java) { store.read(second.ref, workspace) }
+        assertEquals("one", store.read(first.ref, workspace).second)
+        assertEquals("new", store.read(third.ref, workspace).second)
+        assertEquals(limit, root.listFiles()!!.sumOf { it.length() })
+        assertEquals(first, store.save(a))
+    }
+    @Test fun `an item too large for the cache cannot evict existing attachments`() {
         val root = temporary.newFolder()
         var limit = Long.MAX_VALUE
         val store = ResourceStore(root) { limit }
         val request = ImportResourceRequest(workspace, "a", "中文".toByteArray())
         val saved = store.save(request)
         val persisted = root.listFiles()!!.single().readBytes()
-        limit = persisted.size.toLong()
-        assertEquals(saved, store.save(request))
-        assertThrows(ResourceStore.QuotaExceeded::class.java) { store.save(ImportResourceRequest(workspace, "b", request.bytes)) }
-        assertEquals(1, root.listFiles()!!.size)
-        assertArrayEquals(persisted, root.listFiles()!!.single().readBytes())
         limit = 0
-        val reopened = ResourceStore(root) { limit }
-        assertEquals(saved, reopened.save(request))
-        assertEquals("中文", reopened.read(saved.ref, workspace).second)
-        assertThrows(ResourceStore.QuotaExceeded::class.java) { reopened.save(ImportResourceRequest(workspace, "c", request.bytes)) }
-        limit = persisted.size * 2L
-        reopened.save(ImportResourceRequest(workspace, "b", request.bytes))
-        assertEquals(limit, root.listFiles()!!.sumOf { it.length() })
+        assertEquals(saved, ResourceStore(root) { limit }.save(request))
+        assertThrows(ResourceStore.QuotaExceeded::class.java) { store.save(ImportResourceRequest(workspace, "b", request.bytes)) }
+        assertArrayEquals(persisted, root.listFiles()!!.single().readBytes())
     }
-    @Test fun `two store instances cannot simultaneously admit imports beyond the shared budget`() {
+    @Test fun `a rejected foreign workspace read does not protect an entry from eviction`() {
+        val root = temporary.newFolder()
+        var limit = Long.MAX_VALUE
+        val store = ResourceStore(root) { limit }
+        val first = store.save(ImportResourceRequest(workspace, "a", "one".toByteArray()))
+        val second = store.save(ImportResourceRequest(workspace, "b", "two".toByteArray()))
+        limit = root.listFiles()!!.sumOf { it.length() }
+        assertThrows(IllegalArgumentException::class.java) {
+            store.read(first.ref, WorkspaceRef("local-12345678-1234-1234-1234-123456789abc"))
+        }
+        store.save(ImportResourceRequest(workspace, "c", "new".toByteArray()))
+        assertThrows(java.io.FileNotFoundException::class.java) { store.read(first.ref, workspace) }
+        assertEquals("two", store.read(second.ref, workspace).second)
+    }
+    @Test fun `two store instances serialize eviction and stay within the shared budget`() {
         val request = ImportResourceRequest(workspace, "a", "fixture".toByteArray())
         val seed = temporary.newFolder()
         ResourceStore(seed).save(request)
@@ -69,7 +93,7 @@ class ResourceStoreTest {
                 catch (_: ResourceStore.QuotaExceeded) { false }
             } }
             start.countDown()
-            assertEquals(1, results.count { it.get(5, java.util.concurrent.TimeUnit.SECONDS) })
+            assertEquals(2, results.count { it.get(5, java.util.concurrent.TimeUnit.SECONDS) })
             assertEquals(1, root.listFiles()!!.size)
             assertEquals(limit, root.listFiles()!!.sumOf { it.length() })
         } finally { workers.shutdownNow() }

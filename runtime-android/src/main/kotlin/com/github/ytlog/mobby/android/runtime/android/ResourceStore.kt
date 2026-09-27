@@ -9,10 +9,12 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.File
 import java.io.FileOutputStream
+import java.io.FileNotFoundException
 import java.nio.ByteBuffer
 import java.nio.file.Files
 import java.nio.file.LinkOption.NOFOLLOW_LINKS
 import java.nio.file.StandardCopyOption
+import java.nio.file.attribute.FileTime
 import java.security.MessageDigest
 import java.util.Base64
 
@@ -53,23 +55,45 @@ internal class ResourceStore(private val root: File, private val budgetBytes: ()
     private fun persist(encoded: ByteArray, prefix: String, workspace: WorkspaceRef): ResourceSummary {
         val digest = hash(encoded)
         val target = File(directory(), digest)
-        if (!target.exists()) {
+        if (!Files.exists(target.toPath(), NOFOLLOW_LINKS)) {
             val limit = budgetBytes().also { require(it >= 0) }
-            var used = 0L
-            Files.newDirectoryStream(root.toPath()).use { entries ->
-                for (entry in entries) {
-                    check(Files.isRegularFile(entry, NOFOLLOW_LINKS)) { "Unexpected attachment storage entry" }
-                    used = Math.addExact(used, Files.size(entry))
+            if (encoded.size.toLong() > limit) throw QuotaExceeded()
+            val entries = storageEntries()
+            val used = entries.fold(0L) { total, file -> Math.addExact(total, Files.size(file.toPath())) }
+            var needed = (used - (limit - encoded.size)).coerceAtLeast(0)
+            val victims = mutableListOf<File>()
+            if (needed > 0) {
+                for (file in entries.filter { it.name.matches(DIGEST) }
+                    .sortedWith(compareBy<File> { it.lastModified() }.thenBy { it.name })) {
+                    victims += file
+                    needed -= Files.size(file.toPath())
+                    if (needed <= 0) break
                 }
+                if (needed > 0) throw QuotaExceeded()
             }
-            if (used > limit || encoded.size.toLong() > limit - used) throw QuotaExceeded()
             val temporary = File.createTempFile("import-", ".tmp", root)
             try {
                 FileOutputStream(temporary).use { it.write(encoded); it.fd.sync() }
+                victims.forEach { check(it.delete()) { "Could not evict attachment cache entry" } }
                 Files.move(temporary.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE)
             } finally { temporary.delete() }
         }
         return summary(ResourceRef("$prefix:$digest"), workspace)
+    }
+    private fun storageEntries(): List<File> = Files.newDirectoryStream(directory().toPath()).use { paths ->
+        paths.map { path ->
+            check(Files.isRegularFile(path, NOFOLLOW_LINKS)) { "Unexpected attachment storage entry" }
+            path.toFile()
+        }.toList()
+    }
+    private fun touch(ref: ResourceRef) {
+        val file = File(directory(), ref.value.substringAfter(':'))
+        if (!Files.isRegularFile(file.toPath(), NOFOLLOW_LINKS)) throw FileNotFoundException("Attachment was evicted")
+        val key = root.absolutePath
+        val latest = lastAccessByDirectory.getOrPut(key) { storageEntries().maxOfOrNull { it.lastModified() } ?: 0L }
+        val next = maxOf(System.currentTimeMillis(), latest + 1)
+        Files.setLastModifiedTime(file.toPath(), FileTime.fromMillis(next))
+        lastAccessByDirectory[key] = next
     }
 
     /** Registers executor-owned material before its temporary inbox is removed. */
@@ -92,20 +116,21 @@ internal class ResourceStore(private val root: File, private val budgetBytes: ()
         val encoded = json.encodeToString(BinaryDocument(file.name, mediaType, Base64.getEncoder().encodeToString(bytes), workspace.value)).toByteArray()
         persist(encoded, "binary", workspace)
     }
-    fun contentBytes(ref: ResourceRef, workspace: WorkspaceRef): ByteArray = when {
+    fun contentBytes(ref: ResourceRef, workspace: WorkspaceRef): ByteArray = synchronized(importLock) { when {
         ref.value.startsWith("binary:") -> {
             val stored = json.decodeFromString<BinaryDocument>(encoded(ref, workspace, "binary", 48 * 1024 * 1024).toString(Charsets.UTF_8))
             require(stored.workspace == workspace.value)
-            Base64.getDecoder().decode(stored.base64)
+            Base64.getDecoder().decode(stored.base64).also { touch(ref) }
         }
         ref.value.startsWith("image:") -> image(ref, workspace).bytes
         else -> read(ref, workspace).second.toByteArray()
-    }
+    } }
     private fun encoded(ref: ResourceRef, workspace: WorkspaceRef, prefix: String, limit: Int): ByteArray {
         require(WorkspaceStore.validRef(workspace.value))
         val digest = ref.value.removePrefix("$prefix:")
         require(ref.value == "$prefix:$digest" && digest.matches(Regex("[a-f0-9]{64}")))
         val file = File(directory(), digest)
+        if (!Files.exists(file.toPath(), NOFOLLOW_LINKS)) throw FileNotFoundException("Attachment was evicted")
         require(Files.isRegularFile(file.toPath(), NOFOLLOW_LINKS) && file.length() <= limit)
         val encoded = file.inputStream().use { input ->
             val out = java.io.ByteArrayOutputStream()
@@ -116,33 +141,37 @@ internal class ResourceStore(private val root: File, private val budgetBytes: ()
         require(hash(encoded) == digest)
         return encoded
     }
-    fun read(ref: ResourceRef, workspace: WorkspaceRef): Pair<ResourceSummary, String> {
+    fun read(ref: ResourceRef, workspace: WorkspaceRef): Pair<ResourceSummary, String> = synchronized(importLock) {
         val document = json.decodeFromString<Document>(encoded(ref, workspace, "text", MAX_BYTES * 6 + 2048).toString(Charsets.UTF_8))
         require(document.workspace == workspace.value)
-        return ResourceSummary(ref, document.name, document.text.toByteArray().size, "text/plain") to document.text
+        touch(ref)
+        ResourceSummary(ref, document.name, document.text.toByteArray().size, "text/plain") to document.text
     }
-    fun image(ref: ResourceRef, workspace: WorkspaceRef): Image {
+    fun image(ref: ResourceRef, workspace: WorkspaceRef): Image = synchronized(importLock) {
         val document = json.decodeFromString<ImageDocument>(encoded(ref, workspace, "image", MAX_IMAGE_BYTES * 2 + 2048).toString(Charsets.UTF_8))
         require(document.workspace == workspace.value)
         val bytes = Base64.getDecoder().decode(document.base64)
         require(bytes.size <= MAX_IMAGE_BYTES && imageType(bytes) == document.mediaType)
-        return Image(document.name, document.mediaType, bytes)
+        touch(ref)
+        Image(document.name, document.mediaType, bytes)
     }
     fun preview(ref: ResourceRef, workspace: WorkspaceRef, expanded: Boolean): ByteArray {
         if (!ref.value.startsWith("image:")) return contentBytes(ref, workspace)
         val image = image(ref, workspace)
         return ImagePreview.render(image.bytes, if (expanded) 1024 else 256)
     }
-    fun summary(ref: ResourceRef, workspace: WorkspaceRef): ResourceSummary = if (ref.value.startsWith("image:")) {
+    fun summary(ref: ResourceRef, workspace: WorkspaceRef): ResourceSummary = synchronized(importLock) { if (ref.value.startsWith("image:")) {
         val image = image(ref, workspace)
         ResourceSummary(ref, image.name, image.bytes.size, image.mediaType)
     } else if (ref.value.startsWith("binary:")) {
         val stored = json.decodeFromString<BinaryDocument>(encoded(ref, workspace, "binary", 48 * 1024 * 1024).toString(Charsets.UTF_8))
         require(stored.workspace == workspace.value)
+        touch(ref)
         ResourceSummary(ref, stored.name, Base64.getDecoder().decode(stored.base64).size, stored.mediaType)
     } else read(ref, workspace).first
+    }
 
-    fun prepare(parts: List<InputPart>, workspace: WorkspaceRef): Prepared {
+    fun prepare(parts: List<InputPart>, workspace: WorkspaceRef): Prepared = synchronized(importLock) {
         if (parts.filterIsInstance<InputPart.Resource>().size > MAX_FILES) throw InputTooLarge()
         val images = mutableListOf<Image>()
         val prompt = parts.joinToString("\n\n") { part -> when (part) {
@@ -157,7 +186,7 @@ internal class ResourceStore(private val root: File, private val budgetBytes: ()
         } }
         require(prompt.isNotBlank() && '\u0000' !in prompt)
         if (prompt.toByteArray().size > MAX_INPUT_BYTES) throw InputTooLarge()
-        return Prepared(prompt, images)
+        Prepared(prompt, images)
     }
     /** Legacy text-only callers cannot accidentally turn images into placeholders. */
     fun prompt(parts: List<InputPart>, workspace: WorkspaceRef): String = prepare(parts, workspace).let {
@@ -197,5 +226,14 @@ internal class ResourceStore(private val root: File, private val budgetBytes: ()
     private fun hash(bytes: ByteArray) = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
     class QuotaExceeded : java.io.IOException("Attachment storage budget exceeded")
     class InputTooLarge : IllegalArgumentException()
-    companion object { private val importLock = Any(); const val DEFAULT_BUDGET_BYTES = 512L * 1024 * 1024; const val MAX_BYTES = 32 * 1024; const val MAX_IMAGE_BYTES = 2 * 1024 * 1024; const val MAX_FILES = 4; const val MAX_INPUT_BYTES = 65536 }
+    companion object {
+        private val importLock = Any()
+        private val lastAccessByDirectory = mutableMapOf<String, Long>()
+        private val DIGEST = Regex("[a-f0-9]{64}")
+        const val DEFAULT_BUDGET_BYTES = 512L * 1024 * 1024
+        const val MAX_BYTES = 32 * 1024
+        const val MAX_IMAGE_BYTES = 2 * 1024 * 1024
+        const val MAX_FILES = 4
+        const val MAX_INPUT_BYTES = 65536
+    }
 }

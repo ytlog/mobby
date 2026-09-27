@@ -26,7 +26,7 @@ internal fun RuntimeError.message(): String = when (code) {
     ErrorCode.UNSUPPORTED_CAPABILITY -> AppStrings.thisAgentDoesNotSupportThisCapabilityYet
     ErrorCode.DISCONNECTED -> AppStrings.disconnectedResultUnconfirmed
     ErrorCode.RESOURCE_MISSING -> AppStrings.requiredFileIsMissingOrUnreadable
-    ErrorCode.RESOURCE_BUDGET_EXCEEDED -> AppStrings.attachmentStorageIsFullIncreaseCapacityInStorageRetention
+    ErrorCode.RESOURCE_BUDGET_EXCEEDED -> AppStrings.attachmentCacheCannotFitNewItem
     ErrorCode.STORAGE_FULL -> AppStrings.storageWriteFailedCheckAvailableSpace
     ErrorCode.TIMEOUT -> AppStrings.taskTimedOut
     ErrorCode.INTERRUPTED -> AppStrings.executionInterruptedResultUnconfirmed

@@ -84,6 +84,7 @@ internal class AndroidRuntimePorts(
             return@withContext RuntimeError(ErrorCode.RESOURCE_MISSING)
         try { resources.prepare(request.inputParts, request.workspaceRef) }
         catch (_: ResourceStore.InputTooLarge) { return@withContext RuntimeError(ErrorCode.INPUT_TOO_LARGE) }
+        catch (_: java.io.FileNotFoundException) { return@withContext RuntimeError(ErrorCode.RESOURCE_MISSING) }
         catch (_: Exception) { return@withContext RuntimeError(ErrorCode.INVALID_CONFIG) }
         val mode = mode(request.agentId)
         if (request.agentId == AgentId.OPEN_CODE && !runtime.opencodeReady) return@withContext RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY)
@@ -119,6 +120,8 @@ internal class AndroidRuntimePorts(
             }
         } catch (_: TimeoutCancellationException) {
             ProcessResult(null, false, ErrorCode.TIMEOUT)
+        } catch (_: java.io.FileNotFoundException) {
+            ProcessResult(null, false, ErrorCode.RESOURCE_MISSING)
         } catch (e: CancellationException) {
             if (!currentCoroutineContext().isActive) throw e
             held?.shutdown(force = true)
