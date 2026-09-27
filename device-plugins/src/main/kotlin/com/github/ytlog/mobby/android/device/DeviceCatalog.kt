@@ -31,7 +31,7 @@ object DeviceCatalog {
     val all get() = listOf(
         DevicePluginSpec(
             "screen", AppStrings.screen, AppStrings.readAndInteractWithTheCurrentScreen, CatalogIds.PHONE,
-            "Use this skill to read or control the current phone. The display stays on for this run and the previous screen timeout returns when the run ends. Always snapshot first. Password fields appear as [secure]. Report failures; do not invent controls or success. Do not change the system screen timeout.",
+            "Use this skill to read or control the current phone. The display stays on for this run and the previous screen timeout returns when the run ends. Always snapshot first. Password fields appear as [secure]. Each successful screen action attempts a screenshot. When result.data.observationRef is present, use the resource command to export its JPEG and inspect it; screenshotStatus reports capture failure without changing the action outcome. Report failures; do not invent controls or success. Do not change the system screen timeout.",
             DeviceAccess.ACCESSIBILITY,
             commands = listOf(
                 DeviceCommand("snapshot", "snapshot", "Read the current window before other actions."),

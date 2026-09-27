@@ -66,7 +66,7 @@ class DeviceCardActions(
                 "capture" -> CaptureCard(operation, actions, thumbnail)
                 "measurement", "connection" -> MeasurementCard(operation, expanded)
                 "system_handoff" -> SystemHandoffCard(operation)
-                "screen_control" -> ScreenControlCard(operation, expanded)
+                "screen_control" -> ScreenControlCard(operation, expanded, actions, thumbnail)
                 else -> BasicDeviceCard(operation, expanded)
             }
             operation.progress?.let { progress ->
@@ -213,13 +213,30 @@ private fun JsonObject.objects(key: String) = (get(key) as? JsonArray)?.mapNotNu
         if (it.data["opened"]?.jsonPrimitive?.booleanOrNull == true) Caption(DeviceLabels.text("已打开目标页面；不等于业务已完成。", "Target opened; this does not confirm business completion."))
     }
 }
-@Composable fun ScreenControlCard(operation: DeviceOperation, expanded: Boolean) {
+@Composable fun ScreenControlCard(operation: DeviceOperation, expanded: Boolean, actions: DeviceCardActions,
+    thumbnail: (@Composable (String) -> Unit)?) {
     Input(operation)
     operation.result?.takeIf { it.kind == "screen_observation" }?.let { result ->
         Caption(result.data.text("packageName"))
         if (result.data["actionConfirmed"]?.jsonPrimitive?.booleanOrNull == true) Caption(DeviceLabels.text("设备动作已确认，业务结果需另行核对。", "Device action confirmed; business outcome needs separate verification."))
+        val ref = result.data.text("observationRef")
+        if (ref in result.resourceRefs) {
+            if (thumbnail != null) thumbnail(ref)
+            else Caption(DeviceLabels.text("屏幕截图已保存", "Screen screenshot saved"))
+        } else Caption(DeviceLabels.text("未获取到屏幕截图：", "Screen screenshot unavailable: ") + screenScreenshotReason(result.data.text("screenshotStatus")))
         if (expanded) Text(result.data.text("text"), style = MaterialTheme.typography.bodySmall)
+        ResourceButtons(operation, actions)
     }
+}
+private fun screenScreenshotReason(status: String): String = when (status) {
+    "rate_limited" -> DeviceLabels.text("系统限制了截图频率", "Screenshot rate limited by Android")
+    "protected_window" -> DeviceLabels.text("当前窗口禁止截图", "Current window blocks screenshots")
+    "accessibility_unavailable", "permission_denied" -> DeviceLabels.text("无障碍截图权限不可用", "Accessibility screenshot access unavailable")
+    "unsupported_android_version" -> DeviceLabels.text("Android 版本不支持", "Android version does not support it")
+    "resource_storage_failed" -> DeviceLabels.text("截图无法保存", "Screenshot could not be saved")
+    "timeout" -> DeviceLabels.text("系统截图超时", "Android screenshot timed out")
+    "image_encoding_failed" -> DeviceLabels.text("截图处理失败", "Screenshot processing failed")
+    else -> DeviceLabels.text("系统截图失败", "Android screenshot failed")
 }
 @Composable fun BasicDeviceCard(operation: DeviceOperation, expanded: Boolean) {
     Input(operation)

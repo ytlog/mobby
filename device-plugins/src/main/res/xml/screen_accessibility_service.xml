@@ -4,4 +4,5 @@
     android:notificationTimeout="200"
     android:canRetrieveWindowContent="true"
     android:canPerformGestures="true"
+    android:canTakeScreenshot="true"
     android:description="@string/screen_accessibility_description" />

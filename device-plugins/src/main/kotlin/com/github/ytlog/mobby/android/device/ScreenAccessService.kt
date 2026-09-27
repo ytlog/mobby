@@ -6,6 +6,8 @@ import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.graphics.PixelFormat
 import android.graphics.Path
+import android.graphics.Bitmap
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -13,9 +15,12 @@ import android.os.PowerManager
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
+import android.view.Display
 import android.view.accessibility.AccessibilityNodeInfo
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.resume
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -33,7 +38,8 @@ class ScreenAccessService : AccessibilityService() {
         super.onDestroy()
     }
 
-    internal data class Observation(val text: String, val packageName: String, val observedAtEpochMillis: Long)
+    internal data class Observation(val text: String, val packageName: String, val observedAtEpochMillis: Long,
+        val screenshot: ScreenScreenshot)
 
     internal fun operate(action: String, args: Map<String, String>, checkActive: () -> Unit = {}): Observation =
         ScreenOperation.run(checkActive) {
@@ -48,9 +54,54 @@ class ScreenAccessService : AccessibilityService() {
                 "recents" -> global(GLOBAL_ACTION_RECENTS, AppStrings.openedRecentApps, AppStrings.couldNotOpenRecentApps)
                 else -> error(AppStrings.unsupportedOperation2(action))
             }
+            if (action != "snapshot") delay(200)
             val packageName = rootInActiveWindow?.let { root -> try { root.packageName?.toString().orEmpty() } finally { root.recycle() } }.orEmpty()
-            Observation(text, packageName, System.currentTimeMillis())
+            val screenshot = captureScreenshot()
+            Observation(text, packageName, System.currentTimeMillis(), screenshot)
         }
+
+    private suspend fun captureScreenshot(): ScreenScreenshot {
+        if (Build.VERSION.SDK_INT < 30) return ScreenScreenshot(status = "unsupported_android_version")
+        return try {
+            withTimeoutOrNull(2_500) {
+                suspendCancellableCoroutine { continuation ->
+                    takeScreenshot(Display.DEFAULT_DISPLAY, mainExecutor, object : TakeScreenshotCallback {
+                        override fun onSuccess(screenshot: ScreenshotResult) {
+                            val buffer = screenshot.hardwareBuffer
+                            val capture = try {
+                                val hardware = Bitmap.wrapHardwareBuffer(buffer, screenshot.colorSpace)
+                                    ?: error("Screenshot image is empty")
+                                try {
+                                    val software = hardware.copy(Bitmap.Config.ARGB_8888, false)
+                                        ?: error("Screenshot image cannot be copied")
+                                    try { ScreenScreenshot(ScreenScreenshotEncoder.encode(software), "captured") }
+                                    finally { software.recycle() }
+                                }
+                                finally { hardware.recycle() }
+                            } catch (_: RuntimeException) {
+                                ScreenScreenshot(status = "image_encoding_failed")
+                            } finally { buffer.close() }
+                            if (continuation.isActive) continuation.resume(capture)
+                        }
+                        override fun onFailure(errorCode: Int) {
+                            val status = when (errorCode) {
+                                ERROR_TAKE_SCREENSHOT_INTERVAL_TIME_SHORT -> "rate_limited"
+                                ERROR_TAKE_SCREENSHOT_NO_ACCESSIBILITY_ACCESS -> "accessibility_unavailable"
+                                ERROR_TAKE_SCREENSHOT_SECURE_WINDOW -> "protected_window"
+                                ERROR_TAKE_SCREENSHOT_INVALID_DISPLAY -> "invalid_display"
+                                ERROR_TAKE_SCREENSHOT_INVALID_WINDOW -> "invalid_window"
+                                else -> "system_error_$errorCode"
+                            }
+                            if (continuation.isActive) continuation.resume(ScreenScreenshot(status = status))
+                        }
+                    })
+                }
+            } ?: ScreenScreenshot(status = "timeout")
+        } catch (failure: RuntimeException) {
+            if (failure is java.util.concurrent.CancellationException) throw failure
+            ScreenScreenshot(status = if (failure is SecurityException) "permission_denied" else "request_failed")
+        }
+    }
 
     private fun global(action: Int, success: String, failure: String): String {
         check(performGlobalAction(action)) { failure }

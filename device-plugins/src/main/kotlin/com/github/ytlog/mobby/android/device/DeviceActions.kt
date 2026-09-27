@@ -58,9 +58,23 @@ internal class DeviceActions(private val context: Context, private val inbox: Fi
     private fun screen(action: String, args: Map<String, String>): DeviceResult {
         val service = ScreenAccessService.instance ?: error(AppStrings.accessibilityIsOffEnableMobbySScreenServiceIn)
         val observation = service.operate(action, args, gate::checkActive)
-        return deviceResult("screen_observation", fields("packageName" to observation.packageName,
-            "observedAtEpochMillis" to observation.observedAtEpochMillis, "observationRef" to null, "actionConfirmed" to (action != "snapshot"),
-            "text" to observation.text), if (action == "snapshot") EffectState.NONE else EffectState.CONFIRMED)
+        val screenshot = observation.screenshot
+        var status = screenshot.status
+        val ref = screenshot.jpeg?.let { bytes ->
+            try {
+                val file = File.createTempFile("screen-", ".jpg", inbox)
+                try {
+                    file.writeBytes(bytes)
+                    gate.checkActive()
+                    resources.register(file, "image/jpeg")
+                } finally { file.delete() }
+            } catch (failure: Exception) {
+                if (failure is java.util.concurrent.CancellationException) throw failure
+                status = "resource_storage_failed"
+                null
+            }
+        }
+        return screenObservationResult(action, observation, ref, status)
     }
 
     private fun sms(action: String, args: Map<String, String>): DeviceResult = when (action) {
@@ -377,3 +391,11 @@ internal class DeviceActions(private val context: Context, private val inbox: Fi
     }
     private fun allowed(permission: String) = context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
 }
+
+internal fun screenObservationResult(action: String, observation: ScreenAccessService.Observation,
+    screenshotRef: String?, screenshotStatus: String): DeviceResult = deviceResult("screen_observation",
+    fields("packageName" to observation.packageName, "observedAtEpochMillis" to observation.observedAtEpochMillis,
+        "observationRef" to screenshotRef, "screenshotStatus" to screenshotStatus,
+        "actionConfirmed" to (action != "snapshot"), "text" to observation.text),
+    if (action == "snapshot") EffectState.NONE else EffectState.CONFIRMED,
+    listOfNotNull(screenshotRef))
