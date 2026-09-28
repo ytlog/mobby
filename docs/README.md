@@ -6,6 +6,7 @@
 
 | 文档 | 用途 |
 | --- | --- |
+| [项目介绍](../README.md) | 页面问答、照片与文件、应用操作和手机编程四个使用场景 |
 | [构建与使用](getting-started.md) | 环境要求、构建命令、使用方式、当前状态和开发数据库规则 |
 | [GitHub 手动发布](release.md) | Release 签名密钥、手动触发、版本号、R8 和验收 |
 | [项目需求](requirements.md) | 第一阶段本地 Agent 运行验证的目标与范围 |
@@ -28,6 +29,8 @@
 | [界面语言](localization.md) | 中英文切换、文案维护与测试边界 |
 | [网关接入](gateway.md) | 协议路径、限制和联调范围 |
 | [演示素材](media/) | 真机演示素材与剪辑脚本 |
+| [四项真机演示](media/real-device-demos.md) | 四个使用场景的实际结果、录屏和已知问题 |
+| [旅行打包清单示例](examples/travel-checklist/) | 本次由手机 Codex 生成的清单网页与 Node 服务 |
 | [Weekend Bag 示例](examples/weekend-bag/) | Codex 在 Android 手机上生成的打包清单源码 |
 | [实施记录](implementation.md) | 已实现内容、交互契约实施检查点、验证证据及待验收事项 |
 

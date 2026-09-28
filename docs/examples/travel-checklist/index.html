@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#eef3f4">
+  <title>旅行打包清单</title>
+  <style>
+    :root { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #22333b; background: #eef3f4; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; }
+    button, input, select { font: inherit; }
+    button { cursor: pointer; }
+    .page { width: min(100%, 720px); margin: 0 auto; padding: 28px 16px calc(36px + env(safe-area-inset-bottom)); }
+    .hero { position: relative; overflow: hidden; padding: 28px 25px; border-radius: 25px; color: #fff; background: linear-gradient(135deg, #235b68, #347e86); box-shadow: 0 12px 30px #235b6826; }
+    .hero::after { content: "✈"; position: absolute; right: -7px; top: -24px; color: #ffffff20; font-size: 155px; transform: rotate(-19deg); pointer-events: none; }
+    .eyebrow { margin: 0 0 10px; font-size: 13px; letter-spacing: .16em; color: #c4e9e5; }
+    h1 { position: relative; margin: 0 0 10px; font-size: clamp(26px, 6vw, 34px); letter-spacing: .02em; }
+    .subtitle { position: relative; margin: 0; line-height: 1.6; color: #ddf1ef; font-size: 14px; }
+    .progress-card { margin: 18px 0 24px; padding: 20px; border-radius: 20px; background: #fff; box-shadow: 0 5px 22px #18383b0b; }
+    .progress-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 15px; }
+    .progress-heading strong { font-size: 17px; }
+    .progress-heading span { color: #51747a; font-size: 14px; }
+    .progress-heading b { color: #146b70; font-size: 23px; }
+    .track { height: 11px; border-radius: 20px; background: #e6eeee; overflow: hidden; }
+    .fill { width: 0; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #46b9a6, #24888c); transition: width .25s ease; }
+    .hint { margin: 12px 0 0; color: #637c80; font-size: 13px; }
+    .section-title { margin: 0 0 12px 2px; font-size: 17px; }
+    .add-card { display: grid; grid-template-columns: minmax(0, 1fr) 120px auto; gap: 9px; margin-bottom: 25px; }
+    .add-card input, .add-card select { min-width: 0; width: 100%; height: 46px; border: 1px solid #d8e3e4; border-radius: 12px; padding: 0 12px; outline: none; color: #22333b; background: #fff; }
+    .add-card input:focus, .add-card select:focus { border-color: #258c89; box-shadow: 0 0 0 3px #258c8926; }
+    .add-card button { min-height: 46px; border: 0; border-radius: 12px; padding: 0 16px; background: #235f68; color: white; font-weight: 650; white-space: nowrap; }
+    .add-card button:hover { background: #174e57; }
+    .groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 15px; }
+    .group { min-width: 0; padding: 18px; border-radius: 19px; background: #fff; box-shadow: 0 5px 22px #18383b0b; }
+    .group-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding-bottom: 12px; border-bottom: 1px solid #edf1f1; }
+    .group h2 { margin: 0; font-size: 17px; }
+    .count { color: #6b888a; font-size: 12px; white-space: nowrap; }
+    .items { list-style: none; margin: 0; padding: 0; }
+    .item { display: flex; align-items: center; gap: 10px; min-height: 47px; border-bottom: 1px solid #f1f4f4; }
+    .item:last-child { border-bottom: 0; }
+    .item label { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; padding: 10px 0; cursor: pointer; }
+    .item input { flex: none; width: 19px; height: 19px; margin: 0; accent-color: #258c89; cursor: pointer; }
+    .item .name { overflow-wrap: anywhere; line-height: 1.45; font-size: 14px; }
+    .item.done .name { color: #8ba0a2; text-decoration: line-through; }
+    .remove { flex: none; width: 32px; height: 32px; border: 0; border-radius: 9px; background: transparent; color: #849a9d; font-size: 22px; line-height: 1; }
+    .remove:hover, .remove:focus-visible { color: #b94e4e; background: #fff0f0; }
+    .empty { padding: 15px 0 3px; color: #81969a; font-size: 13px; }
+    .footer { margin: 22px 0 0; text-align: center; color: #789094; font-size: 12px; }
+    @media (max-width: 580px) { .page { padding-top: 16px; } .groups { grid-template-columns: 1fr; gap: 12px; } .add-card { grid-template-columns: minmax(0, 1fr) 110px; } .add-card button { grid-column: 1 / -1; } }
+    @media (prefers-reduced-motion: reduce) { .fill { transition: none; } }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="hero">
+      <p class="eyebrow">READY TO GO · 出发前的小帮手</p>
+      <h1>旅行打包清单</h1>
+      <p class="subtitle">把重要的东西带上，把轻松的心情留下。</p>
+    </header>
+
+    <section class="progress-card" aria-label="打包进度">
+      <div class="progress-heading"><strong>打包进度</strong><span><b id="percent">0%</b> 完成</span></div>
+      <div class="track" id="progress" role="progressbar" aria-label="打包完成率" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="fill" id="fill"></div></div>
+      <p class="hint" id="summary" aria-live="polite"></p>
+    </section>
+
+    <h2 class="section-title">添加要带的物品</h2>
+    <form class="add-card" id="add-form">
+      <input id="new-item" type="text" placeholder="例如：雨伞" maxlength="40" aria-label="物品名称" required autocomplete="off">
+      <select id="new-category" aria-label="物品分类">
+        <option value="documents">证件</option>
+        <option value="clothing">衣物</option>
+        <option value="electronics">电子</option>
+        <option value="toiletries">洗漱</option>
+      </select>
+      <button type="submit">＋ 添加物品</button>
+    </form>
+
+    <div class="groups" id="groups"></div>
+    <p class="footer">清单自动保存在此浏览器中 · 出发一路顺风</p>
+  </main>
+  <script>
+    (() => {
+      const storageKey = 'travel-checklist-items-v1';
+      const categories = [
+        { id: 'documents', title: '🪪 证件' },
+        { id: 'clothing', title: '👕 衣物' },
+        { id: 'electronics', title: '🔌 电子' },
+        { id: 'toiletries', title: '🧴 洗漱' }
+      ];
+      const defaults = [
+        ['documents', '身份证'], ['documents', '护照 / 通行证'], ['documents', '车票 / 机票'],
+        ['clothing', '换洗衣物'], ['clothing', '外套'], ['clothing', '舒适的鞋子'],
+        ['electronics', '手机'], ['electronics', '充电器'], ['electronics', '充电宝'],
+        ['toiletries', '牙刷牙膏'], ['toiletries', '洗面奶'], ['toiletries', '毛巾']
+      ].map(([category, name], index) => ({ id: `default-${index}`, category, name, done: false }));
+
+      function loadItems() {
+        try {
+          const stored = localStorage.getItem(storageKey);
+          if (stored === null) return defaults;
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) {
+            return parsed.filter(item => item && typeof item.id === 'string' &&
+              categories.some(category => category.id === item.category) &&
+              typeof item.name === 'string' && typeof item.done === 'boolean');
+          }
+        } catch (_) {}
+        return defaults;
+      }
+
+      let items = loadItems();
+      const groups = document.getElementById('groups');
+      const form = document.getElementById('add-form');
+      const nameInput = document.getElementById('new-item');
+
+      function save() {
+        try { localStorage.setItem(storageKey, JSON.stringify(items)); }
+        catch (_) {}
+      }
+
+      function render() {
+        groups.replaceChildren();
+        const completed = items.filter(item => item.done).length;
+        const percent = items.length ? Math.round(completed / items.length * 100) : 0;
+        document.getElementById('percent').textContent = `${percent}%`;
+        document.getElementById('fill').style.width = `${percent}%`;
+        document.getElementById('progress').setAttribute('aria-valuenow', String(percent));
+        document.getElementById('summary').textContent = items.length
+          ? `已收好 ${completed} / ${items.length} 件物品${completed === items.length ? ' · 全部打包完成！' : ''}`
+          : '清单还是空的，添加一件物品开始吧。';
+
+        for (const category of categories) {
+          const categoryItems = items.filter(item => item.category === category.id);
+          const section = document.createElement('section');
+          section.className = 'group';
+          const heading = document.createElement('div');
+          heading.className = 'group-head';
+          const title = document.createElement('h2');
+          title.textContent = category.title;
+          const count = document.createElement('span');
+          count.className = 'count';
+          count.textContent = `${categoryItems.filter(item => item.done).length} / ${categoryItems.length} 已打包`;
+          heading.append(title, count);
+          section.append(heading);
+
+          if (!categoryItems.length) {
+            const empty = document.createElement('p');
+            empty.className = 'empty';
+            empty.textContent = '暂无物品，随时可以添加。';
+            section.append(empty);
+          } else {
+            const list = document.createElement('ul');
+            list.className = 'items';
+            for (const item of categoryItems) {
+              const row = document.createElement('li');
+              row.className = `item${item.done ? ' done' : ''}`;
+              const label = document.createElement('label');
+              const checkbox = document.createElement('input');
+              checkbox.type = 'checkbox';
+              checkbox.checked = item.done;
+              checkbox.setAttribute('aria-label', `打包：${item.name}`);
+              checkbox.addEventListener('change', () => {
+                item.done = checkbox.checked;
+                save();
+                render();
+              });
+              const name = document.createElement('span');
+              name.className = 'name';
+              name.textContent = item.name;
+              label.append(checkbox, name);
+              const remove = document.createElement('button');
+              remove.type = 'button';
+              remove.className = 'remove';
+              remove.textContent = '×';
+              remove.setAttribute('aria-label', `删除${item.name}`);
+              remove.addEventListener('click', () => {
+                items = items.filter(entry => entry.id !== item.id);
+                save();
+                render();
+              });
+              row.append(label, remove);
+              list.append(row);
+            }
+            section.append(list);
+          }
+          groups.append(section);
+        }
+      }
+
+      form.addEventListener('submit', event => {
+        event.preventDefault();
+        const name = nameInput.value.trim();
+        if (!name) { nameInput.focus(); return; }
+        items.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, category: document.getElementById('new-category').value, name, done: false });
+        save();
+        render();
+        nameInput.value = '';
+        nameInput.focus();
+      });
+
+      render();
+    })();
+  </script>
+</body>
+</html>
