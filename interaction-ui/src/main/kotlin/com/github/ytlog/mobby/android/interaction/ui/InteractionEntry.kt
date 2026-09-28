@@ -689,7 +689,7 @@ internal fun Turn.showsSeparateActivity(): Boolean = occupied || pending
     }
 }
 
-@Composable internal fun Timeline(detail: ConversationDetail, vm: ConversationViewModel, modifier: Modifier, followPadding: PaddingValues = PaddingValues(12.dp), read: (String, String) -> Unit, hostActions: InteractionHostActions, proposal: (SkillProposal) -> Unit, onSelectPlugin: (String) -> Unit) {
+@Composable internal fun Timeline(detail: ConversationDetail, vm: ConversationViewModel, modifier: Modifier, followPadding: PaddingValues? = null, read: (String, String) -> Unit, hostActions: InteractionHostActions, proposal: (SkillProposal) -> Unit, onSelectPlugin: (String) -> Unit, initialFollow: Boolean? = null, onFollowChanged: (Boolean) -> Unit = {}) {
     val topFade = if (darkChrome()) ConversationEdgeFade else LightConversationTopFade
     val bottomFade = if (darkChrome()) ConversationEdgeFade else LightConversationBottomFade
     val contentPadding = PaddingValues(start = 16.dp, top = topFade, end = 16.dp, bottom = bottomFade)
@@ -714,7 +714,8 @@ internal fun Turn.showsSeparateActivity(): Boolean = occupied || pending
     }
     val initial = keys.indexOf(detail.conversation.anchor).coerceAtLeast(0)
     val list = rememberLazyListState(initial, detail.conversation.anchorOffset.coerceAtLeast(0))
-    var follow by remember { mutableStateOf(detail.conversation.anchor == null) }
+    var follow by remember { mutableStateOf(initialFollow ?: (detail.conversation.anchor == null)) }
+    SideEffect { onFollowChanged(follow) }
     val target by vm.readingTarget.collectAsStateWithLifecycle()
     LaunchedEffect(target, keys) {
         val jump = target?.takeIf { it.conversation == detail.conversation.id } ?: return@LaunchedEffect
@@ -840,7 +841,7 @@ internal fun Turn.showsSeparateActivity(): Boolean = occupied || pending
         if (!follow && list.canScrollForward && detail.turns.isNotEmpty()) FilledTonalButton(
             onClick = { follow = true },
             modifier = Modifier.align(Alignment.BottomEnd)
-                .padding(if (darkChrome()) followPadding else PaddingValues(20.dp))
+                .padding(followPadding ?: if (darkChrome()) PaddingValues(12.dp) else PaddingValues(20.dp))
                 .shadow(if (darkChrome()) 0.dp else floatingElevation(), CircleShape)
                 .size(48.dp),
             shape = CircleShape,

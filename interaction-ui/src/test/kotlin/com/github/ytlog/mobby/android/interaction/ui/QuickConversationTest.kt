@@ -3,6 +3,7 @@ package com.github.ytlog.mobby.android.interaction.ui
 import android.os.Looper
 import androidx.lifecycle.ViewModelStore
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -44,6 +45,47 @@ class QuickConversationTest {
             floating.close()
             fixture.close()
         }
+    }
+
+    @Test fun `floating chat follows new reply after restoring window with saved reading anchor`() {
+        val fixture = Fixture()
+        fixture.accept("", emptyList())
+        val context: android.content.Context = androidx.test.core.app.ApplicationProvider.getApplicationContext()
+        val floating = FloatingConversationWindow(context, fixture.actions, {}, {})
+        try {
+            floating.show(ConversationId("c"))
+            compose.waitForIdle()
+            compose.runOnIdle { fixture.publishReply(false) }
+            compose.waitForIdle()
+            val hidden = floating.hideForScreenOperation()
+            hidden.close()
+            compose.runOnIdle { fixture.publishReply(true) }
+            compose.onNodeWithText("tail after restore").assertIsDisplayed()
+        } finally { floating.close(); fixture.close() }
+    }
+
+    @Test fun `accepted message folds empty composer and can reopen for next question`() {
+        val fixture = Fixture(text = "question")
+        compose.setContent { FloatingConversationContent(fixture.vm, ConversationId("c"), {}, {}, {}) }
+        compose.onNodeWithTag("floating-input").assertIsDisplayed()
+        compose.runOnIdle { fixture.accept("", emptyList()) }
+        compose.onNodeWithTag("floating-input").assertDoesNotExist()
+        compose.onNodeWithText("继续提问").performClick()
+        compose.onNodeWithTag("floating-input").assertIsDisplayed()
+        compose.onNodeWithText("识别屏幕").assertIsDisplayed()
+        compose.runOnIdle { fixture.accept("", emptyList(), "second") }
+        compose.onNodeWithTag("floating-input").assertDoesNotExist()
+        compose.runOnIdle { fixture.close() }
+    }
+
+    @Test fun `accepted message preserves expanded composer for new draft and rejected send`() {
+        val fixture = Fixture(text = "question")
+        compose.setContent { FloatingConversationContent(fixture.vm, ConversationId("c"), {}, {}, {}) }
+        compose.runOnIdle { fixture.vm.send(); fixture.idle() }
+        compose.onNodeWithTag("floating-input").assertIsDisplayed()
+        compose.runOnIdle { fixture.accept("next question", emptyList()) }
+        compose.onNodeWithTag("floating-input").assertIsDisplayed()
+        compose.runOnIdle { fixture.close() }
     }
 
     @Test fun `phone card selects plugin inside floating conversation without launching app`() {
@@ -173,10 +215,11 @@ class QuickConversationTest {
                 prepared = state.value.selected!!.conversation.draft
                 PrepareTurnResult.Rejected(Failure.UNAVAILABLE)
             }
+            name.startsWith("anchor-") -> Unit
             else -> error(name)
         } }
         private val system = stub<SystemPort> { name, args -> when (name) {
-            "getStatus" -> emptyFlow<SystemStatus>()
+            "getStatus" -> flowOf(SystemStatus(ready = true, connected = true, message = ""))
             "getDiagnostic" -> emptyFlow<DiagnosticOutput>()
             "gateways" -> emptyList<GatewayProfile>()
             "defaultGateway" -> null
@@ -203,6 +246,22 @@ class QuickConversationTest {
         init { idle(); events.clear() }
         fun idle() = Shadows.shadowOf(Looper.getMainLooper()).idle()
         fun releasePlugin() { pluginGate?.complete(Unit) }
+        fun accept(text: String, attachments: List<String>, turn: String = "accepted") {
+            val detail = state.value.selected!!
+            state.value = state.value.copy(selected = detail.copy(
+                conversation = detail.conversation.copy(draft = detail.conversation.draft.copy(text = text, attachments = attachments, selectionStart = text.length, selectionEnd = text.length)),
+                turns = listOf(Turn(TurnId(turn), "question", ExecutionId("run"), ExecutionPhase.SUCCEEDED))))
+            idle()
+        }
+        fun publishReply(tail: Boolean) {
+            val detail = state.value.selected!!
+            val replies = listOf(Message("long", (1..45).joinToString("\n\n") { "reply line $it" })) +
+                if (tail) listOf(Message("tail", "tail after restore")) else emptyList()
+            state.value = state.value.copy(selected = detail.copy(
+                conversation = detail.conversation.copy(anchor = "user:accepted", anchorOffset = 0),
+                turns = detail.turns.map { it.copy(messages = replies) }))
+            idle()
+        }
         fun publishTitle(title: String) {
             val detail = state.value.selected!!
             state.value = state.value.copy(selected = detail.copy(conversation = detail.conversation.copy(title = title)))

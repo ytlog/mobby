@@ -31,6 +31,7 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
     }
     fun consumed(target: ReadingTarget) { readingTarget.compareAndSet(target, null) }
     val state = actions.state.stateIn(viewModelScope, SharingStarted.Eagerly, InteractionState())
+    internal val floatingTimelineFollow = mutableMapOf<ConversationId, Boolean>()
     val status = actions.status.stateIn(viewModelScope, SharingStarted.Eagerly, SystemStatus())
     val diagnostic = actions.diagnostic.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DiagnosticOutput(null, emptyList()))
     val composer = MutableStateFlow(ComposerState())
