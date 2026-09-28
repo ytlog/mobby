@@ -14,7 +14,7 @@
   <a href="#开始使用">开始使用</a>
 </p>
 
-mobby 是一款 Android 应用，把 Pi、Claude Code、Codex、OpenCode 放进手机里。接入模型后，你可以在对话里描述任务，也可以打开悬浮球，围绕眼前的页面直接提问。
+mobby 让 Pi、Claude Code、Codex、OpenCode 这些 Code Agent 直接在 Android 手机上运行，接入屏幕、相册、文件等手机能力，成为你的个人 AI 助手。你可以让它看懂当前页面、处理照片和文件、操作 App，也可以直接在手机上写代码、运行程序。
 
 ## 看着页面，直接问
 
