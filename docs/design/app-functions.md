@@ -16,4 +16,16 @@
 
 ## 验证边界
 
+主 App 的 `AppFunctionDeviceTest` 验证 mobby 安装包声明的权限、Android 16 平台管理器和实际发现状态，并在 `MobbyAppFunctionTest` 日志中记录权限是否授予。权限缺失或系统白名单拒绝时，验证的是拒绝状态准确传递，不表示跨 App 调用成功。
+
+Firebase Test Lab 网页不提供测试类筛选。使用以下命令生成只执行该检查的测试 APK，避免运行依赖其他设备条件的测试：
+
+```shell
+./gradlew :app:assembleDebugAndroidTest -Pmobby.appFunctionsTestOnly=true
+```
+
+上传 `app/build/outputs/apk/debug/app-debug.apk` 和 `app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk`，选择 API 36 真机。该构建参数只选择测试 runner，不修改主 App 或系统权限；不传参数时仍使用默认 AndroidJUnitRunner。
+
+2026-09-28 已在 Firebase Test Lab 的 Pixel 10（Google，API 36）运行主 App 专项检查，1/1 通过。真机日志为 `permissionGranted=false; listing=Unavailable(reason=PERMISSION_DENIED)`：管理器可用，但 mobby 未获调用权限，不能完成跨 App 调用。该检查使用免费 Spark 配额，未绑定账单或升级套餐。
+
 使用已有 Android 16（API 36）模拟器检查平台管理器与发现结果，并运行模块仪器测试。当前 `google_apis_playstore_ps16k` x86_64 镜像实际将 `EXECUTE_APP_FUNCTIONS` 标记为 `internal|privileged`，普通安装应用无法获得；这与当前 Android 权限参考页所列的 `normal` 不同。模块在该模拟器上应准确显示权限不可用，不能把它当作跨应用成功调用验收。成功调用仍需在公开了功能、授予权限且获系统白名单允许的设备上验证。

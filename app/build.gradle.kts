@@ -20,7 +20,9 @@ android {
         targetSdk = 35
         versionCode = providers.gradleProperty("mobby.versionCode").orNull?.toInt() ?: 1
         versionName = providers.gradleProperty("mobby.versionName").orNull ?: "0.1.0"
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunner = if (providers.gradleProperty("mobby.appFunctionsTestOnly").orNull == "true")
+            "com.github.ytlog.mobby.android.AppFunctionTestRunner"
+        else "androidx.test.runner.AndroidJUnitRunner"
         ndk { abiFilters += "arm64-v8a" }
     }
     buildFeatures { compose = true }
@@ -61,6 +63,8 @@ dependencies {
     implementation(project(":runtime-api"))
     implementation(project(":device-plugins"))
     androidTestImplementation(project(":runtime-engine"))
+    androidTestImplementation(project(":plugin:appfunction"))
+    androidTestImplementation("androidx.appfunctions:appfunctions:1.0.0-alpha08")
     implementation(project(":runtime-android"))
     androidTestImplementation(project(":termux-core"))
     implementation(platform("androidx.compose:compose-bom:2025.06.00"))
