@@ -1,73 +1,77 @@
 <p align="center">
-  <img src="app/icon/mobby-blue-flat.svg" width="88" alt="mobby 图标">
+  <img src="app/icon/mobby-blue-flat.svg" width="88" alt="mobby icon">
 </p>
 
 <h1 align="center">mobby</h1>
 
-<p align="center">在手机上看页面、处理文件、操作应用、写程序。</p>
+<p align="center">Ask about your screen, work with files, use apps, and write code on your phone.</p>
+
+<p align="center">English · <a href="docs/README.zh-CN.md">简体中文</a></p>
 
 <p align="center">
-  <a href="#看着页面直接问">页面问答</a> ·
-  <a href="#处理手机里的照片和文件">照片与文件</a> ·
-  <a href="#让它帮你操作-app">操作 App</a> ·
-  <a href="#在手机上写个能用的小程序">手机编程</a> ·
-  <a href="#开始使用">开始使用</a>
+  <a href="#ask-about-whats-on-your-screen">Screen Q&amp;A</a> ·
+  <a href="#work-with-photos-and-files">Photos and files</a> ·
+  <a href="#let-it-use-apps-for-you">App control</a> ·
+  <a href="#build-something-useful-on-your-phone">Coding on your phone</a> ·
+  <a href="#getting-started">Getting started</a>
 </p>
 
-mobby 让 Pi、Claude Code、Codex、OpenCode 这些 Code Agent 直接在 Android 手机上运行，接入屏幕、相册、文件等手机能力，成为你的个人 AI 助手。你可以让它看懂当前页面、处理照片和文件、操作 App，也可以直接在手机上写代码、运行程序。
+mobby runs coding agents such as Pi, Claude Code, Codex, and OpenCode directly on Android, with access to your screen, photos, and files. Use it as your personal AI assistant to understand a page, work with files, operate apps, or write and run code on your phone.
 
-## 看着页面，直接问
+## Ask about what's on your screen
 
-浏览网页时遇到一段没看懂的英文，点开悬浮球，进入悬浮对话，再点“识别屏幕”。mobby 会读取当前页面，你可以让它翻译、解释，或者接着追问。
+Reading a page you don't understand? Tap the floating button, open the floating chat, and use screen recognition. Ask mobby to translate the text, explain it, or answer a follow-up question.
 
-> 这个页面在讲什么？Python 有哪些特点，初学者应该从哪里开始？
+> What is this page about? What makes Python useful, and where should a beginner start?
 
-下面这次演示是在 Python 官网提问，回答直接显示在悬浮窗里。
+In this demo, mobby reads the Python website and answers in the floating chat.
 
-<p><img src="docs/media/screen-qa.png" width="280" alt="在 Python 网页上打开悬浮对话，用中文解释当前页面"></p>
+<p><img src="docs/media/screen-qa.png" width="280" alt="Floating chat explaining the Python website"></p>
 
-[查看真机录屏](docs/media/screen-qa.mp4)
+[Watch the phone recording](docs/media/screen-qa.mp4)
 
-## 处理手机里的照片和文件
+## Work with photos and files
 
-给当前任务加入“查看照片”或“访问文件”，选好要开放的照片和目录，就可以让它识别图片、复制文件、整理清单，再把结果保存回手机。
+Add photo or file access to a task and choose the photos or folder to share. Ask mobby to describe an image, copy files, make a list, and save the results back to your phone.
 
-> 看一下最近的照片，把最新一张复制到指定文件夹，再写一份图片说明和文件清单。
+> Look at my recent photos, copy the latest one to the folder I selected, and create an image summary and a file list.
 
-这次演示导出了图片副本、Markdown 说明和 CSV 清单，并回读检查了文件内容。原图保留在原来的位置。
+This demo exports an image copy, a Markdown summary, and a CSV list, then reads them back to check their contents. The original image stays where it was.
 
-<p><img src="docs/media/media-files.png" width="280" alt="照片识别和文件导出完成后的对话"></p>
+<p><img src="docs/media/media-files.png" width="280" alt="Completed photo analysis and file export"></p>
 
-[查看真机录屏](docs/media/media-files.mp4)
+[Watch the phone recording](docs/media/media-files.mp4)
 
-## 让它帮你操作 App
+## Let it use apps for you
 
-把“使用手机”加入任务，告诉它要去哪、做什么。它会读取屏幕，点击按钮、输入文字、切换页面，按步骤操作手机。
+Add phone access to a task and describe what you want to do. mobby reads the screen, taps buttons, types text, and moves between pages to carry out the steps.
 
-> 去应用商店下载番茄ToDo，打开添加待办的功能。
+> Download TomatoToDo from the app store and open the feature for adding a task.
 
-这次演示从小米应用商店安装了番茄ToDo，进入添加待办和自定义时长页面。应用操作还会遇到误点或服务中断，复杂流程需要留意执行结果。
+This demo installs TomatoToDo (番茄ToDo) from the Xiaomi app store and opens its task editor and custom timer settings. App control can still run into wrong taps or service interruptions, so keep an eye on the results of longer tasks.
 
-<p><img src="docs/media/app-feature.png" width="280" alt="番茄ToDo 的自定义时长页面"></p>
+<p><img src="docs/media/app-feature.png" width="280" alt="Custom timer settings in TomatoToDo"></p>
 
-[查看真机录屏 · 8 倍速](docs/media/app-feature-8x.mp4)
+[Watch the phone recording · 8× speed](docs/media/app-feature-8x.mp4)
 
-## 在手机上写个能用的小程序
+## Build something useful on your phone
 
-说清楚想做什么，让 Agent 在手机工作区写代码、启动服务，再用手机浏览器打开。
+Describe what you need. Let the agent write the code in your phone's workspace, start a local server, and open the result in your browser.
 
-> 做一个旅行打包清单，按证件、衣物、电子和洗漱用品分类。可以勾选、添加、删除，刷新后还能保留。
+> Make a travel packing list with categories for documents, clothes, electronics, and toiletries. Let me check off, add, and delete items, and keep my changes after a refresh.
 
-这个清单就是 Codex 在手机上写出来的。页面显示打包进度，勾选和新增的物品保存在浏览器里，出发前可以逐项检查。
+Codex built this checklist on the phone. It shows your packing progress and saves items and checkmarks in the browser, ready to review before you leave.
 
-<p><img src="docs/media/travel-checklist.png" width="280" alt="手机浏览器中的旅行打包清单"></p>
+<p><img src="docs/media/travel-checklist.png" width="280" alt="Travel packing checklist running in the phone browser"></p>
 
-[查看真机录屏](docs/media/travel-checklist.mp4) · [查看示例源码](docs/examples/travel-checklist/)
+[Watch the phone recording](docs/media/travel-checklist.mp4) · [Browse the example code](docs/examples/travel-checklist/)
 
-## 开始使用
+## Getting started
 
-目前支持 Android 8.0 及以上的 ARM64 设备。首次打开会初始化随安装包提供的运行环境；在网关设置中填写服务地址、API Key 和模型，保存后即可开始对话。
+mobby currently supports ARM64 devices running Android 8.0 or later. On first launch, it sets up the runtime included in the APK. Enter your service URL, API key, and model in the gateway settings, save them, and start a conversation.
 
-页面问答需要开启桌面悬浮球、悬浮窗权限和屏幕无障碍服务；照片与文件按任务授权。四段演示均使用 Codex，在 Android 13 真机上录制，具体过程见[演示说明](docs/media/real-device-demos.md)。
+Screen Q&A requires the floating button, permission to display over other apps, and the screen accessibility service. Grant photo and file access for the tasks that need them. All four demos were recorded with Codex on an Android 13 phone; the recordings use a Chinese interface. See the [demo notes](docs/media/real-device-demos.md) for the test results and known issues.
 
-[构建与使用](docs/getting-started.md) · [网关设置](docs/gateway.md) · [项目文档](docs/README.md) · [MIT 许可证](LICENSE)
+[Build and usage guide](docs/getting-started.md) · [Gateway setup](docs/gateway.md) · [Project docs](docs/README.md) · [MIT license](LICENSE)
+
+The linked guides are currently in Chinese.
