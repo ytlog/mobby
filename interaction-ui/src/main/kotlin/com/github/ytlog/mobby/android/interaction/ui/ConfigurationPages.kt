@@ -93,7 +93,11 @@ import kotlinx.coroutines.*
         Button(
             onClick = {
                 val p = profiles.firstOrNull { it.agent == agent && it.id == gatewayId }
-                if (p != null) vm.enqueue { vm.actions.configure(c.id, NextTurnConfig(agent, model, reasoning, c.config.workspace, p.id, p.version)) }
+                if (p != null) vm.enqueue {
+                    val config = NextTurnConfig(agent, model, reasoning, c.config.workspace, p.id, p.version)
+                    vm.actions.configure(c.id, config)
+                    vm.rememberAgentSelection(config)
+                }
                 dismiss()
             },
             enabled = profiles.any { it.agent == agent && it.id == gatewayId },
@@ -140,6 +144,7 @@ import kotlinx.coroutines.*
         Button(
             onClick = {
                 val config = remembered ?: return@Button
+                vm.enqueue { vm.rememberAgentSelection(config) }
                 onApply(config, project)
             },
             enabled = canCreate,

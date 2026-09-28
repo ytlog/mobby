@@ -15,7 +15,7 @@ import java.util.UUID
 
 /** Isolated preferences exercise the real device Keystore without touching user gateways. */
 class GatewayStoreDeviceTest {
-    @Test fun piBecomesDefaultOnceAndKeepsLaterExplicitChoices() {
+    @Test fun piIsInitialDefaultAndKeepsExistingChoicesOnInitialization() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val name = "gateway-pi-default-test-${UUID.randomUUID()}"
         val prefs = context.getSharedPreferences(name, Context.MODE_PRIVATE)
@@ -31,7 +31,7 @@ class GatewayStoreDeviceTest {
             // Simulate an installation from before Pi's one-time default change.
             prefs.edit().remove("pi_default_applied").commit()
             store.preferPiDefault()
-            assertEquals(GatewayChoice(record.id, AgentMode.PI), store.default())
+            assertEquals(GatewayChoice(record.id, AgentMode.CODEX), store.default())
             assertEquals(record, store.load(record.id))
             store.selectDefault(GatewayChoice(record.id, AgentMode.OPEN_CODE))
             GatewayStore(isolated).preferPiDefault()

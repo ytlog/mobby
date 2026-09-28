@@ -31,9 +31,10 @@ class WorkspacePickerTest {
     private var creations = 0
     private var projectReply: CompletableDeferred<OperationResult>? = null
     private val savedProjects = mutableListOf<Project>()
+    private var projectConfig: NextTurnConfig? = null
     private var gatewayDefault: AgentId? = AgentId.CODEX
     private inline fun <reified T> stub(crossinline body: (String, Array<out Any?>) -> Any?): T =
-        Proxy.newProxyInstance(T::class.java.classLoader, arrayOf(T::class.java)) { _, m, a -> body(m.name, a ?: emptyArray()) } as T
+        Proxy.newProxyInstance(T::class.java.classLoader, arrayOf(T::class.java)) { _, m, a -> body(m.name.substringBefore("-"), a ?: emptyArray()) } as T
     private fun vm(): ConversationViewModel {
         val system = stub<SystemPort> { name, args -> when (name) {
             "getStatus" -> flowOf(SystemStatus(true, true))
@@ -59,6 +60,10 @@ class WorkspacePickerTest {
         } }
         val repository = stub<InteractionRepository> { name, args -> when (name) {
             "getState" -> interaction
+            "configure" -> args[0] as String
+            "createInProject" -> { projectConfig = args[0] as NextTurnConfig; "project-created" }
+            "editDraft" -> Draft(text = args[1] as String)
+            "prepareTurn" -> PrepareTurnResult.Queued(TurnId("queued"))
             "saveProject" -> {
                 val project = args[0] as Project
                 savedProjects += project
@@ -104,6 +109,62 @@ class WorkspacePickerTest {
         Assert.assertEquals("claude-fixture", submitted?.model)
         compose.onNodeWithText("网关与 Agent").assertDoesNotExist()
         compose.onNodeWithText("模型").assertDoesNotExist()
+    }
+    @Test fun `applied agent selection is remembered for new conversations after reopening`() {
+        gatewayDefault = AgentId.PI
+        val vm = vm()
+        val menuOpen = mutableStateOf(true)
+        val showDialog = mutableStateOf(false)
+        val current = Conversation(ConversationId("current"), NextTurnConfig(AgentId.PI, "pi-model", null, "default", "PI"))
+        var dialogVm = vm
+        var submitted: NextTurnConfig? = null
+        compose.setContent { MaterialTheme {
+            if (menuOpen.value) AgentConfigMenu(true, { menuOpen.value = false }, current, vm)
+            if (showDialog.value) ConfigDialog(dialogVm, current, {}, { config, _ -> submitted = config })
+        } }
+        compose.onNodeWithText("Claude Code").performScrollTo().performClick()
+        compose.onNodeWithText("应用").performClick()
+        compose.waitForIdle()
+        Assert.assertEquals(AgentId.CLAUDE_CODE, gatewayDefault)
+        compose.runOnIdle { dialogVm = vm(); showDialog.value = true }
+        compose.onNodeWithText("创建").performClick()
+        Assert.assertEquals(AgentId.CLAUDE_CODE, submitted?.agent)
+        dialogVm.sendInProject("Project A", "test project message", {})
+        compose.waitForIdle()
+        Assert.assertEquals(AgentId.CLAUDE_CODE, projectConfig?.agent)
+        Assert.assertEquals("CLAUDE", projectConfig?.gatewayProfile)
+    }
+    @Test fun `agent chosen when creating a conversation is remembered for the next creation`() {
+        gatewayDefault = AgentId.PI
+        val vm = vm()
+        val showDialog = mutableStateOf(true)
+        var submitted: NextTurnConfig? = null
+        compose.setContent { MaterialTheme {
+            if (showDialog.value) ConfigDialog(vm, null, {}, { config, _ -> submitted = config; showDialog.value = false })
+        } }
+        compose.onNodeWithText("Codex").performScrollTo().performClick()
+        compose.onNodeWithText("创建").performClick()
+        compose.waitForIdle()
+        Assert.assertEquals(AgentId.CODEX, gatewayDefault)
+        compose.runOnIdle { submitted = null; showDialog.value = true }
+        compose.onNodeWithText("创建").performClick()
+        Assert.assertEquals(AgentId.CODEX, submitted?.agent)
+    }
+    @Test fun `unconfirmed agent selection does not replace the remembered choice`() {
+        gatewayDefault = AgentId.PI
+        val vm = vm()
+        val showDialog = mutableStateOf(true)
+        var submitted: NextTurnConfig? = null
+        compose.setContent { MaterialTheme {
+            if (showDialog.value) ConfigDialog(vm, null, {}, { config, _ -> submitted = config })
+        } }
+        compose.onNodeWithText("Codex").performScrollTo().performClick()
+        compose.runOnIdle { showDialog.value = false }
+        compose.waitForIdle()
+        Assert.assertEquals(AgentId.PI, gatewayDefault)
+        compose.runOnIdle { showDialog.value = true }
+        compose.onNodeWithText("创建").performClick()
+        Assert.assertEquals(AgentId.PI, submitted?.agent)
     }
     @Test fun `switching agents reuses that agents most recent gateway and model`() {
         val current = Conversation(ConversationId("current"), NextTurnConfig(AgentId.CODEX, "codex-old", null, "default", "CODEX"), updatedAt = 20)

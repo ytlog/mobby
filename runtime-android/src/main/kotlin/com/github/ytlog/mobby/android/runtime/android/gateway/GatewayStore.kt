@@ -57,23 +57,21 @@ class GatewayStore(context: Context) {
     fun list(): List<GatewayRecord> = ids().map(::load) + listOfNotNull(LocalModelGateway.liveRecord())
     private fun savedDefault(): GatewayChoice? = prefs.getString("default", null)?.let { GatewayChoice.parse(decrypt(it)) }
     fun default(): GatewayChoice? = LocalModelGateway.choice() ?: savedDefault()
-    /** User-requested default change; leave gateway records and historical conversations intact. */
+    /** Initialize Pi only when no default has been selected; preserve existing user choices. */
     fun preferPiDefault() = synchronized(writeLock) {
-        if (prefs.getBoolean("pi_default_applied", false)) return@synchronized
-        val previous = savedDefault()
+        if (default() != null) return@synchronized
         val candidates = ids().map(::load).filter { com.github.ytlog.mobby.android.runtime.engine.AgentMode.PI in it.modes() }
-        val target = candidates.firstOrNull { it.id == previous?.id } ?: candidates.firstOrNull() ?: return@synchronized
+        val target = candidates.firstOrNull() ?: return@synchronized
         val choice = GatewayChoice(target.id, com.github.ytlog.mobby.android.runtime.engine.AgentMode.PI)
-        check(prefs.edit().putString("default", encrypt(choice.json())).putBoolean("pi_default_applied", true).commit()) { AppStrings.couldNotSaveDefaultGateway }
+        check(prefs.edit().putString("default", encrypt(choice.json())).commit()) { AppStrings.couldNotSaveDefaultGateway }
     }
     fun selectDefault(choice: GatewayChoice) = synchronized(writeLock) {
         if (choice.id == LocalModelGateway.ID) {
             LocalModelGateway.select(choice.mode)
-            check(prefs.edit().putBoolean("pi_default_applied", true).commit()) { AppStrings.couldNotSaveDefaultGateway }
             return@synchronized
         }
         require(choice.mode in load(choice.id).modes()) { AppStrings.gatewayDoesNotSupportThisAgent }
-        check(prefs.edit().putString("default", encrypt(choice.json())).putBoolean("pi_default_applied", true).commit()) { AppStrings.couldNotSaveDefaultGateway }
+        check(prefs.edit().putString("default", encrypt(choice.json())).commit()) { AppStrings.couldNotSaveDefaultGateway }
         LocalModelGateway.clearSelection()
     }
     fun save(record: GatewayRecord): GatewayRecord = synchronized(writeLock) {

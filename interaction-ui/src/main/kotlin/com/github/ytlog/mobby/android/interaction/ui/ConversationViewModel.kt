@@ -412,6 +412,17 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
         repairSelectedConversation()
         agents.value = actions.agents()
     }
+    suspend fun rememberAgentSelection(config: NextTurnConfig) {
+        val profile = gateways.value.firstOrNull { it.agent == config.agent && it.id == config.gatewayProfile }
+            ?: return
+        selectDefaultGateway(profile)
+    }
+    private suspend fun selectDefaultGateway(profile: GatewayProfile) {
+        when (val result = actions.selectDefaultGateway(profile)) {
+            OperationResult.Done -> defaultGateway.value = GatewayDefault(profile.agent, profile.id, profile.version)
+            is OperationResult.Failed -> report(result)
+        }
+    }
     fun chooseGateway(profile: GatewayProfile, model: String = profile.model, reasoning: String? = null) = enqueue {
         val related = gateways.value.filter { it.id == profile.id }
         val currentAgent = state.value.selected?.conversation?.config?.agent
@@ -422,10 +433,7 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
         state.value.selected?.conversation?.let { conversation ->
             actions.configure(conversation.id, NextTurnConfig(target.agent, selectedModel, reasoning, conversation.config.workspace, target.id, target.version))
         }
-        when (val result = actions.selectDefaultGateway(target)) {
-            OperationResult.Done -> defaultGateway.value = GatewayDefault(target.agent, target.id, target.version)
-            is OperationResult.Failed -> report(result)
-        }
+        selectDefaultGateway(target)
     }
     fun report(result: OperationResult) { if (result is OperationResult.Failed) feedback.trySend(result.message) }
     private suspend fun safe(action: suspend () -> Unit) {
