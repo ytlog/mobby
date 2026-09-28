@@ -49,6 +49,18 @@ class PetOverlayTest {
         assertTrue(requested)
     }
 
+    @Test fun `chat window asks system layout to keep input above the keyboard`() {
+        val window = SystemPetWindow(context)
+        val view = View(context)
+        window.attach(view, PetFrame(0, 80, 300, 560, true, focusable = true))
+        val params = view.layoutParams as android.view.WindowManager.LayoutParams
+        assertTrue(params.fitInsetsTypes and android.view.WindowInsets.Type.ime() != 0)
+        assertEquals(android.view.ViewGroup.LayoutParams.WRAP_CONTENT, params.height)
+        window.update(PetFrame(0, 80, 56, 56, true))
+        assertEquals(0, params.fitInsetsTypes and android.view.WindowInsets.Type.ime())
+        window.detach()
+    }
+
     @Test fun `chat window takes keyboard focus while ball does not`() {
         val window = SystemPetWindow(context)
         val view = View(context)

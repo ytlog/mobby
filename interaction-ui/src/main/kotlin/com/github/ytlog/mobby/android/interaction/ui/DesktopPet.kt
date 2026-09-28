@@ -57,8 +57,9 @@ internal class SystemPetWindow(context: Context) : PetWindow {
         params.x = frame.x
         params.y = frame.y
         params.width = frame.width
-        params.height = frame.height
+        params.height = if (frame.focusable) android.view.ViewGroup.LayoutParams.WRAP_CONTENT else frame.height
         params.flags = flags(frame)
+        fitKeyboard(params, frame)
         try {
             wm.updateViewLayout(view, params)
         } catch (_: RuntimeException) {
@@ -76,7 +77,7 @@ internal class SystemPetWindow(context: Context) : PetWindow {
 
     private fun layout(frame: PetFrame) = WindowManager.LayoutParams(
         frame.width,
-        frame.height,
+        if (frame.focusable) android.view.ViewGroup.LayoutParams.WRAP_CONTENT else frame.height,
         WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
         flags(frame),
         PixelFormat.TRANSLUCENT,
@@ -85,6 +86,16 @@ internal class SystemPetWindow(context: Context) : PetWindow {
         x = frame.x
         y = frame.y
         softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+        fitKeyboard(this, frame)
+    }
+
+    private fun fitKeyboard(params: WindowManager.LayoutParams, frame: PetFrame) {
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            // Let window measurement fit the visible IME frame. The Compose content
+            // sets its preferred maximum height instead of a fixed root-view height.
+            params.setFitInsetsTypes(android.view.WindowInsets.Type.systemBars() or
+                if (frame.focusable) android.view.WindowInsets.Type.ime() else 0)
+        }
     }
 
     private fun flags(frame: PetFrame) =

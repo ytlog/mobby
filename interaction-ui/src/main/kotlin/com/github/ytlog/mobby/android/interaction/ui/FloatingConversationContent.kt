@@ -1,17 +1,30 @@
 package com.github.ytlog.mobby.android.interaction.ui
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.github.ytlog.mobby.android.interaction.domain.*
 import com.github.ytlog.mobby.android.localization.FloatingStrings
+
+internal const val FloatingConversationHeight = 560
 
 /** Shares the app's view model and Timeline; this is only compact window chrome and text input. */
 @Composable internal fun FloatingConversationContent(
@@ -30,48 +43,109 @@ import com.github.ytlog.mobby.android.localization.FloatingStrings
     LaunchedEffect(vm) { for (message in vm.feedback) snackbar.showSnackbar(message) }
     MaterialTheme(colorScheme = if (dark) MobbyDarkScheme else MobbyLightScheme) {
         CompositionLocalProvider(LocalAttachmentPreviewHost provides { open(target) }) {
-        Surface(Modifier.fillMaxSize(), shape = RoundedCornerShape(20.dp), color = conversationCanvas()) {
-            Box {
-                Column(Modifier.fillMaxSize()) {
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                        TextButton(onClick = new, enabled = system.ready && !screenReading) { Text(UiStrings.newConversation2) }
-                        TextButton(onClick = { open(target) }) { Text(UiStrings.openConversation) }
-                        TextButton(onClick = close) { Text(FloatingStrings.close) }
-                    }
-                    Text(state.selected?.conversation?.title ?: FloatingStrings.quickChat,
-                        Modifier.padding(horizontal = 16.dp), maxLines = 1, style = MaterialTheme.typography.titleSmall)
-                    if (!system.ready || !system.connected) Text(system.message, Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.bodySmall)
-                    val detail = state.selected?.takeIf { it.conversation.id == target }
-                    if (detail != null && !state.loading) {
-                        key(detail.conversation.id) {
-                            Timeline(detail, vm, Modifier.weight(1f),
-                                read = { _, _ -> open(detail.conversation.id) },
-                                hostActions = InteractionHostActions(share = { open(detail.conversation.id) },
-                                    shortcut = { _, _ -> open(detail.conversation.id) }, appearance = {}),
-                                proposal = { open(detail.conversation.id) },
-                                onSelectPlugin = { ref -> vm.selectQuickPlugin(detail.conversation.id, ref) })
-                        }
-                        val enabled = system.ready && system.connected && !detail.conversation.archived && !detail.conversation.deleted && composer.conversation == detail.conversation.id
-                        OutlinedTextField(composer.value, vm::edit,
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-                            placeholder = { Text(FloatingStrings.inputHint) }, maxLines = 4, enabled = enabled)
-                        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                            TextButton(onClick = { keyboard?.hide(); focus.clearFocus(); vm.readScreen() }, enabled = enabled && !screenReading) { Text(FloatingStrings.recognizeScreen) }
-                            val active = detail.turns.lastOrNull { it.occupied }
-                            active?.execution?.let { execution ->
-                                TextButton(onClick = { vm.stop(execution) }, enabled = petCanStop(active.phase)) { Text(UiStrings.stop) }
+            val colors = MaterialTheme.colorScheme
+            val detail = state.selected?.takeIf { it.conversation.id == target }
+            val active = detail?.turns?.lastOrNull { it.occupied }
+            Surface(Modifier.heightIn(max = FloatingConversationHeight.dp).fillMaxSize().padding(6.dp).shadow(6.dp, RoundedCornerShape(26.dp)), shape = RoundedCornerShape(26.dp), color = conversationCanvas(),
+                border = BorderStroke(1.dp, colors.outlineVariant.copy(alpha = 0.5f))) {
+                Box {
+                    Column(Modifier.fillMaxSize()) {
+                        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 6.dp, top = 8.dp, bottom = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Surface(shape = RoundedCornerShape(12.dp), color = colors.primary.copy(alpha = 0.10f)) {
+                                AppIcon(AppIcons.Phone, null, Modifier.padding(10.dp).size(20.dp), tint = colors.primary)
                             }
-                            TextButton(onClick = { vm.send() }, enabled = enabled && composer.value.text.isNotBlank()) { Text(UiStrings.send) }
+                            Column(Modifier.weight(1f).padding(start = 10.dp)) {
+                                Text(FloatingStrings.quickChat, style = MaterialTheme.typography.titleSmall)
+                                Text(detail?.conversation?.config?.agent?.label() ?: UiStrings.appName,
+                                    style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
+                            }
+                            FloatingAction(AppIcons.New, UiStrings.newConversation2, system.ready && !screenReading, new)
+                            FloatingAction(AppIcons.Expand, UiStrings.openConversation, true, { open(target) })
+                            FloatingAction(AppIcons.ChevronDown, FloatingStrings.close, true, close)
                         }
-                    } else {
-                        Box(Modifier.weight(1f).fillMaxWidth()) {
-                            Text(state.error ?: if (state.loading) UiStrings.connecting else UiStrings.noConversationsYet, Modifier.padding(24.dp))
+                        HorizontalDivider(color = colors.outlineVariant.copy(alpha = 0.35f))
+                        if (detail != null && (detail.turns.isNotEmpty() || !detail.conversation.title.isNullOrBlank())) {
+                            Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Box(Modifier.size(5.dp).background(if (active != null) colors.primary else colors.onSurfaceVariant.copy(alpha = 0.5f), CircleShape))
+                                Text(detail.conversation.title ?: FloatingStrings.quickChat, Modifier.weight(1f), maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelMedium, color = colors.onSurfaceVariant)
+                                active?.let { Text(petStatus(it.phase), style = MaterialTheme.typography.labelSmall, color = colors.primary) }
+                            }
+                        }
+                        if (!system.ready || !system.connected) {
+                            Text(system.message, Modifier.padding(horizontal = 18.dp, vertical = 8.dp),
+                                color = colors.error, style = MaterialTheme.typography.bodySmall)
+                        }
+                        if (detail != null && !state.loading) {
+                            key(detail.conversation.id) {
+                                if (detail.turns.isEmpty()) {
+                                    Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp),
+                                        verticalArrangement = Arrangement.Center) {
+                                        Text(FloatingStrings.welcome, style = MaterialTheme.typography.headlineSmall)
+                                        Text(FloatingStrings.welcomeDetail, Modifier.padding(top = 8.dp, bottom = 22.dp),
+                                            style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+                                        EmptyConversationPlugins(detail.conversation.draft.capabilities) { vm.selectQuickPlugin(detail.conversation.id, it) }
+                                    }
+                                } else {
+                                    Timeline(detail, vm, Modifier.weight(1f),
+                                        read = { _, _ -> open(detail.conversation.id) },
+                                        hostActions = InteractionHostActions(share = { open(detail.conversation.id) },
+                                            shortcut = { _, _ -> open(detail.conversation.id) }, appearance = {}),
+                                        proposal = { open(detail.conversation.id) },
+                                        onSelectPlugin = { ref -> vm.selectQuickPlugin(detail.conversation.id, ref) })
+                                }
+                            }
+                            val enabled = system.ready && system.connected && !detail.conversation.archived && !detail.conversation.deleted && composer.conversation == detail.conversation.id
+                            Surface(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 12.dp, top = 6.dp),
+                                shape = RoundedCornerShape(20.dp), color = lerp(conversationCanvas(), colors.primary, 0.035f),
+                                border = BorderStroke(1.dp, colors.outlineVariant.copy(alpha = 0.6f))) {
+                                Column {
+                                    BasicTextField(composer.value, vm::edit, enabled = enabled, maxLines = 4,
+                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 14.dp).heightIn(min = 40.dp),
+                                        textStyle = MaterialTheme.typography.bodyMedium.copy(color = colors.onSurface),
+                                        cursorBrush = SolidColor(colors.primary),
+                                        decorationBox = { input -> Box {
+                                            if (composer.value.text.isEmpty()) Text(FloatingStrings.inputHint,
+                                                style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
+                                            input()
+                                        } })
+                                    Row(Modifier.fillMaxWidth().padding(start = 4.dp, end = 8.dp, bottom = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically) {
+                                        TextButton(onClick = { keyboard?.hide(); focus.clearFocus(); vm.readScreen() }, enabled = enabled && !screenReading,
+                                            contentPadding = PaddingValues(horizontal = 10.dp)) {
+                                            AppIcon(AppIcons.Phone, null, Modifier.size(16.dp))
+                                            Spacer(Modifier.width(6.dp))
+                                            Text(FloatingStrings.recognizeScreen, style = MaterialTheme.typography.labelMedium)
+                                        }
+                                        Spacer(Modifier.weight(1f))
+                                        active?.execution?.let { execution ->
+                                            FloatingAction(AppIcons.Stop, UiStrings.stop, petCanStop(active.phase), { vm.stop(execution) })
+                                        }
+                                        FilledIconButton(onClick = { vm.send() }, enabled = enabled && composer.value.text.isNotBlank(),
+                                            modifier = Modifier.size(48.dp), shape = RoundedCornerShape(16.dp)) {
+                                            AppIcon(AppIcons.Send, UiStrings.send, Modifier.size(21.dp))
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                Text(state.error ?: if (state.loading) UiStrings.connecting else UiStrings.noConversationsYet,
+                                    Modifier.padding(24.dp), style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
+                            }
                         }
                     }
+                    SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(12.dp))
                 }
-                SnackbarHost(snackbar, Modifier.fillMaxWidth())
             }
         }
-        }
+    }
+}
+
+@Composable private fun FloatingAction(icon: AppGlyph, description: String, enabled: Boolean, onClick: () -> Unit) {
+    IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.size(48.dp)) {
+        AppIcon(icon, description, Modifier.size(19.dp))
     }
 }

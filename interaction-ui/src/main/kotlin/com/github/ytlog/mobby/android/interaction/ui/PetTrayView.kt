@@ -42,7 +42,7 @@ internal class PetTrayView(
         val card = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(12), dp(8), dp(12), dp(12))
-            background = shape(0xFFF8FBFF.toInt(), 22, 0xFFDCE7F5.toInt())
+            background = shape(0xFFF8FBFF.toInt(), 26, 0xFFDCE7F5.toInt())
             elevation = dp(3).toFloat()
             clipToOutline = true
         }
@@ -84,7 +84,7 @@ internal class PetTrayView(
             addView(action(
                 if (target == null) AppStrings.returnToApp else AppStrings.open,
                 if (target == null) AppStrings.returnToApp else AppStrings.openConversation,
-                R.drawable.pet_open, blue, blueSurface, true, onOpen,
+                R.drawable.pet_open, ink, 0xFFEEF3F9.toInt(), true, onOpen,
             ), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             if (target != null && !petTerminal(target.phase)) {
                 addView(View(context), LinearLayout.LayoutParams(dp(8), 1))
@@ -98,7 +98,7 @@ internal class PetTrayView(
         card.addView(action(
             com.github.ytlog.mobby.android.localization.FloatingStrings.quickChat,
             com.github.ytlog.mobby.android.localization.FloatingStrings.quickChat,
-            R.drawable.pet_open, blue, blueSurface, true, onChat,
+            R.drawable.pet_chat, Color.WHITE, blue, true, onChat,
         ), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
         // Natural height for normal fonts; scroll only when the screen cannot fit it.
         addView(ScrollView(context).apply {

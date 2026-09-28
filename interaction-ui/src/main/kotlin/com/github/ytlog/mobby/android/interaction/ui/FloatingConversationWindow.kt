@@ -94,7 +94,7 @@ class FloatingConversationWindow internal constructor(
         if (!isOpen || screenOperations > 0) { window.detach(); applied = null; return }
         val display = context.resources.displayMetrics
         val width = minOf(petPx(420, display.density), display.widthPixels - petPx(24, display.density)).coerceAtLeast(1)
-        val height = minOf(petPx(560, display.density), display.heightPixels - petPx(96, display.density)).coerceAtLeast(1)
+        val height = minOf(petPx(FloatingConversationHeight, display.density), display.heightPixels - petPx(96, display.density)).coerceAtLeast(1)
         val frame = PetFrame((display.widthPixels - width) / 2,
             ((display.heightPixels - height) / 3).coerceAtLeast(0), width, height, true, focusable = true)
         if (applied != frame || !window.attached) {
