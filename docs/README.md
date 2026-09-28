@@ -6,7 +6,6 @@
 
 | 文档 | 用途 |
 | --- | --- |
-| [English README](README.en.md) | 英文项目介绍、真实手机演示与快速开始 |
 | [构建与使用](getting-started.md) | 环境要求、构建命令、使用方式、当前状态和开发数据库规则 |
 | [GitHub 手动发布](release.md) | Release 签名密钥、手动触发、版本号、R8 和验收 |
 | [项目需求](requirements.md) | 第一阶段本地 Agent 运行验证的目标与范围 |
@@ -25,14 +24,14 @@
 | [跨 Agent 技能目录](design/portable-skills.md) | App 自带 Skill Creator、Skill Installer 的展示、安装路径与跨 Agent 边界 |
 | [界面语言](localization.md) | 中英文切换、文案维护与测试边界 |
 | [网关接入](gateway.md) | 协议路径、限制和联调范围 |
-| [README 展示素材](media/) | 真机录屏、局部放大剪辑、来源与验证说明 |
-| [Weekend Bag 示例](examples/weekend-bag/) | Codex 在 Android 手机上生成的打包清单及原始提示词 |
+| [演示素材](media/) | 真机演示素材与剪辑脚本 |
+| [Weekend Bag 示例](examples/weekend-bag/) | Codex 在 Android 手机上生成的打包清单源码 |
 | [实施记录](implementation.md) | 已实现内容、交互契约实施检查点、验证证据及待验收事项 |
 
 ## 维护约定
 
 - 新增需求、设计、使用说明、实施记录放在本目录，设计文档放在 `design/`。
-- 根目录仅保留精简的 [README](../README.md) 与 [AGENTS.md](../AGENTS.md)，不散放方案或报告。
+- 开发约定见根目录的 [AGENTS.md](../AGENTS.md)；方案、使用说明与实施记录统一放在 `docs/`。
 - HTML 交互评审稿维护交互规范，HTML 技术设计维护架构与接口；不额外维护同名 Markdown 副本或跳转文件。
 - 文档中的命令与非链接源码路径以项目根目录为基准；文档链接使用相对路径。
 - 第三方源码自带的 README、CHANGELOG、LICENSE 和配套资源保留原位，来源与适配见 [第三方说明](../third_party/NOTICE.md)。

@@ -8,3 +8,9 @@ local.properties
 runtime/cache/
 __pycache__/
 *.pyc
+
+# Local README drafts
+/README.md
+/docs/README.en.md
+/docs/media/README.md
+/docs/examples/weekend-bag/README.md

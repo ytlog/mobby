@@ -1,6 +1,6 @@
 """Frame real Android recordings and add a moving close-up, without replacing UI.
 
-Requires Pillow, numpy and FFmpeg. See README.md for capture provenance.
+Requires Pillow, numpy and FFmpeg. Cuts and crop positions are in edits.json.
 """
 from __future__ import annotations
 
