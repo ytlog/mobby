@@ -59,7 +59,10 @@ internal class DraftManager(private val db: InteractionDatabase) {
     suspend fun editDraft(id: ConversationId, text: String, selectionStart: Int, selectionEnd: Int): Draft = db.withTransaction {
         val c = requireNotNull(dao.conversation(id.value)).domain()
         val draft = if (c.draft.text == text && c.draft.selectionStart == selectionStart && c.draft.selectionEnd == selectionEnd) c.draft
-            else c.draft.copy(revision = c.draft.revision + 1, text = text, selectionStart = selectionStart.coerceIn(0, text.length), selectionEnd = selectionEnd.coerceIn(0, text.length))
+            // Moving the cursor does not create a new message. Acceptance must still clear
+            // the submitted content; only new text should protect this draft from that clear.
+            else c.draft.copy(revision = c.draft.revision + if (c.draft.text != text) 1 else 0,
+                text = text, selectionStart = selectionStart.coerceIn(0, text.length), selectionEnd = selectionEnd.coerceIn(0, text.length))
         dao.save(c.copy(draft = draft).row()); draft
     }
     private suspend fun mutate(id: ConversationId, transform: (Conversation) -> Conversation) = db.withTransaction {

@@ -41,7 +41,9 @@ class FloatingConversationWindow internal constructor(
         setViewTreeLifecycleOwner(owner)
         setViewTreeViewModelStoreOwner(owner)
         setViewTreeSavedStateRegistryOwner(owner)
-        setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+        // The system window's recomposer is cancelled on detach, including screen-tool
+        // hiding. Recreate its composition on attach; keep drafts/execution in the view model.
+        setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindowOrReleasedFromPool)
         setOnKeyListener { _, key, event ->
             if (key == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP) { close(); true } else false
         }

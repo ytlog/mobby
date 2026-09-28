@@ -377,6 +377,19 @@ class RoomInteractionRepositoryTest {
         assertEquals("retry", draft.text)
         assertEquals(listOf("text:original"), draft.attachments)
     }
+    @Test fun `accepted turn clears submitted text after cursor changes without new typing`() = runBlocking {
+        val c = state().selected!!.conversation
+        repository.editDraft(c.id, "screen question", 15, 15)
+        val prepared = repository.prepareTurn(c.id, com.github.ytlog.mobby.android.interaction.domain.TurnId("cursor-send")) as PrepareTurnResult.Prepared
+        repository.editDraft(c.id, "screen question", 3, 3)
+        repository.recordSubmission(prepared.turn, Submission.Accepted(com.github.ytlog.mobby.android.interaction.domain.ExecutionId("cursor-run")))
+        val persisted = db.dao().conversation(c.id.value)!!.domain().draft
+        assertEquals("", persisted.text)
+        assertEquals(0, persisted.selectionStart)
+        assertEquals(0, persisted.selectionEnd)
+        assertEquals("screen question", state { it.selected?.turns?.singleOrNull()?.execution != null }.selected!!.turns.single().userText)
+    }
+
     @Test fun `accepted turn preserves newly typed draft and rejected send keeps text`() = runBlocking {
         val c = state().selected!!.conversation
         repository.editDraft(c.id, "first", 5, 5)

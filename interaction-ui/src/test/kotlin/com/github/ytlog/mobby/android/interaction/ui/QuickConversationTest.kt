@@ -26,6 +26,26 @@ import java.lang.reflect.Proxy
 class QuickConversationTest {
     @get:Rule val compose = createComposeRule()
 
+    @OptIn(androidx.compose.ui.InternalComposeUiApi::class)
+    @Test fun `floating conversation continues rendering after screen tool detaches and restores window`(): Unit =
+        androidx.compose.ui.platform.WindowRecomposerPolicy.withFactory(androidx.compose.ui.platform.WindowRecomposerFactory.LifecycleAware) {
+        val fixture = Fixture()
+        fixture.publishTitle("before screen tool")
+        val context: android.content.Context = androidx.test.core.app.ApplicationProvider.getApplicationContext()
+        val floating = FloatingConversationWindow(context, fixture.actions, {}, {})
+        try {
+            floating.show(ConversationId("c"))
+            compose.onNodeWithText("before screen tool").assertIsDisplayed()
+            val hidden = floating.hideForScreenOperation()
+            hidden.close()
+            fixture.publishTitle("reply received after screen tool")
+            compose.onNodeWithText("reply received after screen tool").assertIsDisplayed()
+        } finally {
+            floating.close()
+            fixture.close()
+        }
+    }
+
     @Test fun `phone card selects plugin inside floating conversation without launching app`() {
         val fixture = Fixture()
         var appOpened = false
@@ -183,6 +203,11 @@ class QuickConversationTest {
         init { idle(); events.clear() }
         fun idle() = Shadows.shadowOf(Looper.getMainLooper()).idle()
         fun releasePlugin() { pluginGate?.complete(Unit) }
+        fun publishTitle(title: String) {
+            val detail = state.value.selected!!
+            state.value = state.value.copy(selected = detail.copy(conversation = detail.conversation.copy(title = title)))
+            idle()
+        }
         fun close() { store.clear(); scope.cancel() }
         private fun updateDraft(change: (Draft) -> Draft) {
             val detail = state.value.selected!!

@@ -25,3 +25,13 @@
 2026-09-28 本次验证：JDK 17 下悬浮球、快捷会话、附件预览相关 26 项测试通过；真实 WindowManager + Compose 生命周期测试覆盖嵌套隐藏、恢复、隐藏中关闭。`:app:assembleDebug`、`:app:testDebugUnitTest`（当前无 App JVM 测试）、`:termux-core:testDebugUnitTest`、`:app:lintDebug` 通过。完整 interaction-ui 套件仍有技能编辑页与网关列表的 7 项失败，不能声称全套通过。尚未覆盖安装手机或通过真实网关验收。
 
 2026-09-28 修正插件卡片接线：先用实际悬浮对话 UI 回归测试复现「使用手机」未选择插件、权限不足时未显示原因，再将卡片绑定到快捷插件选择适配。复用既有 `plugins` / `setPlugin` 校验，与识别屏幕共享同一入口；新增 2 项点击回归测试通过，相关测试合计 28 项。
+
+## 屏幕读取后停止刷新与发送草稿修正
+
+系统悬浮窗读取底层屏幕时会 detach。AndroidX 的窗口 Recomposer 随 detach 取消；此前使用仅在 Lifecycle 销毁时释放 Composition 的策略，导致重新 attach 后沿用已停止的 Composition，后台与数据库已经完成、悬浮窗仍显示执行中，输入框也可能停留在旧显示。改为窗口 detach 时释放 Composition，attach 时重新创建；ViewModel、会话、任务和草稿仍复用原实例。参考 [Compose 在 View 中的销毁策略](https://developer.android.com/develop/ui/compose/migrate/interoperability-apis/compose-in-views)。
+
+增加使用真实 LifecycleAware WindowRecomposer 的回归测试：先显示会话，执行屏幕操作隐藏/恢复，再发布更新，确认新内容能够显示。原测试环境共享 Recomposer，不会自动复现真实窗口 detach 后的取消，因此只检查窗口重新挂载不足以验证刷新正常。
+
+另修正草稿内容版本：仅光标或选择范围变化不递增发送内容版本，避免成功发送后误认为还有新内容而保留原消息。新输入文字、附件与插件变化仍按已有版本规则保护草稿；拒绝或结果未确认仍保留输入。数据层回归覆盖发送准备后移动光标、收到接受确认、原消息仍在历史而输入草稿清空。
+
+2026-09-28 本次修复验证：两项新增回归均先在原实现失败、修复后通过。interaction-data 全部 61 项与 interaction-ui 相关 33 项测试通过；JDK 17 下 App Debug 构建、Termux 单元测试与 App lint 通过（App JVM 测试当前无测试源）。已覆盖安装到连接的小米手机，在桌面悬浮窗通过真实网关执行屏幕识别，确认输入框在接受发送后清空，屏幕读取隐藏/恢复后继续显示执行步骤、流式回复和完整结果，最终任务状态为 SUCCEEDED 且窗口退出执行中；原会话中后来修改的草稿保持原样。此前记录的无关 UI 全套失败尚未处理。
