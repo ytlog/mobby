@@ -35,7 +35,7 @@ import kotlinx.coroutines.launch
     var message by rememberSaveable(name) { mutableStateOf("") }
     var editingRules by remember { mutableStateOf(false) }
     var editingSkills by remember { mutableStateOf(false) }
-    LaunchedEffect(tab) { if (tab == 1) vm.loadSkills(AgentId.CODEX) }
+    LaunchedEffect(tab) { if (tab == 1) vm.loadSkills(AgentId.PI) }
     Column(Modifier.fillMaxSize()) {
         PageHeader(name, back, trailing = { TextButton(onClick = moreProjects) { Text(AppStrings.moreProjects) } })
         if (project == null) {

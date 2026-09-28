@@ -27,12 +27,13 @@
 构建时只提取包内容，不在构建机执行 deb/npm 安装脚本；程序由 Android 安装器放入 nativeLibraryDir。
 应用启动时自动部署数据、链接和 JavaScript CLI，执行版本检查后报告安装状态。
 
+- Pi：官方 npm `@earendil-works/pi-coding-agent` 0.87.1（MIT），源码：[pi-mono](https://github.com/earendil-works/pi-mono)。`runtime/pi-package/package-lock.json` 固定全部传递依赖及 integrity，构建执行 `npm ci --ignore-scripts --omit=optional`；保留依赖中的 LICENSE 和运行资源，排除源码映射及 pi-tui 的桌面原生 TUI 辅助程序。Android RPC 使用内置 Node.js；不运行 npm 生命周期脚本、不纳入其他平台的可选 esbuild 二进制。
 - Claude Code：官方 npm `@anthropic-ai/claude-code` 2.1.112，保留 LICENSE.md。使用 JavaScript 版本配合 Android Node.js；未纳入其他平台的可选音频/图像原生插件。
 - Codex：官方 npm `@openai/codex` 0.155.1-linux-arm64 的静态 musl CLI。源码与许可证：https://github.com/openai/codex/tree/rust-v0.155.1
 - Codex 配套的 bubblewrap 从同一固定 npm 包提取，安装为 `bin/bwrap` 供官方沙箱启动器发现；未修改二进制或关闭隔离。许可证见 [bubblewrap/COPYING](bubblewrap/COPYING)，对应源码为上述 Codex 固定标签内的 `codex-rs/vendor/bubblewrap`。
 - 两个 npm 包均按锁文件中的 npm SHA-512 integrity 校验。当前仅集成命令行任务所需文件，不包含 Codex 语音组件。
 - OpenCode：社区包 [C04-wq/opencode-termux](https://github.com/C04-wq/opencode-termux) `v1.18.32-0`（MIT）中的 `opencode-termux-aarch64.tar.gz`。它包含官方 OpenCode 1.18.32 的 ARM64 musl 程序，以及 musl 加载器、libgcc 与 libstdc++。官方程序本身不是 Android 可直接执行的 PIE，因此由本仓库的 `runtime/opencode_launcher.c` 交给随包的静态 musl 加载器启动。未修改这些二进制。
-- `runtime/agent_launcher.c` 为 npm / npx / Claude Code 提供 Android 原生入口，参数直接传入 Node.js。
+- `runtime/agent_launcher.c` 为 npm / npx / Pi / Claude Code 提供 Android 原生入口，参数直接传入 Node.js。
 
 ## 技能元信息解析
 

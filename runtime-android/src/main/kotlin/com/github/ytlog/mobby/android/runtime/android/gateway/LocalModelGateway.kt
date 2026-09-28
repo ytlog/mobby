@@ -26,7 +26,7 @@ object LocalModelGateway {
         selectedMode = mode
     }
 
-    @Volatile private var selectedMode = com.github.ytlog.mobby.android.runtime.engine.AgentMode.CODEX
+    @Volatile private var selectedMode = com.github.ytlog.mobby.android.runtime.engine.AgentMode.PI
 
     internal fun choice(): GatewayChoice? {
         if (!selected) return null

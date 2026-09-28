@@ -24,11 +24,12 @@ class BootstrapTest(unittest.TestCase):
     def test_preserves_assets_and_maps_elf_files(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            self.fixture(root, {'bin/bash': b'\x7fELFbash', 'lib/libc.so.1': b'\x7fELFlib', 'etc/config': b'data'})
+            self.fixture(root, {'bin/bash': b'\x7fELFbash', 'bin/pi': b'\x7fELFpi', 'lib/libc.so.1': b'\x7fELFlib', 'etc/config': b'data'})
             prepare.prepare(root / 'out')
             mapping = json.loads((root / 'out/assets/bootstrap/binaries.json').read_text())
             self.assertEqual(mapping['bin/bash'], 'libbash.so')
-            self.assertEqual(len(mapping), 2)
+            self.assertEqual(mapping['bin/pi'], 'libpi.so')
+            self.assertEqual(len(mapping), 3)
             with zipfile.ZipFile(root / 'out/assets/bootstrap/data.zip') as stream:
                 self.assertEqual(stream.read('etc/config'), b'data')
                 self.assertNotIn('bin/bash', stream.namelist())
@@ -73,6 +74,43 @@ class DependencyArchiveTest(unittest.TestCase):
             (root / 'file.deb').write_bytes(b'corrupted')
             with self.assertRaisesRegex(ValueError, 'Integrity mismatch'):
                 checked_download({'name': 'test', 'url': 'https://example.invalid/file.deb', 'sha256': '0' * 64}, root)
+
+class PiPayloadTest(unittest.TestCase):
+    def fixture(self, root):
+        source = root / 'pi-package'; source.mkdir()
+        for name in ('package.json', 'package-lock.json'):
+            (source / name).write_text('{}')
+        target = root / 'cache/pi-payload'; target.mkdir(parents=True)
+        (target / '.mobby-lock').write_text(hashlib.sha256(b'{}{}').hexdigest())
+        entry = target / 'node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js'
+        entry.parent.mkdir(parents=True); entry.write_text('locked fixture')
+        return target
+
+    def test_portable_payload_retains_licenses_and_omits_desktop_binaries(self):
+        from agent_bundle import add_pi
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); target = self.fixture(root)
+            license = target / 'node_modules/@earendil-works/pi-coding-agent/LICENSE'
+            license.write_text('fixture license')
+            binary = target / 'node_modules/@earendil-works/pi-tui/native/linux-arm64/helper.node'
+            binary.parent.mkdir(parents=True); binary.write_bytes(b'\x7fELFdesktop-fixture')
+            (target / 'node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js.map').write_text('source map')
+            files = {}
+            with patch('agent_bundle.subprocess.run') as install:
+                self.assertEqual(add_pi(root, files), b'{}{}')
+                install.assert_not_called()
+            self.assertEqual(files['lib/node_modules/@earendil-works/pi-coding-agent/LICENSE'], b'fixture license')
+            self.assertTrue(any(path.endswith('/cli.js') for path in files))
+            self.assertFalse(any('/native/' in path or path.endswith('.map') for path in files))
+
+    def test_unexpected_native_dependency_fails_the_build(self):
+        from agent_bundle import add_pi
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); target = self.fixture(root)
+            (target / 'node_modules/incompatible.node').write_bytes(b'\x7fELFwrong-architecture')
+            with self.assertRaisesRegex(ValueError, 'Unexpected native Pi dependency'):
+                add_pi(root, {})
 
 class CodexPayloadTest(unittest.TestCase):
     def test_codex_sandbox_program_is_installed_from_the_locked_archive(self):

@@ -138,6 +138,11 @@ class ProtocolDecoderTest {
             val request = RunRequest(RequestId("r"), agent, WorkspaceRef("default"), emptyList(), "model", GatewayProfileRef("g", 0), sessionRef = SessionRef("session-123"))
             val args = AgentCommand.arguments(request, "agent", "--flag; $(command)\ntext", streamInput = agent == AgentId.CLAUDE_CODE, approvals = agent == AgentId.CLAUDE_CODE)
             when (agent) {
+                AgentId.PI -> {
+                    assertFalse(args.contains("--flag; $(command)\ntext"))
+                    assertTrue(args.windowed(2).contains(listOf("--session", "session-123")))
+                    assertTrue(args.contains("rpc"))
+                }
                 AgentId.CLAUDE_CODE -> {
                     assertFalse(args.contains("--flag; $(command)\ntext"))
                     assertTrue(args.windowed(2).contains(listOf("--resume", "session-123")))

@@ -34,7 +34,7 @@ private val skillCatalogTabs get() = listOf(AppStrings.added, AppStrings.feature
 @Composable internal fun SkillsPage(vm: ConversationViewModel, onBack: () -> Unit, onConversation: () -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
     val conversation = state.selected?.conversation
-    val agent = conversation?.config?.agent ?: AgentId.CODEX
+    val agent = conversation?.config?.agent ?: AgentId.PI
     var query by rememberSaveable { mutableStateOf("") }
     val pagerState = rememberPagerState(pageCount = { skillCatalogTabs.size })
     val pagerScope = rememberCoroutineScope()

@@ -31,7 +31,7 @@ class WorkspacePickerTest {
     private var creations = 0
     private var projectReply: CompletableDeferred<OperationResult>? = null
     private val savedProjects = mutableListOf<Project>()
-    private var gatewayDefault = AgentId.CODEX
+    private var gatewayDefault: AgentId? = AgentId.CODEX
     private inline fun <reified T> stub(crossinline body: (String, Array<out Any?>) -> Any?): T =
         Proxy.newProxyInstance(T::class.java.classLoader, arrayOf(T::class.java)) { _, m, a -> body(m.name, a ?: emptyArray()) } as T
     private fun vm(): ConversationViewModel {
@@ -40,11 +40,14 @@ class WorkspacePickerTest {
             "getDiagnostic" -> flowOf(DiagnosticOutput(null, emptyList()))
             "agents" -> listOf(AgentOption(AgentId.CLAUDE_CODE, mapOf("claude-fixture" to emptySet()), null, true, emptySet()))
             "gateways" -> listOf(
+                GatewayProfile(AgentId.PI, "PI", 1, "https://example.test/v1", "pi-model", "RESPONSES", true,
+                    listOf(GatewayModel("pi-model", "pi-model"))),
                 GatewayProfile(AgentId.CODEX, "CODEX", 1, "https://example.test/v1", "model", "RESPONSES", true,
                     listOf(GatewayModel("model", "model"))),
                 GatewayProfile(AgentId.CLAUDE_CODE, "CLAUDE", 1, "https://example.test/v1", "claude-fixture", "MESSAGES", true,
                     listOf(GatewayModel("claude-fixture", "claude-fixture"))))
-            "defaultGateway" -> GatewayDefault(gatewayDefault, if (gatewayDefault == AgentId.CODEX) "CODEX" else "CLAUDE", 1)
+            "defaultGateway" -> gatewayDefault?.let { GatewayDefault(it, if (it == AgentId.CODEX) "CODEX" else if (it == AgentId.PI) "PI" else "CLAUDE", 1) }
+            "selectDefaultGateway" -> { gatewayDefault = (args[0] as GatewayProfile).agent; OperationResult.Done }
             "workspaces" -> DataResult.Loaded(options.toList())
             "createWorkspace" -> {
                 creations++
@@ -76,6 +79,18 @@ class WorkspacePickerTest {
             stub<PreferencePort> { name, _ -> error(name) })).also { store.put("vm", it) }
     }
     @After fun cleanup() { compose.runOnIdle { store.clear(); scope.cancel() } }
+    @Test fun `new conversation defaults to Pi even when the current conversation uses Codex`() {
+        gatewayDefault = null
+        val vm = vm()
+        compose.waitForIdle()
+        var submitted: NextTurnConfig? = null
+        val current = Conversation(ConversationId("current"), NextTurnConfig(AgentId.CODEX, "model", null, "default", "CODEX"))
+        compose.setContent { MaterialTheme { ConfigDialog(vm, current, {}, { config, _ -> submitted = config }) } }
+        compose.onNodeWithText("创建").performClick()
+        Assert.assertEquals(AgentId.PI, submitted?.agent)
+        Assert.assertEquals("PI", submitted?.gatewayProfile)
+        Assert.assertEquals(AgentId.CODEX, current.config.agent)
+    }
     @Test fun `new conversation uses the selected default gateway instead of current conversation`() {
         gatewayDefault = AgentId.CLAUDE_CODE
         val vm = vm()

@@ -5,6 +5,7 @@ import io
 import json
 import pathlib
 import platform
+import shutil
 import subprocess
 import tarfile
 
@@ -46,6 +47,43 @@ def safe_name(value):
     if p.is_absolute() or '..' in p.parts:
         raise ValueError('Unsafe dependency path: ' + value)
     return str(p)
+
+def add_pi(root, files):
+    """Install the exact npm dependency tree without lifecycle scripts or host binaries."""
+    source = root / 'pi-package'
+    if not source.exists():
+        return b''
+    identity = (source / 'package.json').read_bytes() + (source / 'package-lock.json').read_bytes()
+    digest = hashlib.sha256(identity).hexdigest()
+    target = root / 'cache/pi-payload'
+    marker = target / '.mobby-lock'
+    entry = target / 'node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js'
+    if not marker.exists() or marker.read_text() != digest or not entry.is_file():
+        target.mkdir(parents=True, exist_ok=True)
+        for name in ('package.json', 'package-lock.json'):
+            shutil.copyfile(source / name, target / name)
+        subprocess.run(['npm', 'ci', '--prefix', str(target), '--ignore-scripts', '--omit=optional',
+                        '--no-audit', '--no-fund'], check=True)
+        marker.write_text(digest)
+    for file in sorted((target / 'node_modules').rglob('*')):
+        relative = file.relative_to(target).as_posix()
+        if '.bin' in file.relative_to(target).parts or file.is_dir():
+            continue
+        # Upstream pi-tui ships optional desktop TUI helpers in its npm tarball.
+        if '/@earendil-works/pi-tui/native/' in relative:
+            continue
+        if file.is_symlink():
+            raise ValueError('Unexpected Pi dependency symlink: ' + relative)
+        if not file.is_file():
+            raise ValueError('Expected regular Pi dependency: ' + relative)
+        # Source maps are build diagnostics, not runtime dependencies.
+        if file.name.endswith('.map'):
+            continue
+        payload = file.read_bytes()
+        if file.suffix == '.node' or payload.startswith((b'\x7fELF', b'\xcf\xfa\xed\xfe', b'\xfe\xed\xfa\xcf', b'MZ')):
+            raise ValueError('Unexpected native Pi dependency: ' + relative)
+        files['lib/' + safe_name(relative)] = payload
+    return identity
 
 def add_agents(root, files, links, ndk):
     lock_path = root / 'agents.lock.json'
@@ -139,7 +177,8 @@ def add_agents(root, files, links, ndk):
     launcher = cache / 'agent-launcher'
     flags = ['-O2', '-fPIE', '-pie', '-Wl,-z,max-page-size=16384', '-Wl,-z,common-page-size=16384']
     subprocess.run([str(compiler), *flags, str(root / 'agent_launcher.c'), '-o', str(launcher)], check=True)
-    for name in ('npm', 'npx', 'claude'):
+    pi_identity = add_pi(root, files)
+    for name in ('npm', 'npx', 'claude', *(['pi'] if pi_identity else [])):
         files['bin/' + name] = launcher.read_bytes()
         links.pop('bin/' + name, None)
     if lock.get('bundles'):
@@ -149,6 +188,7 @@ def add_agents(root, files, links, ndk):
         links.pop('bin/opencode', None)
     files['share/mobby/agents.lock.json'] = lock_path.read_bytes()
     identity = lock_path.read_bytes() + (root / 'agent_launcher.c').read_bytes()
+    identity += pi_identity
     opencode_source = root / 'opencode_launcher.c'
     if opencode_source.exists():
         identity += opencode_source.read_bytes()

@@ -90,7 +90,7 @@ async function createBridge(config) {
   return {url:`http://127.0.0.1:${server.address().port}`, token, close:() => { for (const c of controllers) c.abort(); server.closeAllConnections(); server.close(); }};
 }
 function agentLaunch(mode, args, config, environment, bridge) {
-  const protocol = mode === 'CLAUDE' ? 'messages' : mode === 'CODEX' || mode === 'OPEN_CODE' ? 'responses' : null;
+  const protocol = mode === 'CLAUDE' ? 'messages' : ['CODEX','OPEN_CODE','PI'].includes(mode) ? 'responses' : null;
   if (!protocol || config.protocol !== protocol) throw new GatewayError(strings.nativeProtocolRequired);
   if (!bridge?.url || !bridge?.token) throw new GatewayError(strings.bridgeRequired);
   const base = bridge.url, token = bridge.token;
@@ -118,6 +118,16 @@ function agentLaunch(mode, args, config, environment, bridge) {
     // Configure Codex before it constructs its request; the bridge never strips tool fields.
     if (config.localAgentProfile) options.push('web_search="disabled"', 'features.multi_agent=false');
     agentArgs.unshift(...options.flatMap(value => ['-c', value]));
+  } else if (mode === 'PI') {
+    env.MOBBY_GATEWAY_TOKEN = token;
+    env.PI_OFFLINE = '1';
+    env.PI_SKIP_VERSION_CHECK = '1';
+    env.MOBBY_PI_CONFIG = JSON.stringify({providers:{mobby:{
+      api:'openai-responses', baseUrl:base + '/v1', apiKey:'${MOBBY_GATEWAY_TOKEN}',
+      models:[{id:config.model,name:config.model,input:['text','image'],reasoning:false,
+        contextWindow:config.localAgentProfile ? 32768 : 128000,
+        maxTokens:config.localAgentProfile ? 1024 : 16384}]
+    }}});
   } else if (mode === 'OPEN_CODE') {
     // Built-in openai provider always calls Responses. The inline config points only at the local bridge.
     env.OPENAI_API_KEY = token;
@@ -153,6 +163,11 @@ async function main() {
   let child;
   try {
     launch = agentLaunch(mode, args, config, process.env, bridge);
+    if (mode === 'PI') {
+      process.exitCode = await require('./pi-live.cjs').runPi(executable, launch.args, launch.env);
+      bridge.close();
+      return;
+    }
     if (mode === 'OPEN_CODE') {
       await require('./opencode-live.cjs').runOpenCodeLive(executable, launch.args, launch.env, bridge);
       return;

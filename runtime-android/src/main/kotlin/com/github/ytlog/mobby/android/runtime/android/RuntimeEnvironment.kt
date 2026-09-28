@@ -58,6 +58,7 @@ class RuntimeEnvironment(private val context: Context) {
         SkillStore(sdk.vfs.homeDir).installBundled(listOf("skill-creator", "skill-installer").associateWith { name ->
             context.assets.open("skills/$name/SKILL.md").bufferedReader().use { it.readText() }
         })
+        com.github.ytlog.mobby.android.runtime.android.gateway.GatewayStore(context).preferPiDefault()
         workspace.mkdirs()
         File(sdk.vfs.prefixDir, "etc/tls/certs").mkdirs()
         val shell = sdk.executor.resolveBinary("bash").absolutePath
@@ -67,7 +68,7 @@ class RuntimeEnvironment(private val context: Context) {
         output("Bash ${probe.stdout.lineSequence().drop(1).firstOrNull().orEmpty()}")
         dependenciesReady = true
         opencodeReady = false
-        for (name in listOf("git", "node", "npm", "claude", "codex", "opencode")) {
+        for (name in listOf("git", "node", "npm", "pi", "claude", "codex", "opencode")) {
             output(AppStrings.verifying(name))
             val result = sdk.executor.execute("$name --version", workspace)
             if (result.isSuccess && result.stdout.isNotBlank()) {
@@ -94,6 +95,9 @@ class RuntimeEnvironment(private val context: Context) {
         File(context.filesDir, "opencode-live.cjs").outputStream().use { target ->
             context.assets.open("gateway/opencode-live.cjs").use { it.copyTo(target) }
         }
+        File(context.filesDir, "pi-live.cjs").outputStream().use { target ->
+            context.assets.open("gateway/pi-live.cjs").use { it.copyTo(target) }
+        }
         if (dependenciesReady) output(AppStrings.dependenciesInstalledAndVerifiedConfigureAddressProtocolModelAnd)
         output(AppStrings.workingDirectory(workspace.absolutePath))
     }
@@ -108,7 +112,7 @@ class RuntimeEnvironment(private val context: Context) {
         val version = context.assets.open("bootstrap/version.txt").bufferedReader().use { it.readText() }
         val marker = File(sdk.vfs.root, ".mobby-bootstrap")
         // Data files remain writable and are not replaced on every launch.
-        val required = listOf("lib/node_modules/npm/bin/npm-cli.js", "lib/node_modules/@anthropic-ai/claude-code/cli.js")
+        val required = listOf("lib/node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js", "lib/node_modules/npm/bin/npm-cli.js", "lib/node_modules/@anthropic-ai/claude-code/cli.js")
         if (!marker.exists() || marker.readText() != version || required.any { !File(prefix, it).isFile }) {
             output(AppStrings.firstLaunchOrDependencyUpdateInstallingGitNodeJs)
             ZipInputStream(context.assets.open("bootstrap/data.zip")).use { zip ->

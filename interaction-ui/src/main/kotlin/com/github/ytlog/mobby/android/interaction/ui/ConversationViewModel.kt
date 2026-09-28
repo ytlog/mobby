@@ -367,7 +367,7 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
     fun sendInProject(project: String, text: String, opened: () -> Unit) {
         if (text.isBlank()) return
         enqueue {
-            val agent = defaultGateway.value?.agent ?: state.value.selected?.conversation?.config?.agent ?: AgentId.CODEX
+            val agent = ConversationGatewayResolver.preferred(gateways.value, defaultGateway.value)?.agent ?: AgentId.PI
             val config = ConversationGatewayResolver.newConversation(agent, state.value.selected?.conversation,
                 state.value.conversations, gateways.value, defaultGateway.value)
             if (config == null) { feedback.send(AppStrings.noGatewayAvailableOpenGatewaySettings); return@enqueue }

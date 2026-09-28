@@ -34,6 +34,9 @@ class ProtocolDecoder(private val agent: AgentId, private val requestedOutput: R
     private val commands = mutableMapOf<String, String>()
     private val inputCaptured = mutableSetOf<String>()
     private var thinkingStep: String? = null
+    private var piMessage = ""
+    private var piStopReason: String? = null
+    private val piBlocks = mutableMapOf<Int, String>()
     fun decode(line: String): List<AgentFact> {
         val controlRequest = agent == AgentId.CLAUDE_CODE && Regex("""^\s*\{\s*"type"\s*:\s*"control_request"""").containsMatchIn(line)
         if (controlRequest && line.endsWith(" [line truncated]"))
@@ -45,10 +48,84 @@ class ProtocolDecoder(private val agent: AgentId, private val requestedOutput: R
             ?: return if (controlRequest) listOf(AgentFact.Diagnostic("invalid-approval", AppStrings.cliApprovalInvalid), AgentFact.InvalidApproval)
                 else listOf(AgentFact.Diagnostic("invalid-json", line))
         return when (agent) {
+            AgentId.PI -> pi(value, line)
             AgentId.CODEX -> codex(value, line)
             AgentId.CLAUDE_CODE -> claude(value, line)
             AgentId.OPEN_CODE -> opencode(value, line)
         }
+    }
+    private fun pi(value: JsonObject, line: String): List<AgentFact> = buildList {
+        when (value.text("type")) {
+            "mobby.pi.session" -> value.text("id")?.let { add(AgentFact.Session(it)) }
+            "mobby.pi.error" -> {
+                add(AgentFact.Diagnostic("error", value.text("message") ?: "Pi RPC error"))
+                add(AgentFact.Completed(false, ErrorCode.PROTOCOL_ERROR))
+            }
+            "message_start" -> if ((value["message"] as? JsonObject)?.text("role") == "assistant") {
+                piMessage = "pi-${fallbackId++}"; piBlocks.clear(); piStopReason = null
+            }
+            "message_update" -> {
+                val update = value["assistantMessageEvent"] as? JsonObject ?: return@buildList
+                val index = update["contentIndex"]?.jsonPrimitive?.intOrNull ?: return@buildList
+                val type = update.text("type")
+                if (type in listOf("text_delta", "thinking_delta", "text_end", "thinking_end")) {
+                    val previous = piBlocks[index].orEmpty()
+                    val text = if (type!!.endsWith("_delta")) previous + update.text("delta").orEmpty() else update.text("content").orEmpty()
+                    piBlocks[index] = text
+                    if (type.startsWith("thinking")) addAll(reasoningFacts("$piMessage-$index", text, type.endsWith("_end")))
+                    else if (requestedOutput != RequestedOutput.SKILL_PROPOSAL) addAll(piText("$piMessage-$index", text))
+                }
+            }
+            "message_end" -> {
+                val message = value["message"] as? JsonObject ?: return@buildList
+                if (message.text("role") != "assistant") return@buildList
+                piStopReason = message.text("stopReason")
+                val blocks = message["content"] as? JsonArray ?: JsonArray(emptyList())
+                blocks.forEachIndexed { index, raw ->
+                    val block = raw as? JsonObject ?: return@forEachIndexed
+                    when (block.text("type")) {
+                        "text" -> if (requestedOutput != RequestedOutput.SKILL_PROPOSAL) addAll(piText("$piMessage-$index", block.text("text").orEmpty()))
+                        "thinking" -> addAll(reasoningFacts("$piMessage-$index", block.text("thinking").orEmpty(), true))
+                    }
+                }
+                if (requestedOutput == RequestedOutput.SKILL_PROPOSAL) {
+                    val text = blocks.mapNotNull { (it as? JsonObject)?.takeIf { b -> b.text("type") == "text" }?.text("text") }.joinToString("\n")
+                    skillResult = SkillGeneration.parse(text)
+                    if (text.isNotEmpty()) add(AgentFact.Text(piMessage, skillResult?.message ?: text))
+                }
+                if (piStopReason == "error" || piStopReason == "aborted")
+                    add(AgentFact.Diagnostic("error", message.text("errorMessage") ?: "Pi model request failed"))
+            }
+            "tool_execution_start", "tool_execution_update", "tool_execution_end" -> {
+                val id = value.text("toolCallId") ?: return@buildList
+                val ended = value.text("type") == "tool_execution_end"
+                val result = (value[if (ended) "result" else "partialResult"] as? JsonObject)
+                val output = (result?.get("content") as? JsonArray)?.mapNotNull { (it as? JsonObject)?.text("text") }?.joinToString("\n")
+                val outcome = if (!ended) null else if (value["isError"]?.jsonPrimitive?.booleanOrNull == true) ToolOutcome.FAILED else ToolOutcome.SUCCEEDED
+                val args = value["args"]
+                if (args != null) add(toolFact(id, value.text("toolName") ?: "tool", args, output, outcome))
+                else add(AgentFact.Tool(id, null, freshOutput(id, output), outcome))
+            }
+            "auto_retry_end" -> if (value["success"]?.jsonPrimitive?.booleanOrNull == false) {
+                piStopReason = "error"
+                add(AgentFact.Diagnostic("error", value.text("finalError") ?: "Pi retry failed"))
+            }
+            "compaction_end" -> if (value.text("errorMessage") != null || value["aborted"]?.jsonPrimitive?.booleanOrNull == true) {
+                piStopReason = "error"
+                add(AgentFact.Diagnostic("error", value.text("errorMessage") ?: "Pi compaction aborted"))
+            }
+            "agent_settled" -> when {
+                piStopReason != "stop" -> add(AgentFact.Completed(false, if (piStopReason == "aborted") ErrorCode.INTERRUPTED else ErrorCode.PROTOCOL_ERROR))
+                requestedOutput == RequestedOutput.SKILL_PROPOSAL -> addAll(finishSkill(skillResult))
+                else -> add(AgentFact.Completed(true))
+            }
+            "agent_start", "agent_end", "turn_start", "turn_end", "queue_update", "auto_retry_start", "compaction_start", "thinking_level_changed", "session_info_changed", "summarization_retry_scheduled", "summarization_retry_attempt_start", "summarization_retry_finished" -> Unit
+            else -> add(AgentFact.Diagnostic(value.text("type") ?: "unknown", line))
+        }
+    }
+    private fun piText(id: String, text: String): List<AgentFact> {
+        val delta = freshOutput("pi-text-$id", text)
+        return if (delta.isNullOrEmpty()) emptyList() else listOf(AgentFact.Text(id, delta))
     }
     private fun opencode(value: JsonObject, line: String): List<AgentFact> = buildList {
         value.text("sessionID")?.takeIf { AgentSessionId.matches(it) }?.let { add(AgentFact.Session(it)) }
@@ -363,8 +440,8 @@ class ProtocolDecoder(private val agent: AgentId, private val requestedOutput: R
         return when (body) {
             is StepBody.FileWrite -> field(obj, "content").ifBlank { null }
             is StepBody.FileDiff -> {
-                val old = field(obj, "old_string", "old_str")
-                val new = field(obj, "new_string", "new_str")
+                val old = field(obj, "old_string", "old_str", "oldText")
+                val new = field(obj, "new_string", "new_str", "newText")
                 if (old.isBlank() && new.isBlank()) null else snippetDiff(body.paths.firstOrNull().orEmpty(), old, new)
             }
             else -> null
@@ -530,6 +607,10 @@ object AgentCommand {
         val session = request.sessionRef?.value
         require(session == null || AgentSessionId.matches(session))
         return when (request.agentId) {
+            AgentId.PI -> buildList {
+                addAll(listOf(executable, "--mode", "rpc", "--provider", "mobby", "--model", request.modelId, "--thinking", "off"))
+                if (session != null) addAll(listOf("--session", session))
+            }
             AgentId.CODEX -> buildList {
                 // Phone Codex 0.155.1 exec accepts one prompt and exits. A live app-server
                 // takes later turns on the same stdin. The prompt itself is not an argument.

@@ -15,7 +15,7 @@ class GatewayConfigTest {
         assertEquals(GatewayProtocol.RESPONSES, restored.config(AgentMode.CODEX).protocol)
         assertEquals(GatewayProtocol.MESSAGES, restored.config(AgentMode.CLAUDE).protocol)
         assertEquals("https://example.test/v1", restored.config(AgentMode.OPEN_CODE).endpoint)
-        assertEquals(setOf(AgentMode.CODEX, AgentMode.OPEN_CODE, AgentMode.CLAUDE), restored.modes().toSet())
+        assertEquals(setOf(AgentMode.PI, AgentMode.CODEX, AgentMode.OPEN_CODE, AgentMode.CLAUDE), restored.modes().toSet())
     }
     @Test fun roundtripKeepsProtocolAndLiteralValues() {
         val original = GatewayConfig("https://example.com/v1", "model-name", "key-with-quote\"", GatewayProtocol.RESPONSES)

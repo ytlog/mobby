@@ -1,6 +1,7 @@
 plugins { id("com.android.library") }
 val prepareBootstrap by tasks.registering(Exec::class) {
     inputs.files(rootProject.file("runtime/prepare_bootstrap.py"), rootProject.file("runtime/bootstrap.lock.json"), rootProject.file("runtime/agents.lock.json"), rootProject.file("runtime/agent_bundle.py"), rootProject.file("runtime/agent_launcher.c"))
+    inputs.files(rootProject.file("runtime/pi-package/package.json"), rootProject.file("runtime/pi-package/package-lock.json"))
     outputs.dir(layout.buildDirectory.dir("generated/bootstrap"))
     commandLine("python3", rootProject.file("runtime/prepare_bootstrap.py"), "--output", layout.buildDirectory.dir("generated/bootstrap").get().asFile, "--ndk", File(android.sdkDirectory, "ndk/27.2.12479018"))
 }

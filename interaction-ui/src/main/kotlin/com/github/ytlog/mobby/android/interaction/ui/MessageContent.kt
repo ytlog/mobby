@@ -27,12 +27,14 @@ internal fun ProgressNotice.label() = when (this) {
 }
 
 internal fun AgentId.label() = when (this) {
+    AgentId.PI -> AppStrings.piName
     AgentId.CODEX -> AppStrings.codexName
     AgentId.CLAUDE_CODE -> AppStrings.claudeCodeName
     AgentId.OPEN_CODE -> AppStrings.openCodeName
 }
 
 internal fun AgentId.glyph() = when (this) {
+    AgentId.PI -> AppIcons.Pi
     AgentId.CODEX -> AppIcons.Codex
     AgentId.CLAUDE_CODE -> AppIcons.Claude
     AgentId.OPEN_CODE -> AppIcons.OpenCode

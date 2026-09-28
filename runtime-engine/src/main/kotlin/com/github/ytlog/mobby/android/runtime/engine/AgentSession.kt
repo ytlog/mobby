@@ -65,6 +65,7 @@ object AgentSessions {
     fun connect(request: RunRequest, executable: String, cwd: String, turn: AgentTurn): AgentConnection {
         require(cwd.startsWith("/") && '\u0000' !in cwd)
         val session: AgentSession = when (request.agentId) {
+            AgentId.PI -> PiRpcSession(request.sessionRef?.value)
             AgentId.CLAUDE_CODE -> ClaudeControlSession()
             AgentId.CODEX -> CodexAppServerSession(cwd, request.modelId, request.sessionRef?.value)
             AgentId.OPEN_CODE -> OpenCodeServerSession(request.modelId, request.sessionRef?.value)
@@ -76,6 +77,8 @@ object AgentSessions {
             streamInput = request.agentId == AgentId.CLAUDE_CODE,
             approvals = request.agentId == AgentId.CLAUDE_CODE,
         )
-        return AgentConnection(session, arguments)
+        val launchArgs = if (session is PiRpcSession && request.sessionRef == null)
+            arguments + listOf("--session-id", session.launchSession) else arguments
+        return AgentConnection(session, launchArgs)
     }
 }

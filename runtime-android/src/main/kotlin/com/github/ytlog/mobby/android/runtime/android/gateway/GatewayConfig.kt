@@ -12,7 +12,7 @@ enum class GatewayProtocol(val label: String) { RESPONSES("Responses"), MESSAGES
 /** OpenCode's built-in OpenAI provider speaks Responses, the same wire format as Codex. */
 internal fun AgentMode.gatewayProtocol(): GatewayProtocol = when (this) {
     AgentMode.CLAUDE -> GatewayProtocol.MESSAGES
-    AgentMode.CODEX, AgentMode.OPEN_CODE -> GatewayProtocol.RESPONSES
+    AgentMode.PI, AgentMode.CODEX, AgentMode.OPEN_CODE -> GatewayProtocol.RESPONSES
     AgentMode.SHELL -> error("Shell has no model protocol")
 }
 
@@ -101,7 +101,7 @@ data class GatewayRecord(
     val models: List<GatewayModel> = emptyList(), val catalogError: String? = null,
 ) {
     override fun toString() = "GatewayRecord(id=$id, version=$version, protocols=${routes.keys}, credentials=[redacted])"
-    fun modes(): List<AgentMode> = listOf(AgentMode.CODEX, AgentMode.OPEN_CODE, AgentMode.CLAUDE)
+    fun modes(): List<AgentMode> = listOf(AgentMode.PI, AgentMode.CODEX, AgentMode.OPEN_CODE, AgentMode.CLAUDE)
         .filter { it.gatewayProtocol() in routes }
     fun config(mode: AgentMode): GatewayConfig {
         val protocol = mode.gatewayProtocol()

@@ -11,6 +11,23 @@ class StructuredSkillOutputTest {
         put("type", "item.completed")
         putJsonObject("item") { put("id", "final"); put("type", "agent_message"); put("text", text) }
     }.toString()
+    @Test fun `Pi only publishes a validated final proposal after settled`() {
+        for (text in listOf(draft, "ordinary reply", draft.dropLast(1) + ",\"extra\":true}")) {
+            val decoder = ProtocolDecoder(AgentId.PI, RequestedOutput.SKILL_PROPOSAL)
+            decoder.decode("""{"type":"message_start","message":{"role":"assistant"}}""")
+            val final = buildJsonObject {
+                put("type", "message_end")
+                putJsonObject("message") {
+                    put("role", "assistant"); put("stopReason", "stop")
+                    putJsonArray("content") { addJsonObject { put("type", "text"); put("text", text) } }
+                }
+            }
+            assertTrue(decoder.decode(final.toString()).none { it is AgentFact.Proposal || it is AgentFact.Completed })
+            val terminal = decoder.decode("""{"type":"agent_settled"}""")
+            assertEquals(text == draft, terminal.filterIsInstance<AgentFact.Completed>().single().success)
+            assertEquals(if (text == draft) 1 else 0, terminal.filterIsInstance<AgentFact.Proposal>().size)
+        }
+    }
     @Test fun `missing structured result cannot succeed even with CLI success`() {
         val codex = ProtocolDecoder(AgentId.CODEX, RequestedOutput.SKILL_PROPOSAL)
         codex.decode(item("ordinary reply"))
@@ -77,6 +94,7 @@ class StructuredSkillOutputTest {
             val request = RunRequest(RequestId("r"), agent, WorkspaceRef("default"), emptyList(), "model", GatewayProfileRef("g", 0), sessionRef = session, requestedOutput = RequestedOutput.SKILL_PROPOSAL)
             val args = AgentCommand.arguments(request, "/agent", "prompt", streamInput = agent == AgentId.CLAUDE_CODE, approvals = agent == AgentId.CLAUDE_CODE, schemaPath = if (agent == AgentId.CODEX) "/private/schema.json" else null)
             when (agent) {
+                AgentId.PI -> { assertTrue(args.contains("rpc")); assertFalse(args.contains("--json-schema")) }
                 AgentId.CLAUDE_CODE -> assertEquals(SkillGeneration.schema, args[args.indexOf("--json-schema") + 1])
                 AgentId.CODEX -> { assertFalse(args.contains("--output-schema")); assertFalse(args.contains("/private/schema.json")); assertTrue(args.contains("app-server")) }
                 AgentId.OPEN_CODE -> { assertFalse(args.contains("--json-schema")); assertFalse(args.contains("--output-schema")); assertTrue(args.contains("serve")) }

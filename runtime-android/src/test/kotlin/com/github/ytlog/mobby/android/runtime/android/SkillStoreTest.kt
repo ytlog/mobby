@@ -12,6 +12,45 @@ import java.nio.file.Files
 class SkillStoreTest {
     @get:Rule val temporary = TemporaryFolder()
     private fun document(name: String = "review", body: String = "Review files") = SkillDocument.manual(name, "Use for reviewing", body).markdown
+    @Test fun `Pi shares existing skills after upgrade without overwriting conflicts`() {
+        for (conflict in listOf(false, true)) {
+            val home = temporary.newFolder(); val store = SkillStore(home)
+            for (root in listOf(".agents/skills", ".claude/skills", ".config/opencode/skills")) {
+                val folder = File(home, "$root/review").apply { mkdirs() }
+                File(folder, "SKILL.md").writeText(document())
+                File(folder, ".mobby-shared").writeText("mobby")
+                File(folder, "scripts/check.sh").apply { parentFile.mkdirs(); writeText("echo shared-resource"); setExecutable(true) }
+            }
+            val pi = File(home, ".pi/agent/skills/review/SKILL.md")
+            if (conflict) { pi.parentFile.mkdirs(); pi.writeText(document(body = "user content")) }
+            store.installBundled(emptyMap())
+            assertEquals(document(body = if (conflict) "user content" else "Review files"), pi.readText())
+            assertEquals(!conflict, store.list(AgentId.PI).any { it.name == "review" })
+            if (!conflict) {
+                assertEquals("echo shared-resource", File(pi.parentFile, "scripts/check.sh").readText())
+                assertTrue(File(pi.parentFile, "scripts/check.sh").canExecute())
+                val selected = store.list(AgentId.PI).single()
+                assertTrue(store.prompt(AgentId.PI, setOf(selected.ref), "review").contains("/skill:review"))
+            }
+            assertEquals(document(), File(home, ".agents/skills/review/SKILL.md").readText())
+        }
+    }
+    @Test fun `Pi upgrade rejects different supporting resources or symlinks`() {
+        for (symlink in listOf(false, true)) {
+            val home = temporary.newFolder(); val store = SkillStore(home)
+            for (root in listOf(".agents/skills", ".claude/skills", ".config/opencode/skills")) {
+                val folder = File(home, "$root/review").apply { mkdirs() }
+                File(folder, "SKILL.md").writeText(document())
+                File(folder, ".mobby-shared").writeText("mobby")
+                File(folder, "data.txt").writeText("same")
+            }
+            val resource = File(home, ".claude/skills/review/data.txt")
+            if (symlink) { resource.delete(); Files.createSymbolicLink(resource.toPath(), File(home, ".agents/skills/review/data.txt").toPath()) }
+            else resource.writeText("different")
+            store.installBundled(emptyMap())
+            assertFalse(File(home, ".pi/agent/skills/review").exists())
+        }
+    }
     @Test fun `saved skill is CLI discoverable and survives new store instance`() {
         val home = temporary.newFolder()
         val saved = SkillStore(home).save(AgentId.CODEX, document())
@@ -89,6 +128,10 @@ class SkillStoreTest {
         assertTrue(openCode.contains("/mobby-screen"))
         assertTrue(openCode.contains("skill 工具"))
         store.unstage(AgentId.OPEN_CODE, "mobby-screen")
+        val piFile = store.stage(AgentId.PI, "mobby-screen", authored)!!
+        assertEquals(File(home, ".pi/agent/skills/mobby-screen/SKILL.md"), piFile)
+        assertTrue(store.prompt(AgentId.PI, emptySet(), "open settings", extras = listOf("mobby-screen" to piFile)).contains("/skill:mobby-screen"))
+        store.unstage(AgentId.PI, "mobby-screen")
     }
     @Test fun `staging does not replace a user skill of the same name`() {
         val home = temporary.newFolder(); val store = SkillStore(home)

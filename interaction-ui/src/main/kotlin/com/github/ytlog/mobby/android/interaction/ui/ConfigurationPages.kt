@@ -109,15 +109,14 @@ import kotlinx.coroutines.*
     var project by rememberSaveable { mutableStateOf(c?.project) }
     val profiles by vm.gateways.collectAsStateWithLifecycle()
     val defaultGateway by vm.defaultGateway.collectAsStateWithLifecycle()
-    var agent by rememberSaveable { mutableStateOf(defaultGateway?.agent ?: c?.config?.agent ?: state.conversations.maxByOrNull { it.conversation.updatedAt }?.conversation?.config?.agent ?: AgentId.CODEX) }
+    var agent by rememberSaveable { mutableStateOf(ConversationGatewayResolver.preferred(profiles, defaultGateway)?.agent ?: AgentId.PI) }
     var agentChosen by rememberSaveable { mutableStateOf(false) }
     val remembered = ConversationGatewayResolver.newConversation(agent, c, state.conversations, profiles, defaultGateway)
     val canCreate = remembered != null && (project == null || state.projects.any { it.name == project })
     LaunchedEffect(Unit) { vm.enqueue { vm.refresh() } }
     LaunchedEffect(defaultGateway, profiles, state.conversations) {
-        if (!agentChosen && c == null) {
-            agent = defaultGateway?.let { choice -> choice.agent.takeIf { candidate -> profiles.any { it.agent == candidate && it.id == choice.id } } }
-                ?: state.conversations.maxByOrNull { it.conversation.updatedAt }?.conversation?.config?.agent ?: agent
+        if (!agentChosen) {
+            agent = ConversationGatewayResolver.preferred(profiles, defaultGateway)?.agent ?: AgentId.PI
         }
         if (profiles.isNotEmpty() && profiles.none { it.agent == agent }) {
             agent = defaultGateway?.agent?.takeIf { candidate -> profiles.any { it.agent == candidate } } ?: profiles.first().agent

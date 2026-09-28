@@ -48,7 +48,7 @@ internal class GatewayDiscovery(
     }
 
     private fun configs(addresses: GatewayCandidateAddresses, model: String, key: String): Map<AgentMode, GatewayConfig> {
-        val candidates = mapOf(AgentMode.CODEX to GatewayEndpoint.base(addresses.responses),
+        val candidates = mapOf(AgentMode.PI to GatewayEndpoint.base(addresses.responses), AgentMode.CODEX to GatewayEndpoint.base(addresses.responses),
             AgentMode.OPEN_CODE to GatewayEndpoint.base(addresses.responses),
             AgentMode.CLAUDE to GatewayEndpoint.base(addresses.messages.ifBlank { addresses.responses }))
         return candidates.mapValues { (mode, endpoint) -> GatewayConfig(endpoint, model, key, mode.gatewayProtocol()).also { it.validateFor(mode) } }

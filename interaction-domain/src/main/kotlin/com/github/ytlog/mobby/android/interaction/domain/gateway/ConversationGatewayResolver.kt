@@ -9,6 +9,7 @@ import com.github.ytlog.mobby.android.interaction.domain.NextTurnConfig
 object ConversationGatewayResolver {
     fun preferred(profiles: List<GatewayProfile>, selected: GatewayDefault?): GatewayProfile? =
         selected?.let { choice -> profiles.firstOrNull { it.id == choice.id && it.agent == choice.agent && it.model.isNotBlank() } }
+            ?: profiles.firstOrNull { it.agent == AgentId.PI && it.model.isNotBlank() }
             ?: profiles.firstOrNull { it.model.isNotBlank() }
 
     /** Preserve a usable conversation choice; repair only missing, stale, or invalid references. */

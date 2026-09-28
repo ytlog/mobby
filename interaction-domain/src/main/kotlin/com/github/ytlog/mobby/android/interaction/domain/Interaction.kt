@@ -232,7 +232,7 @@ class InteractionUseCases(
     private suspend fun validateProjectSkills(names: Set<String>): OperationResult.Failed? {
         if (names.size > 24) return OperationResult.Failed(AppStrings.skillChangedOrIsUnavailableSelectItAgain)
         if (names.isEmpty()) return null
-        val available = (system.skills(AgentId.CODEX) as? DataResult.Loaded)?.value
+        val available = (system.skills(AgentId.PI) as? DataResult.Loaded)?.value
             ?: return OperationResult.Failed(AppStrings.skillDirectoryUnavailablePleaseRetry)
         return if (available.filter { it.available }.map { it.name }.toSet().containsAll(names)) null
             else OperationResult.Failed(AppStrings.skillChangedOrIsUnavailableSelectItAgain)

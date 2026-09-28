@@ -9,6 +9,21 @@ async function mock(handler) {
   server.listen(0,'127.0.0.1');await once(server,'listening');
   return {url:`http://127.0.0.1:${server.address().port}/v1`,close:()=>{server.closeAllConnections();server.close();}};
 }
+test('Pi uses Responses through the local bridge without writing upstream credentials',()=>{
+  const config={endpoint:'https://upstream.invalid/v1',protocol:'responses',model:'vendor/model',key:'upstream-secret',localAgentProfile:true};
+  const launch=agentLaunch('PI',['--mode','rpc'],config,{}, {url:'http://127.0.0.1:32123',token:'local-only'});
+  assert.ok(!JSON.stringify(launch).includes('upstream-secret'));
+  assert.ok(!JSON.stringify(launch).includes('upstream.invalid'));
+  const inline=JSON.parse(launch.env.MOBBY_PI_CONFIG);
+  assert.equal(inline.providers.mobby.api,'openai-responses');
+  assert.equal(inline.providers.mobby.baseUrl,'http://127.0.0.1:32123/v1');
+  assert.equal(inline.providers.mobby.apiKey,'${MOBBY_GATEWAY_TOKEN}');
+  assert.equal(launch.env.MOBBY_GATEWAY_TOKEN,'local-only');
+  assert.equal(inline.providers.mobby.models[0].id,'vendor/model');
+  assert.equal(inline.providers.mobby.models[0].contextWindow,32768);
+  assert.equal(inline.providers.mobby.models[0].maxTokens,1024);
+  assert.throws(()=>agentLaunch('PI',[],{...config,protocol:'messages'}, {}, {url:'http://127.0.0.1:32123',token:'local-only'}),/协议/);
+});
 test('unsupported gateway protocol is refused before any Agent launches',async()=>{
   await assert.rejects(async()=>{const bridge=await createBridge({endpoint:'https://example.invalid',protocol:'chat',model:'m',key:''});bridge.close();},/协议/);
   for(const mode of ['CODEX','CLAUDE','OPEN_CODE']) {

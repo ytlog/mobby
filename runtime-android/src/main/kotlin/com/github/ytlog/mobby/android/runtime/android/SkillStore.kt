@@ -13,7 +13,7 @@ import java.util.UUID
 /** Only these CLI-discoverable roots are writable. Names and references never become arbitrary paths. */
 internal class SkillStore(private val home: File) {
     private data class Root(val agent: AgentId, val relative: String, val source: SkillSource)
-    private val roots = listOf(Root(AgentId.CODEX, ".agents/skills", SkillSource.USER),
+    private val roots = listOf(Root(AgentId.PI, ".pi/agent/skills", SkillSource.USER), Root(AgentId.CODEX, ".agents/skills", SkillSource.USER),
         Root(AgentId.CLAUDE_CODE, ".claude/skills", SkillSource.USER),
         Root(AgentId.OPEN_CODE, ".config/opencode/skills", SkillSource.USER))
     private fun safe(file: File): Boolean {
@@ -93,6 +93,55 @@ internal class SkillStore(private val home: File) {
                 } finally { temporary.delete() }
             }
         }
+        installExistingSharedForPi()
+    }
+    /** Add the new CLI copy only for an unchanged, App-owned shared skill. */
+    private fun installExistingSharedForPi() {
+        val previous = roots.filter { it.agent != AgentId.PI }.associate { it.agent to entries(it.agent) }
+        val piRoot = roots.single { it.agent == AgentId.PI }
+        previous.getValue(AgentId.CODEX).filter { (skill, _) -> skill.available && skill.source == SkillSource.USER }.forEach { (skill, _) ->
+            val hash = skill.ref.value.substringAfterLast(':')
+            if (!previous.values.all { items -> items.any { (other, _) -> other.available && other.source == SkillSource.USER && other.name == skill.name && other.ref.value.substringAfterLast(':') == hash } }) return@forEach
+            val sources = previous.values.map { items -> items.single { it.first.name == skill.name }.second.parentFile }
+            val resources = sources.map { sharedFiles(it) ?: return@forEach }
+            val baseline = resources.first().mapValues { (_, resource) -> digest(resource) }
+            if (resources.drop(1).any { copy -> copy.mapValues { (_, resource) -> digest(resource) } != baseline }) return@forEach
+            val target = File(home, "${piRoot.relative}/${skill.name}")
+            require(safe(target))
+            if (Files.exists(target.toPath(), NOFOLLOW_LINKS)) return@forEach
+            val staging = File(target.parentFile, ".import-${UUID.randomUUID()}")
+            try {
+                Files.createDirectory(staging.toPath())
+                resources.first().forEach { (relative, source) ->
+                    val destination = File(staging, relative)
+                    destination.parentFile.mkdirs()
+                    source.copyTo(destination)
+                    destination.setExecutable(source.canExecute(), true)
+                }
+                File(staging, SHARED_MARKER).writeText("mobby")
+                Files.move(staging.toPath(), target.toPath())
+            } finally { staging.deleteRecursively() }
+        }
+    }
+    private fun sharedFiles(folder: File): Map<String, File>? = runCatching {
+        Files.walk(folder.toPath()).use { paths ->
+            paths.toArray().map { it as java.nio.file.Path }.filter { it != folder.toPath() }.mapNotNull { path ->
+                val file = path.toFile()
+                require(safe(file))
+                if (Files.isDirectory(path, NOFOLLOW_LINKS)) return@mapNotNull null
+                require(Files.isRegularFile(path, NOFOLLOW_LINKS))
+                val relative = folder.toPath().relativize(path).toString()
+                if (relative == SHARED_MARKER) null else relative to file
+            }.toMap()
+        }
+    }.getOrNull()
+    private fun digest(file: File): String {
+        val hash = MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buffer = ByteArray(8192)
+            while (true) { val count = input.read(buffer); if (count < 0) break; hash.update(buffer, 0, count) }
+        }
+        return hash.digest().joinToString("") { "%02x".format(it) }
     }
     fun resolve(ref: CapabilityRef, agent: AgentId): File? =
         if (list(agent).none { it.ref == ref }) null else entries(agent).firstOrNull { it.first.ref == ref }?.second
@@ -144,14 +193,15 @@ internal class SkillStore(private val home: File) {
             val file = resolve(ref, agent) ?: throw IllegalArgumentException("Skill unavailable")
             val preview = SkillDocument.preview(read(file))
             selectedNames += preview.name
-            val invocation = if (agent == AgentId.CODEX) "$" + preview.name else "/" + preview.name
+            val invocation = invocation(agent, preview.name)
             "$invocation — ${file.absolutePath}"
         } + extras.map { (name, file) ->
             selectedNames += name
-            val invocation = if (agent == AgentId.CODEX) "$" + name else "/" + name
+            val invocation = invocation(agent, name)
             "$invocation — ${file.absolutePath}"
         }
         val instruction = when (agent) {
+            AgentId.PI -> AppStrings.piSkillsPrompt
             AgentId.CLAUDE_CODE -> AppStrings.claudeSkillsPrompt
             AgentId.OPEN_CODE -> AppStrings.openCodeSkillsPrompt
             AgentId.CODEX -> AppStrings.codexSkillsPrompt
@@ -162,6 +212,11 @@ internal class SkillStore(private val home: File) {
             append(instruction).append('\n').append(selections.joinToString("\n"))
             append("\n\n").append(input)
         }
+    }
+    private fun invocation(agent: AgentId, name: String) = when (agent) {
+        AgentId.PI -> "/skill:$name"
+        AgentId.CODEX -> "$" + name
+        else -> "/$name"
     }
     fun blocked(agent: AgentId, name: String): Boolean {
         val root = roots.single { it.agent == agent }

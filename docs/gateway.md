@@ -8,6 +8,7 @@
 
 | Agent | 唯一支持的协议 | 上游接口 |
 | --- | --- | --- |
+| Pi（默认） | Responses | `/responses` |
 | Codex | Responses | `/responses` |
 | OpenCode | Responses | `/responses` |
 | Claude Code | Messages | `/messages` |
@@ -81,3 +82,11 @@ OpenCode 的内置 `openai` provider 固定走 Responses。桥接把 `OPENAI_API
 历史的六组合转换结果只属于旧版本，见[实施记录](implementation.md)。当前设备与真实模型验证结果也在该记录中持续更新。
 
 参考：[Codex provider 配置](https://learn.chatgpt.com/docs/config-file/config-reference)、[Claude Code 网关配置](https://code.claude.com/docs/en/llm-gateway-connect)。
+
+## Pi
+
+Pi 0.87.1 使用 `--mode rpc`，App 显式选择 `mobby` provider 的 `openai-responses`，经本地 Node 桥接和 Android 网络栈透传。临时 `models.json` 只保存 loopback 地址与令牌的环境变量引用；用户的认证和模型文件不改写。内置 read/write/edit/bash 以应用 UID 执行，取消通过已有 JNI 进程组终止。Pi 本身可支持其他协议，但本 App 的接入仅开放 Responses。
+
+- 主机真实 CLI 门槛：`MOBBY_TEST_PI=/absolute/path/to/pi node runtime/gateway-tests/pi-rpc-smoke.cjs`。
+- 已安装 App 和测试 APK 的手机门槛：`node runtime/gateway-tests/pi-android-smoke.cjs`。
+- [接入设计、默认选择与验证边界](design/pi-agent.md)。

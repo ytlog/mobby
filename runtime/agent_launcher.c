@@ -11,6 +11,7 @@ int main(int argc, char **argv) {
     const char *name = strrchr(argv[0], '/'); name = name ? name + 1 : argv[0];
     const char *script;
     if (strstr(name, "claude")) script = "/lib/node_modules/@anthropic-ai/claude-code/cli.js";
+    else if (strcmp(name, "pi") == 0) script = "/lib/node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js";
     else if (strstr(name, "npx")) script = "/lib/node_modules/npm/bin/npx-cli.js";
     else script = "/lib/node_modules/npm/bin/npm-cli.js";
     char node[PATH_MAX], entry[PATH_MAX];

@@ -21,6 +21,7 @@
 | [设备交互卡片实施](device-interaction-implementation.md) | 独立协议与 Compose 模块、真实动作卡、取消恢复、资源归属与验收边界 |
 | [设备插件方案](design/device-plugins.md) | 设备能力插件：模块、引用、技能通道与权限隔离。旧的「使用当前手机」已替换 |
 | [应用功能方案](design/app-functions.md) | Android App Functions 的独立入口、发现、调用确认与验证边界 |
+| [Pi Agent](design/pi-agent.md) | 默认 Agent、固定运行依赖、RPC 会话、Responses 网关与验收 |
 | [跨 Agent 技能目录](design/portable-skills.md) | App 自带 Skill Creator、Skill Installer 的展示、安装路径与跨 Agent 边界 |
 | [界面语言](localization.md) | 中英文切换、文案维护与测试边界 |
 | [网关接入](gateway.md) | 协议路径、限制和联调范围 |

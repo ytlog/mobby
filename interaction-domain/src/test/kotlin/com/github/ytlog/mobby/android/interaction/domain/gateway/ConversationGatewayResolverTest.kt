@@ -10,6 +10,14 @@ class ConversationGatewayResolverTest {
         listOf(GatewayModel("base", "Base"), GatewayModel("chosen", "Chosen")))
     private val selected = GatewayDefault(AgentId.CODEX, main.id, main.version)
 
+    @Test fun `Pi is preferred without a user default and an explicit later choice is retained`() {
+        val pi = main.copy(agent = AgentId.PI)
+        assertEquals(AgentId.PI, ConversationGatewayResolver.preferred(listOf(main, pi), null)?.agent)
+        assertEquals(AgentId.CODEX, ConversationGatewayResolver.preferred(listOf(main, pi), selected)?.agent)
+        val existing = NextTurnConfig(AgentId.CODEX, "base", null, "default", main.id, main.version)
+        assertNull(ConversationGatewayResolver.repair(existing, listOf(main, pi), GatewayDefault(AgentId.PI, pi.id, pi.version)))
+    }
+
     @Test fun `new conversation remembers the last model on the selected gateway`() {
         val recent = Conversation(ConversationId("recent"), NextTurnConfig(AgentId.CODEX, "chosen", "high", "default", main.id, 2), updatedAt = 20)
         val config = ConversationGatewayResolver.newConversation(AgentId.CODEX, recent, listOf(ConversationSummary(recent)), listOf(main), selected)

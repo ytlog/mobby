@@ -54,7 +54,7 @@ interface RuntimeClient {
 @Serializable
 data class GatewayProfileRef(val id: String, val version: Long)
 @Serializable
-enum class AgentId { CODEX, CLAUDE_CODE, OPEN_CODE }
+enum class AgentId { PI, CODEX, CLAUDE_CODE, OPEN_CODE }
 @Serializable
 enum class ConnectionState { CONNECTING, CONNECTED, DISCONNECTED }
 @Serializable

@@ -13,6 +13,7 @@ class AgentProtocolRegressionTest {
             val args = AgentCommand.arguments(request, "/test/agent", prompt)
             when (agent) {
                 AgentId.CLAUDE_CODE -> { assertEquals(prompt, args.last()); assertEquals("--", args[args.lastIndex - 1]) }
+                AgentId.PI -> { assertFalse(args.contains(prompt)); assertTrue(args.contains("rpc")) }
                 AgentId.CODEX -> { assertFalse(args.contains(prompt)); assertTrue(args.contains("app-server")) }
                 AgentId.OPEN_CODE -> { assertFalse(args.contains(prompt)); assertTrue(args.contains("serve")) }
             }

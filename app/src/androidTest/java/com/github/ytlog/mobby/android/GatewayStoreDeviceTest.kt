@@ -15,6 +15,32 @@ import java.util.UUID
 
 /** Isolated preferences exercise the real device Keystore without touching user gateways. */
 class GatewayStoreDeviceTest {
+    @Test fun piBecomesDefaultOnceAndKeepsLaterExplicitChoices() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val name = "gateway-pi-default-test-${UUID.randomUUID()}"
+        val prefs = context.getSharedPreferences(name, Context.MODE_PRIVATE)
+        val isolated = object : ContextWrapper(context) {
+            override fun getSharedPreferences(requested: String?, mode: Int) = prefs
+        }
+        try {
+            val store = GatewayStore(isolated)
+            val record = store.save(GatewayRecord(UUID.randomUUID().toString(), 0,
+                mapOf(GatewayProtocol.RESPONSES to "https://pi.test/v1"), "test-model", "synthetic-key"))
+            assertEquals(GatewayChoice(record.id, AgentMode.PI), store.default())
+            store.selectDefault(GatewayChoice(record.id, AgentMode.CODEX))
+            // Simulate an installation from before Pi's one-time default change.
+            prefs.edit().remove("pi_default_applied").commit()
+            store.preferPiDefault()
+            assertEquals(GatewayChoice(record.id, AgentMode.PI), store.default())
+            assertEquals(record, store.load(record.id))
+            store.selectDefault(GatewayChoice(record.id, AgentMode.OPEN_CODE))
+            GatewayStore(isolated).preferPiDefault()
+            assertEquals(GatewayChoice(record.id, AgentMode.OPEN_CODE), store.default())
+            store.save(record.copy(model = "another-test-model"))
+            assertEquals(GatewayChoice(record.id, AgentMode.OPEN_CODE), store.default())
+            assertEquals(record, store.load(record.id, record.version))
+        } finally { prefs.edit().clear().commit() }
+    }
     @Test fun independentGatewaysKeepBindingsDefaultsAndVersionedSessions() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val name = "gateway-device-test-${UUID.randomUUID()}"
