@@ -26,9 +26,9 @@ Reading a page you don't understand? Tap the floating button, open the floating 
 
 In this demo, mobby reads the Python website and answers in the floating chat.
 
-<p><img src="docs/media/en/screen-qa.png" width="280" alt="Floating chat explaining the Python website"></p>
+<p><img src="docs/media/en/screen-qa.gif" width="360" alt="Floating chat explaining the Python website"></p>
 
-[Watch the phone recording](docs/media/en/screen-qa.mp4)
+[Watch the edited recording](docs/media/en/screen-qa-edited.mp4)
 
 ## Work with photos and files
 
@@ -38,9 +38,9 @@ Add photo or file access to a task and choose the photos or folder to share. Ask
 
 This demo exports an image copy, a Markdown summary, and a CSV list, then reads them back to check their contents. The original image stays where it was.
 
-<p><img src="docs/media/en/media-files.png" width="280" alt="Completed photo analysis and file export"></p>
+<p><img src="docs/media/en/media-files.gif" width="360" alt="Completed photo analysis and file export"></p>
 
-[Watch the phone recording](docs/media/en/media-files.mp4)
+[Watch the edited recording](docs/media/en/media-files-edited.mp4)
 
 ## Let it use apps for you
 
@@ -50,9 +50,9 @@ Add phone access to a task and describe what you want to do. mobby reads the scr
 
 This demo installs Via from its page in the Xiaomi app store, completes the first-run setup, and opens Bookmarks from the browser menu. App control can still run into wrong taps or service interruptions, so keep an eye on the results of longer tasks.
 
-<p><img src="docs/media/en/app-feature.png" width="280" alt="Bookmarks in Via browser"></p>
+<p><img src="docs/media/en/app-feature.gif" width="360" alt="Bookmarks in Via browser"></p>
 
-[Watch the phone recording · 8× speed](docs/media/en/app-feature-8x.mp4)
+[Watch the edited recording](docs/media/en/app-feature-edited.mp4)
 
 ## Build something useful on your phone
 
@@ -62,9 +62,9 @@ Describe what you need. Let the agent write the code in your phone's workspace, 
 
 Codex built this checklist on the phone. It shows your packing progress and saves items and checkmarks in the browser, ready to review before you leave.
 
-<p><img src="docs/media/en/travel-checklist.png" width="280" alt="Travel packing checklist running in the phone browser"></p>
+<p><img src="docs/media/en/travel-checklist.gif" width="360" alt="Travel packing checklist running in the phone browser"></p>
 
-[Watch the phone recording](docs/media/en/travel-checklist.mp4) · [Browse the example code](docs/examples/travel-checklist-en/)
+[Watch the edited recording](docs/media/en/travel-checklist-edited.mp4) · [Browse the example code](docs/examples/travel-checklist-en/)
 
 ## Getting started
 
