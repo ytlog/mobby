@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f4ed">
+  <title>Travel Packing List</title>
+  <style>
+    :root { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #19342f; background: #f5f4ed; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    button, input, select { font: inherit; }
+    button { cursor: pointer; }
+    button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid #0d7464; outline-offset: 3px; }
+    .app { width: min(100% - 32px, 680px); margin: 0 auto; padding: 32px 0 60px; }
+    .eyebrow { margin: 0 0 8px; color: #227363; font-size: .76rem; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: clamp(2rem, 8vw, 3.15rem); line-height: 1.08; letter-spacing: -.05em; }
+    .intro { margin: 12px 0 26px; color: #5b6b64; line-height: 1.5; }
+    .progress-card { display: flex; align-items: center; gap: 20px; padding: 22px; border-radius: 24px; color: #fff; background: #164b40; box-shadow: 0 12px 26px #164b401c; }
+    .progress-ring { display: grid; flex: none; place-items: center; width: 88px; height: 88px; border-radius: 50%; background: conic-gradient(#bde6a0 var(--progress, 0%), #35685b 0); }
+    .progress-ring::before { content: ""; grid-area: 1 / 1; width: 68px; height: 68px; border-radius: 50%; background: #164b40; }
+    .progress-ring span { z-index: 1; grid-area: 1 / 1; font-size: 1.05rem; font-weight: 800; }
+    .progress-copy { min-width: 0; }
+    .progress-copy strong { display: block; margin-bottom: 5px; font-size: 1.22rem; }
+    .progress-copy p { margin: 0; color: #d5e7dc; font-size: .93rem; line-height: 1.4; }
+    .progress-track { height: 7px; margin-top: 14px; overflow: hidden; border-radius: 99px; background: #35685b; }
+    .progress-fill { width: 0; height: 100%; border-radius: inherit; background: #bde6a0; transition: width .2s ease; }
+    .add-card { margin: 20px 0 26px; padding: 20px; border: 1px solid #e1e8db; border-radius: 20px; background: #fff; }
+    .add-card h2 { margin: 0 0 14px; font-size: 1.05rem; }
+    .add-fields { display: flex; gap: 9px; flex-wrap: wrap; }
+    .add-fields input, .add-fields select { min-height: 46px; padding: 0 12px; border: 1px solid #cedbd1; border-radius: 11px; color: #19342f; background: #fff; }
+    .add-fields input { flex: 2 1 170px; min-width: 0; }
+    .add-fields select { flex: 1 1 145px; }
+    .add-fields button { min-height: 46px; padding: 0 17px; border: 0; border-radius: 11px; color: #fff; background: #176956; font-weight: 700; }
+    .add-fields button:hover { background: #105343; }
+    .categories { display: grid; gap: 17px; }
+    .category { padding: 20px; border: 1px solid #e1e8db; border-radius: 20px; background: #fff; }
+    .category-header { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 13px; }
+    .category h2 { margin: 0; font-size: 1.15rem; }
+    .category-count { color: #64776c; font-size: .84rem; white-space: nowrap; }
+    .item-list { margin: 0; padding: 0; list-style: none; }
+    .item { display: flex; align-items: center; gap: 10px; min-height: 52px; border-top: 1px solid #edf0ea; }
+    .item label { display: flex; flex: 1; align-items: center; gap: 12px; min-width: 0; padding: 12px 0; cursor: pointer; }
+    .item input[type="checkbox"] { flex: none; width: 21px; height: 21px; margin: 0; accent-color: #176956; cursor: pointer; }
+    .item-name { overflow-wrap: anywhere; }
+    .item input:checked + .item-name { color: #76877e; text-decoration: line-through; }
+    .delete-button { flex: none; padding: 8px 10px; border: 0; border-radius: 8px; color: #a5443e; background: transparent; font-size: .82rem; font-weight: 650; }
+    .delete-button:hover { background: #fff0ed; }
+    .empty { margin: 8px 0 0; color: #64776c; font-size: .9rem; }
+    @media (max-width: 400px) { .app { width: min(100% - 24px, 680px); padding-top: 24px; } .progress-card { gap: 14px; padding: 17px; } .progress-ring { width: 74px; height: 74px; } .progress-ring::before { width: 56px; height: 56px; } .category, .add-card { padding: 16px; } .add-fields button { flex: 1 1 100%; } }
+    @media (prefers-reduced-motion: reduce) { .progress-fill { transition: none; } }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header>
+      <p class="eyebrow">Ready for takeoff</p>
+      <h1>Travel Packing List</h1>
+      <p class="intro">Everything you need, all in one place. Check items off as they go in your bag.</p>
+    </header>
+
+    <section class="progress-card" aria-label="Packing progress">
+      <div class="progress-ring" id="progress-ring"><span id="progress-percent">0%</span></div>
+      <div class="progress-copy">
+        <strong id="progress-title">Let's get packing</strong>
+        <p id="progress-detail" role="status" aria-live="polite">0 of 12 items packed</p>
+        <div class="progress-track" role="progressbar" aria-label="Items packed" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+      </div>
+    </section>
+
+    <form class="add-card" id="add-form">
+      <h2>Add to your list</h2>
+      <div class="add-fields">
+        <input id="new-item" type="text" placeholder="What else do you need?" aria-label="New item" maxlength="100" required>
+        <select id="new-category" aria-label="Category">
+          <option value="Documents">Documents</option>
+          <option value="Clothes">Clothes</option>
+          <option value="Electronics">Electronics</option>
+          <option value="Toiletries">Toiletries</option>
+        </select>
+        <button type="submit">+ Add item</button>
+      </div>
+    </form>
+
+    <div class="categories" id="categories"></div>
+  </main>
+  <script>
+    "use strict";
+
+    const storageKey = "travel-checklist-en-demo-items-v1";
+    const categoryNames = ["Documents", "Clothes", "Electronics", "Toiletries"];
+    const defaults = {
+      Documents: ["Passport or ID", "Tickets / boarding pass", "Travel insurance"],
+      Clothes: ["Everyday outfits", "Underwear and socks", "Comfortable shoes"],
+      Electronics: ["Phone charger", "Power adapter", "Power bank"],
+      Toiletries: ["Toothbrush", "Toothpaste", "Sunscreen"]
+    };
+    const defaultItems = categoryNames.flatMap(category =>
+      defaults[category].map((name, index) => ({ id: `${category}-${index}`, name, category, packed: false }))
+    );
+
+    function loadItems() {
+      try {
+        const stored = localStorage.getItem(storageKey);
+        if (stored === null) return defaultItems;
+        const parsed = JSON.parse(stored);
+        if (!Array.isArray(parsed)) return defaultItems;
+        const ids = new Set();
+        if (!parsed.every(item => {
+          if (!item || typeof item.id !== "string" || !item.id || ids.has(item.id) ||
+            typeof item.name !== "string" || !item.name.trim() ||
+            !categoryNames.includes(item.category) || typeof item.packed !== "boolean") return false;
+          ids.add(item.id);
+          return true;
+        })) return defaultItems;
+        return parsed;
+      } catch {
+        return defaultItems;
+      }
+    }
+
+    let items = loadItems();
+
+    function saveItems() {
+      try { localStorage.setItem(storageKey, JSON.stringify(items)); } catch { }
+    }
+
+    function render() {
+      const packed = items.filter(item => item.packed).length;
+      const total = items.length;
+      const percent = total ? Math.round(packed / total * 100) : 0;
+      document.getElementById("progress-ring").style.setProperty("--progress", `${percent}%`);
+      document.getElementById("progress-percent").textContent = `${percent}%`;
+      document.getElementById("progress-title").textContent = total && packed === total ? "All packed!" : "Let's get packing";
+      document.getElementById("progress-detail").textContent = `${packed} of ${total} items packed`;
+      document.getElementById("progress-fill").style.width = `${percent}%`;
+      document.getElementById("progress-bar").setAttribute("aria-valuenow", String(percent));
+
+      const container = document.getElementById("categories");
+      container.replaceChildren();
+      for (const category of categoryNames) {
+        const categoryItems = items.filter(item => item.category === category);
+        const section = document.createElement("section");
+        section.className = "category";
+        const header = document.createElement("div");
+        header.className = "category-header";
+        const title = document.createElement("h2");
+        title.textContent = category;
+        const count = document.createElement("span");
+        count.className = "category-count";
+        count.textContent = `${categoryItems.filter(item => item.packed).length} / ${categoryItems.length} packed`;
+        header.append(title, count);
+        section.append(header);
+
+        const list = document.createElement("ul");
+        list.className = "item-list";
+        for (const item of categoryItems) {
+          const row = document.createElement("li");
+          row.className = "item";
+          const label = document.createElement("label");
+          const checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          checkbox.checked = item.packed;
+          checkbox.dataset.id = item.id;
+          const name = document.createElement("span");
+          name.className = "item-name";
+          name.textContent = item.name;
+          label.append(checkbox, name);
+          const remove = document.createElement("button");
+          remove.type = "button";
+          remove.className = "delete-button";
+          remove.dataset.id = item.id;
+          remove.setAttribute("aria-label", `Delete ${item.name}`);
+          remove.textContent = "Delete";
+          row.append(label, remove);
+          list.append(row);
+        }
+        section.append(list);
+        if (!categoryItems.length) {
+          const empty = document.createElement("p");
+          empty.className = "empty";
+          empty.textContent = "Nothing here yet. Add an item above!";
+          section.append(empty);
+        }
+        container.append(section);
+      }
+    }
+
+    document.getElementById("add-form").addEventListener("submit", event => {
+      event.preventDefault();
+      const input = document.getElementById("new-item");
+      const name = input.value.trim();
+      if (!name) { input.focus(); return; }
+      items.push({ id: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`, name,
+        category: document.getElementById("new-category").value, packed: false });
+      saveItems();
+      render();
+      input.value = "";
+      input.focus();
+    });
+
+    document.getElementById("categories").addEventListener("change", event => {
+      if (!event.target.matches('input[type="checkbox"]')) return;
+      const item = items.find(entry => entry.id === event.target.dataset.id);
+      if (!item) return;
+      item.packed = event.target.checked;
+      saveItems();
+      render();
+    });
+
+    document.getElementById("categories").addEventListener("click", event => {
+      const button = event.target.closest("button.delete-button");
+      if (!button) return;
+      items = items.filter(item => item.id !== button.dataset.id);
+      saveItems();
+      render();
+    });
+
+    render();
+  </script>
+</body>
+</html>

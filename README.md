@@ -26,9 +26,9 @@ Reading a page you don't understand? Tap the floating button, open the floating 
 
 In this demo, mobby reads the Python website and answers in the floating chat.
 
-<p><img src="docs/media/screen-qa.png" width="280" alt="Floating chat explaining the Python website"></p>
+<p><img src="docs/media/en/screen-qa.png" width="280" alt="Floating chat explaining the Python website"></p>
 
-[Watch the phone recording](docs/media/screen-qa.mp4)
+[Watch the phone recording](docs/media/en/screen-qa.mp4)
 
 ## Work with photos and files
 
@@ -38,21 +38,21 @@ Add photo or file access to a task and choose the photos or folder to share. Ask
 
 This demo exports an image copy, a Markdown summary, and a CSV list, then reads them back to check their contents. The original image stays where it was.
 
-<p><img src="docs/media/media-files.png" width="280" alt="Completed photo analysis and file export"></p>
+<p><img src="docs/media/en/media-files.png" width="280" alt="Completed photo analysis and file export"></p>
 
-[Watch the phone recording](docs/media/media-files.mp4)
+[Watch the phone recording](docs/media/en/media-files.mp4)
 
 ## Let it use apps for you
 
 Add phone access to a task and describe what you want to do. mobby reads the screen, taps buttons, types text, and moves between pages to carry out the steps.
 
-> Download TomatoToDo from the app store and open the feature for adding a task.
+> Install Via browser from the app store and open Bookmarks.
 
-This demo installs TomatoToDo (番茄ToDo) from the Xiaomi app store and opens its task editor and custom timer settings. App control can still run into wrong taps or service interruptions, so keep an eye on the results of longer tasks.
+This demo installs Via from its page in the Xiaomi app store, completes the first-run setup, and opens Bookmarks from the browser menu. App control can still run into wrong taps or service interruptions, so keep an eye on the results of longer tasks.
 
-<p><img src="docs/media/app-feature.png" width="280" alt="Custom timer settings in TomatoToDo"></p>
+<p><img src="docs/media/en/app-feature.png" width="280" alt="Bookmarks in Via browser"></p>
 
-[Watch the phone recording · 8× speed](docs/media/app-feature-8x.mp4)
+[Watch the phone recording · 8× speed](docs/media/en/app-feature-8x.mp4)
 
 ## Build something useful on your phone
 
@@ -62,15 +62,15 @@ Describe what you need. Let the agent write the code in your phone's workspace, 
 
 Codex built this checklist on the phone. It shows your packing progress and saves items and checkmarks in the browser, ready to review before you leave.
 
-<p><img src="docs/media/travel-checklist.png" width="280" alt="Travel packing checklist running in the phone browser"></p>
+<p><img src="docs/media/en/travel-checklist.png" width="280" alt="Travel packing checklist running in the phone browser"></p>
 
-[Watch the phone recording](docs/media/travel-checklist.mp4) · [Browse the example code](docs/examples/travel-checklist/)
+[Watch the phone recording](docs/media/en/travel-checklist.mp4) · [Browse the example code](docs/examples/travel-checklist-en/)
 
 ## Getting started
 
 mobby currently supports ARM64 devices running Android 8.0 or later. On first launch, it sets up the runtime included in the APK. Enter your service URL, API key, and model in the gateway settings, save them, and start a conversation.
 
-Screen Q&A requires the floating button, permission to display over other apps, and the screen accessibility service. Grant photo and file access for the tasks that need them. All four demos were recorded with Codex on an Android 13 phone; the recordings use a Chinese interface. See the [demo notes](docs/media/real-device-demos.md) for the test results and known issues.
+Screen Q&A requires the floating button, permission to display over other apps, and the screen accessibility service. Grant photo and file access for the tasks that need them. All four demos were recorded with Codex on an Android 13 phone; mobby, prompts, and replies are in English. Some Xiaomi store listings and vendor popups still contain Chinese text. See the [demo notes](docs/media/en/README.md) for the test results and known issues.
 
 [Build and usage guide](docs/getting-started.md) · [Gateway setup](docs/gateway.md) · [Project docs](docs/README.md) · [MIT license](LICENSE)
 
