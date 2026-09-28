@@ -24,7 +24,6 @@ class RunCoordinatorTest {
         val commands = mutableMapOf<CommandId, CommandRecord>()
         override suspend fun command(id: CommandId) = commands[id]
         override suspend fun recordCommand(command: CommandRecord) { commands[command.id] = command }
-        override suspend fun releaseRecoveredSlot(runId: RunId) {}
         override suspend fun find(requestId: RequestId) = requests[requestId]
         override suspend fun accept(requestId: RequestId, digest: String, snapshot: RunSnapshot, event: EventEnvelope) {
             check(!broken)
@@ -39,7 +38,7 @@ class RunCoordinatorTest {
         }
         override suspend fun snapshot(runId: RunId) = states[runId]
         override suspend fun eventsAfter(runId: RunId, sequence: Long, limit: Int) = events.filter { it.runId == runId && it.sequence > sequence }.take(limit)
-        override suspend fun unfinished() = states.values.filter { !it.phase.terminal }
+        override suspend fun unfinished() = states.values.filter { !it.phase.terminal || it.phase == RunPhase.OUTCOME_UNKNOWN && it.terminalEvidence?.terminationConfirmed != true }
     }
     private class MemoryOutput : OutputStorePort {
         val content = mutableMapOf<ResourceRef, String>()
@@ -376,6 +375,26 @@ class RunCoordinatorTest {
         runCurrent()
         assertEquals(RunPhase.OUTCOME_UNKNOWN, journal.states.getValue(id).phase)
         assertEquals(ErrorCode.BUSY, (runtime.submit(request("next")) as SubmitResult.Rejected).error.code)
+    }
+    @Test fun `recovery confirms termination of an unknown run without claiming task success`() = runTest {
+        val journal = MemoryJournal()
+        val first = RunCoordinator(backgroundScope, environment, process { _, _, _ -> ProcessResult(null, false) }, journal, MemoryOutput())
+        first.recover()
+        val admitted = first.submit(request()) as SubmitResult.Accepted
+        runCurrent()
+        assertFalse(journal.states.getValue(admitted.runId).terminalEvidence!!.terminationConfirmed)
+        val restarted = RunCoordinator(backgroundScope, environment, process { _, _, _ -> error("Must not replay work") }, journal, MemoryOutput())
+        restarted.recover()
+        val recovered = (restarted.snapshot(admitted.runId) as SnapshotResult.Found).snapshot
+        assertEquals(RunPhase.OUTCOME_UNKNOWN, recovered.phase)
+        assertTrue(recovered.terminalEvidence!!.terminationConfirmed)
+        assertNull(recovered.terminalEvidence!!.protocolSucceeded)
+        assertNull(recovered.terminalEvidence!!.exitCode)
+        assertEquals(CommandResult.AlreadyTerminal, restarted.cancel(CancelRequest(CommandId("stop"), admitted.runId)))
+        assertEquals(1, journal.events.count { it.runId == admitted.runId && it.payload is RuntimeEvent.RunFinished })
+        restarted.recover()
+        assertEquals(1, journal.events.count { it.runId == admitted.runId && it.payload is RuntimeEvent.ProcessTerminationConfirmed })
+        assertTrue(restarted.submit(request("next")) is SubmitResult.Accepted)
     }
     @Test fun `restart marks admitted run interrupted and never starts it again`() = runTest {
         val journal = MemoryJournal(); val output = MemoryOutput()

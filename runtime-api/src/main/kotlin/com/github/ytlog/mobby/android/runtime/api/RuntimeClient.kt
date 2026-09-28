@@ -293,6 +293,9 @@ sealed interface RuntimeEvent {
     data class RunFinished(val phase: RunPhase, val evidence: TerminalEvidence) : RuntimeEvent {
         init { require(phase.terminal) }
     }
+    /** Host recovery has confirmed the previous agent process is gone; task effects remain unknown. */
+    @Serializable
+    data object ProcessTerminationConfirmed : RuntimeEvent
     /** Retain sanitized diagnostics for unknown events; never infer success from them. */
     @Serializable
     data class Unknown(val kind: String, val diagnosticRef: ResourceRef?) : RuntimeEvent

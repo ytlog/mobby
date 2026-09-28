@@ -52,6 +52,7 @@ class ConversationProtocolTest {
             RuntimeEvent.Progress(ProgressNotice.OUTPUT_TRUNCATED),
             RuntimeEvent.CancellationRequested(CancelReason.USER_REQUEST),
             RuntimeEvent.RunFinished(RunPhase.SUCCEEDED, TerminalEvidence(true, 0)),
+            RuntimeEvent.ProcessTerminationConfirmed,
             RuntimeEvent.Unknown("future", null),
         )
         events.forEach { event ->

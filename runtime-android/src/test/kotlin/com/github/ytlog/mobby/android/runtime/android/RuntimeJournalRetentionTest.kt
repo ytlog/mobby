@@ -82,6 +82,34 @@ class RuntimeJournalRetentionTest {
             assertEquals(listOf(uncertain), journal.unfinished())
         }
     }
+    @Test fun `recovery evidence releases occupancy and remains eligible for history cleanup`() = runBlocking {
+        RuntimeJournal(context, generous).use { journal ->
+            val initial = accept(journal, "recovered", 10)
+            val evidence = TerminalEvidence(null, null, RuntimeError(ErrorCode.INTERRUPTED))
+            val terminal = initial.copy(phase = RunPhase.OUTCOME_UNKNOWN, revision = 2, lastSequence = 2, terminalEvidence = evidence)
+            journal.append(terminal, event(terminal, 20, RuntimeEvent.RunFinished(terminal.phase, evidence)))
+            val recovered = terminal.copy(revision = 3, lastSequence = 3, terminalEvidence = evidence.copy(terminationConfirmed = true))
+            journal.append(recovered, event(recovered, 30, RuntimeEvent.ProcessTerminationConfirmed))
+            assertTrue(journal.unfinished().isEmpty())
+            assertEquals(recovered, journal.snapshot(initial.runId))
+        }
+        RuntimeJournal(context, EventHistoryPolicy(0, Long.MAX_VALUE), clock = { 100 }).use { journal ->
+            journal.compact()
+            assertTrue(journal.eventsAfter(RunId("recovered"), 0, 128).isEmpty())
+            assertTrue(journal.snapshot(RunId("recovered"))!!.terminalEvidence!!.terminationConfirmed)
+        }
+    }
+    @Test fun `unknown termination remains recoverable after its slot was released`() = runBlocking {
+        RuntimeJournal(context, generous).use { journal ->
+            val initial = accept(journal, "released-unknown", 10)
+            val evidence = TerminalEvidence(null, null, RuntimeError(ErrorCode.INTERRUPTED))
+            val terminal = initial.copy(phase = RunPhase.OUTCOME_UNKNOWN, revision = 2, lastSequence = 2, terminalEvidence = evidence)
+            journal.append(terminal, event(terminal, 20, RuntimeEvent.RunFinished(terminal.phase, evidence)))
+            // Reproduce the persisted inconsistent state from the former recovery path.
+            journal.writableDatabase.execSQL("UPDATE runs SET busy=0 WHERE id=?", arrayOf(initial.runId.value))
+            assertEquals(listOf(terminal), journal.unfinished())
+        }
+    }
     @Test fun `confirmed process exit releases slot even when a device effect is unknown`() = runBlocking {
         RuntimeJournal(context, generous).use { journal ->
             val initial = accept(journal, "uncertain-effect", 10)

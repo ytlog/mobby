@@ -48,6 +48,17 @@ class RunProjectionTest {
         assertEquals(4, output.steps.single().order)
         assertEquals(1, output.steps.single().output.size)
     }
+    @Test fun `confirmed recovery removes stop occupancy while preserving unknown task outcome`() {
+        val unknown = initial.copy(phase = RunPhase.OUTCOME_UNKNOWN,
+            terminalEvidence = TerminalEvidence(null, null, RuntimeError(ErrorCode.INTERRUPTED)))
+        assertTrue(RunProjection.occupied(unknown))
+        val recovered = RunProjection.apply(unknown, event(2, RuntimeEvent.ProcessTerminationConfirmed))!!
+        assertFalse(RunProjection.occupied(recovered))
+        assertEquals(RunPhase.OUTCOME_UNKNOWN, recovered.phase)
+        assertEquals(RunPhase.OUTCOME_UNKNOWN, RunProjection.verifiedPhase(recovered))
+        assertNull(recovered.terminalEvidence!!.exitCode)
+        assertNull(recovered.terminalEvidence!!.protocolSucceeded)
+    }
     @Test fun `success without evidence is never projected as success`() {
         assertEquals(RunPhase.OUTCOME_UNKNOWN, RunProjection.verifiedPhase(initial.copy(phase = RunPhase.SUCCEEDED)))
         assertEquals(RunPhase.SUCCEEDED, RunProjection.verifiedPhase(initial.copy(phase = RunPhase.SUCCEEDED, terminalEvidence = TerminalEvidence(true, 0))))

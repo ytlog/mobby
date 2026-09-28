@@ -39,6 +39,8 @@ internal object RunProjection {
             is RuntimeEvent.ArtifactAvailable -> current.copy(artifacts = current.artifacts + payload.ref)
             is RuntimeEvent.CancellationRequested -> current.copy(phase = RunPhase.CANCELLING, pendingApprovals = emptyList())
             is RuntimeEvent.RunFinished -> if (current.phase.terminal) current else current.copy(phase = payload.phase, terminalEvidence = payload.evidence, pendingApprovals = emptyList(), deviceOperations = current.deviceOperations.map { it.copy(operation = DeviceOperationRules.stopped(it.operation, payload.phase != RunPhase.CANCELLED)) })
+            RuntimeEvent.ProcessTerminationConfirmed -> if (current.phase.terminal)
+                current.copy(terminalEvidence = (current.terminalEvidence ?: TerminalEvidence(null, null, RuntimeError(ErrorCode.INTERRUPTED))).copy(terminationConfirmed = true)) else current
             is RuntimeEvent.Unknown -> payload.diagnosticRef?.let { current.copy(outputSegments = current.outputSegments + OutputSegment("diagnostic:${payload.kind}", event.sequence, it)) } ?: current
         }
         return next.copy(lastSequence = event.sequence, revision = current.revision + 1)

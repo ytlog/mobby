@@ -36,7 +36,6 @@ data class RequestRecord(val digest: String, val runId: RunId)
 interface JournalPort {
     suspend fun command(id: CommandId): CommandRecord?
     suspend fun recordCommand(command: CommandRecord)
-    suspend fun releaseRecoveredSlot(runId: RunId)
     suspend fun find(requestId: RequestId): RequestRecord?
     /** Atomic insert: request index + first event + snapshot. Throws on persistence failure. */
     suspend fun accept(requestId: RequestId, digest: String, snapshot: RunSnapshot, event: EventEnvelope)

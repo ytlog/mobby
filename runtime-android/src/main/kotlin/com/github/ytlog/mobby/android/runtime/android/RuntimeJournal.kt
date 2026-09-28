@@ -63,10 +63,6 @@ internal class RuntimeJournal(context: Context, private val historyPolicy: Event
         }
     }
     override suspend fun recordCommand(command: CommandRecord) = withContext(Dispatchers.IO) { transaction { insertCommand(it, command) } }
-    override suspend fun releaseRecoveredSlot(runId: RunId) = withContext(Dispatchers.IO) {
-        writableDatabase.update("runs", ContentValues().apply { put("busy", 0) }, "id=?", arrayOf(runId.value))
-        Unit
-    }
     override suspend fun find(requestId: RequestId): RequestRecord? = withContext(Dispatchers.IO) {
         readableDatabase.rawQuery("SELECT digest,id FROM runs WHERE request_id=?", arrayOf(requestId.value)).use {
             if (it.moveToFirst()) RequestRecord(it.getString(0), RunId(it.getString(1))) else null
@@ -105,7 +101,7 @@ internal class RuntimeJournal(context: Context, private val historyPolicy: Event
                 while (cursor.moveToNext()) {
                     val snapshot = json.decodeFromString<RunSnapshot>(cursor.getString(1))
                     val event = json.decodeFromString<EventEnvelope>(cursor.getString(2))
-                    if (snapshot.phase.terminal && event.payload is RuntimeEvent.RunFinished)
+                    if (snapshot.phase.terminal && (event.payload is RuntimeEvent.RunFinished || event.payload is RuntimeEvent.ProcessTerminationConfirmed))
                         add(Candidate(cursor.getString(0), event.occurredAtEpochMillis, cursor.getLong(3)))
                 }
             }
@@ -132,8 +128,15 @@ internal class RuntimeJournal(context: Context, private val historyPolicy: Event
         }
     }
     override suspend fun unfinished(): List<RunSnapshot> = withContext(Dispatchers.IO) {
-        readableDatabase.rawQuery("SELECT snapshot FROM runs WHERE busy=1", emptyArray()).use {
-            buildList { while (it.moveToNext()) add(json.decodeFromString<RunSnapshot>(it.getString(0))) }
+        // Include previously released unknown runs so recovery also updates their UI evidence.
+        readableDatabase.rawQuery("SELECT snapshot,busy FROM runs", emptyArray()).use {
+            buildList {
+                while (it.moveToNext()) {
+                    val snapshot = json.decodeFromString<RunSnapshot>(it.getString(0))
+                    if (it.getInt(1) == 1 || snapshot.phase == RunPhase.OUTCOME_UNKNOWN && snapshot.terminalEvidence?.terminationConfirmed != true)
+                        add(snapshot)
+                }
+            }
         }
     }
     private fun transaction(block: (SQLiteDatabase) -> Unit) {

@@ -31,12 +31,16 @@ class RunCoordinator(
     private var activeRequest: RequestId? = null
     private var healthy = true
 
-    /** Called once before admission. Never resumes side effects after host death. */
+    /** Called after platform process cleanup, once before admission. Never resumes side effects after host death. */
     suspend fun recover() = mutex.withLock {
         try {
             for (old in journal.unfinished()) {
-                if (old.phase.terminal) { journal.releaseRecoveredSlot(old.runId); continue }
-                val evidence = TerminalEvidence(null, null, RuntimeError(ErrorCode.INTERRUPTED))
+                if (old.phase.terminal) {
+                    val evidence = (old.terminalEvidence ?: TerminalEvidence(null, null, RuntimeError(ErrorCode.INTERRUPTED))).copy(terminationConfirmed = true)
+                    append(old, RuntimeEvent.ProcessTerminationConfirmed, old.copy(terminalEvidence = evidence))
+                    continue
+                }
+                val evidence = TerminalEvidence(null, null, RuntimeError(ErrorCode.INTERRUPTED), terminationConfirmed = true)
                 append(old, RuntimeEvent.RunFinished(RunPhase.INTERRUPTED, evidence),
                     old.copy(phase = RunPhase.INTERRUPTED, terminalEvidence = evidence, pendingApprovals = emptyList(), deviceOperations = old.deviceOperations.map { it.copy(operation = DeviceOperationRules.stopped(it.operation, true)) }))
             }
