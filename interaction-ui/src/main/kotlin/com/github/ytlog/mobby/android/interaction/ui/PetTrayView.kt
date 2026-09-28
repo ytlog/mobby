@@ -26,6 +26,7 @@ internal class PetTrayView(
     onStop: () -> Unit,
     onOpen: () -> Unit,
     onTuck: () -> Unit,
+    onChat: () -> Unit = {},
 ) : FrameLayout(context) {
     private val blue = context.getColor(R.color.mobby_brand_fold)
     private val blueSurface = context.getColor(R.color.mobby_brand_surface)
@@ -94,6 +95,11 @@ internal class PetTrayView(
                 ), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             }
         })
+        card.addView(action(
+            com.github.ytlog.mobby.android.localization.FloatingStrings.quickChat,
+            com.github.ytlog.mobby.android.localization.FloatingStrings.quickChat,
+            R.drawable.pet_open, blue, blueSurface, true, onChat,
+        ), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
         // Natural height for normal fonts; scroll only when the screen cannot fit it.
         addView(ScrollView(context).apply {
             isVerticalScrollBarEnabled = false

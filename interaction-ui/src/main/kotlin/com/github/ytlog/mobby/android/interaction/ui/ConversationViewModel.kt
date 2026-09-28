@@ -34,6 +34,7 @@ internal class ConversationViewModel(val actions: InteractionUseCases) : ViewMod
     val status = actions.status.stateIn(viewModelScope, SharingStarted.Eagerly, SystemStatus())
     val diagnostic = actions.diagnostic.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DiagnosticOutput(null, emptyList()))
     val composer = MutableStateFlow(ComposerState())
+    val screenReading = MutableStateFlow(false)
     val agents = MutableStateFlow<List<AgentOption>>(emptyList())
     val gateways = MutableStateFlow<List<GatewayProfile>>(emptyList())
     val gatewaysLoaded = MutableStateFlow(false)

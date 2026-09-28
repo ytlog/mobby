@@ -24,6 +24,42 @@ import org.robolectric.annotation.Config
 class PetOverlayTest {
     private val context: Context get() = ApplicationProvider.getApplicationContext()
 
+    @Test fun `quick chat opens the current task in overlay without launching app`() {
+        val window = MemoryWindow()
+        var chat: ConversationId? = null
+        var appOpened = false
+        val pet = DesktopPet(context, window, context.getSharedPreferences("pet-quick", Context.MODE_PRIVATE),
+            {}, { appOpened = true }, { chat = it })
+        pet.update(running("run"), false, true, true)
+        window.view!!.described("任务悬浮球")!!.performClick()
+        window.view!!.described("悬浮对话")!!.performClick()
+        assertEquals(ConversationId("c"), chat)
+        assertFalse(appOpened)
+        assertEquals(PET_BALL_DP, window.frame?.width)
+    }
+
+    @Test fun `idle quick chat requests a new conversation without launching app`() {
+        val window = MemoryWindow()
+        var requested = false
+        val pet = DesktopPet(context, window, context.getSharedPreferences("pet-quick-idle", Context.MODE_PRIVATE),
+            {}, { error("Quick chat must not launch the app") }, { requested = true; assertNull(it) })
+        pet.update(InteractionState(loading = false), false, true, true)
+        window.view!!.described("任务悬浮球")!!.performClick()
+        window.view!!.described("悬浮对话")!!.performClick()
+        assertTrue(requested)
+    }
+
+    @Test fun `chat window takes keyboard focus while ball does not`() {
+        val window = SystemPetWindow(context)
+        val view = View(context)
+        val frame = PetFrame(0, 0, 200, 300, true, focusable = true)
+        window.attach(view, frame)
+        assertEquals(0, (view.layoutParams as android.view.WindowManager.LayoutParams).flags and android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
+        window.update(frame.copy(focusable = false))
+        assertTrue((view.layoutParams as android.view.WindowManager.LayoutParams).flags and android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE != 0)
+        window.detach()
+    }
+
     @Test fun `system window is detached before hide returns`() {
         val view = View(context)
         val window = SystemPetWindow(context)

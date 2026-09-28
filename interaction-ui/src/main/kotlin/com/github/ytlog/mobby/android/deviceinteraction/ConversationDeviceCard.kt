@@ -11,15 +11,19 @@ import com.github.ytlog.mobby.android.deviceinteraction.model.*
 import com.github.ytlog.mobby.android.deviceinteraction.ui.*
 import com.github.ytlog.mobby.android.interaction.domain.*
 import com.github.ytlog.mobby.android.interaction.ui.ConversationViewModel
+import com.github.ytlog.mobby.android.interaction.ui.LocalAttachmentPreviewHost
 import java.util.UUID
 
 /** Composition root adapter: cards know neither ConversationViewModel nor the runtime client. */
 @Composable internal fun ConversationDeviceCard(operation: DeviceOperation, turn: Turn, conversation: Conversation, vm: ConversationViewModel) {
     var preview by remember { mutableStateOf<String?>(null) }
     val execution = turn.execution
+    val previewHost = LocalAttachmentPreviewHost.current
     DeviceTaskCard(operation, DeviceCardActions(
         stop = execution?.takeIf { turn.occupied }?.let { id -> { vm.stop(id) } },
-        openResource = { ref -> if (ref in operation.result?.resourceRefs.orEmpty()) preview = ref },
+        openResource = { ref -> if (ref in operation.result?.resourceRefs.orEmpty()) {
+            if (previewHost != null) previewHost(ref) else preview = ref
+        } },
         respond = execution?.takeIf { turn.occupied }?.let { id -> { response ->
             operation.requiresAttention?.let { attention -> vm.enqueue {
                 vm.report(vm.actions.respondToDevice(DeviceInteractionResponse(UUID.randomUUID().toString(), id.value,

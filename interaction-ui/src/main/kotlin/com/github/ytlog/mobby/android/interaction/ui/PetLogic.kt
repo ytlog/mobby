@@ -24,6 +24,7 @@ internal data class PetFrame(
     val width: Int,
     val height: Int,
     val ballOnRight: Boolean,
+    val focusable: Boolean = false,
 )
 
 internal fun petPx(dp: Int, density: Float) = (dp * density).toInt()

@@ -24,6 +24,9 @@ import kotlinx.coroutines.*
 @OptIn(ExperimentalCoroutinesApi::class)
 private val previewDecodeDispatcher = Dispatchers.Default.limitedParallelism(1)
 
+/** Hosts without an Activity can route full previews to the app instead of opening a Dialog. */
+internal val LocalAttachmentPreviewHost = staticCompositionLocalOf<((String) -> Unit)?> { null }
+
 @Composable internal fun AttachmentList(refs: List<String>, workspace: String, vm: ConversationViewModel, remove: ((String) -> Unit)? = null) {
     refs.forEach { ref -> key(ref, workspace) {
         var result by remember(ref, workspace) { mutableStateOf<DataResult<Attachment>?>(null) }
@@ -41,12 +44,14 @@ private val previewDecodeDispatcher = Dispatchers.Default.limitedParallelism(1)
 /** Shared by drafts, frozen user turns and the conversation attachment list. */
 @Composable internal fun AttachmentItem(attachment: Attachment, loadPreview: suspend (Boolean) -> DataResult<AttachmentPreview>, remove: (() -> Unit)? = null) {
     var expanded by remember(attachment.ref) { mutableStateOf(false) }
+    val previewHost = LocalAttachmentPreviewHost.current
+    val openPreview = { if (previewHost != null) previewHost(attachment.ref) else expanded = true }
     val image = attachment.mediaType.startsWith("image/")
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (image) AttachmentImage(attachment.ref, attachment.name, false, loadPreview, Modifier.size(80.dp).clickable(role = Role.Button, onClickLabel = AppStrings.viewImage) { expanded = true })
+        if (image) AttachmentImage(attachment.ref, attachment.name, false, loadPreview, Modifier.size(80.dp).clickable(role = Role.Button, onClickLabel = AppStrings.viewImage, onClick = openPreview))
         Column(Modifier.weight(1f)) {
             Text(AppStrings.bReady(attachment.name, attachment.sizeBytes), Modifier.padding(vertical = 8.dp), style = MaterialTheme.typography.bodySmall)
-            if (image) TextButton(onClick = { expanded = true }, modifier = Modifier.semantics { contentDescription = AppStrings.viewImage2(attachment.name) }) { Text(AppStrings.viewImage) }
+            if (image) TextButton(onClick = openPreview, modifier = Modifier.semantics { contentDescription = AppStrings.viewImage2(attachment.name) }) { Text(AppStrings.viewImage) }
         }
         if (remove != null) TextButton(onClick = remove, modifier = Modifier.semantics { contentDescription = AppStrings.removeAttachment(attachment.name) }) { Text(AppStrings.remove) }
     }

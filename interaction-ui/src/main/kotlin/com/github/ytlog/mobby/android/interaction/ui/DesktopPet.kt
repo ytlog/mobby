@@ -58,6 +58,7 @@ internal class SystemPetWindow(context: Context) : PetWindow {
         params.y = frame.y
         params.width = frame.width
         params.height = frame.height
+        params.flags = flags(frame)
         try {
             wm.updateViewLayout(view, params)
         } catch (_: RuntimeException) {
@@ -77,15 +78,18 @@ internal class SystemPetWindow(context: Context) : PetWindow {
         frame.width,
         frame.height,
         WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+        flags(frame),
         PixelFormat.TRANSLUCENT,
     ).apply {
         gravity = Gravity.TOP or Gravity.START
         x = frame.x
         y = frame.y
+        softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
     }
+
+    private fun flags(frame: PetFrame) =
+        (if (frame.focusable) 0 else WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) or
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
 }
 
 class DesktopPet internal constructor(
@@ -94,13 +98,16 @@ class DesktopPet internal constructor(
     private val prefs: android.content.SharedPreferences,
     private val stopRun: (ExecutionId) -> Unit,
     private val openConversation: (ConversationId?) -> Unit,
+    private val quickConversation: (ConversationId?) -> Unit = {},
 ) {
-    constructor(context: Context, onStop: (ExecutionId) -> Unit, onOpen: (ConversationId?) -> Unit) : this(
+    constructor(context: Context, onStop: (ExecutionId) -> Unit, onOpen: (ConversationId?) -> Unit,
+        onChat: (ConversationId?) -> Unit = {}) : this(
         context.applicationContext,
         SystemPetWindow(context.applicationContext),
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE),
         onStop,
         onOpen,
+        onChat,
     )
 
     private val session = PetSession()
@@ -276,6 +283,11 @@ class DesktopPet internal constructor(
         },
         onTuck = {
             session.tuck(target?.execution?.value)
+            refresh()
+        },
+        onChat = {
+            session.expanded = false
+            quickConversation(target?.conversation)
             refresh()
         },
     ).apply { layoutParams = LinearLayout.LayoutParams(width, LinearLayout.LayoutParams.MATCH_PARENT) }

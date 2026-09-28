@@ -16,6 +16,7 @@ import com.github.ytlog.mobby.android.interaction.domain.InteractionState
 import com.github.ytlog.mobby.android.interaction.domain.InteractionUseCases
 import com.github.ytlog.mobby.android.interaction.domain.StopResult
 import com.github.ytlog.mobby.android.interaction.ui.DesktopPet
+import com.github.ytlog.mobby.android.interaction.ui.FloatingConversationWindow
 import com.github.ytlog.mobby.android.runtime.android.RuntimeHost
 import kotlinx.coroutines.*
 
@@ -27,6 +28,7 @@ class MobbyApplication : Application() {
     lateinit var interaction: InteractionUseCases
         private set
     private lateinit var pet: DesktopPet
+    private lateinit var floatingConversation: FloatingConversationWindow
     private var latest = InteractionState()
     private var foreground = false
     private var holdForUi = true
@@ -59,6 +61,7 @@ class MobbyApplication : Application() {
         }
         interaction = InteractionFactory.create(this, runtime.client, runtime.admin, runtime.diagnostics, applicationScope)
         permitted = Settings.canDrawOverlays(this)
+        floatingConversation = FloatingConversationWindow(this, interaction, ::openConversation, ::syncPet)
         pet = DesktopPet(this, onStop = { id ->
             petScope.launch {
                 val result = try {
@@ -70,8 +73,13 @@ class MobbyApplication : Application() {
                 }
                 if (result is StopResult.Rejected) Toast.makeText(this@MobbyApplication, AppStrings.couldNotStopTheCurrentTask, Toast.LENGTH_SHORT).show()
             }
-        }, onOpen = { id -> openConversation(id) })
-        com.github.ytlog.mobby.android.device.ScreenOperation.hideOverlay = pet::hideForScreenOperation
+        }, onOpen = { id -> openConversation(id) }, onChat = floatingConversation::show)
+        com.github.ytlog.mobby.android.device.ScreenOperation.hideOverlay = {
+            val ball = pet.hideForScreenOperation()
+            val conversation = try { floatingConversation.hideForScreenOperation() }
+                catch (error: Throwable) { ball.close(); throw error }
+            AutoCloseable { try { conversation.close() } finally { ball.close() } }
+        }
         petScope.launch { interaction.state.collect { latest = it; syncPet() } }
         registerComponentCallbacks(object : ComponentCallbacks2 {
             override fun onConfigurationChanged(newConfig: Configuration) = syncPet()
@@ -98,6 +106,8 @@ class MobbyApplication : Application() {
 
     private fun syncPet() {
         if (holdForUi || !::pet.isInitialized) return
-        pet.update(latest, foreground, petEnabled(), permitted)
+        if (foreground || !petEnabled() || !permitted) floatingConversation.close()
+        floatingConversation.refresh()
+        pet.update(latest, foreground || floatingConversation.isOpen, petEnabled(), permitted)
     }
 }
