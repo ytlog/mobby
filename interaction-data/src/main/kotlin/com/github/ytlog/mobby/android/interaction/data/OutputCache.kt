@@ -16,7 +16,7 @@ internal class OutputCache(private val db: InteractionDatabase, private val clie
     private val reconciliation = Mutex()
     private fun OutputCacheCandidate.eligible(): Boolean {
         val state = storageJson.decodeFromString<RunSnapshot>(snapshot)
-        return state.runId.value == runId && state.phase.terminal && !RunProjection.occupied(state)
+        return state.runId.value == runId && state.phase.terminal && !RunStateRules.occupiesExecution(state)
     }
 
     private suspend fun candidates(conversationId: String? = null, consume: suspend (OutputCacheCandidate) -> Boolean) {

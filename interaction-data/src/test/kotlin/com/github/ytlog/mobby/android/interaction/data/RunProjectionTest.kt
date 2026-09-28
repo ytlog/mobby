@@ -51,20 +51,20 @@ class RunProjectionTest {
     @Test fun `confirmed recovery removes stop occupancy while preserving unknown task outcome`() {
         val unknown = initial.copy(phase = RunPhase.OUTCOME_UNKNOWN,
             terminalEvidence = TerminalEvidence(null, null, RuntimeError(ErrorCode.INTERRUPTED)))
-        assertTrue(RunProjection.occupied(unknown))
+        assertTrue(RunStateRules.occupiesExecution(unknown))
         val recovered = RunProjection.apply(unknown, event(2, RuntimeEvent.ProcessTerminationConfirmed))!!
-        assertFalse(RunProjection.occupied(recovered))
+        assertFalse(RunStateRules.occupiesExecution(recovered))
         assertEquals(RunPhase.OUTCOME_UNKNOWN, recovered.phase)
-        assertEquals(RunPhase.OUTCOME_UNKNOWN, RunProjection.verifiedPhase(recovered))
+        assertEquals(RunPhase.OUTCOME_UNKNOWN, RunStateRules.displayedPhase(recovered))
         assertNull(recovered.terminalEvidence!!.exitCode)
         assertNull(recovered.terminalEvidence!!.protocolSucceeded)
     }
     @Test fun `success without evidence is never projected as success`() {
-        assertEquals(RunPhase.OUTCOME_UNKNOWN, RunProjection.verifiedPhase(initial.copy(phase = RunPhase.SUCCEEDED)))
-        assertEquals(RunPhase.SUCCEEDED, RunProjection.verifiedPhase(initial.copy(phase = RunPhase.SUCCEEDED, terminalEvidence = TerminalEvidence(true, 0))))
-        assertEquals(RunPhase.SUCCEEDED, RunProjection.verifiedPhase(initial.copy(phase = RunPhase.SUCCEEDED, terminalEvidence = TerminalEvidence(true, null, terminationConfirmed = true))))
-        assertEquals(RunPhase.OUTCOME_UNKNOWN, RunProjection.verifiedPhase(initial.copy(phase = RunPhase.SUCCEEDED, terminalEvidence = TerminalEvidence(true, null))))
-        assertEquals(RunPhase.OUTCOME_UNKNOWN, RunProjection.verifiedPhase(initial.copy(phase = RunPhase.SUCCEEDED, terminalEvidence = TerminalEvidence(true, 1))))
-        assertTrue(RunProjection.occupied(initial.copy(phase = RunPhase.OUTCOME_UNKNOWN)))
+        assertEquals(RunPhase.OUTCOME_UNKNOWN, RunStateRules.displayedPhase(initial.copy(phase = RunPhase.SUCCEEDED)))
+        assertEquals(RunPhase.SUCCEEDED, RunStateRules.displayedPhase(initial.copy(phase = RunPhase.SUCCEEDED, terminalEvidence = TerminalEvidence(true, 0))))
+        assertEquals(RunPhase.SUCCEEDED, RunStateRules.displayedPhase(initial.copy(phase = RunPhase.SUCCEEDED, terminalEvidence = TerminalEvidence(true, null, terminationConfirmed = true))))
+        assertEquals(RunPhase.OUTCOME_UNKNOWN, RunStateRules.displayedPhase(initial.copy(phase = RunPhase.SUCCEEDED, terminalEvidence = TerminalEvidence(true, null))))
+        assertEquals(RunPhase.OUTCOME_UNKNOWN, RunStateRules.displayedPhase(initial.copy(phase = RunPhase.SUCCEEDED, terminalEvidence = TerminalEvidence(true, 1))))
+        assertTrue(RunStateRules.occupiesExecution(initial.copy(phase = RunPhase.OUTCOME_UNKNOWN)))
     }
 }

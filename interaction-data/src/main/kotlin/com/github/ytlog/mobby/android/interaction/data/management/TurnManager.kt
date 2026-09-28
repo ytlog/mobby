@@ -6,13 +6,11 @@ import com.github.ytlog.mobby.android.interaction.domain.*
 import com.github.ytlog.mobby.android.localization.AppStrings
 import kotlinx.serialization.encodeToString
 import java.util.concurrent.ConcurrentHashMap
-import java.io.ByteArrayOutputStream
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import com.github.ytlog.mobby.android.runtime.api.*
-import com.github.ytlog.mobby.android.interaction.domain.AgentId as DomainAgent
 
 /** Owns turn submission records and expansion state; a frozen turn keeps its original project and directory. */
 internal class TurnManager(private val db: InteractionDatabase, private val now: () -> Long, private val system: SystemPort,
@@ -20,7 +18,7 @@ internal class TurnManager(private val db: InteractionDatabase, private val now:
     private val execution: ExecutionPort) {
     private val dao = db.dao()
     private val inFlight = ConcurrentHashMap.newKeySet<String>()
-    private val observers = mutableMapOf<String, Job>()
+    private val runs = RunSynchronizer(db, client, scope, outputCache, ::dispatchQueued)
     private val dispatchLock = Mutex()
     fun isInFlight(id: String) = id in inFlight
     suspend fun prepareInsertion(conversationId: ConversationId, turnId: TurnId): PrepareInsertionResult = db.withTransaction {
@@ -166,16 +164,7 @@ internal class TurnManager(private val db: InteractionDatabase, private val now:
         }
     }
     suspend fun pendingTurn(conversationId: ConversationId): TurnExecution? = dao.conversationTurns(conversationId.value).firstOrNull { it.pending && it.insertionRunId == null }?.execution()
-    suspend fun refreshExecution(id: ExecutionId) {
-        val row = dao.turnByRun(id.value) ?: return
-        val deadline = System.nanoTime() + 3_000_000_000L
-        do {
-            val snapshot = (client.snapshot(RunId(id.value)) as? SnapshotResult.Found)?.snapshot ?: return
-            saveProjection(row.id, snapshot)
-            if (!RunProjection.occupied(snapshot)) return
-            delay(100)
-        } while (System.nanoTime() < deadline)
-    }
+    suspend fun refreshExecution(id: ExecutionId) = runs.refresh(id)
     suspend fun expansion(turnId: TurnId, expanded: Boolean) = db.withTransaction {
         dao.turn(turnId.value)?.let { dao.save(it.copy(expanded = expanded)) }; Unit
     }
@@ -185,75 +174,6 @@ internal class TurnManager(private val db: InteractionDatabase, private val now:
             dao.save(it.copy(expandedSteps = storageJson.encodeToString(if (expanded) old + stepId else old - stepId)))
         }; Unit
     }
-    fun observe(turnId: String, runId: String) {
-        synchronized(observers) {
-            if (observers[runId]?.isActive == true) return
-            observers[runId] = scope.launch {
-                try {
-                    val prior = dao.turn(turnId)?.snapshot?.let { storageJson.decodeFromString<RunSnapshot>(it) }
-                    client.observe(RunId(runId), prior?.let { EventCursor(it.runId, it.lastSequence) }).collect { update ->
-                        val row = dao.turn(turnId) ?: return@collect
-                        val current = row.snapshot?.let { storageJson.decodeFromString<RunSnapshot>(it) }
-                        val snapshot = when (update) {
-                            is RuntimeUpdate.Baseline -> update.snapshot.takeIf { it.runId.value == runId && update.cursor == EventCursor(it.runId, it.lastSequence) }
-                            is RuntimeUpdate.Event -> current?.let { RunProjection.apply(it, update.envelope) }
-                            is RuntimeUpdate.ResyncRequired -> null
-                        } ?: (client.snapshot(RunId(runId)) as? SnapshotResult.Found)?.snapshot
-                        if (snapshot != null) {
-                            saveProjection(turnId, snapshot)
-                            if (snapshot.phase.terminal && !RunProjection.occupied(snapshot)) throw CancellationException("Projection reached terminal state")
-                        }
-                    }
-                } catch (e: CancellationException) { throw e }
-                catch (_: Exception) {
-                    db.withTransaction { dao.turn(turnId)?.let { dao.save(it.copy(error = AppStrings.syncInterruptedResultUnconfirmedReopenTheAppToResume)) } }
-                }
-            }
-        }
-    }
-    private suspend fun saveProjection(turnId: String, snapshot: RunSnapshot) {
-        val parts = snapshot.outputSegments + snapshot.steps.flatMap { it.output }
-        val chunks = mutableListOf<ChunkRow>()
-        val cached = dao.chunkRefs(snapshot.runId.value).toHashSet()
-        for (ref in (parts.map { it.ref } + snapshot.artifacts).distinct()) if (ref.value !in cached) {
-            if (dao.outputCacheExpired(snapshot.runId.value)) {
-                chunks += ChunkRow(ref.value, snapshot.runId.value, "", true)
-                continue
-            }
-            val bytes = ByteArrayOutputStream()
-            var offset: Long? = 0
-            var expired = false
-            do {
-                val read = client.readArtifact(ArtifactReadRequest(ref, offset!!, 65536))
-                if (read == ArtifactReadResult.Expired) { bytes.reset(); expired = true; break }
-                check(read is ArtifactReadResult.Chunk) { "Output segment unavailable" }
-                bytes.write(read.bytes.toByteArray())
-                check(bytes.size() <= 512 * 1024) { "Output segment too large" }
-                check((read.nextOffset?.let { it > offset!! } ?: true)) { "Non advancing output cursor" }
-                offset = read.nextOffset
-            } while (offset != null)
-            chunks += ChunkRow(ref.value, snapshot.runId.value, bytes.toString("UTF-8"), expired)
-        }
-        db.withTransaction {
-            val row = dao.turn(turnId) ?: return@withTransaction
-            val old = row.snapshot?.let { storageJson.decodeFromString<RunSnapshot>(it) }
-            if (row.runId != snapshot.runId.value || old != null && old.lastSequence > snapshot.lastSequence) return@withTransaction
-            outputCache.save(chunks)
-            dao.save(row.copy(snapshot = storageJson.encodeToString(snapshot), occupied = RunProjection.occupied(snapshot), error = null))
-            val c = dao.conversation(row.conversationId)?.domain() ?: return@withTransaction
-            val sessionId = snapshot.sessionRef?.value ?: return@withTransaction
-            val agent = snapshot.acceptedConfig.agentId.name
-            // A delayed replay may update only that engine's session, and only if it is still the latest run for that engine.
-            val latest = dao.conversationTurns(c.id.value).lastOrNull { turn ->
-                turn.runId != null && runCatching { storageJson.decodeFromString<StoredConversation>(turn.frozen).agent }.getOrNull() == agent
-            }
-            val frozen = storageJson.decodeFromString<StoredConversation>(row.frozen)
-            if (latest?.id == row.id && frozen.workspace == c.config.workspace && frozen.project == c.project)
-                dao.save(ConversationRules.rememberSession(c, DomainAgent.valueOf(agent), sessionId).row())
-        }
-        if (snapshot.phase.terminal && !RunProjection.occupied(snapshot)) {
-            dispatchQueued()
-            outputCache.compact()
-        }
-    }
+    suspend fun resumeOutput() = runs.resumeOutput()
+    fun observe(turnId: String, runId: String) = runs.observe(turnId, runId)
 }

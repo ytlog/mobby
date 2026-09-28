@@ -13,6 +13,7 @@
 | [Android 对话 UI 评审稿](design/conversation-ui-review.html) | 当前交互规范：会话与执行、顶部菜单、输入、插件/技能、Android 行为、实现架构及可点击原型；原生接入进度见实施记录 |
 | [App 图标](design/app-icon.md) | 确认稿、蓝色环带矢量资源、自适应图层与单色图标 |
 | [交互三层架构与 Runtime 技术设计](design/interaction-runtime-architecture.html) | Compose 独立模块、三层职责、Runtime 模块、固定接口与事件协议、数据所有权和迁移验收 |
+| [会话运行状态管理](design/conversation-state-management.md) | 统一运行状态规则、快照投影、独立输出加载、恢复和摘要一致性 |
 | [项目、目录与会话数据](design/project-workspace-management.md) | 项目即执行目录、默认目录、会话迁移、项目 Skill 与数据管理职责 |
 | [本地模型模块与 HTTP API](design/local-model-runtime.md) | 独立 Gradle 模块与专用进程、五组 Agent 协议、模型管理、资源调度与验收；设计提案 |
 | [本地模型首版实现与使用](design/local-model-first-version.md) | 已实现但宿主入口暂时隐藏的 llama.cpp 服务、Qwen/Gemma 下载 UI、HTTP 路由及当前限制 |

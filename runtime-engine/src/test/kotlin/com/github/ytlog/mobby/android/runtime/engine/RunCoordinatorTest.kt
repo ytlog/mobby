@@ -38,7 +38,7 @@ class RunCoordinatorTest {
         }
         override suspend fun snapshot(runId: RunId) = states[runId]
         override suspend fun eventsAfter(runId: RunId, sequence: Long, limit: Int) = events.filter { it.runId == runId && it.sequence > sequence }.take(limit)
-        override suspend fun unfinished() = states.values.filter { !it.phase.terminal || it.phase == RunPhase.OUTCOME_UNKNOWN && it.terminalEvidence?.terminationConfirmed != true }
+        override suspend fun unfinished() = states.values.filter { RunStateRules.occupiesExecution(it) }
     }
     private class MemoryOutput : OutputStorePort {
         val content = mutableMapOf<ResourceRef, String>()

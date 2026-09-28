@@ -82,8 +82,7 @@ internal class RuntimeJournal(context: Context, private val historyPolicy: Event
             check(db.update("runs", ContentValues().apply {
                 put("snapshot", json.encodeToString(snapshot)); put("sequence", snapshot.lastSequence)
                 // Unknown device effects do not keep the execution slot when the agent process has exited.
-                put("busy", if (!snapshot.phase.terminal ||
-                    snapshot.phase == RunPhase.OUTCOME_UNKNOWN && snapshot.terminalEvidence?.terminationConfirmed != true) 1 else 0)
+                put("busy", if (RunStateRules.occupiesExecution(snapshot)) 1 else 0)
             }, "id=? AND sequence=?", arrayOf(snapshot.runId.value, (snapshot.lastSequence - 1).toString())) == 1) { "Journal sequence conflict" }
             insertEvent(db, event)
             if (command != null) insertCommand(db, command)
@@ -133,7 +132,7 @@ internal class RuntimeJournal(context: Context, private val historyPolicy: Event
             buildList {
                 while (it.moveToNext()) {
                     val snapshot = json.decodeFromString<RunSnapshot>(it.getString(0))
-                    if (it.getInt(1) == 1 || snapshot.phase == RunPhase.OUTCOME_UNKNOWN && snapshot.terminalEvidence?.terminationConfirmed != true)
+                    if (it.getInt(1) == 1 || RunStateRules.occupiesExecution(snapshot))
                         add(snapshot)
                 }
             }

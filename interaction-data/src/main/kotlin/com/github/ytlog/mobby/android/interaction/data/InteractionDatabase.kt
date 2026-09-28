@@ -26,6 +26,8 @@ internal data class OutputCacheCandidate(val turnId: String, val runId: String, 
 @Entity(tableName = "selection")
 internal data class SelectionRow(@PrimaryKey val key: String = "current", val conversationId: String)
 
+internal data class RunOutputCandidate(val runId: String, val snapshot: String, val error: String?)
+
 /** Sidebar projection excludes user text, frozen drafts, expanded steps and historic snapshots. */
 internal data class ConversationActivityRow(val conversationId: String, val snapshot: String?, val occupied: Boolean, val executionId: String?)
 
@@ -47,11 +49,13 @@ internal data class TurnWithChunks(
     suspend fun countThrough(id: String, time: Long, turnId: String): Int
     @Query("SELECT * FROM chunks WHERE runId IN (SELECT runId FROM turns WHERE conversationId=:id)") suspend fun historyChunks(id: String): List<ChunkRow>
     @Query("""SELECT c.id AS conversationId, t.snapshot AS snapshot,
-        EXISTS(SELECT 1 FROM turns busy WHERE busy.conversationId=c.id AND busy.occupied=1) AS occupied,
-        (SELECT busy.runId FROM turns busy WHERE busy.conversationId=c.id AND busy.occupied=1 AND busy.runId IS NOT NULL ORDER BY busy.createdAt, busy.id LIMIT 1) AS executionId
-        FROM conversations c LEFT JOIN turns t ON t.id=(
-            SELECT latest.id FROM turns latest WHERE latest.conversationId=c.id
-            ORDER BY latest.createdAt DESC, latest.id DESC LIMIT 1
+        COALESCE(t.occupied,0) AS occupied,
+        CASE WHEN t.occupied=1 THEN t.runId ELSE NULL END AS executionId
+        FROM conversations c LEFT JOIN turns t ON t.id=COALESCE(
+            (SELECT busy.id FROM turns busy WHERE busy.conversationId=c.id AND busy.occupied=1
+             ORDER BY busy.createdAt,busy.id LIMIT 1),
+            (SELECT latest.id FROM turns latest WHERE latest.conversationId=c.id
+             ORDER BY latest.createdAt DESC,latest.id DESC LIMIT 1)
         )""") fun conversationActivities(): Flow<List<ConversationActivityRow>>
     @Query("SELECT conversationId FROM selection WHERE `key`='current'") fun selection(): Flow<String?>
     @Query("SELECT * FROM conversations WHERE id=:id") suspend fun conversation(id: String): ConversationRow?
@@ -62,6 +66,8 @@ internal data class TurnWithChunks(
     @Query("SELECT * FROM turns WHERE runId=:runId LIMIT 1") suspend fun turnByRun(runId: String): TurnRow?
     @Query("SELECT * FROM turns WHERE id=:id") suspend fun turn(id: String): TurnRow?
     @Query("SELECT * FROM turns WHERE queued=1 AND pending=0 ORDER BY rowid LIMIT 1") suspend fun earliestQueued(): TurnRow?
+    @Query("SELECT runId,snapshot,error FROM turns WHERE runId IS NOT NULL AND snapshot IS NOT NULL")
+    suspend fun outputSyncCandidates(): List<RunOutputCandidate>
     @Query("SELECT * FROM turns WHERE pending=1 OR occupied=1") suspend fun unfinished(): List<TurnRow>
     @Query("SELECT * FROM chunks WHERE ref=:ref") suspend fun chunk(ref: String): ChunkRow?
     @Query("""SELECT t.id AS turnId,t.runId,t.snapshot,t.createdAt,SUM(length(CAST(c.text AS BLOB))) AS bytes

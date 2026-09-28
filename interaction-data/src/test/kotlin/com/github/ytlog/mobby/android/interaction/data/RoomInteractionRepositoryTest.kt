@@ -275,7 +275,7 @@ class RoomInteractionRepositoryTest {
         assertEquals(c.id, restored.conversation.id)
         assertEquals("turn-003", restored.turns.first().id.value)
     }
-    @Test fun `sidebar selects latest tied turn but keeps earlier occupied state without loading another timeline`() = runBlocking {
+    @Test fun `sidebar uses the occupied turn consistently without loading another timeline`() = runBlocking {
         val c = state().selected!!.conversation
         val other = repository.create(c.config)
         val frozen = db.dao().conversation(c.id.value)!!.body
@@ -287,7 +287,7 @@ class RoomInteractionRepositoryTest {
         db.dao().save(TurnRow("z", c.id.value, "latest", frozen, 100, snapshot = latest, pending = false, occupied = false))
         db.dao().save(TurnRow("other", other.value, "separate", otherFrozen, 101, pending = false, occupied = false))
         val activities = db.dao().conversationActivities().first()
-        assertEquals(latest, activities.single { it.conversationId == c.id.value }.snapshot)
+        assertEquals(older, activities.single { it.conversationId == c.id.value }.snapshot)
         assertTrue(activities.single { it.conversationId == c.id.value }.occupied)
         assertEquals("a", activities.single { it.conversationId == c.id.value }.executionId)
         assertFalse(activities.single { it.conversationId == other.value }.occupied)
@@ -297,7 +297,7 @@ class RoomInteractionRepositoryTest {
         val selected = state { it.selected?.conversation?.id == other && it.selected!!.turns.size == 1 }
         assertEquals("separate", selected.selected!!.turns.single().userText)
         assertEquals(c.id, selected.occupied!!.conversation.id)
-        assertEquals(ExecutionPhase.FAILED, selected.occupied!!.phase)
+        assertEquals(ExecutionPhase.RUNNING, selected.occupied!!.phase)
         assertEquals(ExecutionId("a"), selected.occupied!!.execution)
     }
     @Test fun `source retention follows pending imports across conversations and releases only completed or discarded ones`() = runBlocking {
@@ -564,6 +564,83 @@ class RoomInteractionRepositoryTest {
             capabilities = setOf("plugin:PHONE:ACCESSIBILITY", "plugin:device:screen", appFunction, "skill:CODEX:USER:review:hash"))
         assertEquals(setOf("plugin:device:screen", appFunction, "skill:CODEX:USER:review:hash"), stored.domain().draft.capabilities)
     }
+    @Test fun `blocked output does not block terminal status session or queued dispatch`() = runBlocking {
+        val c = state().selected!!.conversation
+        repository.editDraft(c.id, "first", 5, 5)
+        val turn = (repository.prepareTurn(c.id, TurnId("blocked")) as PrepareTurnResult.Prepared).turn
+        runtime.admit(turn)
+        val ref = ResourceRef("blocked/0")
+        val started = CompletableDeferred<Unit>(); val release = CompletableDeferred<Unit>()
+        runtime.artifactBodies[ref] = "finished output".toByteArray()
+        runtime.artifactGate = { if (it.artifactRef == ref) { started.complete(Unit); release.await() } }
+        runtime.snapshots["blocked"] = runtime.snapshots.getValue("blocked").copy(outputSegments = listOf(OutputSegment("answer", 0, ref)))
+        repository.recordSubmission(turn, Submission.Accepted(ExecutionId("blocked")))
+        withTimeout(5000) { started.await() }
+        try {
+            repository.editDraft(c.id, "next", 4, 4)
+            assertTrue(repository.prepareTurn(c.id, TurnId("next")) is PrepareTurnResult.Queued)
+            runtime.acceptSubmissions = true
+            val terminal = runtime.snapshots.getValue("blocked").copy(phase = RunPhase.SUCCEEDED, lastSequence = 2, revision = 2,
+                sessionRef = SessionRef("finished-session"), terminalEvidence = TerminalEvidence(true, 0))
+            runtime.snapshots["blocked"] = terminal
+            runtime.updates.emit(RuntimeUpdate.Baseline(terminal, EventCursor(terminal.runId, 2)))
+            withTimeout(3000) {
+                state { it.selected?.turns?.firstOrNull { t -> t.id.value == "blocked" }?.let { t -> !t.occupied && t.phase == ExecutionPhase.SUCCEEDED } == true }
+                while (runtime.submittedRequests.isEmpty()) delay(10)
+            }
+            assertEquals(SessionRef("finished-session"), runtime.submittedRequests.single().sessionRef)
+        } finally { release.complete(Unit) }
+        state { it.selected?.turns?.firstOrNull { t -> t.id.value == "blocked" }?.messages?.singleOrNull()?.text == "finished output" }
+        Unit
+    }
+    @Test fun `missing output preserves terminal state and retries without reconnecting`() = runBlocking {
+        val c = state().selected!!.conversation
+        repository.editDraft(c.id, "fixture", 7, 7)
+        val turn = (repository.prepareTurn(c.id, TurnId("retry-output")) as PrepareTurnResult.Prepared).turn
+        runtime.admit(turn)
+        val ref = ResourceRef("retry-output/0")
+        runtime.snapshots[turn.turnId.value] = runtime.snapshots.getValue(turn.turnId.value).copy(phase = RunPhase.SUCCEEDED,
+            outputSegments = listOf(OutputSegment("answer", 0, ref)), terminalEvidence = TerminalEvidence(true, 0))
+        repository.recordSubmission(turn, Submission.Accepted(ExecutionId(turn.turnId.value)))
+        val failed = state { it.selected?.turns?.singleOrNull()?.failure != null }.selected!!.turns.single()
+        assertEquals(ExecutionPhase.SUCCEEDED, failed.phase)
+        assertFalse(failed.occupied)
+        runtime.artifactBodies[ref] = "recovered output".toByteArray()
+        val recovered = state { it.selected?.turns?.singleOrNull()?.let { t -> t.messages.singleOrNull()?.text == "recovered output" && t.failure == null } == true }.selected!!.turns.single()
+        assertNull(recovered.failure)
+        assertEquals(ExecutionPhase.SUCCEEDED, recovered.phase)
+    }
+    @Test fun `terminal output interrupted by app closure resumes independently after reopening`() = runBlocking {
+        val c = state().selected!!.conversation
+        repository.editDraft(c.id, "fixture", 7, 7)
+        val turn = (repository.prepareTurn(c.id, TurnId("reopen-output")) as PrepareTurnResult.Prepared).turn
+        runtime.admit(turn)
+        val ref = ResourceRef("reopen-output/0")
+        runtime.snapshots[turn.turnId.value] = runtime.snapshots.getValue(turn.turnId.value).copy(phase = RunPhase.SUCCEEDED,
+            outputSegments = listOf(OutputSegment("answer", 0, ref)), terminalEvidence = TerminalEvidence(true, 0))
+        repository.recordSubmission(turn, Submission.Accepted(ExecutionId(turn.turnId.value)))
+        state { it.selected?.turns?.singleOrNull()?.failure != null }
+        scope.coroutineContext[Job]!!.cancelAndJoin(); db.close()
+        runtime.artifactBodies[ref] = "output after reopen".toByteArray()
+        start()
+        val restored = state { it.selected?.turns?.singleOrNull()?.let { t -> t.messages.singleOrNull()?.text == "output after reopen" && t.failure == null } == true }.selected!!.turns.single()
+        assertFalse(restored.occupied)
+        assertNull(restored.failure)
+        assertEquals(ExecutionPhase.SUCCEEDED, restored.phase)
+    }
+    @Test fun `run observation reconnects after a transient failure without reopening the app`() = runBlocking {
+        val c = state().selected!!.conversation
+        repository.editDraft(c.id, "fixture", 7, 7)
+        val turn = (repository.prepareTurn(c.id, TurnId("retry-state")) as PrepareTurnResult.Prepared).turn
+        runtime.admit(turn)
+        runtime.snapshots[turn.turnId.value] = runtime.snapshots.getValue(turn.turnId.value).copy(phase = RunPhase.CANCELLED,
+            terminalEvidence = TerminalEvidence(null, 143))
+        runtime.observationFailures = 1
+        repository.recordSubmission(turn, Submission.Accepted(ExecutionId(turn.turnId.value)))
+        val recovered = state { it.selected?.turns?.singleOrNull()?.phase == ExecutionPhase.CANCELLED }.selected!!.turns.single()
+        assertFalse(recovered.occupied)
+        assertNull(recovered.failure)
+    }
     @Test fun `unexpected missing output remains a synchronization error rather than retention success`() = runBlocking {
         val c = state().selected!!.conversation
         repository.editDraft(c.id, "fixture", 7, 7)
@@ -574,8 +651,8 @@ class RoomInteractionRepositoryTest {
             outputSegments = listOf(OutputSegment("answer", 0, ref)), terminalEvidence = TerminalEvidence(true, 0))
         repository.recordSubmission(turn, Submission.Accepted(ExecutionId("missing")))
         val projected = state { it.selected?.turns?.singleOrNull()?.failure != null }.selected!!.turns.single()
-        assertTrue(projected.failure!!.contains("同步中断"))
-        assertTrue(projected.messages.isEmpty())
+        assertEquals(com.github.ytlog.mobby.android.localization.AppStrings.outputSyncRetrying, projected.failure)
+        assertTrue(projected.messages.all { it.text.isEmpty() })
         assertNull(db.dao().chunk(ref.value))
     }
     @Test fun `terminal cache byte budget expires oldest whole run while preserving active output and user data`() = runBlocking {
@@ -635,6 +712,69 @@ class RoomInteractionRepositoryTest {
         assertEquals(ChunkRow(ref.value, "history-run", "", true), db.dao().chunk(ref.value))
         assertEquals("message-005", repository.history(c.id).turns.single { it.id.value == old.id }.userText)
     }
+    @Test fun `output replay cannot replace a newer persisted terminal checkpoint`() = runBlocking {
+        val c = state().selected!!.conversation
+        scope.coroutineContext[Job]!!.cancelAndJoin()
+        val workerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val early = ResourceRef("output-replay/early"); val late = ResourceRef("output-replay/late")
+        val config = RunConfigSnapshot(RuntimeAgent.CODEX, WorkspaceRef("default"), "test-model", null, GatewayProfileRef("CODEX", 0), emptySet())
+        val initial = RunSnapshot(RunId("output-replay"), RunPhase.RUNNING, 1, 1, config,
+            outputSegments = listOf(OutputSegment("early", 0, early)))
+        val row = TurnRow("output-replay", c.id.value, "fixture", db.dao().conversation(c.id.value)!!.body, 1,
+            runId = initial.runId.value, snapshot = storageJson.encodeToString(initial), pending = false, occupied = true)
+        db.dao().save(row)
+        val started = CompletableDeferred<Unit>(); val release = CompletableDeferred<Unit>()
+        runtime.artifactBodies[early] = "early output".toByteArray()
+        runtime.artifactBodies[late] = "final output".toByteArray()
+        runtime.artifactGate = { if (it.artifactRef == early) { started.complete(Unit); release.await() } }
+        val output = com.github.ytlog.mobby.android.interaction.data.management.RunOutputSynchronizer(db, runtime, workerScope, OutputCache(db, runtime))
+        try {
+            output.request(initial.runId)
+            withTimeout(5000) { started.await() }
+            val terminal = initial.copy(phase = RunPhase.SUCCEEDED, revision = 2, lastSequence = 2,
+                terminalEvidence = TerminalEvidence(true, 0), outputSegments = initial.outputSegments + OutputSegment("late", 1, late))
+            db.dao().save(row.copy(snapshot = storageJson.encodeToString(terminal), occupied = false))
+            output.request(terminal.runId)
+            output.request(initial.runId) // A delayed startup scan must not replace the live checkpoint.
+            release.complete(Unit)
+            withTimeout(3000) { while (db.dao().chunk(late.value) == null) delay(10) }
+            assertEquals("final output", db.dao().chunk(late.value)!!.text)
+            assertEquals(terminal, storageJson.decodeFromString<RunSnapshot>(db.dao().turn(row.id)!!.snapshot!!))
+        } finally { release.complete(Unit); workerScope.coroutineContext[Job]!!.cancelAndJoin() }
+    }
+    @Test fun `reopening clears an interrupted output warning when all bytes were already persisted`() = runBlocking {
+        seedHistory(7)
+        val old = db.dao().turn("turn-005")!!
+        db.dao().save(old.copy(error = com.github.ytlog.mobby.android.localization.AppStrings.OUTPUT_SYNC_MARKER))
+        scope.coroutineContext[Job]!!.cancelAndJoin(); db.close()
+        runtime.artifactBodies[ResourceRef("history-body")] = "old assistant body".toByteArray()
+        start()
+        val restored = state { it.selected?.turns?.firstOrNull { t -> t.id.value == old.id }?.let { t ->
+            t.messages.singleOrNull()?.text == "old assistant body" && t.failure == null
+        } == true }.selected!!.turns.first { it.id.value == old.id }
+        assertFalse(restored.occupied)
+        assertNull(restored.failure)
+    }
+    @Test fun `reopening an expired run restores missing output tombstones without downloading`() = runBlocking {
+        seedHistory(7)
+        val old = db.dao().turn("turn-005")!!
+        val ref = ResourceRef("history-run/interrupted-proposal")
+        val started = CompletableDeferred<Unit>()
+        runtime.artifactGate = { if (it.artifactRef == ref) { started.complete(Unit); awaitCancellation() } }
+        runtime.snapshots["history-run"] = storageJson.decodeFromString<RunSnapshot>(old.snapshot!!).copy(
+            lastSequence = 2, revision = 2, artifacts = listOf(ref))
+        repository.recordSubmission(old.execution(), Submission.Accepted(ExecutionId("history-run")))
+        withTimeout(5000) { started.await() }
+        OutputCache(db, runtime, 0).compact()
+        scope.coroutineContext[Job]!!.cancelAndJoin(); db.close()
+        runtime.artifactGate = { if (it.artifactRef == ref) error("Expired output must not be downloaded") }
+        start()
+        val restored = state { it.selected?.turns?.firstOrNull { t -> t.id.value == old.id }?.let { t ->
+            !t.proposalsLoading && t.messages.any { m -> m.text == "技能草稿已按保留策略清理" }
+        } == true }.selected!!.turns.first { it.id.value == old.id }
+        assertTrue(restored.skillProposals.isEmpty())
+        assertEquals(ChunkRow(ref.value, "history-run", "", true), db.dao().chunk(ref.value))
+    }
     @Test fun `unavailable original output preserves cached text and is not treated as expiration`() = runBlocking {
         val c = seedHistory(7)
         val turn = repository.history(c.id).turns.single { it.id.value == "turn-005" }
@@ -670,7 +810,7 @@ class RoomInteractionRepositoryTest {
         runtime.snapshots["expired"] = runtime.snapshots.getValue("expired").copy(phase = RunPhase.SUCCEEDED,
             outputSegments = listOf(OutputSegment("answer", 0, body)), artifacts = listOf(proposal), terminalEvidence = TerminalEvidence(true, 0))
         repository.recordSubmission(turn, Submission.Accepted(ExecutionId("expired")))
-        val projected = state { it.selected?.turns?.singleOrNull()?.let { t -> t.failure != null || t.phase == ExecutionPhase.SUCCEEDED } == true }.selected!!.turns.single()
+        val projected = state { it.selected?.turns?.singleOrNull()?.let { t -> t.failure != null || (!t.proposalsLoading && t.messages.any { m -> m.text == "技能草稿已按保留策略清理" }) } == true }.selected!!.turns.single()
         assertNull(projected.failure)
         assertEquals(ExecutionPhase.SUCCEEDED, projected.phase)
         assertFalse(projected.occupied)
@@ -744,7 +884,7 @@ class RoomInteractionRepositoryTest {
                 ToolSnapshot("s2", StepBody.Action("click", ""), ToolOutcome.SUCCEEDED, listOf(OutputSegment("tool:s2", 2, tap))),
                 ToolSnapshot("s3", StepBody.Action("recents"))))
         repository.recordSubmission(turn, Submission.Accepted(ExecutionId(turn.turnId.value)))
-        val projected = state { it.selected?.turns?.singleOrNull()?.steps?.size == 3 }.selected!!.turns.single().transcript()
+        val projected = state { it.selected?.turns?.singleOrNull()?.let { t -> t.steps.size == 3 && t.messages.size == 2 && (t.steps[1] as? Step.Action)?.result == "clicked" } == true }.selected!!.turns.single().transcript()
         assertEquals("先看屏幕", (projected[0] as TranscriptEntry.Reply).message.text)
         assertEquals(listOf("s1", "s2"), (projected[1] as TranscriptEntry.ToolRun).steps.map { it.id })
         assertEquals("再打开商店", (projected[2] as TranscriptEntry.Reply).message.text)
@@ -765,7 +905,7 @@ class RoomInteractionRepositoryTest {
                 OutputSegment("tool:think", 0, first),
             ))))
         repository.recordSubmission(turn, Submission.Accepted(ExecutionId(turn.turnId.value)))
-        val thinking = state { it.selected?.turns?.singleOrNull()?.steps?.isNotEmpty() == true }.selected!!.turns.single().steps.single()
+        val thinking = state { (it.selected?.turns?.singleOrNull()?.steps?.singleOrNull() as? Step.Thinking)?.text == "先想一下" }.selected!!.turns.single().steps.single()
         assertEquals("先想一下", (thinking as Step.Thinking).text)
     }
     @Test fun `permission projection survives database reopen and adapter preserves decision identity`() = runBlocking {
@@ -830,9 +970,12 @@ class RoomInteractionRepositoryTest {
         var permissionResult: CommandResult = CommandResult.Rejected(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
         override suspend fun resolveApproval(request: ApprovalDecision): CommandResult { decisions += request; return permissionResult }
         override suspend fun snapshot(runId: RunId): SnapshotResult = snapshots[runId.value]?.let { SnapshotResult.Found(it) } ?: SnapshotResult.Unavailable(RuntimeError(ErrorCode.NOT_FOUND))
+        val updates = MutableSharedFlow<RuntimeUpdate>(replay = 1, extraBufferCapacity = 16)
+        var observationFailures = 0
         override fun observe(runId: RunId, after: EventCursor?): Flow<RuntimeUpdate> = flow {
+            if (observationFailures > 0) { observationFailures--; throw java.io.IOException("fixture disconnect") }
             snapshots[runId.value]?.let { emit(RuntimeUpdate.Baseline(it, EventCursor(runId, it.lastSequence))) }
-            awaitCancellation()
+            emitAll(updates.filter { it is RuntimeUpdate.Baseline && it.snapshot.runId == runId })
         }
         var artifactGate: suspend (ArtifactReadRequest) -> Unit = {}
         val expireAt = mutableMapOf<ResourceRef, Long>()

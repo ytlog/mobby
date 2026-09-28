@@ -86,7 +86,7 @@ internal class RuntimeExecutionAdapter(private val client: RuntimeClient) : Exec
     }
     override fun observe(executionId: ExecutionId): Flow<ExecutionFact> = client.observe(RunId(executionId.value)).mapNotNull {
         val snapshot = if (it is RuntimeUpdate.Baseline) it.snapshot else (client.snapshot(RunId(executionId.value)) as? SnapshotResult.Found)?.snapshot
-        snapshot?.let { ExecutionFact(executionId, RunProjection.verifiedPhase(it).domain()) }
+        snapshot?.let { ExecutionFact(executionId, RunStateRules.displayedPhase(it).domain()) }
     }
 }
 internal class RuntimeSystemAdapter(private val context: android.content.Context, private val client: RuntimeClient, private val admin: RuntimeAdminClient, private val diagnostics: RuntimeDiagnosticsClient) : SystemPort {

@@ -219,7 +219,8 @@ open class StringCatalog(private val fixedLanguage: AppLanguage? = null) {
     val projectSkillHint get() = text("选择这个项目默认使用的技能", "Choose skills used by default in this project")
     fun projectChatPlaceholder(name: String) = text("在“{0}”中对话", "Chat in “{0}”", name)
     val noProjectConversations get() = text("还没有对话，在下方输入消息开始", "No conversations yet. Type below to start one")
-    val syncInterruptedResultUnconfirmedReopenTheAppToResume get() = text("同步中断，结果待确认；重新打开应用可恢复观察", "Sync interrupted; result unconfirmed. Reopen the app to resume observation")
+    val outputSyncRetrying get() = text(AppStrings.OUTPUT_SYNC_MARKER, "Output sync interrupted; retrying automatically. Task status is preserved")
+    val stateSyncRetrying get() = text(AppStrings.STATE_SYNC_MARKER, "Task status sync interrupted; retrying automatically")
     val outputWasCleanedUpByTheRetentionPolicy get() = text("输出已按保留策略清理", "Output was cleaned up by the retention policy")
     val skillDraftWasCleanedUpByTheRetentionPolicy get() = text("技能草稿已按保留策略清理", "Skill draft was cleaned up by the retention policy")
     val textAndAttachmentsExceedTheInputLimitShortenText get() = text("文字与附件合计超出输入上限，请缩短文字或移除附件", "Text and attachments exceed the input limit. Shorten text or remove attachments")
@@ -851,6 +852,8 @@ open class StringCatalog(private val fixedLanguage: AppLanguage? = null) {
 
 object AppStrings : StringCatalog() {
     // Existing persisted discriminator. Never translate stored identity values.
+    const val OUTPUT_SYNC_MARKER = "输出同步中断，正在自动重试；任务状态已保留"
+    const val STATE_SYNC_MARKER = "任务状态同步中断，正在自动重试"
     const val CACHE_VERIFICATION_MARKER = "历史输出暂时无法核对，已保留缓存；请恢复连接后重试"
     fun isDefaultConversationTitle(value: String): Boolean = AppLanguage.values().any { StringCatalog(it).newConversation == value }
     fun isSkillCreationPrompt(value: String): Boolean = AppLanguage.values().any { value.startsWith(StringCatalog(it).createSkillPrompt) }
