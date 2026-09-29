@@ -10,9 +10,12 @@ from pathlib import Path
 parser=argparse.ArgumentParser(description=__doc__)
 parser.add_argument('raw_directory',type=Path)
 parser.add_argument('--ffmpeg',default='ffmpeg')
+parser.add_argument('--edits',type=Path,default=Path(__file__).with_name('edits.json'))
+parser.add_argument('--output',type=Path,default=Path(__file__).parent)
 args=parser.parse_args()
-output=Path(__file__).parent
-for spec in json.loads((output/'edits.json').read_text()):
+output=args.output
+output.mkdir(parents=True,exist_ok=True)
+for spec in json.loads(args.edits.read_text()):
     with tempfile.TemporaryDirectory() as tmp:
         pieces=[]
         for i,(start,end,speed) in enumerate(spec['cuts']):

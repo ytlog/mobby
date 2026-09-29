@@ -26,9 +26,9 @@ mobby 让 Pi、Claude Code、Codex、OpenCode 这些 Code Agent 直接在 Androi
 
 下面这次演示是在 Python 官网提问，回答直接显示在悬浮窗里。
 
-<p><img src="media/screen-qa.png" width="280" alt="在 Python 网页上打开悬浮对话，用中文解释当前页面"></p>
+<p><img src="media/zh-CN/screen-qa.gif" width="360" alt="在 Python 网页上打开悬浮对话，用中文解释当前页面"></p>
 
-[查看真机录屏](media/screen-qa.mp4)
+[查看精剪录屏](media/zh-CN/screen-qa-edited.mp4)
 
 ## 处理手机里的照片和文件
 
@@ -38,9 +38,9 @@ mobby 让 Pi、Claude Code、Codex、OpenCode 这些 Code Agent 直接在 Androi
 
 这次演示导出了图片副本、Markdown 说明和 CSV 清单，并回读检查了文件内容。原图保留在原来的位置。
 
-<p><img src="media/media-files.png" width="280" alt="照片识别和文件导出完成后的对话"></p>
+<p><img src="media/zh-CN/media-files.gif" width="360" alt="照片识别和文件导出完成后的对话"></p>
 
-[查看真机录屏](media/media-files.mp4)
+[查看精剪录屏](media/zh-CN/media-files-edited.mp4)
 
 ## 让它帮你操作 App
 
@@ -50,9 +50,9 @@ mobby 让 Pi、Claude Code、Codex、OpenCode 这些 Code Agent 直接在 Androi
 
 这次演示从小米应用商店安装了番茄ToDo，进入添加待办和自定义时长页面。应用操作还会遇到误点或服务中断，复杂流程需要留意执行结果。
 
-<p><img src="media/app-feature.png" width="280" alt="番茄ToDo 的自定义时长页面"></p>
+<p><img src="media/zh-CN/app-feature.gif" width="360" alt="番茄ToDo 的自定义时长页面"></p>
 
-[查看真机录屏 · 8 倍速](media/app-feature-8x.mp4)
+[查看精剪录屏](media/zh-CN/app-feature-edited.mp4)
 
 ## 在手机上写个能用的小程序
 
@@ -62,9 +62,9 @@ mobby 让 Pi、Claude Code、Codex、OpenCode 这些 Code Agent 直接在 Androi
 
 这个清单就是 Codex 在手机上写出来的。页面显示打包进度，勾选和新增的物品保存在浏览器里，出发前可以逐项检查。
 
-<p><img src="media/travel-checklist.png" width="280" alt="手机浏览器中的旅行打包清单"></p>
+<p><img src="media/zh-CN/travel-checklist.gif" width="360" alt="手机浏览器中的旅行打包清单"></p>
 
-[查看真机录屏](media/travel-checklist.mp4) · [查看示例源码](examples/travel-checklist/)
+[查看精剪录屏](media/zh-CN/travel-checklist-edited.mp4) · [查看示例源码](examples/travel-checklist/)
 
 ## 开始使用
 

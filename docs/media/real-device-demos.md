@@ -28,3 +28,20 @@ node docs/examples/travel-checklist/server.cjs
 浏览器打开 `http://127.0.0.1:18790/`。清单保存在当前浏览器的 localStorage 中。
 
 手机 Agent 首次启动因没有 `/tmp` 目录失败，重试后又发现普通后台进程退出，随后改为脱离终端会话运行，并独立验证 HTTP 200。手机浏览器刷新及重新打开后，新增物品和勾选状态仍保留。本次没有验证设备重启后自动运行。
+
+## README 精剪动画
+
+中文 README 已嵌入循环播放的 GIF，并链接到相同剪辑的 MP4。精剪删除无效首尾、部分误点恢复过程和重复静止画面，保留任务、关键操作与结果；不是连续完整录屏。上表仍链接原录屏，已知问题和验收范围保持不变。
+
+| 场景 | 精剪时长 | 视频 |
+| --- | --- | --- |
+| 页面问答 | 17 秒 | [查看](zh-CN/screen-qa-edited.mp4) |
+| 图片与文件 | 35 秒 | [查看](zh-CN/media-files-edited.mp4) |
+| 安装及打开功能 | 40 秒 | [查看](zh-CN/app-feature-edited.mp4) |
+| 手机编程 | 53 秒 | [查看](zh-CN/travel-checklist-edited.mp4) |
+
+页面问答、文件和编程片段的等待采用 2～12 倍速；应用操作以原有 8 倍速素材剪辑，局部调整后相当于原速的 4～24 倍。具体剪辑点见 [zh-CN/edits.json](zh-CN/edits.json)，复用 [英文剪辑脚本](en/edit_recordings.py)：
+
+```sh
+python docs/media/en/edit_recordings.py docs/media --edits docs/media/zh-CN/edits.json --output docs/media/zh-CN --ffmpeg /path/to/ffmpeg
+```

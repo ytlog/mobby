@@ -1,0 +1,6 @@
+[
+  {"name":"screen-qa","source":"screen-qa.mp4","cuts":[[22,39,3],[39,67,8],[67,75,1]]},
+  {"name":"media-files","source":"media-files.mp4","cuts":[[9,20,2],[20,155,8],[160,173,1]]},
+  {"name":"app-feature","source":"app-feature-8x.mp4","cuts":[[0,5,1],[47,57,2],[71,81,2],[155,181,3],[226,242,2],[242,246,0.5]]},
+  {"name":"travel-checklist","source":"travel-checklist.mp4","cuts":[[18,33,3],[33,145,12],[145,166,2],[173,184,2],[196,246,5],[253,266,2],[276,282,1]]}
+]
