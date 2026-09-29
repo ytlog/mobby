@@ -50,15 +50,15 @@ class ReleaseConfigurationTest(unittest.TestCase):
                          'Release runner is missing SDK platforms used by Android modules')
 
     def test_replacement_publishes_assets_then_moves_tag_and_preserves_notes(self):
-        result, calls, notes = self.run_publish("old", "old")
+        result, calls, _ = self.run_publish("old", "old")
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual(["api", "release", "release", "api", "release"], [call[0] for call in calls])
         self.assertEqual("upload", calls[2][1])
         self.assertIn("--clobber", calls[2])
         self.assertIn("PATCH", calls[3])
         self.assertIn("sha=new", calls[3])
-        self.assertTrue(notes.startswith("Existing authored release notes"))
-        self.assertIn("versionCode `2`", notes)
+        self.assertEqual(["release", "edit", "v0.1.0", "--target", "new"], calls[4],
+                         "Rebuilding must leave authored release notes unchanged")
 
     def test_changed_tag_aborts_without_upload_or_tag_mutation(self):
         result, calls, _ = self.run_publish("old", "changed")
