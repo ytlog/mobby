@@ -54,6 +54,11 @@ def prepare(output, ndk=None):
         'GCC-COPYING.RUNTIME': 'third_party/gcc/COPYING.RUNTIME',
         'libtermux-LICENSE': 'third_party/libtermux-android/LICENSE',
         'llama.cpp-LICENSE': 'third_party/llama.cpp/LICENSE',
+        'KleidiAI-LICENSE': 'third_party/kleidiai/LICENSE',
+        'KleidiAI-NOTICE': 'third_party/kleidiai/NOTICE',
+        'Android-libc++-LICENSE': 'third_party/android-cxx/libc++-LICENSE',
+        'Android-libc++abi-LICENSE': 'third_party/android-cxx/libc++abi-LICENSE',
+        'Android-unwind-runtime-LICENSE': 'third_party/android-cxx/unwind-compiler-runtime-LICENSE',
     }
     notices_digest = hashlib.sha256()
     for name, relative in notices.items():
@@ -83,10 +88,12 @@ def prepare(output, ndk=None):
             else:
                 title = pathlib.PurePosixPath(path).parent.name + ' — ' + pathlib.PurePosixPath(path).name
             runtime_notices.append({'id': path, 'title': title, 'license': '', 'text': text})
-    for component in ('codex', 'bun'):
-        payload = (PROJECT / 'third_party' / component / 'dependency-notices.json').read_bytes()
+    for component, directory in (('codex', 'codex'), ('bun', 'bun'), ('opencode', 'opencode-termux')):
+        payload = (PROJECT / 'third_party' / directory / 'dependency-notices.json').read_bytes()
         notices_digest.update(component.encode() + b'\0' + payload)
         for package in json.loads(payload)['packages']:
+            if not package.get('display_required', True):
+                continue
             documents = package['documents']
             if not documents:
                 raise ValueError('Missing nested dependency notice: ' + package['name'])
@@ -97,7 +104,7 @@ def prepare(output, ndk=None):
             runtime_notices.append({
                 'id': component + '-dependency:' + package['name'] + ':' + version,
                 'title': component.capitalize() + ' — ' + package['name'] + (' ' + version if version else ''),
-                'license': package.get('license') or '',
+                'license': package.get('selected_license') or package.get('license') or '',
                 'text': '\n\n'.join(document['path'] + '\n\n' + document['text'] for document in documents),
             })
     notice_assets = output / 'assets/third-party'

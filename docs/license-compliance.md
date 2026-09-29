@@ -42,4 +42,8 @@ Bun 材料见 `third_party/bun/dependency-notices.json`，包括 Linux ARM64 构
 
 少数 Rust crate 明确在 Cargo.toml 授予 Apache-2.0/MIT，却未随归档提供独立许可文件。优先恢复同提交的上游原文或源文件头；无法恢复独立文件时，提供其明确授予的标准许可副本并保留原 Cargo.toml 作者元数据，记录在 `license_copy_fallbacks`，不编造版权年份或持有人。对多选许可使用允许的分支，例如 self_cell 选择 Apache-2.0，不将未选择的 GPL 分支作为 APK 的适用许可。
 
-尚待完成：OpenCode 内嵌 JavaScript 依赖的声明核对，以及最终源码包验收。
+OpenCode 的 `third_party/opencode-termux/dependency-notices.json` 根据固定源码提交的 bun.lock，保留普通 workspace 依赖闭包和 Linux ARM64 musl 原生辅助包的声明；排除开发依赖、@types、其他平台包，type-fest 等纯类型材料及不要求保留通知的 0BSD/CC0 不额外展示。DOMPurify 的多选许可采用 Apache-2.0，json-schema 采用 BSD-3-Clause。npm 归档缺少独立许可证时，恢复发布者原文并记录不可变 Git blob，或对明确的 package.json 授权提供标准副本；不把没有授权的依赖默认归为项目 MIT。CC-BY 数据保留原作者声明、原材料及许可地址，依据 [CC-BY 3.0](https://creativecommons.org/licenses/by/3.0/legalcode) 和 [CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/legalcode.en) 的署名条件。
+
+App JNI 使用的 Android NDK r27c libc++/ABI/展开运行库保留其实际工具链 NOTICE 中的对应 LLVM 许可段落，排除编译器工具等未再分发部分。llama.cpp 的 ARM64 KleidiAI v1.24.0 核心使用 Apache-2.0，保留原许可证与原 Arm 文件版权声明；BSD 测试/示例组件没有纳入 App，不额外列入。
+
+本轮尚待最终源码附件与发布流水线验收；未在手机上重新验收本轮许可证页面，也未完整重编全部上游原生程序。

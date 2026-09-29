@@ -36,5 +36,12 @@ class LicenseAssetsTest {
         val bunPolyfill = runtime.single { it.getValue("id").jsonPrimitive.content == "bun-dependency:hmac-drbg:1.0.1" }
         assertTrue(bunPolyfill.getValue("text").jsonPrimitive.content.contains("Copyright Fedor Indutny"))
         assertTrue(bunPolyfill.getValue("text").jsonPrimitive.content.contains("Permission is hereby granted"))
+        val openCodeDependency = runtime.single { it.getValue("id").jsonPrimitive.content == "opencode-dependency:ws:8.21.0" }
+        assertTrue(openCodeDependency.getValue("text").jsonPrimitive.content.contains("Permission is hereby granted"))
+        assertFalse(runtime.any { it.getValue("id").jsonPrimitive.content.startsWith("opencode-dependency:type-fest:") })
+        val kleidi = runtime.single { it.getValue("id").jsonPrimitive.content == "share/mobby/licenses/KleidiAI-NOTICE" }
+        assertTrue(kleidi.getValue("text").jsonPrimitive.content.contains("Copyright 2025-2026 Arm Limited"))
+        val androidCpp = runtime.single { it.getValue("id").jsonPrimitive.content == "share/mobby/licenses/Android-libc++-LICENSE" }
+        assertTrue(androidCpp.getValue("text").jsonPrimitive.content.contains("LLVM"))
     }
 }

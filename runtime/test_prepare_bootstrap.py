@@ -71,6 +71,8 @@ class BootstrapTest(unittest.TestCase):
             polyfill = next(item for item in notices if item['id'] == 'bun-dependency:hmac-drbg:1.0.1')
             self.assertIn('Copyright Fedor Indutny', polyfill['text'])
             self.assertIn('Permission is hereby granted', polyfill['text'])
+            opencode = next(item for item in notices if item['id'] == 'opencode-dependency:ws:8.21.0')
+            self.assertIn('Permission is hereby granted', opencode['text'])
 
     def test_rejects_modified_archive(self):
         with tempfile.TemporaryDirectory() as directory:
