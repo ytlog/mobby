@@ -28,6 +28,15 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Free hosted runner disk for native builds
+        shell: bash
+        run: |
+          set -euo pipefail
+          df -h "$GITHUB_WORKSPACE"
+          # Hosted runners contain large toolchains this Android project does not use.
+          sudo rm -rf /usr/share/dotnet /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+          df -h "$GITHUB_WORKSPACE"
+
       - name: Validate release inputs and signing secrets
         shell: bash
         env:

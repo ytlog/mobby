@@ -18,6 +18,8 @@
 
 签名文件和口令存放在仓库目录之外，不能提交 Git。Debug 保持 Android 默认开发签名；上述 Secrets、release 签名和 R8 配置只用于 release。部分签名环境变量缺失时，release 的签名校验会失败，Debug 打包不依赖这些变量。工作流安装 SDK 35 和 36，以满足当前各模块的编译要求。
 
+GitHub 临时 runner 会在构建前清理未使用的 .NET、Haskell 和 CodeQL 工具，给 bootstrap、原生库和 APK 中间产物留出磁盘空间；此步骤不作用于开发机。
+
 编译前会检查锁定依赖的下载地址。Termux 仓库会移除旧包；检查报告 404 时，应根据官方 Packages 索引更新对应包在 `runtime/agents.lock.json` 中的版本、地址和 SHA-256，并校验下载文件。构建仍只使用锁定版本，不自动改用最新版或跳过校验。
 
 可在本机用以下命令生成第一个 Secret 的值；不要把输出保存到仓库文件中：
