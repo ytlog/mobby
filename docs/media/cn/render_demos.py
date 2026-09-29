@@ -1,6 +1,6 @@
 """Frame real Android recordings and add a moving close-up, without replacing UI.
 
-Requires Pillow, numpy and FFmpeg. Cuts and crop positions are in edits.json.
+Requires Pillow, numpy and FFmpeg. Cuts and crop positions are in showcase-edits.json.
 """
 from __future__ import annotations
 
@@ -129,7 +129,7 @@ def render(spec, raw_dir, output, ffmpeg, font_path, bold_path):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("raw_dir", type=Path)
-    parser.add_argument("--edits", type=Path, default=Path(__file__).with_name("edits.json"))
+    parser.add_argument("--edits", type=Path, default=Path(__file__).with_name("showcase-edits.json"))
     parser.add_argument("--output", type=Path, default=Path(__file__).parent)
     parser.add_argument("--ffmpeg", default="ffmpeg")
     parser.add_argument("--font", type=Path, default=Path("/System/Library/Fonts/Supplemental/Arial.ttf"))

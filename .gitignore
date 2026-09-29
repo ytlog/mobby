@@ -8,3 +8,6 @@ local.properties
 runtime/cache/
 __pycache__/
 *.pyc
+
+# Keep video masters outside Git; README demos use GIF.
+*.mp4

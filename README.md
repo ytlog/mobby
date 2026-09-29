@@ -28,8 +28,6 @@ In this demo, mobby reads the Python website and answers in the floating chat.
 
 <p><img src="docs/media/en/screen-qa.gif" width="360" alt="Floating chat explaining the Python website"></p>
 
-[Watch the edited recording](docs/media/en/screen-qa-edited.mp4)
-
 ## Work with photos and files
 
 Add photo or file access to a task and choose the photos or folder to share. Ask mobby to describe an image, copy files, make a list, and save the results back to your phone.
@@ -39,8 +37,6 @@ Add photo or file access to a task and choose the photos or folder to share. Ask
 This demo exports an image copy, a Markdown summary, and a CSV list, then reads them back to check their contents. The original image stays where it was.
 
 <p><img src="docs/media/en/media-files.gif" width="360" alt="Completed photo analysis and file export"></p>
-
-[Watch the edited recording](docs/media/en/media-files-edited.mp4)
 
 ## Let it use apps for you
 
@@ -52,8 +48,6 @@ This demo installs Via from its page in the Xiaomi app store, completes the firs
 
 <p><img src="docs/media/en/app-feature.gif" width="360" alt="Bookmarks in Via browser"></p>
 
-[Watch the edited recording](docs/media/en/app-feature-edited.mp4)
-
 ## Build something useful on your phone
 
 Describe what you need. Let the agent write the code in your phone's workspace, start a local server, and open the result in your browser.
@@ -64,7 +58,7 @@ Codex built this checklist on the phone. It shows your packing progress and save
 
 <p><img src="docs/media/en/travel-checklist.gif" width="360" alt="Travel packing checklist running in the phone browser"></p>
 
-[Watch the edited recording](docs/media/en/travel-checklist-edited.mp4) · [Browse the example code](docs/examples/travel-checklist-en/)
+[Browse the example code](docs/examples/travel-checklist-en/)
 
 ## Getting started
 
