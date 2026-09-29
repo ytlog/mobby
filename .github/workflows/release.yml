@@ -67,10 +67,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$sdkmanager"
           set +o pipefail
-          yes | sdkmanager --licenses >/dev/null
+          yes | "$sdkmanager" --licenses >/dev/null
           set -o pipefail
-          sdkmanager --install 'platforms;android-35' 'platforms;android-36' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1'
+          "$sdkmanager" --install 'platforms;android-35' 'platforms;android-36' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1'
 
       - name: Check runtime protocols and Android unit tests
         run: |
