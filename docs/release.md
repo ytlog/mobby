@@ -16,6 +16,8 @@
 
 3. 确认仓库允许 Actions 使用 `GITHUB_TOKEN` 创建 Release。工作流声明 `contents: write`，无需另建个人访问令牌。
 
+签名文件和口令存放在仓库目录之外，不能提交 Git。Debug 保持 Android 默认开发签名；上述 Secrets、release 签名和 R8 配置只用于 release。部分签名环境变量缺失时，release 的签名校验会失败，Debug 打包不依赖这些变量。工作流安装 SDK 35 和 36，以满足当前各模块的编译要求。
+
 可在本机用以下命令生成第一个 Secret 的值；不要把输出保存到仓库文件中：
 
 ```sh
@@ -28,7 +30,7 @@ base64 < path/to/release.jks | tr -d '\n'
 2. 输入 `version`，例如 `0.1.0`；输入递增的正整数 `version_code`，例如 `1`。前者会写入 APK `versionName` 并生成 `v0.1.0` 标签；后者写入 Android `versionCode`，每次覆盖升级都必须高于前一版。同名标签已存在时工作流会停止。
 3. 工作流成功后，在仓库 **Releases** 下载 `mobby-v<版本>-arm64-v8a.apk`，并用 `SHA256SUMS.txt` 校验。失败时不会创建新 Release；先查看失败步骤并修复后重跑。
 
-仅支持 ARM64 和 Android 8.0 及以上。签名和构建成功不能替代在真实手机上安装、覆盖升级和验证 Shell、三种 Agent、网关及本地模型；首次发布前应完成这些验收。当前 debug APK 使用 Android 开发签名，通常不能被 release APK 直接覆盖；请先备份需保留的设备数据。
+仅支持 ARM64 和 Android 8.0 及以上。签名和构建成功不能替代在真实手机上安装、覆盖升级和验证 Shell、Pi、Claude Code、Codex、OpenCode、网关及本地模型；首次发布前应完成这些验收。当前 debug APK 使用 Android 开发签名，通常不能被 release APK 直接覆盖；请先备份需保留的设备数据。
 
 ## 本地验证
 

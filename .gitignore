@@ -14,3 +14,10 @@ __pycache__/
 
 # Kotlin compiler diagnostics are local machine data.
 .kotlin/
+
+# Release signing material must stay outside source control.
+*.jks
+*.keystore
+*.p12
+keystore.properties
+signing.properties

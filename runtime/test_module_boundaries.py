@@ -8,7 +8,8 @@ ALLOWED = {
     "app": {"interaction-ui", "interaction-domain", "interaction-data", "runtime-api", "runtime-android", "device-plugins", "local-model"},
     "runtime-api": set(),
     "runtime-engine": {"runtime-api"},
-    "runtime-android": {"runtime-api", "runtime-engine", "termux-core", "bootstrap-arm64", "device-plugins"},
+    "runtime-android": {"runtime-api", "runtime-engine", "termux-core", "bootstrap-arm64", "device-plugins", "plugin:appfunction"},
+    "plugin:appfunction": {"device-interaction", "runtime-api"},
     "device-plugins": {"runtime-api"},
     "interaction-domain": set(),
     "interaction-data": {"interaction-domain", "runtime-api"},
@@ -27,18 +28,21 @@ for module in ALLOWED:
     if module != "localization":
         ALLOWED[module].add("localization")
 
+# settings.gradle.kts gives this module a logical name distinct from its source directory.
+MODULE_DIRS = {"plugin:appfunction": "app-functions"}
+
 
 class ModuleBoundaryTests(unittest.TestCase):
     def test_production_project_dependencies_follow_design(self):
         for module, allowed in ALLOWED.items():
-            build = ROOT / module / "build.gradle.kts"
+            build = ROOT / MODULE_DIRS.get(module, module) / "build.gradle.kts"
             self.assertTrue(build.is_file(), f"Required module is missing: {module}")
             dependencies = set(re.findall(r'(?:implementation|api)\(project\(":([^"]+)"\)\)', build.read_text()))
             self.assertFalse(dependencies - allowed, f"{module} has forbidden edges: {dependencies - allowed}")
 
     def test_production_imports_do_not_cross_layers(self):
         for module in ALLOWED:
-            for source in (ROOT / module / "src/main").rglob("*.kt"):
+            for source in (ROOT / MODULE_DIRS.get(module, module) / "src/main").rglob("*.kt"):
                 text = source.read_text()
                 if module.startswith("runtime-"):
                     self.assertNotRegex(text, r"com\.mobby\.(?:app|interaction)\.", str(source))

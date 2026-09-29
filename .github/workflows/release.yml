@@ -70,7 +70,7 @@ jobs:
           set +o pipefail
           yes | sdkmanager --licenses >/dev/null
           set -o pipefail
-          sdkmanager --install 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1'
+          sdkmanager --install 'platforms;android-35' 'platforms;android-36' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1'
 
       - name: Check runtime protocols and Android unit tests
         run: |
@@ -117,3 +117,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
         run: gh release create "v${VERSION}" release-assets/* --target "$GITHUB_SHA" --title "v${VERSION}" --generate-notes
+
+      - name: Remove temporary signing keystore
+        if: always()
+        run: rm -f "$RUNNER_TEMP/mobby-release.jks"

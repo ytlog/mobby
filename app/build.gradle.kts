@@ -5,9 +5,7 @@ val releaseStorePassword = providers.environmentVariable("MOBBY_RELEASE_STORE_PA
 val releaseKeyAlias = providers.environmentVariable("MOBBY_RELEASE_KEY_ALIAS").orNull
 val releaseKeyPassword = providers.environmentVariable("MOBBY_RELEASE_KEY_PASSWORD").orNull
 val releaseSigningValues = listOf(releaseStoreFile, releaseStorePassword, releaseKeyAlias, releaseKeyPassword)
-require(releaseSigningValues.all { it.isNullOrBlank() } || releaseSigningValues.all { !it.isNullOrBlank() }) {
-    "Release signing requires all four MOBBY_RELEASE_* environment variables"
-}
+val hasReleaseSigning = releaseSigningValues.any { !it.isNullOrBlank() }
 
 android {
     namespace = "com.github.ytlog.mobby.android"
@@ -27,9 +25,9 @@ android {
     }
     buildFeatures { compose = true }
     signingConfigs {
-        if (!releaseStoreFile.isNullOrBlank()) {
+        if (hasReleaseSigning) {
             create("mobbyRelease") {
-                storeFile = file(releaseStoreFile)
+                storeFile = releaseStoreFile?.takeIf { it.isNotBlank() }?.let { file(it) }
                 storePassword = releaseStorePassword
                 keyAlias = releaseKeyAlias
                 keyPassword = releaseKeyPassword
@@ -41,7 +39,8 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            if (!releaseStoreFile.isNullOrBlank()) signingConfig = signingConfigs.getByName("mobbyRelease")
+            // AGP validates this configuration only when building release; debug keeps its own signing.
+            if (hasReleaseSigning) signingConfig = signingConfigs.getByName("mobbyRelease")
         }
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
