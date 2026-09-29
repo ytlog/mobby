@@ -36,4 +36,10 @@ Termux 最终 87 个包单独按自身许可处理。Pi 与 npm 依赖中的原�
 
 这份记录说明已核对的材料与工程措施，不构成对任何司法辖区、发行方式或全部链接关系的法律认证。不能仅凭设置页存在就声称所有分发义务都已完成。
 
-尚未完成的检查：Codex 的 Rust 传递依赖，以及 Bun 静态链接库和嵌入 polyfill 的逐项原版权声明覆盖。当前保留上游发布的 LICENSE/NOTICE 和已收集的库许可证，但不能据此认定这些嵌套组件已经全部核对。正式公开分发前还需完成这项检查及最终源码包验收。
+补充材料按固定发布版本筛选：Codex 使用 `codex-cli`、`codex-bwrap` 在 `aarch64-unknown-linux-musl` 上的普通依赖图，排除测试依赖、构建工具和过程宏；原 crate 用 Cargo.lock 的 SHA-256 校验，Git 依赖使用锁定提交。Rust 标准库和实际 ELF 中的 OpenSSL 3.6.3 单独保留许可。材料见 `third_party/codex/dependency-notices.json`。
+
+Bun 材料见 `third_party/bun/dependency-notices.json`，包括 Linux ARM64 构建输入、WebKit 内的原版权声明、内嵌 polyfill 的普通依赖闭包和原手工维护 JS 文件的声明；排除仅用于 Windows 的 libuv 和 npm 构建工具 esbuild。原上游 LICENSE 文件保持完整，不删改其中的历史说明。Termux 许可模板仍保留在上游数据包内，App 页面仅展示最终包清单实际使用的模板。
+
+少数 Rust crate 明确在 Cargo.toml 授予 Apache-2.0/MIT，却未随归档提供独立许可文件。优先恢复同提交的上游原文或源文件头；无法恢复独立文件时，提供其明确授予的标准许可副本并保留原 Cargo.toml 作者元数据，记录在 `license_copy_fallbacks`，不编造版权年份或持有人。对多选许可使用允许的分支，例如 self_cell 选择 Apache-2.0，不将未选择的 GPL 分支作为 APK 的适用许可。
+
+尚待完成：OpenCode 内嵌 JavaScript 依赖的声明核对，以及最终源码包验收。

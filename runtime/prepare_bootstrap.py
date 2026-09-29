@@ -62,8 +62,13 @@ def prepare(output, ndk=None):
         notices_digest.update(name.encode() + b'\0' + payload)
     # Offline App viewer: retain original copyright/license files, not just SPDX names.
     runtime_notices = []
+    inventory = (PROJECT / 'runtime/release-sources.lock.json').read_bytes()
+    used_templates = {license.strip() for package in json.loads(inventory)['packages']
+                      for license in package['license'].split(',')}
     for path, payload in sorted(files.items()):
         leaf = pathlib.PurePosixPath(path).name.lower()
+        if path.startswith('share/LICENSES/') and pathlib.PurePosixPath(path).stem not in used_templates:
+            continue
         if (path.startswith('share/LICENSES/') or path.startswith('share/mobby/licenses/') or
                 leaf.startswith(('license', 'copying', 'copyright', 'notice'))):
             try:
@@ -78,10 +83,28 @@ def prepare(output, ndk=None):
             else:
                 title = pathlib.PurePosixPath(path).parent.name + ' — ' + pathlib.PurePosixPath(path).name
             runtime_notices.append({'id': path, 'title': title, 'license': '', 'text': text})
+    for component in ('codex', 'bun'):
+        payload = (PROJECT / 'third_party' / component / 'dependency-notices.json').read_bytes()
+        notices_digest.update(component.encode() + b'\0' + payload)
+        for package in json.loads(payload)['packages']:
+            documents = package['documents']
+            if not documents:
+                raise ValueError('Missing nested dependency notice: ' + package['name'])
+            for document in documents:
+                if hashlib.sha256(document['text'].encode()).hexdigest() != document['sha256']:
+                    raise ValueError('Modified nested dependency notice: ' + package['name'])
+            version = package.get('version', '')
+            runtime_notices.append({
+                'id': component + '-dependency:' + package['name'] + ':' + version,
+                'title': component.capitalize() + ' — ' + package['name'] + (' ' + version if version else ''),
+                'license': package.get('license') or '',
+                'text': '\n\n'.join(document['path'] + '\n\n' + document['text'] for document in documents),
+            })
     notice_assets = output / 'assets/third-party'
     notice_assets.mkdir(parents=True, exist_ok=True)
     (notice_assets / 'runtime.json').write_text(json.dumps(runtime_notices, ensure_ascii=False, indent=2) + '\n')
     agents_version += notices_digest.hexdigest()
+    agents_version += hashlib.sha256(inventory).hexdigest()
     files['SYMLINKS.txt'] = ''.join(target + '←' + name + '\n' for name, target in links.items()).encode()
     mapping = {}
     with zipfile.ZipFile(assets / 'data.zip', 'w', zipfile.ZIP_DEFLATED) as data_zip:

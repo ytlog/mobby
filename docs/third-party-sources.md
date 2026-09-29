@@ -11,7 +11,7 @@
 - `mobby-source.tar`：发布提交的项目源码、Android 构建文件、本地启动器、资源部署脚本，以及已修改的 libtermux-android 源码。
 - 两个固定 Termux 配方快照：bootstrap 使用 `3326a2db3ffdc2920d99376e990f17ca9151b5d2`，覆盖依赖使用 `e392c87ee0005397d3b3b9b43576c270bef76cd8`。快照包含完整配方、构建框架和包补丁；清单中的 `recipe` 指明子包对应的主配方。
 - Termux GPL/LGPL 包的上游源码归档，及 Bash 5.3.9、Readline 8.3.3 的全部官方增量补丁。termux-licenses 的源码是配方快照内的许可证文件，没有额外上游归档。
-- Codex 0.155.1 的源码快照，包含它使用的 bubblewrap 源码、许可证与构建文件。
+- Codex 0.155.1 的源码快照，包含它使用的 bubblewrap 源码、许可证与构建文件；另外提供普通依赖图中 10 个 MPL-2.0 crate 的固定版本源码归档，包括 option-ext 与 Symphonia。
 - OpenCode 1.18.32、opencode-termux v1.18.32-0、Bun 1.3.14、Bun 使用的 TinyCC 固定提交，以及 musl 1.2.5 的源码。社区打包脚本包含 musl 的 Termux resolver 路径补丁。
 - Bun 使用的 WebKit 固定提交 `5488984d20e0dbfe4be2c3ba8fb18eb81a5e0e8b`。保留根文件、Source、Tools、WebKitLibraries 与 CI 构建配置；省略 LayoutTests、PerformanceTests 和网站内容。GitHub 拒绝该仓库的全量快照，流程使用固定提交的稀疏 Git 检出，验证没有修改后打包已跟踪的构建材料。
 - GCC 14.2.0 与对应 Alpine 配方提交 `1a03a2a9c9e77f1a07d48b6f6805e72c8c63c03f`。已逐字节比对 OpenCode 内的 libgcc、libstdc++ 与 Alpine 14.2.0-r4，确认一致。保留 GCC 许可证和 Runtime Library Exception。

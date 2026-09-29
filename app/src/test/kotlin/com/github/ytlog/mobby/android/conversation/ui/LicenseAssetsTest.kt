@@ -28,6 +28,13 @@ class LicenseAssetsTest {
         val runtime = notices("runtime")
         assertTrue(runtime.any { it.getValue("id").jsonPrimitive.content.endsWith("JavaScriptCore-COPYING.LIB") })
         assertTrue(runtime.any { it.getValue("id").jsonPrimitive.content.endsWith("bubblewrap-COPYING") })
+        assertTrue(runtime.any { it.getValue("id").jsonPrimitive.content == "share/LICENSES/GPL-3.0.txt" })
+        assertFalse(runtime.any { it.getValue("id").jsonPrimitive.content == "share/LICENSES/AGPL-V3.txt" })
         assertFalse(runtime.any { it.getValue("id").jsonPrimitive.content.contains("@anthropic-ai/claude-code/") })
+        val rustCrypto = runtime.single { it.getValue("id").jsonPrimitive.content == "codex-dependency:aws-lc-sys:0.39.0" }
+        assertTrue(rustCrypto.getValue("text").jsonPrimitive.content.contains("Copyright"))
+        val bunPolyfill = runtime.single { it.getValue("id").jsonPrimitive.content == "bun-dependency:hmac-drbg:1.0.1" }
+        assertTrue(bunPolyfill.getValue("text").jsonPrimitive.content.contains("Copyright Fedor Indutny"))
+        assertTrue(bunPolyfill.getValue("text").jsonPrimitive.content.contains("Permission is hereby granted"))
     }
 }

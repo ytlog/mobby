@@ -46,6 +46,32 @@ class BootstrapTest(unittest.TestCase):
             prepare.prepare(root / 'out')
             self.assertEqual({p.name for p in native.iterdir()}, {'libbash.so'})
 
+    def test_viewer_omits_unused_termux_templates_without_changing_upstream_assets(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.fixture(root, {'bin/bash': b'\x7fELFbash',
+                                'share/LICENSES/GPL-3.0.txt': b'GPL original',
+                                'share/LICENSES/AGPL-V3.txt': b'unused AGPL template'})
+            prepare.prepare(root / 'out')
+            notices = json.loads((root / 'out/assets/third-party/runtime.json').read_text())
+            ids = {item['id'] for item in notices}
+            self.assertIn('share/LICENSES/GPL-3.0.txt', ids)
+            self.assertNotIn('share/LICENSES/AGPL-V3.txt', ids)
+            with zipfile.ZipFile(root / 'out/assets/bootstrap/data.zip') as archive:
+                self.assertEqual(archive.read('share/LICENSES/AGPL-V3.txt'), b'unused AGPL template')
+
+    def test_offline_notices_include_static_codex_and_bun_dependencies(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.fixture(root, {'bin/bash': b'\x7fELFbash'})
+            prepare.prepare(root / 'out')
+            notices = json.loads((root / 'out/assets/third-party/runtime.json').read_text())
+            codex = next(item for item in notices if item['id'] == 'codex-dependency:aws-lc-sys:0.39.0')
+            self.assertIn('Copyright', codex['text'])
+            polyfill = next(item for item in notices if item['id'] == 'bun-dependency:hmac-drbg:1.0.1')
+            self.assertIn('Copyright Fedor Indutny', polyfill['text'])
+            self.assertIn('Permission is hereby granted', polyfill['text'])
+
     def test_rejects_modified_archive(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
