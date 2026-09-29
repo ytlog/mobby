@@ -11,3 +11,6 @@ __pycache__/
 
 # Keep video masters outside Git; README demos use GIF.
 *.mp4
+
+# Kotlin compiler diagnostics are local machine data.
+.kotlin/
