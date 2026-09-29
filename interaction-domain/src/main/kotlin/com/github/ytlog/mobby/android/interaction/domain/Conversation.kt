@@ -66,7 +66,7 @@ data class PermissionRequest(val id: String, val revision: Long, val subject: Pe
 data class PermissionKey(val execution: ExecutionId, val approvalId: String, val revision: Long)
 data class PermissionDecision(val commandId: String, val key: PermissionKey, val allow: Boolean)
 interface ExecutionPort {
-    suspend fun respondToDevice(request: com.github.ytlog.mobby.android.deviceinteraction.model.DeviceInteractionResponse): OperationResult = OperationResult.Failed(AppStrings.unsupportedOperation)
+    suspend fun respondToDevice(request: com.github.ytlog.mobby.android.runtime.api.device.DeviceInteractionResponse): OperationResult = OperationResult.Failed(AppStrings.unsupportedOperation)
     suspend fun submit(turn: TurnExecution): Submission
     suspend fun insert(insertion: PreparedInsertion): Submission
     suspend fun lookup(turnId: TurnId): Submission

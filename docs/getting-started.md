@@ -10,7 +10,7 @@ Android 本地 CLI Agent 运行验证工程。采用 Compose 持久会话页和�
 在 `local.properties` 中设置 `sdk.dir`，然后执行：
 
 ```sh
-./gradlew :app:assembleDebug :interaction-domain:test :interaction-data:testDebugUnitTest :interaction-ui:testDebugUnitTest :runtime-api:test :runtime-engine:test :runtime-android:testDebugUnitTest :termux-core:testDebugUnitTest :app:lintDebug
+./gradlew :app:assembleDebug :interaction-domain:test :interaction-data:testDebugUnitTest :app:testDebugUnitTest :runtime-api:test :runtime-engine:test :runtime-android:testDebugUnitTest :termux-core:testDebugUnitTest :app:lintDebug
 ```
 
 Python 打包与模块边界测试：`python3 -m unittest discover -s runtime -p 'test_*.py'`。

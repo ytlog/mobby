@@ -1,6 +1,6 @@
 package com.github.ytlog.mobby.android.interaction.domain
 
-import com.github.ytlog.mobby.android.deviceinteraction.model.*
+import com.github.ytlog.mobby.android.runtime.api.device.*
 import kotlinx.serialization.json.JsonObject
 import org.junit.Assert.assertEquals
 import org.junit.Test

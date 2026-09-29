@@ -16,12 +16,8 @@ project(":bootstrap-arm64").buildFileName = "mobby.gradle.kts"
 
 include(":runtime-api", ":interaction-domain")
 include(":runtime-engine", ":runtime-android")
-include(":interaction-data", ":interaction-ui", ":speech", ":device-plugins")
+include(":interaction-data", ":speech", ":device-plugins")
 
 include(":localization")
 
-include(":device-interaction", ":device-interaction-ui")
-
 include(":local-model", ":local-model-backend-llama")
-include(":plugin:appfunction")
-project(":plugin:appfunction").projectDir = file("app-functions")

@@ -9,24 +9,20 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.provider.Settings
 import android.widget.Toast
-import com.github.ytlog.mobby.android.interaction.data.InteractionFactory
+import com.github.ytlog.mobby.android.graph.AppGraph
 import com.github.ytlog.mobby.android.interaction.domain.ConversationId
 import com.github.ytlog.mobby.android.interaction.domain.Failure
 import com.github.ytlog.mobby.android.interaction.domain.InteractionState
-import com.github.ytlog.mobby.android.interaction.domain.InteractionUseCases
 import com.github.ytlog.mobby.android.interaction.domain.StopResult
 import com.github.ytlog.mobby.android.interaction.ui.DesktopPet
 import com.github.ytlog.mobby.android.interaction.ui.FloatingConversationWindow
-import com.github.ytlog.mobby.android.runtime.android.RuntimeHost
 import kotlinx.coroutines.*
 
 class MobbyApplication : Application() {
-    lateinit var runtime: RuntimeHost
-        private set
-    private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private lateinit var graph: AppGraph
+    val runtime get() = graph.runtime
+    val interaction get() = graph.interaction
     private val petScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    lateinit var interaction: InteractionUseCases
-        private set
     private lateinit var pet: DesktopPet
     private lateinit var floatingConversation: FloatingConversationWindow
     private var latest = InteractionState()
@@ -56,10 +52,9 @@ class MobbyApplication : Application() {
         super.onCreate()
         if (isLocalModelProcess()) return
         com.github.ytlog.mobby.android.interaction.ui.LanguagePreferences.initialize(this)
-        runtime = RuntimeHost(this) {
+        graph = AppGraph(this) {
             PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
         }
-        interaction = InteractionFactory.create(this, runtime.client, runtime.admin, runtime.diagnostics, applicationScope)
         permitted = Settings.canDrawOverlays(this)
         floatingConversation = FloatingConversationWindow(this, interaction, ::openConversation, ::syncPet)
         pet = DesktopPet(this, onStop = { id ->

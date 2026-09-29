@@ -56,7 +56,7 @@ internal class RuntimeExecutionAdapter(private val client: RuntimeClient) : Exec
             is CommandResult.Rejected -> Submission.Rejected(result.error.failure())
         }
     } catch (e: CancellationException) { throw e } catch (_: Exception) { Submission.Unconfirmed }
-    override suspend fun respondToDevice(request: com.github.ytlog.mobby.android.deviceinteraction.model.DeviceInteractionResponse): OperationResult =
+    override suspend fun respondToDevice(request: com.github.ytlog.mobby.android.runtime.api.device.DeviceInteractionResponse): OperationResult =
         when (val result = client.respondToDevice(request)) {
             CommandResult.Accepted, CommandResult.AlreadyTerminal -> OperationResult.Done
             is CommandResult.Rejected -> OperationResult.Failed(result.error.message())
@@ -90,6 +90,7 @@ internal class RuntimeExecutionAdapter(private val client: RuntimeClient) : Exec
     }
 }
 internal class RuntimeSystemAdapter(private val context: android.content.Context, private val client: RuntimeClient, private val admin: RuntimeAdminClient, private val diagnostics: RuntimeDiagnosticsClient) : SystemPort {
+    override suspend fun saveDeviceDirectory(location: String): OperationResult = admin.saveDeviceDirectory(location).operation()
     private val camera = CameraCaptureStore(context)
     private suspend fun <T> cameraResult(block: suspend () -> T): DataResult<T> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         try { DataResult.Loaded(block()) }

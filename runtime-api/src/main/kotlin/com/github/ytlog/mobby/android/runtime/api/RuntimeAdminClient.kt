@@ -25,6 +25,8 @@ interface RuntimeAdminClient {
     val environment: StateFlow<EnvironmentSnapshot>
     suspend fun listSkills(agent: AgentId): AdminResult<List<SkillSummary>>
     suspend fun listPlugins(): AdminResult<List<PluginSummary>> = AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
+    /** Save a document-tree grant obtained by the UI's system picker; never accepts a filesystem path. */
+    suspend fun saveDeviceDirectory(location: String): AdminResult<Unit>
     suspend fun listAppFunctions(): AdminResult<AppFunctionCatalogSummary> = AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
     suspend fun readSkill(ref: CapabilityRef): AdminResult<SkillPreview>
     suspend fun previewManualSkill(request: ManualSkillRequest): AdminResult<SkillPreview>

@@ -53,7 +53,7 @@ class RuntimeHost(context: Context, notification: () -> PendingIntent) {
         override suspend fun submit(request: RunRequest) = connected()?.client?.submit(request) ?: SubmitResult.Rejected(RuntimeError(ErrorCode.DISCONNECTED, true))
         override suspend fun insert(request: InsertRequest) = connected()?.client?.insert(request) ?: CommandResult.Rejected(RuntimeError(ErrorCode.DISCONNECTED, true))
         override suspend fun findByRequest(requestId: RequestId) = connected()?.client?.findByRequest(requestId) ?: RequestLookup.Unavailable
-        override suspend fun respondToDevice(request: com.github.ytlog.mobby.android.deviceinteraction.model.DeviceInteractionResponse) =
+        override suspend fun respondToDevice(request: com.github.ytlog.mobby.android.runtime.api.device.DeviceInteractionResponse) =
             connected()?.client?.respondToDevice(request) ?: CommandResult.Rejected(RuntimeError(ErrorCode.DISCONNECTED, true))
         override suspend fun cancel(request: CancelRequest) = connected()?.client?.cancel(request) ?: CommandResult.Rejected(RuntimeError(ErrorCode.DISCONNECTED, true))
         override suspend fun resolveApproval(request: ApprovalDecision) = connected()?.client?.resolveApproval(request) ?: CommandResult.Rejected(RuntimeError(ErrorCode.DISCONNECTED, true))
@@ -68,6 +68,7 @@ class RuntimeHost(context: Context, notification: () -> PendingIntent) {
         override suspend fun stopShell() = connected()?.stopShell() ?: CommandResult.Rejected(RuntimeError(ErrorCode.DISCONNECTED, true))
     }
     val admin: RuntimeAdminClient = object : RuntimeAdminClient {
+        override suspend fun saveDeviceDirectory(location: String) = connected()?.saveDeviceDirectory(location) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
         override suspend fun eventHistorySettings() = connected()?.eventHistorySettings() ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
         override suspend fun saveEventHistorySettings(settings: EventHistorySettings) = connected()?.saveEventHistorySettings(settings) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
         override val environment = environmentState.asStateFlow()

@@ -178,15 +178,28 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
     }
     override suspend fun listPlugins(): AdminResult<List<PluginSummary>> =
         AdminResult.Success(com.github.ytlog.mobby.android.device.DeviceHost.summaries(this))
+    override suspend fun saveDeviceDirectory(location: String): AdminResult<Unit> = withContext(Dispatchers.IO) {
+        val uri = android.net.Uri.parse(location)
+        if (uri.scheme != "content" || !android.provider.DocumentsContract.isTreeUri(uri)) {
+            return@withContext AdminResult.Failed(RuntimeError(ErrorCode.INVALID_CONFIG))
+        }
+        try {
+            com.github.ytlog.mobby.android.device.DeviceStorage.persist(this@RuntimeService, uri)
+            AdminResult.Success(Unit)
+        } catch (e: CancellationException) { throw e }
+        catch (_: SecurityException) { AdminResult.Failed(RuntimeError(ErrorCode.PERMISSION_DENIED)) }
+        catch (_: IllegalArgumentException) { AdminResult.Failed(RuntimeError(ErrorCode.INVALID_CONFIG)) }
+        catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.STORAGE_FULL, true)) }
+    }
     override suspend fun listAppFunctions(): AdminResult<AppFunctionCatalogSummary> = withContext(Dispatchers.IO) {
-        val listing = com.github.ytlog.mobby.android.appfunctions.AppFunctionCatalog(this@RuntimeService).list()
+        val listing = com.github.ytlog.mobby.android.device.appfunctions.AppFunctionCatalog(this@RuntimeService).list()
         AdminResult.Success(when (listing) {
-            is com.github.ytlog.mobby.android.appfunctions.AppFunctionListing.Available -> AppFunctionCatalogSummary(
+            is com.github.ytlog.mobby.android.device.appfunctions.AppFunctionListing.Available -> AppFunctionCatalogSummary(
                 AppFunctionAvailability.AVAILABLE, listing.functions.map { item ->
                     AppFunctionSummary(CapabilityRef(item.ref), item.packageName, item.appName, item.functionId,
                         item.description, item.enabled, item.unavailableReason, item.parameters.map { AppFunctionParameterSummary(it.name, it.description, it.required, it.type) })
                 })
-            is com.github.ytlog.mobby.android.appfunctions.AppFunctionListing.Unavailable ->
+            is com.github.ytlog.mobby.android.device.appfunctions.AppFunctionListing.Unavailable ->
                 AppFunctionCatalogSummary(AppFunctionAvailability.valueOf(listing.reason.name))
         })
     }

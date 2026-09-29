@@ -2,7 +2,7 @@ package com.github.ytlog.mobby.android.device
 
 import com.github.ytlog.mobby.android.localization.AppStrings
 
-import com.github.ytlog.mobby.android.deviceinteraction.model.*
+import com.github.ytlog.mobby.android.runtime.api.device.*
 import android.Manifest
 import android.app.Activity
 import android.content.Context
@@ -232,7 +232,7 @@ class DeviceCaptureActivity : Activity() {
             setImageBitmap(android.graphics.BitmapFactory.decodeFile(dest.absolutePath))
             adjustViewBounds = true
             contentDescription = AppStrings.photoPreview
-        } else button(com.github.ytlog.mobby.android.deviceinteraction.model.DeviceLabels.text("试听录音", "Play recording")) {
+        } else button(AppStrings.playRecording) {
             try {
                 playback?.release()
                 playback = android.media.MediaPlayer().apply { setDataSource(dest.absolutePath); prepare(); start() }

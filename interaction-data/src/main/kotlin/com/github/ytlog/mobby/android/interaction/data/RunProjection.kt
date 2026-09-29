@@ -1,7 +1,7 @@
 package com.github.ytlog.mobby.android.interaction.data
 
 import com.github.ytlog.mobby.android.runtime.api.*
-import com.github.ytlog.mobby.android.deviceinteraction.model.*
+import com.github.ytlog.mobby.android.runtime.api.device.*
 
 /** Data-owned projection. Gaps trigger snapshot replacement, never partial out-of-order append. */
 internal object RunProjection {

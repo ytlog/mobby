@@ -4,10 +4,10 @@
 
 ## 模块边界
 
-- `device-interaction`：纯 Kotlin 协议、状态约束、固定按钮和文案，包名 `com.github.ytlog.mobby.android.deviceinteraction.model`。不依赖 Android、会话或 Runtime。
-- `device-interaction-ui`：Compose 设备操作卡片和资源预览，包名 `com.github.ytlog.mobby.android.deviceinteraction.ui`。只依赖协议与本地化，通过回调表达用户操作。
-- `interaction-ui` 中同根包的 `ConversationDeviceCard` 是装配适配器，绑定会话、停止、响应和资源读取。记录组件不持有 ViewModel，不启动设备操作。
-- `device-plugins` 保留 Android 执行职责，通过 `DeviceOperationPort` 上报事实；`runtime-engine` 实现逐运行的持久化端口，先保存再允许执行。三个 Agent 使用相同桥接协议。
+- `runtime-api`：纯 Kotlin 设备协议与状态约束，包名 `com.github.ytlog.mobby.android.runtime.api.device`，不依赖显示文案或 Android。
+- `app` 的 `deviceinteraction.ui` 包：设备操作卡片、资源预览和显示文案；通过回调表达用户操作。
+- `app` 中的 `ConversationDeviceCard` 绑定会话、停止、响应和资源读取。记录组件不持有 ViewModel，不启动设备操作。
+- `device-plugins` 的 `device.appfunctions` 包：App Functions 的发现、参数处理、调用和技能适配。旧 Gradle 模块已经删除，不保留转发入口。
 
 ## 时间线记录与实际能力
 

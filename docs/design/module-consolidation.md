@@ -1,22 +1,22 @@
 # Gradle 模块收敛评审
 
-日期：2026-09-29。状态：设计提案，尚未执行模块合并。
+日期：2026-09-29。状态：模块合并已实施，验证结果见本文末尾实施记录。
 
 本文只评审模块粒度、依赖与合并顺序；执行协议、恢复语义和存储契约沿用 [交互与 Runtime 设计](interaction-runtime-architecture.html)，以当前代码和 [开发约定](../../AGENTS.md) 为准。本文不表示旧设计中的所有目标均已实现。
 
 ## 结论
 
-当前 17 个 Gradle 模块中，15 个是项目自有模块，2 个是内置 Termux 依赖。存在局部过度拆分，建议收敛到 **13 个模块：11 个自有模块 + 2 个第三方模块**。
+收敛前 17 个 Gradle 模块中，15 个是项目自有模块，2 个是内置 Termux 依赖。存在局部过度拆分，建议收敛到 **13 个模块：11 个自有模块 + 2 个第三方模块**。
 
 合并四处：设备协议进入 runtime-api；设备卡片进入应用展示包；App Functions 进入 device-plugins 的独立子包；interaction-ui 进入 app。保留会话领域/数据、Runtime API/引擎/平台、语音、本地化、本地模型服务/原生后端的边界。
 
 这是一种针对现有工程的取舍：把只有一个宿主的展示代码按包组织，同时保留已有价值的 JVM 测试、平台依赖和独立服务边界。模块减少不保证构建更快，须在实施前后测量增量构建。Android 官方也建议在细拆成本超过收益时合并模块，且同时提醒过度合并会失去封装和测试收益，见 [模块化指南](https://developer.android.com/topic/modularization)。
 
-## 现有代码核查
+## 收敛前代码核查
 
 规模统计只含各模块 src/main 下的 Kotlin、Java、C++ 与头文件，不含资源、资产、生成代码和第三方源码。测试数为 src/test 与 src/androidTest 的源码文件数，不等于测试用例数。runtime/ 是脚本与测试目录，不是额外 Gradle 模块。
 
-| 当前模块 | 主源码文件 / 行数 | 测试文件 | 决策与依据 |
+| 收敛前模块 | 主源码文件 / 行数 | 测试文件 | 决策与依据 |
 | --- | ---: | ---: | --- |
 | app | 2 / 228 | 11 | 接纳应用 UI；现有宿主负责装配与生命周期 |
 | interaction-ui | 33 / 6,770 | 42 | 合并到 app；现有唯一生产消费者是 app |
@@ -168,7 +168,7 @@ speech 虽小，但它隔离了独立原生 AAR 和下载逻辑；local-model-ba
 4. 将 App Functions 合入 device-plugins，迁移 Manifest 和仪器测试，更新 runtime-android 与宿主测试依赖，移除旧工程。核对最终 Manifest 权限和查询声明、发现与调用确认行为。
 5. 最后评估并将 interaction-ui 合入 app；先核对测试 Manifest、R 引用、namespace、资源、internal 可见性和测试 runner。迁移所有测试，检查主页面/悬浮会话共用同一用例与状态源，并复测增量构建。
 
-每一步只保留一套生产实现，移除旧 settings include、build.gradle 依赖和空目录，不留下长期转发模块。失败可通过普通 revert 回退，不改写提交历史。不同时修改 applicationId、Keystore 别名、数据库结构、HOME 或用户配置。
+每一步只保留一套生产实现，移除旧 settings include、build.gradle 依赖和空目录，不留下长期转发模块。失败可通过普通 revert 回退，不改写提交历史。不同时修改 applicationId、Keystore 别名、数据库结构、HOME 或用户配置。按用户最新要求，开发阶段不实现旧模块、旧包名或旧能力的兼容转发。
 
 最终验证除现有 Node/Python 测试外，使用 JDK 17 运行：
 
@@ -183,3 +183,26 @@ python3 -m unittest discover -s runtime -p 'test_*.py'
 Compose 与 App Functions 仪器测试使用已连接手机和已有环境。另验证 Shell、四种 Agent、取消和错误传递、附件授权、设备操作、应用重启/前后台切换以及本地模型 HTTP 通信。真实 CLI 的模拟网关联调用隔离 HOME 和虚假密钥；模拟成功不能替代手机与真实网关验收。
 
 新增 Gradle 模块应有明确证据：独立平台/原生依赖、独立发布或进程、多个实际消费者的稳定契约、独立测试需求，或测得的构建收益。新页面、新卡片、新 CLI 适配优先添加包与类。
+
+
+## 实施记录（2026-09-29）
+
+已完成四项合并，settings.gradle.kts 当前包含 13 个模块。旧工程目录、构建文件和引用已删除，没有转发工程或新旧双实现；UI 源码包保留，设备协议与 App Functions 分别改为 runtime.api.device 与 device.appfunctions 包。
+
+应用级对象装配归 AppGraph，主界面和悬浮界面继续共享同一用例与投影。DeviceLabels 从契约移到展示包；录音执行器的文案归 localization。公开设备 DTO 使用 JsonObject，runtime-api 通过 api 暴露 serialization JSON 依赖。系统目录选择器保留在 UI，保存授权经用例、SystemPort 和 RuntimeAdminClient 执行；新端口是必需实现，不提供旧实现的兼容默认值。新增测试覆盖授权引用传递、拒绝后不添加能力、授权替换以及非法路径不替换已授权目录。
+
+迁移核对保留全部 94 个非 Manifest 源码/资源文件和 46 个测试文件；两个旧 Manifest 的录音权限、App Functions 权限与包查询已合并到目标模块。合并后的 Manifest 核对了 applicationId、Application、权限与 :local_model 进程。
+
+边界回归检查先在收敛前失败，再在新布局通过。检查使用当前包名前缀，同时扫描 import 与完全限定名，不再沿用失效的旧前缀；UI 与领域只能引用设备契约，不能绕过用例访问实现。
+
+基线 UI 测试还暴露技能添加面板在较矮窗口中半展开且无法滚动的问题，已改为完整展开并允许内容滚动；生命周期测试保留所有断言，使用语义点击隔离 Robolectric 对话窗口触摸差异，固定页脚按钮不再错误调用滚动操作。网关测试更新了失效文案；最终回复滚动测试等待后台 Markdown 解析之后的最终布局。
+
+验证结果：
+
+- JDK 17 下各自有模块与 termux-core 单测合计 540 项：539 项通过，1 项原本就跳过的真实主机 Claude CLI 测试。
+- Python 22 项、Node 桥接 15 项通过。
+- :app:assembleDebug、:app:assembleDebugAndroidTest、:device-plugins:assembleDebugAndroidTest 和 :app:lintDebug 通过；lint 无错误，42 项警告、4 项提示。
+- 为匹配手机现有版本，另以 -Pmobby.versionCode=2 构建主 APK 和宿主测试 APK，通过。
+- 手机覆盖安装先因默认版本号低于现有包而被拒绝；使用版本号 2 后仍因现有包与本机 Debug 签名不匹配被拒绝。没有卸载或清空设备数据；当前构建尚未完成手机验收，真实 CLI/网关、本地模型 HTTP、设备授权及 UI 触摸仍待原签名环境验证。
+
+本轮未得到可靠的前后增量构建对照，不能声称模块收敛提升构建速度。构建输出和本机签名配置不提交。

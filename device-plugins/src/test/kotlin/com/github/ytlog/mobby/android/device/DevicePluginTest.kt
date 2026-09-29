@@ -1,6 +1,6 @@
 package com.github.ytlog.mobby.android.device
 
-import com.github.ytlog.mobby.android.deviceinteraction.model.*
+import com.github.ytlog.mobby.android.runtime.api.device.*
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.boolean

@@ -1,7 +1,7 @@
 package com.github.ytlog.mobby.android.runtime.engine
 
 import com.github.ytlog.mobby.android.runtime.api.*
-import com.github.ytlog.mobby.android.deviceinteraction.model.*
+import com.github.ytlog.mobby.android.runtime.api.device.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex

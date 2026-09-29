@@ -18,6 +18,7 @@ open class StringCatalog(private val fixedLanguage: AppLanguage? = null) {
         return PLACEHOLDER.replace(template) { match -> args[match.groupValues[1].toInt()].toString() }
     }
 
+    val playRecording get() = text("试听录音", "Play recording")
     val appName get() = "mobby"
     val agentLabel get() = "Agent"
     val piName get() = "Pi"

@@ -2,7 +2,7 @@ package com.github.ytlog.mobby.android.device
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import com.github.ytlog.mobby.android.deviceinteraction.model.EffectState
+import com.github.ytlog.mobby.android.runtime.api.device.EffectState
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.*
 import org.junit.Test

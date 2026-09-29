@@ -11,6 +11,20 @@ import org.junit.Test
 import java.lang.reflect.Proxy
 
 class PluginUseCasesTest {
+    @Test fun `directory authorization passes the picker reference and reports a storage refusal`() = runTest {
+        var observed: String? = null
+        val refused = OperationResult.Failed("fixture permission denied")
+        val system = Proxy.newProxyInstance(SystemPort::class.java.classLoader, arrayOf(SystemPort::class.java)) { _, method, args ->
+            when (method.name) {
+                "saveDeviceDirectory" -> { observed = args!![0] as String; refused }
+                else -> error(method.name)
+            }
+        } as SystemPort
+        val actions = InteractionUseCases(stub { error(it) }, stub { error(it) }, system, { "id" }, backgroundScope, stub { error(it) })
+        val location = "content://fixture.documents/tree/chosen"
+        assertEquals(refused, actions.saveDeviceDirectory(location))
+        assertEquals(location, observed)
+    }
     private val plugin = Plugin("plugin:device:screen", "屏幕", "读取并操作当前屏幕", true, null, "手机", PluginAccess.ACCESSIBILITY)
     private inline fun <reified T> stub(crossinline body: (String) -> Any?): T =
         Proxy.newProxyInstance(T::class.java.classLoader, arrayOf(T::class.java)) { _, method, _ -> body(method.name) } as T

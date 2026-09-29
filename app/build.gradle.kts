@@ -24,6 +24,10 @@ android {
         ndk { abiFilters += "arm64-v8a" }
     }
     buildFeatures { compose = true }
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+        unitTests.all { it.systemProperty("robolectric.dependency.repo.url", "https://repo.maven.apache.org/maven2") }
+    }
     signingConfigs {
         if (hasReleaseSigning) {
             create("mobbyRelease") {
@@ -54,15 +58,24 @@ android {
     } }
 }
 dependencies {
+    implementation(project(":speech"))
+    implementation("org.commonmark:commonmark:0.30.0")
+    implementation("org.commonmark:commonmark-ext-gfm-tables:0.30.0")
+    implementation("org.commonmark:commonmark-ext-gfm-strikethrough:0.30.0")
+    implementation("org.commonmark:commonmark-ext-autolink:0.30.0")
+    implementation("org.commonmark:commonmark-ext-task-list-items:0.30.0")
+    implementation("androidx.compose.material:material-icons-extended")
+    testImplementation("org.robolectric:robolectric:4.12.2")
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
     implementation(project(":local-model"))
     implementation(project(":localization"))
-    implementation(project(":interaction-ui"))
     implementation(project(":interaction-domain"))
     implementation(project(":interaction-data"))
     implementation(project(":runtime-api"))
     implementation(project(":device-plugins"))
     androidTestImplementation(project(":runtime-engine"))
-    androidTestImplementation(project(":plugin:appfunction"))
     androidTestImplementation("androidx.appfunctions:appfunctions:1.0.0-alpha08")
     implementation(project(":runtime-android"))
     androidTestImplementation(project(":termux-core"))

@@ -1,6 +1,6 @@
 package com.github.ytlog.mobby.android.runtime.api
 
-import com.github.ytlog.mobby.android.deviceinteraction.model.DeviceRecord
+import com.github.ytlog.mobby.android.runtime.api.device.DeviceRecord
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.coroutines.flow.Flow
@@ -28,7 +28,7 @@ interface RuntimeClient {
     suspend fun cancel(request: CancelRequest): CommandResult
     /** Match run, approval ID and revision. Closing UI never implicitly resolves an approval. */
     suspend fun resolveApproval(request: ApprovalDecision): CommandResult
-    suspend fun respondToDevice(request: com.github.ytlog.mobby.android.deviceinteraction.model.DeviceInteractionResponse): CommandResult =
+    suspend fun respondToDevice(request: com.github.ytlog.mobby.android.runtime.api.device.DeviceInteractionResponse): CommandResult =
         CommandResult.Rejected(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
     suspend fun snapshot(runId: RunId): SnapshotResult
     fun observe(runId: RunId, after: EventCursor? = null): Flow<RuntimeUpdate>

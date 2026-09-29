@@ -1,6 +1,6 @@
 package com.github.ytlog.mobby.android.interaction.domain
 
-import com.github.ytlog.mobby.android.deviceinteraction.model.*
+import com.github.ytlog.mobby.android.runtime.api.device.*
 import com.github.ytlog.mobby.android.localization.CatalogIds
 
 import com.github.ytlog.mobby.android.localization.AppStrings
@@ -74,7 +74,7 @@ sealed interface TranscriptEntry {
     data class Reply(val message: Message) : TranscriptEntry
     data class ToolRun(val steps: List<Step>) : TranscriptEntry
 }
-data class ConversationSummary(val conversation: Conversation, val phase: ExecutionPhase? = null, val occupied: Boolean = false, val execution: ExecutionId? = null, val deviceOperation: com.github.ytlog.mobby.android.deviceinteraction.model.DeviceOperation? = null)
+data class ConversationSummary(val conversation: Conversation, val phase: ExecutionPhase? = null, val occupied: Boolean = false, val execution: ExecutionId? = null, val deviceOperation: com.github.ytlog.mobby.android.runtime.api.device.DeviceOperation? = null)
 data class ConversationDetail(val conversation: Conversation, val turns: List<Turn>, val hasEarlier: Boolean = false)
 data class Project(val name: String, val workspace: String, val skills: Set<String> = emptySet(), val rules: String = "")
 data class InteractionState(
@@ -113,6 +113,7 @@ data class PublishedAppFunction(val ref: String, val packageName: String, val ap
     val description: String, val enabled: Boolean, val unavailableReason: String?, val parameters: List<AppFunctionParameter>)
 data class AppFunctionDirectory(val availability: AppFunctionAvailability, val functions: List<PublishedAppFunction> = emptyList())
 interface SystemPort {
+    suspend fun saveDeviceDirectory(location: String): OperationResult
     suspend fun workspaces(): DataResult<List<WorkspaceOption>> = DataResult.Failed(AppStrings.thisRuntimeDoesNotSupportWorkspaceSelection)
     suspend fun createWorkspace(name: String): DataResult<WorkspaceOption> = DataResult.Failed(AppStrings.thisRuntimeDoesNotSupportCreatingWorkspaces)
     suspend fun eventHistoryLimits(): DataResult<EventHistoryLimits> = DataResult.Failed(AppStrings.thisRuntimeDoesNotSupportStorageSettings)
@@ -194,6 +195,7 @@ class InteractionUseCases(
     private val preferences: PreferencePort
 ) {
     suspend fun workspaces() = system.workspaces()
+    suspend fun saveDeviceDirectory(location: String) = submissionScope.async { system.saveDeviceDirectory(location) }.await()
     suspend fun eventHistoryLimits() = system.eventHistoryLimits()
     suspend fun saveEventHistoryLimits(value: EventHistoryLimits) = submissionScope.async { system.saveEventHistoryLimits(value) }.await()
     val appearance get() = preferences.appearance
