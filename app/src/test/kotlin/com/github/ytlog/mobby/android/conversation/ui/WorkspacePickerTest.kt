@@ -1,0 +1,231 @@
+package com.github.ytlog.mobby.android.conversation.ui
+
+import com.github.ytlog.mobby.android.conversation.domain.gateway.*
+
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.test.*
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.StateRestorationTester
+import androidx.lifecycle.ViewModelStore
+import com.github.ytlog.mobby.android.conversation.domain.*
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.*
+import org.junit.*
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import java.lang.reflect.Proxy
+import kotlin.coroutines.*
+import kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED
+
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
+class WorkspacePickerTest {
+    @get:Rule val compose = createComposeRule()
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val store = ViewModelStore()
+    private val options = mutableListOf(WorkspaceOption("default", "默认本机工作区"), WorkspaceOption("second", "Project B"))
+    private val conversations = MutableStateFlow(ConversationState(loading = false, projects = listOf(Project("Project A", "second"))))
+    private val created = CompletableDeferred<WorkspaceOption>()
+    private var creations = 0
+    private var projectReply: CompletableDeferred<OperationResult>? = null
+    private val savedProjects = mutableListOf<Project>()
+    private var projectConfig: NextTurnConfig? = null
+    private var gatewayDefault: AgentId? = AgentId.CODEX
+    private inline fun <reified T> stub(crossinline body: (String, Array<out Any?>) -> Any?): T =
+        Proxy.newProxyInstance(T::class.java.classLoader, arrayOf(T::class.java)) { _, m, a -> body(m.name.substringBefore("-"), a ?: emptyArray()) } as T
+    private fun vm(): ConversationViewModel {
+        val system = stub<SystemPort> { name, args -> when (name) {
+            "getStatus" -> flowOf(SystemStatus(true, true))
+            "getDiagnostic" -> flowOf(DiagnosticOutput(null, emptyList()))
+            "agents" -> listOf(AgentOption(AgentId.CLAUDE_CODE, mapOf("claude-fixture" to emptySet()), null, true, emptySet()))
+            "gateways" -> listOf(
+                GatewayProfile(AgentId.PI, "PI", 1, "https://example.test/v1", "pi-model", "RESPONSES", true,
+                    listOf(GatewayModel("pi-model", "pi-model"))),
+                GatewayProfile(AgentId.CODEX, "CODEX", 1, "https://example.test/v1", "model", "RESPONSES", true,
+                    listOf(GatewayModel("model", "model"))),
+                GatewayProfile(AgentId.CLAUDE_CODE, "CLAUDE", 1, "https://example.test/v1", "claude-fixture", "MESSAGES", true,
+                    listOf(GatewayModel("claude-fixture", "claude-fixture"))))
+            "defaultGateway" -> gatewayDefault?.let { GatewayDefault(it, if (it == AgentId.CODEX) "CODEX" else if (it == AgentId.PI) "PI" else "CLAUDE", 1) }
+            "selectDefaultGateway" -> { gatewayDefault = (args[0] as GatewayProfile).agent; OperationResult.Done }
+            "workspaces" -> DataResult.Loaded(options.toList())
+            "createWorkspace" -> {
+                creations++
+                @Suppress("UNCHECKED_CAST") val reply = args.last() as Continuation<Any?>
+                scope.launch { try { val value = created.await(); options += value; reply.resume(DataResult.Loaded(value)) } catch (e: Exception) { reply.resumeWithException(e) } }
+                COROUTINE_SUSPENDED
+            }
+            else -> error(name)
+        } }
+        val repository = stub<ConversationStore> { name, args -> when (name) {
+            "getState" -> conversations
+            "configure" -> args[0] as String
+            "createInProject" -> { projectConfig = args[0] as NextTurnConfig; "project-created" }
+            "editDraft" -> Draft(text = args[1] as String)
+            "prepareTurn" -> PrepareTurnResult.Queued(TurnId("queued"))
+            "saveProject" -> {
+                val project = args[0] as Project
+                savedProjects += project
+                fun apply(result: OperationResult): OperationResult {
+                    if (result == OperationResult.Done) conversations.value = conversations.value.copy(projects = conversations.value.projects.filter { it.name != project.name } + project)
+                    return result
+                }
+                val gate = projectReply
+                if (gate == null) apply(OperationResult.Done) else {
+                    @Suppress("UNCHECKED_CAST") val continuation = args.last() as Continuation<Any?>
+                    scope.launch { try { continuation.resume(apply(gate.await())) } catch (e: Exception) { continuation.resumeWithException(e) } }
+                    COROUTINE_SUSPENDED
+                }
+            }
+            else -> error(name)
+        } }
+        return ConversationViewModel(ConversationUseCases(repository, stub<ExecutionPort> { name, _ -> error(name) }, system, { "id" }, scope,
+            stub<PreferencePort> { name, _ -> error(name) })).also { store.put("vm", it) }
+    }
+    @After fun cleanup() { compose.runOnIdle { store.clear(); scope.cancel() } }
+    @Test fun `new conversation defaults to Pi even when the current conversation uses Codex`() {
+        gatewayDefault = null
+        val vm = vm()
+        compose.waitForIdle()
+        var submitted: NextTurnConfig? = null
+        val current = Conversation(ConversationId("current"), NextTurnConfig(AgentId.CODEX, "model", null, "default", "CODEX"))
+        compose.setContent { MaterialTheme { ConfigDialog(vm, current, {}, { config, _ -> submitted = config }) } }
+        compose.onNodeWithText("创建").performClick()
+        Assert.assertEquals(AgentId.PI, submitted?.agent)
+        Assert.assertEquals("PI", submitted?.gatewayProfile)
+        Assert.assertEquals(AgentId.CODEX, current.config.agent)
+    }
+    @Test fun `new conversation uses the selected default gateway instead of current conversation`() {
+        gatewayDefault = AgentId.CLAUDE_CODE
+        val vm = vm()
+        compose.waitForIdle()
+        var submitted: NextTurnConfig? = null
+        val current = Conversation(ConversationId("current"), NextTurnConfig(AgentId.CODEX, "old", null, "default", "CODEX"))
+        compose.setContent { MaterialTheme { ConfigDialog(vm, current, {}, { config, _ -> submitted = config }) } }
+        compose.onNodeWithText("创建").performClick()
+        Assert.assertEquals(AgentId.CLAUDE_CODE, submitted?.agent)
+        Assert.assertEquals("CLAUDE", submitted?.gatewayProfile)
+        Assert.assertEquals("claude-fixture", submitted?.model)
+        compose.onNodeWithText("网关与 Agent").assertDoesNotExist()
+        compose.onNodeWithText("模型").assertDoesNotExist()
+    }
+    @Test fun `applied agent selection is remembered for new conversations after reopening`() {
+        gatewayDefault = AgentId.PI
+        val vm = vm()
+        val menuOpen = mutableStateOf(true)
+        val showDialog = mutableStateOf(false)
+        val current = Conversation(ConversationId("current"), NextTurnConfig(AgentId.PI, "pi-model", null, "default", "PI"))
+        var dialogVm = vm
+        var submitted: NextTurnConfig? = null
+        compose.setContent { MaterialTheme {
+            if (menuOpen.value) AgentConfigMenu(true, { menuOpen.value = false }, current, vm)
+            if (showDialog.value) ConfigDialog(dialogVm, current, {}, { config, _ -> submitted = config })
+        } }
+        compose.onNodeWithText("Claude Code").performScrollTo().performClick()
+        compose.onNodeWithText("应用").performClick()
+        compose.waitForIdle()
+        Assert.assertEquals(AgentId.CLAUDE_CODE, gatewayDefault)
+        compose.runOnIdle { dialogVm = vm(); showDialog.value = true }
+        compose.onNodeWithText("创建").performClick()
+        Assert.assertEquals(AgentId.CLAUDE_CODE, submitted?.agent)
+        dialogVm.sendInProject("Project A", "test project message", {})
+        compose.waitForIdle()
+        Assert.assertEquals(AgentId.CLAUDE_CODE, projectConfig?.agent)
+        Assert.assertEquals("CLAUDE", projectConfig?.gatewayProfile)
+    }
+    @Test fun `agent chosen when creating a conversation is remembered for the next creation`() {
+        gatewayDefault = AgentId.PI
+        val vm = vm()
+        val showDialog = mutableStateOf(true)
+        var submitted: NextTurnConfig? = null
+        compose.setContent { MaterialTheme {
+            if (showDialog.value) ConfigDialog(vm, null, {}, { config, _ -> submitted = config; showDialog.value = false })
+        } }
+        compose.onNodeWithText("Codex").performScrollTo().performClick()
+        compose.onNodeWithText("创建").performClick()
+        compose.waitForIdle()
+        Assert.assertEquals(AgentId.CODEX, gatewayDefault)
+        compose.runOnIdle { submitted = null; showDialog.value = true }
+        compose.onNodeWithText("创建").performClick()
+        Assert.assertEquals(AgentId.CODEX, submitted?.agent)
+    }
+    @Test fun `unconfirmed agent selection does not replace the remembered choice`() {
+        gatewayDefault = AgentId.PI
+        val vm = vm()
+        val showDialog = mutableStateOf(true)
+        var submitted: NextTurnConfig? = null
+        compose.setContent { MaterialTheme {
+            if (showDialog.value) ConfigDialog(vm, null, {}, { config, _ -> submitted = config })
+        } }
+        compose.onNodeWithText("Codex").performScrollTo().performClick()
+        compose.runOnIdle { showDialog.value = false }
+        compose.waitForIdle()
+        Assert.assertEquals(AgentId.PI, gatewayDefault)
+        compose.runOnIdle { showDialog.value = true }
+        compose.onNodeWithText("创建").performClick()
+        Assert.assertEquals(AgentId.PI, submitted?.agent)
+    }
+    @Test fun `switching agents reuses that agents most recent gateway and model`() {
+        val current = Conversation(ConversationId("current"), NextTurnConfig(AgentId.CODEX, "codex-old", null, "default", "CODEX"), updatedAt = 20)
+        val recentClaude = Conversation(ConversationId("claude"), NextTurnConfig(AgentId.CLAUDE_CODE, "claude-last", "high", "second", "CLAUDE"), updatedAt = 30)
+        val profiles = listOf(
+            GatewayProfile(AgentId.CODEX, "CODEX", 1, "https://example.test/v1", "codex-default", "RESPONSES", true),
+            GatewayProfile(AgentId.CLAUDE_CODE, "CLAUDE", 1, "https://example.test/v1", "claude-default", "MESSAGES", true,
+                listOf(GatewayModel("claude-default", "Default"), GatewayModel("claude-last", "Last"))),
+        )
+        val previous = ConversationGatewayResolver.newConversation(AgentId.CLAUDE_CODE, current, listOf(ConversationSummary(recentClaude)), profiles, GatewayDefault(AgentId.CODEX, "CODEX", 1))
+        Assert.assertEquals("CLAUDE", previous?.gatewayProfile)
+        Assert.assertEquals("claude-last", previous?.model)
+        Assert.assertEquals("high", previous?.reasoning)
+        val firstUse = ConversationGatewayResolver.newConversation(AgentId.OPEN_CODE, current, emptyList(), profiles, GatewayDefault(AgentId.CODEX, "CODEX", 1))
+        Assert.assertNull(firstUse)
+    }
+    @Test fun `new conversation falls back to selected gateway default when recent model is unavailable`() {
+        val recent = Conversation(ConversationId("recent"), NextTurnConfig(AgentId.CODEX, "old-model", null, "default", "OLD"), updatedAt = 40)
+        val profiles = listOf(
+            GatewayProfile(AgentId.CODEX, "OLD", 1, "https://old.test/v1", "old-model", "RESPONSES", true),
+            GatewayProfile(AgentId.CODEX, "NEW", 2, "https://new.test/v1", "new-default", "RESPONSES", true,
+                listOf(GatewayModel("new-default", "Default"), GatewayModel("other", "Other"))),
+        )
+        val config = ConversationGatewayResolver.newConversation(AgentId.CODEX, recent, listOf(ConversationSummary(recent)), profiles,
+            GatewayDefault(AgentId.CODEX, "NEW", 2))
+        Assert.assertEquals("NEW", config?.gatewayProfile)
+        Assert.assertEquals("new-default", config?.model)
+        Assert.assertEquals(2L, config?.gatewayVersion)
+    }
+    @Test fun `switching conversations repairs missing local gateway and stale model but keeps valid choices`() {
+        val remote = GatewayProfile(AgentId.CODEX, "REMOTE", 4, "https://remote.test/v1", "remote-default", "RESPONSES", true,
+            listOf(GatewayModel("remote-default", "Default"), GatewayModel("remote-other", "Other")))
+        val local = GatewayProfile(AgentId.CODEX, "LOCAL", 7, "http://127.0.0.1:11435/v1", "qwen", "RESPONSES", true,
+            listOf(GatewayModel("qwen", "Qwen")), temporary = true)
+        val selected = GatewayDefault(AgentId.CODEX, "REMOTE", 4)
+        val missing = NextTurnConfig(AgentId.CODEX, "old-qwen", null, "default", "LOCAL", 6)
+        Assert.assertEquals("remote-default", ConversationGatewayResolver.repair(missing, listOf(remote), selected)?.model)
+        Assert.assertEquals("REMOTE", ConversationGatewayResolver.repair(missing, listOf(remote), selected)?.gatewayProfile)
+        val stale = NextTurnConfig(AgentId.CODEX, "old-qwen", "high", "default", "LOCAL", 6)
+        Assert.assertEquals(NextTurnConfig(AgentId.CODEX, "qwen", null, "default", "LOCAL", 7),
+            ConversationGatewayResolver.repair(stale, listOf(local, remote), selected))
+        val valid = NextTurnConfig(AgentId.CODEX, "remote-other", null, "default", "REMOTE", 4)
+        Assert.assertNull(ConversationGatewayResolver.repair(valid, listOf(remote, local), selected))
+    }
+    @Test fun `switching agent keeps the conversation and explains separate sessions`() {
+        val vm = vm()
+        val conversation = Conversation(ConversationId("c"), NextTurnConfig(AgentId.CODEX, "model", null, "default", "CODEX"), hasTurns = true, session = "codex-session")
+        compose.setContent { MaterialTheme { AgentConfigMenu(true, {}, conversation, vm) } }
+        compose.onNodeWithText("新建并使用此配置").assertDoesNotExist()
+        compose.onNodeWithText("应用").assertExists()
+        compose.onNodeWithText("Agent").assertExists()
+        compose.onNodeWithText("Claude Code").performScrollTo().performClick()
+        compose.onNodeWithText("仍在当前对话中继续", substring = true).assertExists()
+        compose.onNodeWithText("应用").assertExists()
+    }
+    @Test fun `agent menu shows gateway without repeating its model list`() {
+        val vm = vm()
+        val conversation = Conversation(ConversationId("c"), NextTurnConfig(AgentId.CODEX, "model", null, "default", "CODEX"))
+        compose.setContent { MaterialTheme { AgentConfigMenu(true, {}, conversation, vm) } }
+        compose.onNodeWithText("example.test").assertExists()
+        compose.onNodeWithText("example.test · model · 1 个模型").assertDoesNotExist()
+        compose.onNodeWithText("model").assertExists()
+    }
+}

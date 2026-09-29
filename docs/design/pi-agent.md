@@ -27,6 +27,6 @@ Pi 0.87.1 已作为第四个 Agent 接入，并成为没有选择记录时新会
 
 2026-09-28 已在 M2007J1SC / Android 13 覆盖安装并通过上述手机门槛，另通过真实 Keystore 的默认升级、用户后续选择保留及网关版本保留测试。Node 桥接测试 15 项和 bootstrap/依赖打包测试 10 项通过。JDK 17 的构建、Runtime/领域单元测试、App/termux-core 单元测试与 lint 通过。全量 Python 检查仍有一项既有失败：`test_module_boundaries.py` 的允许列表尚未包含项目原有 `runtime-android -> plugin:appfunction` 依赖。
 
-扩大到全部 interaction-ui 测试时，154 项中有 7 项失败：6 项技能编辑器生命周期测试找不到名称输入节点，另 1 项网关页面测试找不到旧说明文案。在隔离目录把技能页默认 Agent 和共享技能说明恢复为原行为后，6 项编辑器失败仍可复现；本次不修改这些页面行为或既有测试。Pi 默认选择与四个 Agent 图标另有针对性验证。
+扩大到全部 conversation-ui 测试时，154 项中有 7 项失败：6 项技能编辑器生命周期测试找不到名称输入节点，另 1 项网关页面测试找不到旧说明文案。在隔离目录把技能页默认 Agent 和共享技能说明恢复为原行为后，6 项编辑器失败仍可复现；本次不修改这些页面行为或既有测试。Pi 默认选择与四个 Agent 图标另有针对性验证。
 
 官方接口依据：[RPC](https://github.com/earendil-works/pi-mono/blob/main/packages/coding-agent/docs/rpc.md)、[自定义模型](https://github.com/earendil-works/pi-mono/blob/main/packages/coding-agent/docs/models.md)、[技能](https://github.com/earendil-works/pi-mono/blob/main/packages/coding-agent/docs/skills.md)。

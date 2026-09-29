@@ -29,8 +29,8 @@ object AppFunctionHost {
     private val awaiting = ConcurrentHashMap<String, ArrayBlockingQueue<String>>()
 
     /** Called only after the runtime journal has accepted and consumed the response. */
-    fun respond(request: DeviceInteractionResponse): Boolean {
-        if (request.interactionId != request.operationId || request.response !in setOf("confirm", "cancel")) return false
+    fun respond(request: DeviceOperationResponse): Boolean {
+        if (request.promptId != request.operationId || request.response !in setOf("confirm", "cancel")) return false
         return awaiting[request.operationId]?.offer(request.response) == true
     }
 

@@ -14,9 +14,9 @@ project(":termux-core").buildFileName = "mobby.gradle.kts"
 project(":bootstrap-arm64").projectDir = file("third_party/libtermux-android/bootstrap-arm64")
 project(":bootstrap-arm64").buildFileName = "mobby.gradle.kts"
 
-include(":runtime-api", ":interaction-domain")
+include(":runtime-api", ":conversation-domain")
 include(":runtime-engine", ":runtime-android")
-include(":interaction-data", ":speech", ":device-plugins")
+include(":conversation-data", ":speech", ":device-plugins")
 
 include(":localization")
 
@@ -27,8 +27,8 @@ project(":runtime-api").projectDir = file("runtime/api")
 project(":runtime-engine").projectDir = file("runtime/engine")
 project(":runtime-android").projectDir = file("runtime/android")
 project(":device-plugins").projectDir = file("runtime/device-plugins")
-project(":interaction-domain").projectDir = file("interaction/domain")
-project(":interaction-data").projectDir = file("interaction/data")
+project(":conversation-domain").projectDir = file("conversation/domain")
+project(":conversation-data").projectDir = file("conversation/data")
 project(":local-model").projectDir = file("model/service")
 project(":local-model-backend-llama").projectDir = file("model/backend-llama")
 project(":speech").projectDir = file("shared/speech")

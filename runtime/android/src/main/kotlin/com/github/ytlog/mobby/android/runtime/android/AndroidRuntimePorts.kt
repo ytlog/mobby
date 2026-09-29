@@ -41,7 +41,7 @@ internal class AndroidRuntimePorts(
         if (!session.supportsInsertion) return InsertionOffer.UNSUPPORTED
         return if (session.insert(text)) InsertionOffer.ACCEPTED else InsertionOffer.NOT_READY
     }
-    override fun offerDeviceResponse(request: DeviceInteractionResponse) =
+    override fun offerDeviceResponse(request: DeviceOperationResponse) =
         com.github.ytlog.mobby.android.device.DeviceCapture.respond(request.operationId, request.response) || AppFunctionHost.respond(request)
     override fun offerApproval(requestId: RequestId, approvalId: String, choice: ApprovalChoice) = control?.offer(requestId, approvalId, choice) == true
     suspend fun shutdownLive() {

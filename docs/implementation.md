@@ -74,7 +74,7 @@ CLI 协议参考：[Claude Code](https://code.claude.com/docs/en/headless)、[Co
 
 ## 交互方案实施：首个契约检查点（2026-09-21）
 
-已按两份设计的迁移顺序开始实施，新增 `:runtime-api` 与 `:interaction-domain` 两个纯 Kotlin/JVM 模块，沿用 Kotlin 1.9.0、coroutines 1.7.3 和 JDK 17。两模块均无项目依赖，领域层不引用 Runtime DTO、Android 或 Compose。应用仍使用现有测试控制台；新增契约尚未接入生产执行路径。
+已按两份设计的迁移顺序开始实施，新增 `:runtime-api` 与 `:conversation-domain` 两个纯 Kotlin/JVM 模块，沿用 Kotlin 1.9.0、coroutines 1.7.3 和 JDK 17。两模块均无项目依赖，领域层不引用 Runtime DTO、Android 或 Compose。应用仍使用现有测试控制台；新增契约尚未接入生产执行路径。
 
 - Runtime 核心 API：提交、按请求查询、取消、审批、能力、快照、事件观察和有界产物读取。请求只含受控引用；产品 Agent 仅 Codex / Claude Code，Shell 后续保留于内部诊断。
 - 明确区分执行阶段与连接状态、取消接纳与进程退出、消息完成与整轮成功。事件包含运行 ID 和单调序号；基线恢复替换投影，后续事件按游标消费，不再次追加基线已有输出。
@@ -83,9 +83,9 @@ CLI 协议参考：[Claude Code](https://code.claude.com/docs/en/headless)、[Co
 - 统一交互规则：接纳后仅清除对应版本草稿；运行期间编辑保留为下一轮；已有会话跨 Agent 新建并仅复制文字；空对话可调整工作区，已有记录后不可修改执行目录；技能对话另建并绑定 Creator；过程折叠遵守手动选择与阅读状态。
 - 数据投影序号策略拒绝跨运行事件、跳号和重复增量；未来 Data 实现必须在同一事务中写入投影与消费游标。
 
-验证：新增 Runtime 8 项、Domain 10 项测试通过；空会话调整工作区的边界先由失败测试复现，再修正。JDK 17 下 `:runtime-api:test :interaction-domain:test :app:assembleDebug :app:testDebugUnitTest :termux-core:testDebugUnitTest :app:lintDebug` 通过；现有 App 8 项、SDK 32 项测试保持通过。Node.js 网关 17 项、Python 打包 6 项通过，合计 81 项测试。未重复运行真 CLI 模拟网关联调（本轮未改执行/桥接代码），未覆盖安装或声称通过手机交互验收。
+验证：新增 Runtime 8 项、Domain 10 项测试通过；空会话调整工作区的边界先由失败测试复现，再修正。JDK 17 下 `:runtime-api:test :conversation-domain:test :app:assembleDebug :app:testDebugUnitTest :termux-core:testDebugUnitTest :app:lintDebug` 通过；现有 App 8 项、SDK 32 项测试保持通过。Node.js 网关 17 项、Python 打包 6 项通过，合计 81 项测试。未重复运行真 CLI 模拟网关联调（本轮未改执行/桥接代码），未覆盖安装或声称通过手机交互验收。
 
-后续仍需落实：管理接口及领域管理端口、runtime-engine/runtime-android 提取、持久幂等日志、Service 客户端、interaction-data/Room、Compose 页面与 App 装配。管理接口尚未作为已完成 API 发布；当前契约也未宣称冻结为最终稳定版本。推开抽屉、面板高度、焦点与阅读锚点、IME、技能导入/保存、真实审批和进程停止均待原生接入及验收。当前测试证明领域规则和假实现契约，不能证明真实执行、持久恢复或视觉交互已完成。
+后续仍需落实：管理接口及领域管理端口、runtime-engine/runtime-android 提取、持久幂等日志、Service 客户端、conversation-data/Room、Compose 页面与 App 装配。管理接口尚未作为已完成 API 发布；当前契约也未宣称冻结为最终稳定版本。推开抽屉、面板高度、焦点与阅读锚点、IME、技能导入/保存、真实审批和进程停止均待原生接入及验收。当前测试证明领域规则和假实现契约，不能证明真实执行、持久恢复或视觉交互已完成。
 
 ## 真实 Runtime 提取与接通（2026-09-21）
 
@@ -104,7 +104,7 @@ CLI 协议参考：[Claude Code](https://code.claude.com/docs/en/headless)、[Co
 
 ## 持久会话与 Compose 主界面（2026-09-21）
 
-新增 `interaction-data`（Room 2.6.1）与 `interaction-ui`，App 负责装配和系统分享/快捷方式。删除旧 TestConsoleViewModel；Shell 从设置的诊断页使用原真实执行路径。UI 只依赖 Domain，Data 只依赖 Domain 与 Runtime API。
+新增 `conversation-data`（Room 2.6.1）与 `conversation-ui`，App 负责装配和系统分享/快捷方式。删除旧 TestConsoleViewModel；Shell 从设置的诊断页使用原真实执行路径。UI 只依赖 Domain，Data 只依赖 Domain 与 Runtime API。
 
 - 会话、独立草稿/选区、冻结轮次、运行投影、展开选择和阅读锚点存入 Room。输出与消费游标同事务提交，重复序号不追加文本，缺口请求快照；失联后的待确认请求查询原 requestId，不重发。数据库不使用破坏性迁移。
 - 接纳仅清空匹配版本草稿，发送途中新增文字保留；ViewModel 销毁不取消应用作用域中的提交与结果入库。运行状态刷新保留中文输入法组合区；组词和回车不触发发送。
@@ -116,7 +116,7 @@ Room 的真实 SQLite/Robolectric 测试覆盖接纳与拒绝、切换草稿、�
 
 尚未完成：技能真实目录/导入/创建、受控附件导入、完整 Markdown、查找结果跳转、主题跨进程持久化、长历史分页、预测返回与焦点恢复的完整验收。技能与插件页当前明确显示不可用或空目录，附件入口禁用，不记为已交付功能。手机锁屏及辅助测试安装限制尚未解除，不能把主机测试或 APK 构建当作新界面的设备验收。整体目标继续进行。
 
-本检查点验证：83 项 Kotlin/Android library 单测（API 8、engine 18、runtime-android 3、Domain 10、Data 8、UI 4、SDK 32）、Node.js 17、Python 8，共 108 项通过；JDK 17 下 Debug APK 与 lint 通过（仍有依赖版本和 ARM64 限定等既有警告）。主 APK 已覆盖安装并启动，设备建立 `interaction.db`，安装前后加密网关配置摘要一致。设备仍锁屏；未执行新 UI 的点击/键盘/语音验收，也未重复声称真网关通过。本轮未修改桥接或 CLI 执行协议，未重跑六种真 CLI 模拟网关联调。
+本检查点验证：83 项 Kotlin/Android library 单测（API 8、engine 18、runtime-android 3、Domain 10、Data 8、UI 4、SDK 32）、Node.js 17、Python 8，共 108 项通过；JDK 17 下 Debug APK 与 lint 通过（仍有依赖版本和 ARM64 限定等既有警告）。主 APK 已覆盖安装并启动，设备建立 `conversations.db`，安装前后加密网关配置摘要一致。设备仍锁屏；未执行新 UI 的点击/键盘/语音验收，也未重复声称真网关通过。本轮未修改桥接或 CLI 执行协议，未重跑六种真 CLI 模拟网关联调。
 
 ## 技能管理与原生调用（2026-09-21）
 
@@ -398,7 +398,7 @@ JDK 17 下主 APK 构建、相关单测与 lint 通过；覆盖安装前后内�
 
 本检查点尚未实现 AndroidRuntimePorts 的控制消息队列和 CLI stdio 初始化，也未添加 Domain/Data 决定用例与 Compose 审批卡片；supportsApproval 继续为 false，默认进程端拒绝交付。测试中的进程端为可控夹具，不代表手机应用已能审批工具。下一步接通这条真实传输与界面链路后，才能使用此前已验证的 Claude 手机原生协议进行完整验收。
 
-验证：runtime-engine 37 项、interaction-data 30 项、runtime-android 34 项测试通过；主 APK 构建、App/termux-core 单测与 lint 通过。主 APK 已覆盖安装并启动，原加密网关配置摘要在内存中比较一致。本轮没有进行手机审批交互验收，Codex 的设备沙箱限制仍待执行架构决定，完整目标保持未完成。
+验证：runtime-engine 37 项、conversation-data 30 项、runtime-android 34 项测试通过；主 APK 构建、App/termux-core 单测与 lint 通过。主 APK 已覆盖安装并启动，原加密网关配置摘要在内存中比较一致。本轮没有进行手机审批交互验收，Codex 的设备沙箱限制仍待执行架构决定，完整目标保持未完成。
 
 ## Claude 原生审批接入应用（2026-09-21）
 
@@ -434,7 +434,7 @@ Claude 文本、图片和恢复会话均走同一 stream-json 输入通道，不
 
 步骤状态现在同时考虑工具证据与任务阶段：仅明确 SUCCEEDED 显示完成勾号，FAILED 与 CANCELLED 各有独立图标和中文描述；停止中显示“步骤停止中”，任务终态且没有步骤终态证据时显示“步骤结果未确认”。不伪造 ToolFinished 或改写历史日志，也不从整个任务终态推断某个工具成功。测试覆盖取消、超时、失败、中断、结果待确认和任务成功但缺少步骤结果，以及明确取消与明确成功之间的切换。
 
-runtime-engine 43 项与 interaction-ui 38 项测试均通过且无跳过，主包构建、App/termux-core 单测和 lint 通过。覆盖安装成功，原加密网关配置摘要在内存中比较一致。手机恢复原取消测试会话，任务仍显示“已停止”，步骤实际无障碍节点已变为“步骤结果未确认”，确认历史状态也得到正确展示。本项不替代完整 TalkBack 手势与焦点验收。
+runtime-engine 43 项与 conversation-ui 38 项测试均通过且无跳过，主包构建、App/termux-core 单测和 lint 通过。覆盖安装成功，原加密网关配置摘要在内存中比较一致。手机恢复原取消测试会话，任务仍显示“已停止”，步骤实际无障碍节点已变为“步骤结果未确认”，确认历史状态也得到正确展示。本项不替代完整 TalkBack 手势与焦点验收。
 
 ## 手机系统文件选择与真实模型图片输入（2026-09-21）
 
@@ -476,7 +476,7 @@ runtime-engine 43 项与 interaction-ui 38 项测试均通过且无跳过，主�
 
 observe 现在在同一互斥区读取事件批次和最新快照，检查事件序号连续性，以及“无事件但快照序号已前进”的缺口。发现缺口时发出 CURSOR_EXPIRED，再以完整快照与对应游标替换投影，不把残余增量当作连续历史追加。测试确认两种清理情况下都恢复相同的成功终态和输出索引，不向订阅者发送有缺口的事件批次。
 
-45 项引擎测试、31 项 interaction-data 测试通过，主包构建、App/termux-core 单测与 lint 通过。清理通过可控日志夹具触发，尚未在生产 SQLite 中启用保留期/总量清理，也不代表存储策略已经完成。本轮未覆盖安装；设备仍为上一检查点，后续清理策略接通后再做完整设备验收。
+45 项引擎测试、31 项 conversation-data 测试通过，主包构建、App/termux-core 单测与 lint 通过。清理通过可控日志夹具触发，尚未在生产 SQLite 中启用保留期/总量清理，也不代表存储策略已经完成。本轮未覆盖安装；设备仍为上一检查点，后续清理策略接通后再做完整设备验收。
 
 ## SQLite 终态事件保留策略（2026-09-21）
 
@@ -484,7 +484,7 @@ RuntimeJournal 新增可注入的 EventHistoryPolicy，默认保留 30 天、终
 
 清理保留 runs 中的 requestId/摘要、最新完整快照与终态索引，保留命令回执、输出引用和文件；事件序号不会重置。慢订阅者通过上一检查点的 CURSOR_EXPIRED 与完整 Baseline 恢复。终态、命令及清理处于同一 SQLite 事务，清理失败不会留下半提交终态。
 
-三项真实 SQLite 回归覆盖保留期、UTF-8 内容字节预算、按时间清理、活跃审批与未知结果保护、重新打开数据库后保留幂等记录/回执/输出，以及使用拒绝 DELETE 的触发器验证清理失败整体回滚。45 项引擎、37 项 runtime-android、31 项 interaction-data 测试均通过，无跳过；主包构建、App/termux-core 单测和 lint 通过。覆盖安装成功，原加密网关配置摘要一致，原测试会话与中断/成功运行状态可读取。未在手机真实数据库中人为降低预算或篡改时间来触发删除。
+三项真实 SQLite 回归覆盖保留期、UTF-8 内容字节预算、按时间清理、活跃审批与未知结果保护、重新打开数据库后保留幂等记录/回执/输出，以及使用拒绝 DELETE 的触发器验证清理失败整体回滚。45 项引擎、37 项 runtime-android、31 项 conversation-data 测试均通过，无跳过；主包构建、App/termux-core 单测和 lint 通过。覆盖安装成功，原加密网关配置摘要一致，原测试会话与中断/成功运行状态可读取。未在手机真实数据库中人为降低预算或篡改时间来触发删除。
 
 当前预算只约束冗余终态事件正文；SQLite 文件可复用删除后的页，不能把正文预算当作数据库文件大小上限。输出文件、附件、交互消息副本和长期幂等索引仍需各自的总量策略。策略目前可由宿主代码注入，尚未开放用户配置界面；完整的存储预算要求仍未完成。
 
@@ -502,7 +502,7 @@ RuntimeJournal 新增可注入的 EventHistoryPolicy，默认保留 30 天、终
 
 为后续输出文件保留策略增加明确的 ArtifactReadResult.Expired，区分按策略清理和 RESOURCE_MISSING 等意外读取失败。回归先确认原投影会把 Expired 当作同步故障。现在若多页读取中遇到 Expired，丢弃该引用已读取的残片，保存单独的 expired 标记；普通消息/工具输出展示“输出已按保留策略清理”，技能产物展示清理提示且不再生成可安装草稿，也不持续显示加载中。意外缺失仍报告同步错误，不伪造清理成功。
 
-Room 升级到版本 3，为 chunks 增加默认 false 的 expired 列，显式提供 2→3 迁移并保留 1→2→3 路径。测试覆盖读到中途清理、产物清理、数据库重开、意外缺失以及两个旧版本迁移；旧文本和会话不被重建。45 项引擎、39 项 runtime-android、34 项 interaction-data、40 项 UI 测试通过，无跳过；主包构建、App/termux-core 单测与 lint 通过。
+Room 升级到版本 3，为 chunks 增加默认 false 的 expired 列，显式提供 2→3 迁移并保留 1→2→3 路径。测试覆盖读到中途清理、产物清理、数据库重开、意外缺失以及两个旧版本迁移；旧文本和会话不被重建。45 项引擎、39 项 runtime-android、34 项 conversation-data、40 项 UI 测试通过，无跳过；主包构建、App/termux-core 单测与 lint 通过。
 
 手机覆盖安装后数据库实际从 2 升到 3。升级前后在主机临时目录仅比较记录摘要：conversations、turns、chunks 的原字段全部一致，新增 expired 标记均为 false，原加密网关配置摘要一致；原始数据库分析后立即清理，不写入项目。该数据库检查不需要解锁手机，不代表新增设置页的实际点击已验收。
 
@@ -576,7 +576,7 @@ Room 从 3 升至 4，新增 expired_output_cache 表并保留 1→2→3→4 迁
 
 按用户要求移除原生输入框下方“在本机执行 · 请核对输出”，不保留该行的高度；HTML 原型同步移除此静态提示，运行期间原有状态说明仍按状态展示。原型脚本语法检查通过。
 
-横屏检查发现交互根布局仅处理 systemBars 与 IME，遗漏 displayCutout。提取生产同用的 InteractionViewport，先通过真实 Compose View 派发 WindowInsetsCompat：左侧切口为 90px 时内容左边界仍为 0，两个回归均失败。改为 safeDrawingPadding 后，统一处理系统栏、切口和键盘的并集；保留原抽屉宽度计算、位移和裁切。回归验证左右切口变化及移除，导航栏 60px 与键盘 180px 取重叠最大值，键盘收起后恢复导航栏空间。
+横屏检查发现交互根布局仅处理 systemBars 与 IME，遗漏 displayCutout。提取生产同用的 ConversationViewport，先通过真实 Compose View 派发 WindowInsetsCompat：左侧切口为 90px 时内容左边界仍为 0，两个回归均失败。改为 safeDrawingPadding 后，统一处理系统栏、切口和键盘的并集；保留原抽屉宽度计算、位移和裁切。回归验证左右切口变化及移除，导航栏 60px 与键盘 180px 取重叠最大值，键盘收起后恢复导航栏空间。
 
 193 项相关测试通过且无跳过（engine 45、Android 51、domain 12、data 41、UI 44），APK 构建、App/termux-core 单测与 lint 通过。手机覆盖安装前后运行记录、命令回执、加密网关及保留配置和附件摘要全部一致。font_scale=2 的竖屏/横屏检查均确认静态提示消失；横屏左侧切口为 90px，抽屉入口左边界从 55px 移至 145px，添加入口从 77px 移至 167px。截图确认输入区和右侧图标完整，原字体及旋转设置已恢复。
 
@@ -586,7 +586,7 @@ UIAutomator 的可见根框会比截图物理尺寸小 90px，初次右侧图标
 
 原抽屉只有普通 BackHandler，系统返回进度不会传到共享位移。新增生产使用的 rememberDrawerProgress，通过 PredictiveBackHandler 收集手势，抽屉与会话继续使用同一个 progress；手势正常完成才关闭，取消后恢复展开。MainActivity 显式启用 OnBackInvokedCallback，普通返回仍由同一处理器支持。没有向 Runtime 发送取消或重新提交命令。
 
-回归先复现 40%/75% 返回进度下仍完全展开的问题。接入后又实际复现 Activity Compose 1.9.0 在预测返回完成后，重新打开时普通返回无效；按 [AndroidX Activity 官方修复记录](https://developer.android.com/jetpack/androidx/releases/activity#1.9.1)，将 app 与 interaction-ui 统一升到同系列补丁 1.9.3，纳入后续 disabled 回调修复，不另加应用侧兼容处理。
+回归先复现 40%/75% 返回进度下仍完全展开的问题。接入后又实际复现 Activity Compose 1.9.0 在预测返回完成后，重新打开时普通返回无效；按 [AndroidX Activity 官方修复记录](https://developer.android.com/jetpack/androidx/releases/activity#1.9.1)，将 app 与 conversation-ui 统一升到同系列补丁 1.9.3，纳入后续 disabled 回调修复，不另加应用侧兼容处理。
 
 动画审查增加两个先失败的回归：在下一次 Compose frame 前快速取消会停在 60%；打开动画中途开始返回会从约 13% 跳到 90%。结束序号保证即使 predicting 的 true/false 被同帧合并，也触发恢复；每次手势从当前可见进度开始，避免中途跳位。五项测试覆盖正常取消、快速取消、半开启动、界面关闭时取消、完成及重开后的普通返回；包括可见内容位移断言。
 
@@ -646,7 +646,7 @@ AndroidRuntimePorts 在校验与启动时解析请求的 workspaceRef，将对�
 
 接入多个工作区选择入口时，回归复现旧弹窗创建结果会覆盖后来打开的新弹窗选择。创建结果现带入口归属；归属保存在配置页可恢复状态或项目编辑器版本中，既能在原页面重建后接收结果，又不会改变其他新页面。仅把标识放在 Dialog 内部的 rememberSaveable 会在测试的窗口重建中丢失，因此提升到窗口外配置状态，并同时覆盖原页面重建与不同页面迟到结果两条路径。
 
-216 项相关测试通过且无跳过（engine 46、runtime-android 57、domain 13、data 40、UI 60）；离线 APK 构建、App/termux-core 单测任务及 lint 通过。Android 13 手机覆盖安装并清空 interaction.db 后，确认当前版本 5 正常初始化：仅一个初始会话，项目、任务和输出缓存为空。加密网关、保留设置及 Runtime 运行记录摘要不变，HOME 和工作区文件保留，未下载镜像。
+216 项相关测试通过且无跳过（engine 46、runtime-android 57、domain 13、data 40、UI 60）；离线 APK 构建、App/termux-core 单测任务及 lint 通过。Android 13 手机覆盖安装并清空 conversations.db 后，确认当前版本 5 正常初始化：仅一个初始会话，项目、任务和输出缓存为空。加密网关、保留设置及 Runtime 运行记录摘要不变，HOME 和工作区文件保留，未下载镜像。
 
 此前通过应用界面创建项目与独立工作区，并向已配置的真实网关连续发送两轮只读 pwd 任务。两轮均取得原生工具成功、正确工作区路径、协议成功、CLI 退出 0 与进程终止确认；第二轮复用同一 CLI session。清空后再次从手机界面创建项目、选择保留的独立工作区并新建 Codex 对话，数据库核对默认目录继承正确；通过输入框发送只读 pwd，原生工具返回正确目录，任务 SUCCEEDED、退出码 0、协议成功且进程终止确认，pending/occupied 均解除。新验收会话保留在界面供查看。以上不代表所有原方案交互、Android 14+ 预测返回或异常场景均已完成。
 
@@ -860,7 +860,7 @@ Android 13 真机先复现：进入“设置与运行环境”，通过显式 AC
 
 深色配色按参考截图落到界面：背景 `#121212`，浮层/卡片 `#1E1E1E`，气泡与输入条 `#2A2A2C`。浅色按同一套结构落到 `#F5F5F7` 页面底与白色分组卡片；抽屉为白底，搜索为浅灰胶囊。设置页用圆角白卡片分组，外观与 Agent/项目/工作区选择改为行尾勾选，不再使用圆形单选或方框复选。设置/插件/技能标题居中；目录与执行卡用实心底栏而不是描边；空会话、归档、诊断、抽屉搜索、技能筛选、查找均有默认占位。技能详情正文按 Markdown 渲染，不再露出原始 `#` 标记。
 
-2026-09-22 在已连接的 M2007J1SC / Android 13 覆盖安装当前 debug 包，并切到应用内深色后逐页对照截图：会话、空会话问候、抽屉与空搜索、设置、网关、存储与保留、Shell 诊断空态、归档空态、项目管理、加号面板、插件、技能目录与空筛选、技能详情、新建对话、Agent 菜单、更多菜单、查找空态、语音面板、分享、删除确认、以及带真实 `pwd` 步骤的「已完成 1 个步骤」卡片（收起/展开）。`:interaction-ui:testDebugUnitTest` 通过。审批卡、拍照预览本轮设备上没有待处理实例；系统无障碍授权后的真实点按仍未验收，不以模拟替代。
+2026-09-22 在已连接的 M2007J1SC / Android 13 覆盖安装当前 debug 包，并切到应用内深色后逐页对照截图：会话、空会话问候、抽屉与空搜索、设置、网关、存储与保留、Shell 诊断空态、归档空态、项目管理、加号面板、插件、技能目录与空筛选、技能详情、新建对话、Agent 菜单、更多菜单、查找空态、语音面板、分享、删除确认、以及带真实 `pwd` 步骤的「已完成 1 个步骤」卡片（收起/展开）。`:conversation-ui:testDebugUnitTest` 通过。审批卡、拍照预览本轮设备上没有待处理实例；系统无障碍授权后的真实点按仍未验收，不以模拟替代。
 
 ## 抽屉横向滑动开合（2026-09-22）
 
@@ -868,7 +868,7 @@ Android 13 真机先复现：进入“设置与运行环境”，通过显式 AC
 
 `Modifier.drawerSwipe` 挂在抽屉、会话内容和遮罩三处。关闭状态下只接受起点位于左侧 96dp 内、方向向右的拖动；已展开或展开中只接受向左拖动。手势使用 Main 事件阶段并在越过触摸阈值后才消费，代码块横向滚动和列表纵向滚动等子组件仍先于抽屉拿到自己的拖动。松手按速度（阈值 125dp/s）或过半位置决定开合，再用原 240ms 动画收尾。左侧带宽取 96dp 是因为手势导航设备的最外侧约 24dp 属于系统返回区，应用收不到那段触摸；未使用 systemGestureExclusion 去抢系统返回区（平台每边仅保证 200dp 高度，会造成同一边缘上下行为不一致）。
 
-新增 6 项 UI 回归：边缘内右滑打开、超出带宽右滑不打开、松手前跟手位移、慢速短拖回弹关闭、展开态左滑关闭、展开态右滑保持展开；原 5 项预测返回回归按新接口更新后仍通过。`:interaction-ui:testDebugUnitTest` 83 项通过且无跳过，`:app:assembleDebug`、`:app:testDebugUnitTest`、`:termux-core:testDebugUnitTest`、`:app:lintDebug` 通过。当前 debug 包覆盖安装到已解锁的 M2007J1SC / Android 13（手势导航）后，从会话左侧向右滑打开抽屉，再从右向左滑关闭并恢复「打开会话抽屉」入口；起点在左侧带宽外的右滑、以及过短的慢拖均保持关闭。三键导航与 Android 14+ 预测返回跟手仍待验证。
+新增 6 项 UI 回归：边缘内右滑打开、超出带宽右滑不打开、松手前跟手位移、慢速短拖回弹关闭、展开态左滑关闭、展开态右滑保持展开；原 5 项预测返回回归按新接口更新后仍通过。`:conversation-ui:testDebugUnitTest` 83 项通过且无跳过，`:app:assembleDebug`、`:app:testDebugUnitTest`、`:termux-core:testDebugUnitTest`、`:app:lintDebug` 通过。当前 debug 包覆盖安装到已解锁的 M2007J1SC / Android 13（手势导航）后，从会话左侧向右滑打开抽屉，再从右向左滑关闭并恢复「打开会话抽屉」入口；起点在左侧带宽外的右滑、以及过短的慢拖均保持关闭。三键导航与 Android 14+ 预测返回跟手仍待验证。
 
 ## 按住说话（2026-09-22）
 
@@ -876,7 +876,7 @@ Android 13 真机先复现：进入“设置与运行环境”，通过显式 AC
 
 采集仍使用 Android SpeechRecognizer。进入后台、失去音频焦点或切换会话会停止采集，晚到回调失效。权限拒绝、无识别服务、转写失败或原草稿已变化时不发送，并保留文字输入。频谱来自识别器的 RMS，不是独立的麦克风 FFT。
 
-`:interaction-ui:testDebugUnitTest` 87 项通过、无跳过。`:app:assembleDebug` 通过，debug 包已覆盖安装到已连接的 M2007J1SC / Android 13。真机上的长按、上滑取消和完整转写发送尚未在本轮操作验收；小米语音引擎首次使用仍可能要求同意其协议。
+`:conversation-ui:testDebugUnitTest` 87 项通过、无跳过。`:app:assembleDebug` 通过，debug 包已覆盖安装到已连接的 M2007J1SC / Android 13。真机上的长按、上滑取消和完整转写发送尚未在本轮操作验收；小米语音引擎首次使用仍可能要求同意其协议。
 
 同一台手机随后授予了 `RECORD_AUDIO`（应用操作记录为 allow），但识别器仍以权限错误返回，系统语音引擎只发出被拦截的「系统语音引擎需要您的授权」。界面不再把这种情况写成麦克风未授予；麦克风已授予时打开 `com.xiaomi.mibrain.speech.cta` 授权页。权限回调也会再读一次系统授权，避免对话框返回取消时把已授予误报为拒绝。
 
@@ -900,7 +900,7 @@ Android 13 真机先复现：进入“设置与运行环境”，通过显式 AC
 
 同一轮里的回复和工具不再分成「全部步骤在前、全部正文在后」。运行中正文留在产生它的位置；中间没有正文的连续工具调用合成一组。思考只记一个折叠步骤「思考」，推理原文不进入时间线、诊断或工具输出。还在执行的那一组保持展开，标题仍是「执行中」，列表限制高度并滚到最新的工具或思考。轮次结束后收成一组「已完成 N 个步骤」（只有思考时为「已思考」），并只保留最后一段正文。
 
-`:runtime-engine:test` 的控制会话与协议解码、`:interaction-domain:test` 的会话规则、`:interaction-ui:testDebugUnitTest` 的执行卡、`:interaction-data:testDebugUnitTest` 的仓库投影均通过。真机上新的一轮手机操作尚未在本轮重新跑完。
+`:runtime-engine:test` 的控制会话与协议解码、`:conversation-domain:test` 的会话规则、`:conversation-ui:testDebugUnitTest` 的执行卡、`:conversation-data:testDebugUnitTest` 的仓库投影均通过。真机上新的一轮手机操作尚未在本轮重新跑完。
 
 文字此前并不是按模型输出往外长。Codex 只在 `item.completed` 收下整段 `agent_message`，Claude 只在完整 `assistant` 消息到达后才显示；界面再用打字机把已经收齐的文字慢慢放出来。现在 Claude 增加 `--include-partial-messages`，`text_delta` 按内容块顺序追加，同一段不在随后的完整消息里再写一遍。Codex 若先发出变长的 `item.updated`，只追加新增后缀。工具记在它开始时的输出序号上，后到的参数和结果不再把它排到后面的文字之后。已经到达的文字立即可见，Markdown 仍大约每秒整理一次，避免每个 token 都重排。同一轮里复制/分享只出现在结束后仍显示的最后一段正文下方，复制的也是这一段；没有正文时不显示。本轮仍在输出或尚未结束时，这两个按钮不显示。等待标记只有正文末尾那个蓝色闪动点；还没有正文时，时间线底部也只用这一个点，不再另加转圈。停止过程中收起正文上的点，底部改为同一个点加上“正在停止…”。
 
@@ -924,7 +924,7 @@ Android `applicationId` 与应用源码包现为 `com.github.ytlog.mobby.android
 
 OpenCode 运行包里的 `libstdc++.so.6` 是指向 `libstdc++.so.6.0.33` 的符号链接。准备 bootstrap 时改为记录这条链接，不再要求它本身是普通 ELF 文件。
 
-`:device-plugins:testDebugUnitTest`、`:interaction-domain:test`、`:interaction-ui:testDebugUnitTest`、`:runtime-android:testDebugUnitTest` 和 `python3 -m unittest discover -s runtime -p 'test_*.py'` 通过。`:interaction-data:testDebugUnitTest` 中插件草稿引用回归通过；全套在本机并行负载下偶发 10 秒状态等待超时，单独重跑对应用例可以通过，尚未当作插件逻辑缺陷。没有在手机上逐项验收无障碍、短信、相机、麦克风或存储授权。模拟与单元测试不能代替这些验收。
+`:device-plugins:testDebugUnitTest`、`:conversation-domain:test`、`:conversation-ui:testDebugUnitTest`、`:runtime-android:testDebugUnitTest` 和 `python3 -m unittest discover -s runtime -p 'test_*.py'` 通过。`:conversation-data:testDebugUnitTest` 中插件草稿引用回归通过；全套在本机并行负载下偶发 10 秒状态等待超时，单独重跑对应用例可以通过，尚未当作插件逻辑缺陷。没有在手机上逐项验收无障碍、短信、相机、麦克风或存储授权。模拟与单元测试不能代替这些验收。
 
 ## 工具列表在整轮结束前保持展开，思考可以打开（2026-09-23）
 
@@ -1000,13 +1000,13 @@ JDK 17 离线验证覆盖设备插件 16 项、悬浮球 9 项、Runtime Android
 
 Codex、Claude Code、OpenCode 运行时，输入框仍允许编辑与发送。发送的新消息冻结当时的 Agent、模型、网关、工作区、附件及技能，持久化为排队轮次，清空对应草稿；当前轮次结束后依次自动提交。停止当前轮次不会悄悄丢弃队列。排队卡片可取消，取消后可把原消息恢复到输入框；已有草稿编辑不会被覆盖。应用重启时会先核对未确认提交，再继续排队消息，避免重复执行。
 
-上层统一使用 `InteractionUseCases.prepareMessage(conversationId, mode)` 与 `deliverMessage(prepared)`，`mode` 为 `QUEUE` 或 `INSERT`，不调用具体 Agent API。排队轮次由 `TurnManager` 持久化并在当前任务结束后提交。直接插入只接受当前会话内正在运行的任务和文本消息；它把消息 ID 与目标执行 ID 持久化，以相同 ID 调用 `RuntimeClient.insert`，失败时保留草稿，不会转成排队。重复命令只投递一次。`Accepted` 表示实时适配器接收命令，不表示模型已处理。
+上层统一使用 `ConversationUseCases.prepareMessage(conversationId, mode)` 与 `deliverMessage(prepared)`，`mode` 为 `QUEUE` 或 `INSERT`，不调用具体 Agent API。排队轮次由 `TurnManager` 持久化并在当前任务结束后提交。直接插入只接受当前会话内正在运行的任务和文本消息；它把消息 ID 与目标执行 ID 持久化，以相同 ID 调用 `RuntimeClient.insert`，失败时保留草稿，不会转成排队。重复命令只投递一次。`Accepted` 表示实时适配器接收命令，不表示模型已处理。
 
 Codex 通过 app-server `turn/steer` 插入当前 turn；Claude Code 通过仍打开的 stream-json 输入发送用户消息。OpenCode 当前版本不提供可靠的忙碌会话 steer，返回 `UNSUPPORTED_CAPABILITY`。输入框运行中通过发送菜单选择“排队发送”或“插入当前运行”，停止按钮始终保留；插入附件暂不支持，会明确拒绝。Codex 和 Claude Code 的真 CLI 运行中插入仍需设备验收，尤其要核对 Claude Code 进程重启后的上下文保留情况。
 
 ## 执行过程时间线（2026-09-27）
 
-对话中的思考、命令、文件操作、其他工具、手机操作和回复按原始事件顺序展示。运行结束不再把步骤移到一张汇总卡，也不把连续屏幕动作集中到另一张卡；思考和工具步骤使用行内记录，手机操作各自保留独立卡片。运行中显示详情，完成后自动折叠，可点标题复查。权限请求与失败状态仍保留独立操作区，避免把需要用户处理的动作藏进折叠记录。具体设备展示模板见[设备交互实施](device-interaction-implementation.md)。
+对话中的思考、命令、文件操作、其他工具、手机操作和回复按原始事件顺序展示。运行结束不再把步骤移到一张汇总卡，也不把连续屏幕动作集中到另一张卡；思考和工具步骤使用行内记录，手机操作各自保留独立卡片。运行中显示详情，完成后自动折叠，可点标题复查。权限请求与失败状态仍保留独立操作区，避免把需要用户处理的动作藏进折叠记录。具体设备展示模板见[设备交互实施](device-operation-implementation.md)。
 
 一次运行中，CLI 正常退出并不意味着所有手机操作都已确认。若设备动作的外部效果无法确认，整轮仍标记为「结果未确认」。运行日志中的执行槽仅在 Agent 进程是否已确认退出这一条件下释放；已确认退出的未知设备效果不再阻塞下一轮，未确认退出的任务仍占用执行槽等待核对。
 
@@ -1030,3 +1030,8 @@ Codex 通过 app-server `turn/steer` 插入当前 turn；Claude Code 通过仍�
 539 项 Kotlin/Android 单测通过，1 项既有主机 CLI 测试跳过；Python 22 项和 Node 15 项通过。主 APK、宿主/设备模块仪器测试 APK、lint 构建通过。详见 [模块收敛记录](design/module-consolidation.md#实施记录2026-09-29)。
 
 已连接手机现有包使用版本号 2；匹配版本后，覆盖安装仍被系统以签名不同拒绝。没有卸载或清空设备数据，当前 APK 的真机验收尚未完成；本轮未将旧安装包或模拟网关结果记为当前代码的手机验收。
+
+
+## 会话命名与菜单清理（2026-09-29）
+
+项目会话相关目录、模块、包与类型统一使用 conversation，设备展示统一使用 deviceoperation；等待点使用 promptId，没有旧命名别名。开发会话数据库及运行日志按当前字段结构重建，保留设备配置、HOME 和工作区。右上角更多菜单删除“添加到主屏幕”，移除专用宿主回调和系统桌面快捷方式请求。最终继续重新发布 0.1.0。

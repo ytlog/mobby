@@ -108,8 +108,8 @@ object DeviceCommands {
 
 class DeviceExecution internal constructor(val operationId: String,
     private val update: suspend (DeviceStatus, String, DeviceAttention?) -> Unit) {
-    fun waiting(phase: String, interactionId: String) = runBlocking {
-        update(DeviceStatus.AWAITING_USER, phase, DeviceAttention(phase, interactionId, listOf("cancel")))
+    fun waiting(phase: String, promptId: String) = runBlocking {
+        update(DeviceStatus.AWAITING_USER, phase, DeviceAttention(phase, promptId, listOf("cancel")))
     }
     fun running(phase: String) = runBlocking { update(DeviceStatus.RUNNING, phase, null) }
 }

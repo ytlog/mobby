@@ -68,7 +68,7 @@ OpenCode 的内置 `openai` provider 固定走 Responses。桥接把 `OPENAI_API
 
 ## 代码位置
 
-`runtime-android` 的 `gateway` 包管理加密存储、协议探测、模型目录与连接检查；`interaction-ui` 的 `gateway` 包管理服务预设、网关列表和编辑界面；`runtime-api` 与 `interaction-domain` 各自的 `gateway` 包提供跨层契约。网关涉及 Android Keystore、HTTP、业务契约和 Compose 界面，按职责保留在现有模块中，不另建一个混合所有层的 Gradle 模块。
+`runtime-android` 的 `gateway` 包管理加密存储、协议探测、模型目录与连接检查；`conversation-ui` 的 `gateway` 包管理服务预设、网关列表和编辑界面；`runtime-api` 与 `conversation-domain` 各自的 `gateway` 包提供跨层契约。网关涉及 Android Keystore、HTTP、业务契约和 Compose 界面，按职责保留在现有模块中，不另建一个混合所有层的 Gradle 模块。
 
 ## 验证命令
 

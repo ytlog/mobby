@@ -14,7 +14,7 @@
 | [Android 对话 UI 评审稿](design/conversation-ui-review.html) | 当前交互规范：会话与执行、顶部菜单、输入、插件/技能、Android 行为、实现架构及可点击原型；原生接入进度见实施记录 |
 | [App 图标](design/app-icon.md) | 确认稿、蓝色环带矢量资源、自适应图层与单色图标 |
 | [悬浮对话](design/floating-conversation.md) | 悬浮球职责、共享会话执行与时间线、屏幕识别入口、窗口生命周期和验收范围 |
-| [交互三层架构与 Runtime 技术设计](design/interaction-runtime-architecture.html) | Compose 展示包、三层职责、Runtime 模块、固定接口与事件协议、数据所有权和迁移验收 |
+| [交互三层架构与 Runtime 技术设计](design/conversation-runtime-architecture.html) | Compose 展示包、三层职责、Runtime 模块、固定接口与事件协议、数据所有权和迁移验收 |
 | [Gradle 模块收敛评审](design/module-consolidation.md) | 17 → 13 个模块的核查与合并、按职责分组的目录、边界检查与验证 |
 | [会话运行状态管理](design/conversation-state-management.md) | 统一运行状态规则、快照投影、独立输出加载、恢复和摘要一致性 |
 | [项目、目录与会话数据](design/project-workspace-management.md) | 项目即执行目录、默认目录、会话迁移、项目 Skill 与数据管理职责 |
@@ -22,7 +22,7 @@
 | [本地模型首版实现与使用](design/local-model-first-version.md) | 已实现但宿主入口暂时隐藏的 llama.cpp 服务、Qwen/Gemma 下载 UI、HTTP 路由及当前限制 |
 | [手机推理引擎调研](design/local-model-engines.md) | 微软、Google、Meta、阿里、腾讯等 18 项引擎目录，Android 接入证据、可选后端与限制 |
 | [模型匹配与多源下载](design/local-model-downloads.md) | 按引擎选择 Hugging Face 模型、官方备用源与镜像、版本和文件校验、断点续传与下载 API |
-| [设备交互卡片实施](device-interaction-implementation.md) | 独立协议与 Compose 模块、真实动作卡、取消恢复、资源归属与验收边界 |
+| [设备交互卡片实施](device-operation-implementation.md) | 独立协议与 Compose 模块、真实动作卡、取消恢复、资源归属与验收边界 |
 | [设备插件方案](design/device-plugins.md) | 设备能力插件：模块、引用、技能通道与权限隔离。旧的「使用当前手机」已替换 |
 | [应用功能方案](design/app-functions.md) | Android App Functions 的独立入口、发现、调用确认与验证边界 |
 | [Pi Agent](design/pi-agent.md) | 默认 Agent、固定运行依赖、RPC 会话、Responses 网关与验收 |

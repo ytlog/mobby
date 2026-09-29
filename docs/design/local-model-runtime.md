@@ -16,7 +16,7 @@
 
 ## 2. 现状与设计依据
 
-当前 [settings.gradle.kts](../../settings.gradle.kts) 已纳入首版的 `:local-model` 与 llama 适配器模块，[app/build.gradle.kts](../../app/build.gradle.kts) 已对 `:local-model` 单向依赖；MLC 已按用户要求从本版移除；下文拆分出的 api/core/http 子模块和多数 API 仍是拟议结构。模块不反向依赖 `:app`、`runtime-*`、`interaction-*`。模块纳入现有 APK，沿用当前 applicationId、UID、签名与最低 API 约束；任何引擎若要求更高 minSdk、冲突 native 库或扩大 APK，需要通过构建变体、选配或暂缓该引擎处理，不能悄悄改变旧 App 的安装门槛。研究与 Android 支持证据见[引擎目录](local-model-engines.md)。资源额度和超时均为拟议默认值，须真机校准。
+当前 [settings.gradle.kts](../../settings.gradle.kts) 已纳入首版的 `:local-model` 与 llama 适配器模块，[app/build.gradle.kts](../../app/build.gradle.kts) 已对 `:local-model` 单向依赖；MLC 已按用户要求从本版移除；下文拆分出的 api/core/http 子模块和多数 API 仍是拟议结构。模块不反向依赖 `:app`、`runtime-*`、`conversation-*`。模块纳入现有 APK，沿用当前 applicationId、UID、签名与最低 API 约束；任何引擎若要求更高 minSdk、冲突 native 库或扩大 APK，需要通过构建变体、选配或暂缓该引擎处理，不能悄悄改变旧 App 的安装门槛。研究与 Android 支持证据见[引擎目录](local-model-engines.md)。资源额度和超时均为拟议默认值，须真机校准。
 
 ## 3. Gradle 模块设计
 

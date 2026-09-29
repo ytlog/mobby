@@ -5,7 +5,7 @@
 ## 文案维护
 
 - `shared/localization/src/main/kotlin/com/github/ytlog/mobby/android/localization/AppStrings.kt`：统一的 Kotlin 文案目录，`StringCatalog` 同时定义中文和英文；有参数的文案使用命名函数与位置占位符，不在界面拼接句子。
-- `app/src/main/kotlin/com/github/ytlog/mobby/android/interaction/ui/UiStrings.kt`：Compose 可观察入口及语言偏好存储。界面通过 `UiStrings` 读取；运行层通过 `AppStrings` 读取，应用启动时先恢复语言再创建运行服务。
+- `app/src/main/kotlin/com/github/ytlog/mobby/android/conversation/ui/UiStrings.kt`：Compose 可观察入口及语言偏好存储。界面通过 `UiStrings` 读取；运行层通过 `AppStrings` 读取，应用启动时先恢复语言再创建运行服务。
 - `CatalogIds` 的分类与来源标识不随语言变化；数据库中已有的内部状态标识也不翻译。不要再通过错误文案中的关键词判断成功或失败。
 - Node 桥接位于独立进程，诊断文案集中在 `runtime/android/src/main/assets/gateway/gateway-strings.cjs`；每次运行从 `MOBBY_LANGUAGE` 取得语言。网络错误只显示受控提示，不回显可能携带密钥的异常文本。
 - Android 系统展示的无障碍服务名称与说明使用 `runtime/device-plugins/src/main/res/values*/strings.xml`，遵循系统语言。

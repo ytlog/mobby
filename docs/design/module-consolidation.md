@@ -2,13 +2,13 @@
 
 日期：2026-09-29。状态：模块合并已实施，验证结果见本文末尾实施记录。
 
-本文只评审模块粒度、依赖与合并顺序；执行协议、恢复语义和存储契约沿用 [交互与 Runtime 设计](interaction-runtime-architecture.html)，以当前代码和 [开发约定](../../AGENTS.md) 为准。本文不表示旧设计中的所有目标均已实现。
+本文只评审模块粒度、依赖与合并顺序；执行协议、恢复语义和存储契约沿用 [交互与 Runtime 设计](conversation-runtime-architecture.html)，以当前代码和 [开发约定](../../AGENTS.md) 为准。本文不表示旧设计中的所有目标均已实现。
 
 ## 结论
 
 收敛前 17 个 Gradle 模块中，15 个是项目自有模块，2 个是内置 Termux 依赖。存在局部过度拆分，建议收敛到 **13 个模块：11 个自有模块 + 2 个第三方模块**。
 
-合并四处：设备协议进入 runtime-api；设备卡片进入应用展示包；App Functions 进入 device-plugins 的独立子包；interaction-ui 进入 app。保留会话领域/数据、Runtime API/引擎/平台、语音、本地化、本地模型服务/原生后端的边界。
+合并四处：设备协议进入 runtime-api；设备卡片进入应用展示包；App Functions 进入 device-plugins 的独立子包；conversation-ui 进入 app。保留会话领域/数据、Runtime API/引擎/平台、语音、本地化、本地模型服务/原生后端的边界。
 
 这是一种针对现有工程的取舍：把只有一个宿主的展示代码按包组织，同时保留已有价值的 JVM 测试、平台依赖和独立服务边界。模块减少不保证构建更快，须在实施前后测量增量构建。Android 官方也建议在细拆成本超过收益时合并模块，且同时提醒过度合并会失去封装和测试收益，见 [模块化指南](https://developer.android.com/topic/modularization)。
 
@@ -19,14 +19,14 @@
 | 收敛前模块 | 主源码文件 / 行数 | 测试文件 | 决策与依据 |
 | --- | ---: | ---: | --- |
 | app | 2 / 228 | 11 | 接纳应用 UI；现有宿主负责装配与生命周期 |
-| interaction-ui | 33 / 6,770 | 42 | 合并到 app；现有唯一生产消费者是 app |
-| interaction-domain | 7 / 645 | 5 | 保留纯 JVM 业务规则与端口；已有提交、草稿、会话和项目规则 |
-| interaction-data | 16 / 1,625 | 4 | 保留 Room、事件投影、排队和 Runtime 适配 |
+| conversation-ui | 33 / 6,770 | 42 | 合并到 app；现有唯一生产消费者是 app |
+| conversation-domain | 7 / 645 | 5 | 保留纯 JVM 业务规则与端口；已有提交、草稿、会话和项目规则 |
+| conversation-data | 16 / 1,625 | 4 | 保留 Room、事件投影、排队和 Runtime 适配 |
 | runtime-api | 4 / 460 | 5 | 保留并接纳设备协议模型；跨子系统共享契约 |
 | runtime-engine | 11 / 1,815 | 10 | 保留；四种 CLI 会话、协调器与平台端口可单独 JVM 测试 |
 | runtime-android | 23 / 2,687 | 20 | 保留；Service、进程、环境、网关密钥和日志依赖 Android |
-| device-interaction | 2 / 221 | 1 | 协议合并到 runtime-api；显示文案移出契约 |
-| device-interaction-ui | 2 / 315 | 1 | 合并到应用 UI；只由 interaction-ui 消费 |
+| device-operation | 2 / 221 | 1 | 协议合并到 runtime-api；显示文案移出契约 |
+| device-operation-ui | 2 / 315 | 1 | 合并到应用 UI；只由 conversation-ui 消费 |
 | device-plugins | 17 / 1,993 | 3 | 保留设备执行能力，接纳 App Functions |
 | plugin:appfunction | 4 / 615 | 2 | 合并到 device-plugins；当前是静态打包适配器，未见独立动态加载路径 |
 | speech | 4 / 441 | 1 | 保留；隔离 Sherpa/ONNX AAR 和模型下载依赖 |
@@ -35,13 +35,13 @@
 | local-model-backend-llama | 3 / 524 | 0 | 保留；JNI/CMake/NDK 构建边界，行数不含 llama.cpp 本体 |
 | termux-core、bootstrap-arm64 | 第三方 | 未纳入上表统计 | 保留上游核心与环境打包边界 |
 
-核查入口：settings.gradle.kts、各模块 build.gradle.kts、MobbyApplication、InteractionFactory、RuntimeAdapters、RuntimeClient、RuntimePorts、AndroidRuntimePorts，以及设备和本地模型 Manifest。
+核查入口：settings.gradle.kts、各模块 build.gradle.kts、MobbyApplication、ConversationFactory、RuntimeAdapters、RuntimeClient、RuntimePorts、AndroidRuntimePorts，以及设备和本地模型 Manifest。
 
 已确认的职责问题：
 
-- device-interaction 同时放 DeviceOperation 协议和 DeviceLabels 显示文案，runtime-api 间接依赖 localization；协议边界因此带入语言状态。
+- device-operation 同时放 DeviceOperation 协议和 DeviceLabels 显示文案，runtime-api 间接依赖 localization；协议边界因此带入语言状态。
 - DirectPluginSelector 直接调用 DeviceStorage.persist，展示层知道设备存储实现。系统选择器应留在 UI，持久授权和存储操作应经端口执行。
-- interaction-domain 已包含 AppStrings，且业务规则分布在 InteractionUseCases 和数据层的多个 Manager 中。当前分层并非完全纯净，模块合并不能替代逐项核对规则归属。
+- conversation-domain 已包含 AppStrings，且业务规则分布在 ConversationUseCases 和数据层的多个 Manager 中。当前分层并非完全纯净，模块合并不能替代逐项核对规则归属。
 - runtime-android 同时接入 DeviceHost 和 AppFunctionHost，二者共用执行上下文、资源引用和设备响应通道；App Functions 可作为设备能力子包继续维护。
 - LocalModelService Manifest 明确使用 :local_model 进程。MobbyApplication 会跳过该进程的 Agent 初始化，独立性应继续保留。
 
@@ -49,19 +49,19 @@
 
 ## 四项合并
 
-### 1. device-interaction → runtime-api
+### 1. device-operation → runtime-api
 
 将 DeviceOperation、DeviceRecord、响应、错误码及相关序列化模型放到 runtime-api 内的 device 契约包。它们是运行事件的一部分，也是 CLI 设备能力和卡片之间的共享结构，保留独立 Gradle 工程的收益有限。
 
 先将 DeviceLabels 的显示逻辑移到 app 展示包；通用文案键可以进入 localization，但 localization 不反向依赖设备模型。DeviceCapture 当前只调用 DeviceLabels.text 来显示“试听录音”，应改用 localization 文案。协议模型不依赖语言、Compose、Android 或设备实现。
 
-代价要明确：interaction-domain 当前依赖独立的 device-interaction，合并后改为依赖 runtime-api 的设备契约包。它不再是完全不接触 Runtime 契约的领域模块。允许共享不可变设备模型，避免为同一个记录新增全量复制和映射；禁止领域代码使用 RuntimeClient、RuntimeAdminClient、RunRequest 或运行实现。通过 import 检查维持该约束，Gradle 单独无法限制到包。
+代价要明确：conversation-domain 当前依赖独立的 device-operation，合并后改为依赖 runtime-api 的设备契约包。它不再是完全不接触 Runtime 契约的领域模块。允许共享不可变设备模型，避免为同一个记录新增全量复制和映射；禁止领域代码使用 RuntimeClient、RuntimeAdminClient、RunRequest 或运行实现。通过 import 检查维持该约束，Gradle 单独无法限制到包。
 
 既有 ConversationId、草稿和会话配置仍归领域；运行提交、查询和事件转换仍归数据适配层。不能借合并取消这条边界。
 
-若以后必须要求领域与所有 Runtime 契约完全隔离，则保留 device-interaction 更合适，总数为 14；不要一边要求严格零依赖，一边宣称合并没有代价。
+若以后必须要求领域与所有 Runtime 契约完全隔离，则保留 device-operation 更合适，总数为 14；不要一边要求严格零依赖，一边宣称合并没有代价。
 
-### 2. device-interaction-ui → 应用展示包
+### 2. device-operation-ui → 应用展示包
 
 DeviceTaskCard 和 DeviceResourceDialog 与现有 ConversationDeviceCard 合在一个展示目录。各类设备动作仍使用结构化协议，卡片仍只接受状态和回调；取消、资源预览、用户响应经用例执行。
 
@@ -75,13 +75,13 @@ AppFunctionCatalog、Host、Skills 与 JSON 编解码放在 device-plugins 的 a
 
 合并时 device-plugins compileSdk 对齐到现有 App Functions 所用的 36，不同时升级 alpha08 依赖。宿主最终合并 Manifest 保留同样声明；相关仪器测试同步迁移。未来如果需要独立发布、按构建变体排除该依赖或插件动态加载，再考虑拆回独立适配模块。
 
-### 4. interaction-ui → app
+### 4. conversation-ui → app
 
 目前只有一个 Android 宿主，主页面和悬浮会话共享应用生命周期。保留 UI 模块主要提供编译可见性约束，尚未看到第二个宿主或独立交付需求；可以把页面、ViewModel、主题和桌面宠物迁入 app 内的 ui 包。
 
-app 仍通过独立 AppGraph 装配 RuntimeHost、InteractionFactory 和界面；页面不自行构造 Room、RuntimeHost 或设备 Host。既有 MainActivity 和 MobbyApplication 不变成业务中心。迁移初期保留源码包名，减少 import、Manifest、资源和测试的同时变更。
+app 仍通过独立 AppGraph 装配 RuntimeHost、ConversationFactory 和界面；页面不自行构造 Room、RuntimeHost 或设备 Host。既有 MainActivity 和 MobbyApplication 不变成业务中心。迁移初期保留源码包名，减少 import、Manifest、资源和测试的同时变更。
 
-合并后 app 因装配而依赖 interaction-data 与 runtime-android，UI 代码也能在编译层访问它们；因此必须增加 ui 包 import 规则，禁止展示代码绕过用例访问存储和 Runtime 实现。构造函数注入与替换假端口的测试继续保留，不为这次收敛引入 DI 框架。
+合并后 app 因装配而依赖 conversation-data 与 runtime-android，UI 代码也能在编译层访问它们；因此必须增加 ui 包 import 规则，禁止展示代码绕过用例访问存储和 Runtime 实现。构造函数注入与替换假端口的测试继续保留，不为这次收敛引入 DI 框架。
 
 代价：约 7,000 行展示代码进入 app，原 UI Library 的编译与测试缓存边界消失。若实测 UI 频繁变更导致构建明显退化，或出现第二个宿主，可以只实施前三项合并，维持 14 个模块。
 
@@ -98,8 +98,8 @@ app
   ui/floating/                 悬浮窗口与桌面宠物
   ui/common/                   主题、Markdown、共享组件
 
-interaction-domain [JVM]       会话业务规则、模型与执行/管理端口
-interaction-data [Android]     Room、数据管理、事件投影、Runtime 适配
+conversation-domain [JVM]       会话业务规则、模型与执行/管理端口
+conversation-data [Android]     Room、数据管理、事件投影、Runtime 适配
 
 runtime-api [JVM]              执行/管理 API、事件、设备契约
 runtime-engine [JVM]           RunCoordinator、CLI 会话与协议、平台端口
@@ -119,8 +119,8 @@ termux-core、bootstrap-arm64   原有第三方边界
 
 ```mermaid
 flowchart TD
-    App[app：装配和 UI] --> Domain[interaction-domain]
-    App --> Data[interaction-data]
+    App[app：装配和 UI] --> Domain[conversation-domain]
+    App --> Data[conversation-data]
     App --> Android[runtime-android]
     App --> API[runtime-api]
     Data --> Domain
@@ -139,7 +139,7 @@ flowchart TD
 
 多个模块依赖 localization，图中省略这些箭头。app 对 local-model 的编译依赖用于随宿主打包和启动入口；业务通信仍通过鉴权 HTTP API。Intent 只启动组件，不通过 Binder/AIDL、共享 Kotlin 对象或直接调用服务实现通信。
 
-不要合并 interaction-domain 与 interaction-data：前者已有真实规则与 JVM 单测，后者绑定 Room/Context/资源导入。合并会让业务测试与 Android 存储共用工程，而当前减少一个模块的收益尚不足以抵消这一损失。
+不要合并 conversation-domain 与 conversation-data：前者已有真实规则与 JVM 单测，后者绑定 Room/Context/资源导入。合并会让业务测试与 Android 存储共用工程，而当前减少一个模块的收益尚不足以抵消这一损失。
 
 不要合并 runtime-engine 与 runtime-android：前者已有四种 CLI 原生协议会话与平台端口，纯 JVM 测试是当前重要验证路径。也不要为每种 Agent 再拆一套 api/impl 工程，在引擎内按协议子包组织即可。
 
@@ -149,7 +149,7 @@ speech 虽小，但它隔离了独立原生 AAR 和下载逻辑；local-model-ba
 
 | 事实或资源 | 单一所有者 | 其他层的访问方式 |
 | --- | --- | --- |
-| 会话、项目关联、草稿、排队、阅读状态 | interaction-data / Room | 用例与 Repository；UI 订阅投影 |
+| 会话、项目关联、草稿、排队、阅读状态 | conversation-data / Room | 用例与 Repository；UI 订阅投影 |
 | run 真相、接纳幂等、取消、CLI 会话、事件与输出 | Runtime | RuntimeClient 与重放事件；会话数据只做投影 |
 | 网关密钥、冻结配置引用、HOME 与执行目录资源 | runtime-android | 不透明引用、脱敏摘要与管理 API |
 | 设备操作状态、系统权限检查、实际副作用 | device-plugins 的对应执行器 | 结构化设备记录与响应；不根据卡片显示猜成功 |
@@ -163,10 +163,10 @@ speech 虽小，但它隔离了独立原生 AAR 和下载逻辑；local-model-ba
 ## 实施顺序与验证
 
 1. 记录现有依赖图和构建基线，运行现有相关测试；对本轮另行确认的可复现缺陷先添加失败回归测试。建立领域和展示包 import 检查，显式列出装配代码例外。
-2. 将 DeviceLabels 移出协议，再将 device-interaction 的模型与序列化测试移入 runtime-api。检查序列化名称/字段与旧测试结果一致，并运行领域、引擎、设备、数据和卡片的相关测试。
-3. 将 device-interaction-ui 合入 interaction-ui，迁移资源、单测、Compose 测试与测试依赖，删除旧工程；此时仍保留独立 UI 模块。
+2. 将 DeviceLabels 移出协议，再将 device-operation 的模型与序列化测试移入 runtime-api。检查序列化名称/字段与旧测试结果一致，并运行领域、引擎、设备、数据和卡片的相关测试。
+3. 将 device-operation-ui 合入 conversation-ui，迁移资源、单测、Compose 测试与测试依赖，删除旧工程；此时仍保留独立 UI 模块。
 4. 将 App Functions 合入 device-plugins，迁移 Manifest 和仪器测试，更新 runtime-android 与宿主测试依赖，移除旧工程。核对最终 Manifest 权限和查询声明、发现与调用确认行为。
-5. 最后评估并将 interaction-ui 合入 app；先核对测试 Manifest、R 引用、namespace、资源、internal 可见性和测试 runner。迁移所有测试，检查主页面/悬浮会话共用同一用例与状态源，并复测增量构建。
+5. 最后评估并将 conversation-ui 合入 app；先核对测试 Manifest、R 引用、namespace、资源、internal 可见性和测试 runner。迁移所有测试，检查主页面/悬浮会话共用同一用例与状态源，并复测增量构建。
 
 每一步只保留一套生产实现，移除旧 settings include、build.gradle 依赖和空目录，不留下长期转发模块。失败可通过普通 revert 回退，不改写提交历史。不同时修改 applicationId、Keystore 别名、数据库结构、HOME 或用户配置。按用户最新要求，开发阶段不实现旧模块、旧包名或旧能力的兼容转发。
 
@@ -175,8 +175,8 @@ speech 虽小，但它隔离了独立原生 AAR 和下载逻辑；local-model-ba
 ```sh
 node --test runtime/gateway-tests/bridge.test.cjs
 python3 -m unittest discover -s runtime -p 'test_*.py'
-./gradlew :runtime-api:test :runtime-engine:test :interaction-domain:test
-./gradlew :interaction-data:testDebugUnitTest :runtime-android:testDebugUnitTest :device-plugins:testDebugUnitTest :speech:testDebugUnitTest :localization:test :local-model:testDebugUnitTest
+./gradlew :runtime-api:test :runtime-engine:test :conversation-domain:test
+./gradlew :conversation-data:testDebugUnitTest :runtime-android:testDebugUnitTest :device-plugins:testDebugUnitTest :speech:testDebugUnitTest :localization:test :local-model:testDebugUnitTest
 ./gradlew :app:assembleDebug :app:testDebugUnitTest :termux-core:testDebugUnitTest :app:lintDebug
 ```
 
@@ -214,7 +214,7 @@ Compose 与 App Functions 仪器测试使用已连接手机和已有环境。另
 
 ```text
 app/                       应用入口、Compose 展示与装配
-interaction/
+conversation/
   domain/                  会话领域与用例
   data/                    数据库、投影与端口适配
 runtime/
@@ -238,3 +238,15 @@ runtime 下原有依赖准备脚本、测试和缓存仍归执行环境管理。
 
 
 本次目录调整验证：191 个受版本控制的模块文件全部保留；Python 22 项、Node 桥接 15 项通过；JDK 17 下应用 Debug 构建、各模块单测和 lint 通过，原生后端及 Vulkan 着色器在新目录重新构建成功。Kotlin/Android 单测合计 539 项通过、1 项既有跳过，lint 无错误。真机验收仍受前述签名环境缺失影响，本次未安装到手机。
+
+
+## 命名与菜单清理（2026-09-29）
+
+会话模块、源码包、入口、状态、用例、工厂与存储实现统一使用 conversation；一级目录为 conversation/domain 与 conversation/data，Gradle 模块名为 :conversation-domain 与 :conversation-data。设备展示包统一为 deviceoperation，等待点回应类型为 DeviceOperationResponse，等待标识为 promptId，过期错误为 STALE_DEVICE_PROMPT。文档文件与项目内引用同步改名，不保留旧包、类名或模块的转发实现。
+
+固定的 SharedPreferences 与数据库磁盘标识继续沿用，避免把代码命名调整变成配置丢失；它们不是旧功能的兼容实现。Compose 的 interaction API 和外部厂商 API 专有名称保留原名。设备等待点持久化字段改变后，会话开发数据库版本改为 2，Runtime 日志版本改为 4，按开发约定重建对应数据库，不实现历史迁移；SharedPreferences、网关、HOME 与工作区不清空。
+
+会话右上角更多菜单移除“添加到主屏幕”，同步删除桌面快捷方式回调、主 Activity 的快捷方式请求、仅供该入口使用的文案及设计原型入口。
+
+
+改名与菜单清理验证：JDK 17 下 539 项 Kotlin/Android 单测通过、1 项既有跳过；Python 23 项和 Node 桥接 15 项通过；Debug APK、宿主仪器测试 APK 和 lint 通过，无 lint 错误。旧项目包名与文件名的回归检查在改名前失败、改名后通过。最终签名 Release 由 GitHub 发布工作流构建与校验，真机运行另行验收。

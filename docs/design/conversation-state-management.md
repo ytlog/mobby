@@ -2,7 +2,7 @@
 
 ## 状态归属
 
-`RunCoordinator` 与 `RuntimeJournal` 保存真实任务的状态和终止证据。会话数据库中的快照和 `occupied` 是可恢复的投影，不是第二套执行状态机。界面通过 `RoomInteractionRepository.state` 读取这些投影，不能自行推断任务成功、取消或进程退出。
+`RunCoordinator` 与 `RuntimeJournal` 保存真实任务的状态和终止证据。会话数据库中的快照和 `occupied` 是可恢复的投影，不是第二套执行状态机。界面通过 `RoomConversationStore.state` 读取这些投影，不能自行推断任务成功、取消或进程退出。
 
 `runtime/api/RunStateRules` 统一解释占用与显示结果：结果未知且未确认进程退出时继续占用；确认退出后解除占用，但不把未知结果改为成功。运行日志、会话投影、缓存清理和提交结果转换共用这套规则。
 
@@ -12,14 +12,14 @@
 
 ```mermaid
 flowchart TD
-    UI[Compose / ConversationViewModel] --> UC[InteractionUseCases]
+    UI[Compose / ConversationViewModel] --> UC[ConversationUseCases]
     UC --> TM[TurnManager: 提交与排队]
     TM --> RT[Runtime: RunCoordinator / RuntimeJournal]
     RT --> RS[RunSynchronizer: 状态与续接 ID]
     RS --> DB[会话数据库]
     RS --> OS[RunOutputSynchronizer: 独立输出加载]
     OS --> DB
-    DB --> RP[RoomInteractionRepository.state]
+    DB --> RP[RoomConversationStore.state]
     RP --> UI
 ```
 

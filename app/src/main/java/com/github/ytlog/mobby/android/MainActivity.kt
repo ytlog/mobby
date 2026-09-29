@@ -3,9 +3,6 @@ package com.github.ytlog.mobby.android
 import com.github.ytlog.mobby.android.localization.AppStrings
 
 import android.content.Intent
-import android.content.pm.ShortcutInfo
-import android.content.pm.ShortcutManager
-import android.graphics.drawable.Icon
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
@@ -17,10 +14,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
-import com.github.ytlog.mobby.android.interaction.domain.ConversationId
-import com.github.ytlog.mobby.android.interaction.ui.InteractionEntry
-import com.github.ytlog.mobby.android.interaction.ui.InteractionHostActions
-import com.github.ytlog.mobby.android.interaction.ui.mobbySystemBarColor
+import com.github.ytlog.mobby.android.conversation.domain.ConversationId
+import com.github.ytlog.mobby.android.conversation.ui.ConversationEntry
+import com.github.ytlog.mobby.android.conversation.ui.ConversationHostActions
+import com.github.ytlog.mobby.android.conversation.ui.mobbySystemBarColor
 import kotlinx.coroutines.launch
 import java.util.UUID
 
@@ -34,7 +31,7 @@ class MainActivity : ComponentActivity() {
         androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
     ) { }
 
-    private val actions get() = (application as MobbyApplication).interaction
+    private val actions get() = (application as MobbyApplication).conversations
     private val app get() = application as MobbyApplication
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -44,15 +41,8 @@ class MainActivity : ComponentActivity() {
         app.noteForeground(true)
         enableEdgeToEdge()
         if (savedInstanceState == null) openConversation(intent)
-        val host = InteractionHostActions(share = { text ->
+        val host = ConversationHostActions(share = { text ->
             startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text), AppStrings.shareMessage))
-        }, shortcut = { id, title ->
-            val manager = getSystemService(ShortcutManager::class.java)
-            if (manager.isRequestPinShortcutSupported) {
-                val target = Intent(this, MainActivity::class.java).setAction(Intent.ACTION_VIEW).putExtra("conversationId", id)
-                manager.requestPinShortcut(ShortcutInfo.Builder(this, "conversation-$id").setShortLabel(title.take(40))
-                    .setIcon(Icon.createWithResource(this, R.drawable.ic_launcher)).setIntent(target).build(), null)
-            } else android.widget.Toast.makeText(this, AppStrings.yourLauncherDoesNotSupportShortcuts, android.widget.Toast.LENGTH_SHORT).show()
         }, appearance = { dark ->
             val background = mobbySystemBarColor(dark)
             val style = if (dark) SystemBarStyle.dark(background) else SystemBarStyle.light(background, background)
@@ -72,7 +62,7 @@ class MainActivity : ComponentActivity() {
                 startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
             }
         })
-        setContent { InteractionEntry(actions, host, conversationNavigation, petEnabled, petPermitted, gatewayRefresh = gatewayRefresh) }
+        setContent { ConversationEntry(actions, host, conversationNavigation, petEnabled, petPermitted, gatewayRefresh = gatewayRefresh) }
         if (android.os.Build.VERSION.SDK_INT >= 33) {
             val notice = getPreferences(MODE_PRIVATE)
             if (!notice.getBoolean("task-notification-requested", false) &&

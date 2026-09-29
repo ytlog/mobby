@@ -31,7 +31,7 @@ val DeviceJson = Json { encodeDefaults = true }
 }
 @Serializable enum class DeviceErrorCode {
     INVALID_ARGUMENT, UNAUTHORIZED, UNSUPPORTED_CAPABILITY, INCOMPATIBLE_VERSION, REQUEST_CONFLICT,
-    STALE_INTERACTION, NOT_FOUND, PERMISSION_REVOKED, RESOURCE_MISSING, UNAVAILABLE, TIMEOUT,
+    STALE_DEVICE_PROMPT, NOT_FOUND, PERMISSION_REVOKED, RESOURCE_MISSING, UNAVAILABLE, TIMEOUT,
     CANCELLED, INTERRUPTED, RESULT_UNCONFIRMED, STORAGE_FULL, PROTOCOL_ERROR,
 }
 @Serializable data class DeviceError(
@@ -47,7 +47,7 @@ fun deviceFailure(code: DeviceErrorCode, message: String = "", effect: EffectSta
     init { require(completed >= 0 && (total == null || total >= completed)); require(unit.length <= 80) }
 }
 @Serializable data class DeviceAttention(
-    val reasonCode: String, val interactionId: String, val allowedResponses: List<String>, val deadlineEpochMillis: Long? = null,
+    val reasonCode: String, val promptId: String, val allowedResponses: List<String>, val deadlineEpochMillis: Long? = null,
 )
 /** The kind is open for forward-compatible display; only the registered executor produces its data. */
 @Serializable data class DeviceResult(
@@ -127,7 +127,7 @@ object DeviceOperationRules {
     val ID = Regex("[A-Za-z0-9._-]{1,128}")
 }
 
-@Serializable data class DeviceInteractionResponse(
-    val commandId: String, val runId: String, val operationId: String, val interactionId: String,
+@Serializable data class DeviceOperationResponse(
+    val commandId: String, val runId: String, val operationId: String, val promptId: String,
     val expectedRevision: Long, val response: String,
 )

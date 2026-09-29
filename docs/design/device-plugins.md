@@ -22,7 +22,7 @@ CLI 中的 Node 不能调用 Android API。模型阅读技能文件，用 Bash �
 | `:device-plugins` | 目录、清单权限、无障碍服务、取景与录音界面、执行器、技能包生成、回环协议、目录 URI 的私有存储 |
 | `:runtime-android` | 运行开始时创建桥接并安装技能，进程结束时拆除。不包含设备动作的实现 |
 | `:runtime-api` | 插件摘要包含授权类型和可加入草稿的引用。界面不解析权限字符串 |
-| `:interaction-ui` | 插件页按目录分类。开启、使用、移除和写入开关都由摘要驱动 |
+| `:conversation-ui` | 插件页按目录分类。开启、使用、移除和写入开关都由摘要驱动 |
 | `:speech` | 只做按住说话，不承接麦克风插件 |
 
 `:device-plugins` 不依赖运行引擎和界面。`:runtime-android` 依赖 `:device-plugins`。应用清单合并库模块声明的权限和服务。

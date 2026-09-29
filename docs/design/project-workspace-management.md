@@ -8,8 +8,8 @@
 
 项目可选择一组默认 Skill，以名称保存而不保存易随编辑变化的哈希引用。提交轮次时按当前 Agent 重新解析对应 Skill，合并到本轮冻结能力集；缺少或失效时明确拒绝提交。会话单独选择的 Skill 与插件仍按现有草稿规则处理。项目规则随每个轮次冻结并放在用户输入前传给 Agent；这是普通提示文本，并不具备系统消息的优先级。更新规则只影响之后提交的轮次。
 
-交互数据统一由 `interaction-data` 管理：`ProjectManager` 负责项目关联及会话迁移，`ConversationManager` 负责会话身份、配置、可见性和选中状态，`DraftManager` 负责草稿、附件和能力选择，`TurnManager` 负责轮次提交与展开状态，`MessageManager` 负责持久输出的消息投影；`RoomInteractionRepository` 是这些管理类的对外入口；`RunSynchronizer` 统一保存 Runtime 状态投影及续接 ID，`RunOutputSynchronizer` 独立恢复输出，详见[会话运行状态管理](conversation-state-management.md)，`InteractionDatabase` 与 `OutputCache` 分别持有结构化存储和可回收输出缓存。物理目录仍由 Runtime 的 `WorkspaceStore` 管理，交互库只持有不透明目录引用。
+交互数据统一由 `conversation-data` 管理：`ProjectManager` 负责项目关联及会话迁移，`ConversationManager` 负责会话身份、配置、可见性和选中状态，`DraftManager` 负责草稿、附件和能力选择，`TurnManager` 负责轮次提交与展开状态，`MessageManager` 负责持久输出的消息投影；`RoomConversationStore` 是这些管理类的对外入口；`RunSynchronizer` 统一保存 Runtime 状态投影及续接 ID，`RunOutputSynchronizer` 独立恢复输出，详见[会话运行状态管理](conversation-state-management.md)，`ConversationDatabase` 与 `OutputCache` 分别持有结构化存储和可回收输出缓存。物理目录仍由 Runtime 的 `WorkspaceStore` 管理，交互库只持有不透明目录引用。
 
-交互库只定义当前结构，不提供旧数据迁移或自动升级。Android 的 SQLiteOpenHelper 要求版本从 1 开始，因此 Room 使用最低合法版本 1，而不是不可运行的 0；不导出版本化 schema。当前库使用 `interaction-current.db`，不读取旧 `interaction.db`。开发时再次修改表结构，应先清除当前交互开发库再按新结构创建；SharedPreferences、HOME 和工作目录不属于该库。
+交互库只定义当前结构，不提供旧数据迁移或自动升级。Android 的 SQLiteOpenHelper 要求版本从 1 开始，因此 Room 使用最低合法版本 1，而不是不可运行的 0；不导出版本化 schema。当前库使用 `conversation-current.db`，不读取旧 `conversations.db`。开发时再次修改表结构，应先清除当前交互开发库再按新结构创建；SharedPreferences、HOME 和工作目录不属于该库。
 
 已用 Android Studio 自带 JDK 17 完成 Debug APK 构建、交互数据与项目相关 UI 测试、应用 Lint，并覆盖安装到已连接手机；应用启动后交互开发数据库按当前结构重建。模型运行和项目页面的人工操作仍需在手机上验收。

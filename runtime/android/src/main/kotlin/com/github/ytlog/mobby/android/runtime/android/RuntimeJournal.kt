@@ -20,7 +20,7 @@ internal data class EventHistoryPolicy(val maxAgeMillis: Long = 30L * 24 * 60 * 
  * Approvals are stored as ApprovalSubject. Opening a newer journal drops the previous event log. */
 internal class RuntimeJournal(context: Context, private val historyPolicy: EventHistoryPolicy = EventHistoryPolicy(),
     private val policyProvider: () -> EventHistoryPolicy = { historyPolicy },
-    private val clock: () -> Long = System::currentTimeMillis) : SQLiteOpenHelper(context, "runtime-journal.db", null, 3), JournalPort {
+    private val clock: () -> Long = System::currentTimeMillis) : SQLiteOpenHelper(context, "runtime-journal.db", null, 4), JournalPort {
     private val json = Json { ignoreUnknownKeys = true }
     override fun onConfigure(db: SQLiteDatabase) { db.setForeignKeyConstraintsEnabled(true) }
     override fun onCreate(db: SQLiteDatabase) {

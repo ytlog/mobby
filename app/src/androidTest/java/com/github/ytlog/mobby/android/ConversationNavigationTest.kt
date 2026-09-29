@@ -4,7 +4,7 @@ import android.content.Intent
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.github.ytlog.mobby.android.interaction.domain.ConversationId
+import com.github.ytlog.mobby.android.conversation.domain.ConversationId
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -19,7 +19,7 @@ class ConversationNavigationTest {
     @Test fun recreatingAfterUserSwitchDoesNotReplayOldConversationLink() = runBlocking<Unit> {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
-        val actions = (context.applicationContext as MobbyApplication).interaction
+        val actions = (context.applicationContext as MobbyApplication).conversations
         val original = withTimeout(10_000) { actions.state.first { it.selected != null } }.selected!!.conversation
         val linked = actions.create(original.config)
         val chosen = actions.create(original.config)

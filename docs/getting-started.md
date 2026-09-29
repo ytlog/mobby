@@ -10,7 +10,7 @@ Android 本地 CLI Agent 运行验证工程。采用 Compose 持久会话页和�
 在 `local.properties` 中设置 `sdk.dir`，然后执行：
 
 ```sh
-./gradlew :app:assembleDebug :interaction-domain:test :interaction-data:testDebugUnitTest :app:testDebugUnitTest :runtime-api:test :runtime-engine:test :runtime-android:testDebugUnitTest :termux-core:testDebugUnitTest :app:lintDebug
+./gradlew :app:assembleDebug :conversation-domain:test :conversation-data:testDebugUnitTest :app:testDebugUnitTest :runtime-api:test :runtime-engine:test :runtime-android:testDebugUnitTest :termux-core:testDebugUnitTest :app:lintDebug
 ```
 
 Python 打包与模块边界测试：`python3 -m unittest discover -s runtime -p 'test_*.py'`。
@@ -42,9 +42,9 @@ APK：`app/build/outputs/apk/debug/app-debug.apk`，仅 ARM64，Android 8.0 及�
 
 ## 安装身份与开发数据
 
-项目名和界面品牌为 `mobby`。Android `applicationId` 与应用源码包为 `com.github.ytlog.mobby.android`。交互、运行时和语音模块的包名使用同一前缀，例如 `com.github.ytlog.mobby.android.interaction.ui`。Keystore 别名是 `mobby.gateway`。
+项目名和界面品牌为 `mobby`。Android `applicationId` 与应用源码包为 `com.github.ytlog.mobby.android`。交互、运行时和语音模块的包名使用同一前缀，例如 `com.github.ytlog.mobby.android.conversation.ui`。Keystore 别名是 `mobby.gateway`。
 
-更换 `applicationId` 后，此前已安装的应用不会带入配置、密钥、HOME 和工作区。同一 `applicationId` 的覆盖安装仍保留 SharedPreferences、HOME 和工作区。交互数据库只维护当前结构；再次修改表结构前须清除 `interaction-current.db`，随后按新结构创建，不维护旧版本迁移。
+更换 `applicationId` 后，此前已安装的应用不会带入配置、密钥、HOME 和工作区。同一 `applicationId` 的覆盖安装仍保留 SharedPreferences、HOME 和工作区。交互数据库只维护当前结构；再次修改表结构前须清除 `conversation-current.db`，随后按新结构创建，不维护旧版本迁移。
 
 ## 添加文件与照片
 
@@ -65,4 +65,4 @@ Pi 0.87.1 已加入内置运行环境，在没有选择记录时作为新会话�
 
 ## 源码目录
 
-`app/` 是应用入口与 UI；`interaction/{domain,data}/` 放会话业务与持久化；`runtime/{api,engine,android,device-plugins}/` 放执行契约、引擎与平台能力；`model/{service,backend-llama}/` 放独立模型服务与原生后端；`shared/{speech,localization}/` 放共享能力。Gradle 模块名通过 settings.gradle.kts 映射到这些目录，现有构建命令直接使用模块名。详细目录与职责见 [模块目录说明](design/module-consolidation.md#按职责分组的目录2026-09-29)。
+`app/` 是应用入口与 UI；`conversation/{domain,data}/` 放会话业务与持久化；`runtime/{api,engine,android,device-plugins}/` 放执行契约、引擎与平台能力；`model/{service,backend-llama}/` 放独立模型服务与原生后端；`shared/{speech,localization}/` 放共享能力。Gradle 模块名通过 settings.gradle.kts 映射到这些目录，现有构建命令直接使用模块名。详细目录与职责见 [模块目录说明](design/module-consolidation.md#按职责分组的目录2026-09-29)。

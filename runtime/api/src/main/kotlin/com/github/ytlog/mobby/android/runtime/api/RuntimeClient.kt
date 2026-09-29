@@ -28,7 +28,7 @@ interface RuntimeClient {
     suspend fun cancel(request: CancelRequest): CommandResult
     /** Match run, approval ID and revision. Closing UI never implicitly resolves an approval. */
     suspend fun resolveApproval(request: ApprovalDecision): CommandResult
-    suspend fun respondToDevice(request: com.github.ytlog.mobby.android.runtime.api.device.DeviceInteractionResponse): CommandResult =
+    suspend fun respondToDevice(request: com.github.ytlog.mobby.android.runtime.api.device.DeviceOperationResponse): CommandResult =
         CommandResult.Rejected(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
     suspend fun snapshot(runId: RunId): SnapshotResult
     fun observe(runId: RunId, after: EventCursor? = null): Flow<RuntimeUpdate>
@@ -62,7 +62,7 @@ enum class ErrorCode {
     INPUT_TOO_LARGE,
     NOT_READY, BUSY, UNSUPPORTED_CAPABILITY, INVALID_CONFIG, PERMISSION_DENIED,
     PROTOCOL_ERROR, GATEWAY_PROBE_FAILED, DISCONNECTED, RESOURCE_MISSING, STORAGE_FULL, RESOURCE_BUDGET_EXCEEDED, TIMEOUT,
-    INTERRUPTED, INCOMPATIBLE_VERSION, REQUEST_CONFLICT, STALE_APPROVAL, STALE_INTERACTION, NOT_FOUND
+    INTERRUPTED, INCOMPATIBLE_VERSION, REQUEST_CONFLICT, STALE_APPROVAL, STALE_DEVICE_PROMPT, NOT_FOUND
 }
 @Serializable
 data class RuntimeError(val code: ErrorCode, val retryable: Boolean = false, val diagnosticRef: ResourceRef? = null)

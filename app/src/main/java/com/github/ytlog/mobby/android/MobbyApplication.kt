@@ -10,22 +10,22 @@ import android.content.res.Configuration
 import android.provider.Settings
 import android.widget.Toast
 import com.github.ytlog.mobby.android.graph.AppGraph
-import com.github.ytlog.mobby.android.interaction.domain.ConversationId
-import com.github.ytlog.mobby.android.interaction.domain.Failure
-import com.github.ytlog.mobby.android.interaction.domain.InteractionState
-import com.github.ytlog.mobby.android.interaction.domain.StopResult
-import com.github.ytlog.mobby.android.interaction.ui.DesktopPet
-import com.github.ytlog.mobby.android.interaction.ui.FloatingConversationWindow
+import com.github.ytlog.mobby.android.conversation.domain.ConversationId
+import com.github.ytlog.mobby.android.conversation.domain.Failure
+import com.github.ytlog.mobby.android.conversation.domain.ConversationState
+import com.github.ytlog.mobby.android.conversation.domain.StopResult
+import com.github.ytlog.mobby.android.conversation.ui.DesktopPet
+import com.github.ytlog.mobby.android.conversation.ui.FloatingConversationWindow
 import kotlinx.coroutines.*
 
 class MobbyApplication : Application() {
     private lateinit var graph: AppGraph
     val runtime get() = graph.runtime
-    val interaction get() = graph.interaction
+    val conversations get() = graph.conversations
     private val petScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private lateinit var pet: DesktopPet
     private lateinit var floatingConversation: FloatingConversationWindow
-    private var latest = InteractionState()
+    private var latest = ConversationState()
     private var foreground = false
     private var holdForUi = true
     private var permitted = false
@@ -51,16 +51,16 @@ class MobbyApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         if (isLocalModelProcess()) return
-        com.github.ytlog.mobby.android.interaction.ui.LanguagePreferences.initialize(this)
+        com.github.ytlog.mobby.android.conversation.ui.LanguagePreferences.initialize(this)
         graph = AppGraph(this) {
             PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
         }
         permitted = Settings.canDrawOverlays(this)
-        floatingConversation = FloatingConversationWindow(this, interaction, ::openConversation, ::syncPet)
+        floatingConversation = FloatingConversationWindow(this, conversations, ::openConversation, ::syncPet)
         pet = DesktopPet(this, onStop = { id ->
             petScope.launch {
                 val result = try {
-                    interaction.stop(id)
+                    conversations.stop(id)
                 } catch (e: CancellationException) {
                     throw e
                 } catch (_: Exception) {
@@ -75,7 +75,7 @@ class MobbyApplication : Application() {
                 catch (error: Throwable) { ball.close(); throw error }
             AutoCloseable { try { conversation.close() } finally { ball.close() } }
         }
-        petScope.launch { interaction.state.collect { latest = it; syncPet() } }
+        petScope.launch { conversations.state.collect { latest = it; syncPet() } }
         registerComponentCallbacks(object : ComponentCallbacks2 {
             override fun onConfigurationChanged(newConfig: Configuration) = syncPet()
             override fun onTrimMemory(level: Int) = Unit

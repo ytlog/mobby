@@ -4,7 +4,7 @@
 
 悬浮球不是独立进程或 Gradle 模块：窗口管理在 `DesktopPet` / `SystemPetWindow`，拖动、位置与显示规则在 `PetLogic`，托盘在 `PetTrayView`，Application 负责连接会话状态。新增的 `FloatingConversationWindow` 仅负责系统窗口、Compose 生命周期、键盘焦点和屏幕操作时的临时隐藏。
 
-悬浮对话使用原有 `ConversationViewModel`、`InteractionUseCases` 和 `Timeline`。草稿、排队发送、流式消息、工具与设备卡片、错误、停止任务以及历史记录沿用 App 的执行与存储路径，不另建聊天数据库、网关或 Agent。`QuickConversation` 仅适配快捷建会话与选择屏幕插件；`FloatingConversationContent` 提供紧凑窗口和文字输入。
+悬浮对话使用原有 `ConversationViewModel`、`ConversationUseCases` 和 `Timeline`。草稿、排队发送、流式消息、工具与设备卡片、错误、停止任务以及历史记录沿用 App 的执行与存储路径，不另建聊天数据库、网关或 Agent。`QuickConversation` 仅适配快捷建会话与选择屏幕插件；`FloatingConversationContent` 提供紧凑窗口和文字输入。
 
 ## 使用
 
@@ -22,7 +22,7 @@
 
 单元测试覆盖快捷入口路由、输入焦点标志、插件权限拒绝与草稿保留、正常发送队列和重复识别点击。构建和模拟测试不能替代手机验收：需验证其他 App 上的软键盘、真实网关流式回复、当前屏幕的截图/节点来源，以及收起后继续同一会话。
 
-2026-09-28 本次验证：JDK 17 下悬浮球、快捷会话、附件预览相关 26 项测试通过；真实 WindowManager + Compose 生命周期测试覆盖嵌套隐藏、恢复、隐藏中关闭。`:app:assembleDebug`、`:app:testDebugUnitTest`（当前无 App JVM 测试）、`:termux-core:testDebugUnitTest`、`:app:lintDebug` 通过。完整 interaction-ui 套件仍有技能编辑页与网关列表的 7 项失败，不能声称全套通过。尚未覆盖安装手机或通过真实网关验收。
+2026-09-28 本次验证：JDK 17 下悬浮球、快捷会话、附件预览相关 26 项测试通过；真实 WindowManager + Compose 生命周期测试覆盖嵌套隐藏、恢复、隐藏中关闭。`:app:assembleDebug`、`:app:testDebugUnitTest`（当前无 App JVM 测试）、`:termux-core:testDebugUnitTest`、`:app:lintDebug` 通过。完整 conversation-ui 套件仍有技能编辑页与网关列表的 7 项失败，不能声称全套通过。尚未覆盖安装手机或通过真实网关验收。
 
 2026-09-28 修正插件卡片接线：先用实际悬浮对话 UI 回归测试复现「使用手机」未选择插件、权限不足时未显示原因，再将卡片绑定到快捷插件选择适配。复用既有 `plugins` / `setPlugin` 校验，与识别屏幕共享同一入口；新增 2 项点击回归测试通过，相关测试合计 28 项。
 
@@ -34,7 +34,7 @@
 
 另修正草稿内容版本：仅光标或选择范围变化不递增发送内容版本，避免成功发送后误认为还有新内容而保留原消息。新输入文字、附件与插件变化仍按已有版本规则保护草稿；拒绝或结果未确认仍保留输入。数据层回归覆盖发送准备后移动光标、收到接受确认、原消息仍在历史而输入草稿清空。
 
-2026-09-28 本次修复验证：两项新增回归均先在原实现失败、修复后通过。interaction-data 全部 61 项与 interaction-ui 相关 33 项测试通过；JDK 17 下 App Debug 构建、Termux 单元测试与 App lint 通过（App JVM 测试当前无测试源）。已覆盖安装到连接的小米手机，在桌面悬浮窗通过真实网关执行屏幕识别，确认输入框在接受发送后清空，屏幕读取隐藏/恢复后继续显示执行步骤、流式回复和完整结果，最终任务状态为 SUCCEEDED 且窗口退出执行中；原会话中后来修改的草稿保持原样。此前记录的无关 UI 全套失败尚未处理。
+2026-09-28 本次修复验证：两项新增回归均先在原实现失败、修复后通过。conversation-data 全部 61 项与 conversation-ui 相关 33 项测试通过；JDK 17 下 App Debug 构建、Termux 单元测试与 App lint 通过（App JVM 测试当前无测试源）。已覆盖安装到连接的小米手机，在桌面悬浮窗通过真实网关执行屏幕识别，确认输入框在接受发送后清空，屏幕读取隐藏/恢复后继续显示执行步骤、流式回复和完整结果，最终任务状态为 SUCCEEDED 且窗口退出执行中；原会话中后来修改的草稿保持原样。此前记录的无关 UI 全套失败尚未处理。
 
 ## 悬浮界面视觉调整
 

@@ -53,7 +53,7 @@ class RuntimeHost(context: Context, notification: () -> PendingIntent) {
         override suspend fun submit(request: RunRequest) = connected()?.client?.submit(request) ?: SubmitResult.Rejected(RuntimeError(ErrorCode.DISCONNECTED, true))
         override suspend fun insert(request: InsertRequest) = connected()?.client?.insert(request) ?: CommandResult.Rejected(RuntimeError(ErrorCode.DISCONNECTED, true))
         override suspend fun findByRequest(requestId: RequestId) = connected()?.client?.findByRequest(requestId) ?: RequestLookup.Unavailable
-        override suspend fun respondToDevice(request: com.github.ytlog.mobby.android.runtime.api.device.DeviceInteractionResponse) =
+        override suspend fun respondToDevice(request: com.github.ytlog.mobby.android.runtime.api.device.DeviceOperationResponse) =
             connected()?.client?.respondToDevice(request) ?: CommandResult.Rejected(RuntimeError(ErrorCode.DISCONNECTED, true))
         override suspend fun cancel(request: CancelRequest) = connected()?.client?.cancel(request) ?: CommandResult.Rejected(RuntimeError(ErrorCode.DISCONNECTED, true))
         override suspend fun resolveApproval(request: ApprovalDecision) = connected()?.client?.resolveApproval(request) ?: CommandResult.Rejected(RuntimeError(ErrorCode.DISCONNECTED, true))

@@ -182,7 +182,7 @@ class RunCoordinator(
             } catch (_: Exception) { failStorage(); CommandResult.Rejected(RuntimeError(ErrorCode.STORAGE_FULL)) }
         }
     }
-    override suspend fun respondToDevice(request: DeviceInteractionResponse): CommandResult = withContext(NonCancellable) {
+    override suspend fun respondToDevice(request: DeviceOperationResponse): CommandResult = withContext(NonCancellable) {
         mutex.withLock {
             try {
                 if (!healthy) return@withLock CommandResult.Rejected(RuntimeError(ErrorCode.STORAGE_FULL))
@@ -194,9 +194,9 @@ class RunCoordinator(
                 val operation = record?.operation
                 val attention = operation?.requiresAttention
                 val valid = state != null && !state.phase.terminal && state.phase != RunPhase.CANCELLING && active.value == state.runId &&
-                    operation?.revision == request.expectedRevision && attention?.interactionId == request.interactionId &&
+                    operation?.revision == request.expectedRevision && attention?.promptId == request.promptId &&
                     request.response in attention.allowedResponses
-                val result = if (valid) CommandResult.Accepted else CommandResult.Rejected(RuntimeError(ErrorCode.STALE_INTERACTION))
+                val result = if (valid) CommandResult.Accepted else CommandResult.Rejected(RuntimeError(ErrorCode.STALE_DEVICE_PROMPT))
                 val command = CommandRecord(key, fingerprint, result)
                 if (valid) {
                     // Consume this wait point durably before delivery. Recovery must never replay a response.

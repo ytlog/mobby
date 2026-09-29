@@ -8,8 +8,8 @@
 
 ## Android 资源
 
-- `interaction-ui/src/main/res/drawable/ic_launcher_background.xml`：铺满自适应图标图层的浅蓝背景。
-- `interaction-ui/src/main/res/drawable/ic_launcher_foreground.xml`：透明背景的蓝色环带，108 单位画布中的 72 单位构图；圆角和圆形裁切交给桌面。
+- `conversation-ui/src/main/res/drawable/ic_launcher_background.xml`：铺满自适应图标图层的浅蓝背景。
+- `conversation-ui/src/main/res/drawable/ic_launcher_foreground.xml`：透明背景的蓝色环带，108 单位画布中的 72 单位构图；圆角和圆形裁切交给桌面。
 - `app/src/main/res/drawable/ic_launcher_monochrome.xml`：同一轮廓和留白的单色遮罩，供支持主题图标的桌面使用。
 - `app/src/main/res/drawable/ic_launcher.xml`：完整圆角图标，供会话快捷方式使用。
 - 两个 `mipmap-anydpi-v26` 入口共享上述自适应图层。
@@ -18,4 +18,4 @@
 
 ## 桌面悬浮球
 
-悬浮球直接复用上述蓝色前景矢量，使用同款浅蓝圆底和细描边；展开面板使用雾白卡片、细蓝边框和轻阴影，顶部显示标题与独立收起按钮；打开与停止分别使用浅蓝、浅红按钮，并有点击反馈。面板由 `PetTrayView` 统一绘制，按内容测量高度，支持长标题、大字体及窄屏；空间不足时可滚动。品牌配色集中在 `interaction-ui/src/main/res/values/brand_colors.xml`，启动图标与悬浮球共享。空闲时静态显示，运行时右下角显示轻微呼吸的状态点，停止中显示红色状态点。拖动、停止、回到对话和屏幕操作避让逻辑保持不变。
+悬浮球直接复用上述蓝色前景矢量，使用同款浅蓝圆底和细描边；展开面板使用雾白卡片、细蓝边框和轻阴影，顶部显示标题与独立收起按钮；打开与停止分别使用浅蓝、浅红按钮，并有点击反馈。面板由 `PetTrayView` 统一绘制，按内容测量高度，支持长标题、大字体及窄屏；空间不足时可滚动。品牌配色集中在 `conversation-ui/src/main/res/values/brand_colors.xml`，启动图标与悬浮球共享。空闲时静态显示，运行时右下角显示轻微呼吸的状态点，停止中显示红色状态点。拖动、停止、回到对话和屏幕操作避让逻辑保持不变。

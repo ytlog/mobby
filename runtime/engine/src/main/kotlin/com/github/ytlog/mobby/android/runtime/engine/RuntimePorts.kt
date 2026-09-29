@@ -19,7 +19,7 @@ data class LiveSessionBinding(
 interface ProcessPort {
     /** True only if a live adapter accepts this text for the named request. */
     fun offerInsertion(requestId: RequestId, text: String): InsertionOffer = InsertionOffer.UNSUPPORTED
-    fun offerDeviceResponse(request: com.github.ytlog.mobby.android.runtime.api.device.DeviceInteractionResponse): Boolean = false
+    fun offerDeviceResponse(request: com.github.ytlog.mobby.android.runtime.api.device.DeviceOperationResponse): Boolean = false
     /** Returns when the turn ends. A retained process stays open for a compatible follow-up; stop is explicit. */
     suspend fun execute(request: RunRequest, stop: StateFlow<StopCause?>, devices: DeviceOperationPort, output: suspend (String, Boolean) -> Unit): ProcessResult
     /** Nonblocking handoff after durable acceptance. Never applies to another request or unknown approval.
