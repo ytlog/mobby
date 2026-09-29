@@ -66,6 +66,7 @@ class BootstrapTest(unittest.TestCase):
             self.fixture(root, {'bin/bash': b'\x7fELFbash'})
             prepare.prepare(root / 'out')
             notices = json.loads((root / 'out/assets/third-party/runtime.json').read_text())
+            self.assertEqual(len(notices), len({item['id'] for item in notices}))
             codex = next(item for item in notices if item['id'] == 'codex-dependency:aws-lc-sys:0.39.0')
             self.assertIn('Copyright', codex['text'])
             polyfill = next(item for item in notices if item['id'] == 'bun-dependency:hmac-drbg:1.0.1')

@@ -91,6 +91,7 @@ def prepare(output, ndk=None):
     for component, directory in (('codex', 'codex'), ('bun', 'bun'), ('opencode', 'opencode-termux')):
         payload = (PROJECT / 'third_party' / directory / 'dependency-notices.json').read_bytes()
         notices_digest.update(component.encode() + b'\0' + payload)
+        component_ids = set()
         for package in json.loads(payload)['packages']:
             if not package.get('display_required', True):
                 continue
@@ -101,8 +102,12 @@ def prepare(output, ndk=None):
                 if hashlib.sha256(document['text'].encode()).hexdigest() != document['sha256']:
                     raise ValueError('Modified nested dependency notice: ' + package['name'])
             version = package.get('version', '')
+            notice_id = component + '-dependency:' + package['name'] + ':' + version
+            if notice_id in component_ids:
+                raise ValueError('Duplicate nested dependency notice: ' + notice_id)
+            component_ids.add(notice_id)
             runtime_notices.append({
-                'id': component + '-dependency:' + package['name'] + ':' + version,
+                'id': notice_id,
                 'title': component.capitalize() + ' — ' + package['name'] + (' ' + version if version else ''),
                 'license': package.get('selected_license') or package.get('license') or '',
                 'text': '\n\n'.join(document['path'] + '\n\n' + document['text'] for document in documents),

@@ -46,4 +46,4 @@ OpenCode 的 `third_party/opencode-termux/dependency-notices.json` 根据固定�
 
 App JNI 使用的 Android NDK r27c libc++/ABI/展开运行库保留其实际工具链 NOTICE 中的对应 LLVM 许可段落，排除编译器工具等未再分发部分。llama.cpp 的 ARM64 KleidiAI v1.24.0 核心使用 Apache-2.0，保留原许可证与原 Arm 文件版权声明；BSD 测试/示例组件没有纳入 App，不额外列入。
 
-本轮尚待最终源码附件与发布流水线验收；未在手机上重新验收本轮许可证页面，也未完整重编全部上游原生程序。
+发布流水线必须通过 APK 检查、完整源码附件打包和下载校验后才进入签名发布；源码清单或下载校验失败会阻止发布。本轮未在手机上重新验收许可证页面，也未完整重编全部上游原生程序。

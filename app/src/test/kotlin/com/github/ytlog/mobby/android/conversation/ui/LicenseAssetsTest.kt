@@ -26,6 +26,8 @@ class LicenseAssetsTest {
         assertTrue(sherpa.getValue("text").jsonPrimitive.content.contains("Copyright (c) Microsoft Corporation"))
         assertTrue(sherpa.getValue("text").jsonPrimitive.content.contains("ThirdPartyNotices.txt"))
         val runtime = notices("runtime")
+        val runtimeIds = runtime.map { it.getValue("id").jsonPrimitive.content }
+        assertEquals(runtimeIds.size, runtimeIds.toSet().size)
         assertTrue(runtime.any { it.getValue("id").jsonPrimitive.content.endsWith("JavaScriptCore-COPYING.LIB") })
         assertTrue(runtime.any { it.getValue("id").jsonPrimitive.content.endsWith("bubblewrap-COPYING") })
         assertTrue(runtime.any { it.getValue("id").jsonPrimitive.content == "share/LICENSES/GPL-3.0.txt" })
