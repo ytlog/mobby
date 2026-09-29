@@ -113,6 +113,58 @@ class ReleaseConfigurationTest(unittest.TestCase):
         self.assertEqual(["release", "create", "v0.1.0"], calls[0][:3])
         self.assertNotIn("--clobber", calls[0])
 
+    def test_private_tag_lookup_uses_step_auth_without_git_credentials(self):
+        result, output, calls = self.run_validate_tag('200')
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn('tag_sha=' + 'a' * 40, output)
+        self.assertEqual(['gh'], calls)
+        workflow = (ROOT / '.github/workflows/release.yml').read_text()
+        validation = workflow.split('      - name: Validate release inputs', 1)[1].split('\n      - ', 1)[0]
+        self.assertIn('GH_TOKEN: ${{ github.token }}', validation)
+
+    def test_missing_tag_is_allowed_but_api_permission_failure_blocks_release(self):
+        missing, output, _ = self.run_validate_tag('404')
+        self.assertEqual(0, missing.returncode, missing.stderr)
+        self.assertNotIn('tag_sha=', output)
+        forbidden, output, _ = self.run_validate_tag('403')
+        self.assertNotEqual(0, forbidden.returncode)
+        self.assertNotIn('tag_sha=', output)
+
+    def run_validate_tag(self, status):
+        workflow = (ROOT / '.github/workflows/release.yml').read_text()
+        block = workflow.split('      - name: Validate release inputs\n', 1)[1].split('\n      - ', 1)[0]
+        script = textwrap.dedent(block.split('        run: |\n', 1)[1])
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            log = root / 'calls.txt'
+            for name in ('git', 'gh'):
+                executable = root / name
+                executable.write_text(f'#!{sys.executable}\n' + textwrap.dedent(r"""
+                    import json, os, pathlib, sys
+                    name = pathlib.Path(sys.argv[0]).name
+                    with open(os.environ['VALIDATE_CALL_LOG'], 'a') as stream:
+                        stream.write(name + '\n')
+                    if name == 'git':
+                        print('fatal: could not read Username for private remote', file=sys.stderr)
+                        sys.exit(128)
+                    assert os.environ.get('GH_TOKEN') == 'read-only-fixture'
+                    assert sys.argv[1:] == ['api', '--include', 'repos/owner/repo/git/ref/tags/v0.1.0']
+                    status = os.environ['API_STATUS']
+                    print('HTTP/2.0 ' + status + '\n')
+                    print(json.dumps({'object': {'sha': 'a' * 40}} if status == '200' else {'message': 'failed'}))
+                    sys.exit(0 if status == '200' else 1)
+                """))
+                executable.chmod(0o755)
+            output = root / 'output'
+            output.touch()
+            result = subprocess.run(['bash', '-c', script], text=True, capture_output=True,
+                env={**os.environ, 'PATH': str(root) + os.pathsep + os.environ['PATH'],
+                     'VALIDATE_CALL_LOG': str(log), 'API_STATUS': status, 'GH_TOKEN': 'read-only-fixture',
+                     'GITHUB_REPOSITORY': 'owner/repo', 'GITHUB_REF': 'refs/heads/main',
+                     'DEFAULT_BRANCH': 'main', 'VERSION': '0.1.0', 'VERSION_CODE': '3',
+                     'REPLACE_EXISTING': 'true', 'RUNNER_TEMP': str(root), 'GITHUB_OUTPUT': str(output)})
+            return result, output.read_text(), log.read_text().splitlines()
+
     def run_publish(self, previous_sha, current_sha):
         workflow = (ROOT / '.github/workflows/release.yml').read_text()
         block = workflow.split('      - name: Publish GitHub Release\n', 1)[1].split('\n      - ', 1)[0]
