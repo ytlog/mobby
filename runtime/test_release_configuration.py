@@ -1,5 +1,7 @@
 """Check that hosted release builds install the SDKs required by project modules."""
 import pathlib
+import json
+import sys
 import re
 import os
 import subprocess
@@ -46,6 +48,61 @@ class ReleaseConfigurationTest(unittest.TestCase):
         self.assertTrue(required)
         self.assertEqual(set(), required - installed,
                          'Release runner is missing SDK platforms used by Android modules')
+
+    def test_replacement_publishes_assets_then_moves_tag_and_preserves_notes(self):
+        result, calls, notes = self.run_publish("old", "old")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(["api", "release", "release", "api", "release"], [call[0] for call in calls])
+        self.assertEqual("upload", calls[2][1])
+        self.assertIn("--clobber", calls[2])
+        self.assertIn("PATCH", calls[3])
+        self.assertIn("sha=new", calls[3])
+        self.assertTrue(notes.startswith("Existing authored release notes"))
+        self.assertIn("versionCode `2`", notes)
+
+    def test_changed_tag_aborts_without_upload_or_tag_mutation(self):
+        result, calls, _ = self.run_publish("old", "changed")
+        self.assertNotEqual(0, result.returncode)
+        self.assertEqual(1, len(calls))
+        self.assertIn("Release tag changed", result.stdout)
+
+    def test_new_version_creates_release_without_replacement(self):
+        result, calls, _ = self.run_publish("", "unused")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(1, len(calls))
+        self.assertEqual(["release", "create", "v0.1.0"], calls[0][:3])
+        self.assertNotIn("--clobber", calls[0])
+
+    def run_publish(self, previous_sha, current_sha):
+        workflow = (ROOT / '.github/workflows/release.yml').read_text()
+        block = workflow.split('      - name: Publish GitHub Release\n', 1)[1].split('\n      - ', 1)[0]
+        script = textwrap.dedent(block.split('        run: |\n', 1)[1])
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            (root / 'release-assets').mkdir()
+            (root / 'release-assets/app.apk').write_bytes(b'fixture')
+            log = root / 'calls.jsonl'
+            gh = root / 'gh'
+            gh.write_text(f"#!{sys.executable}\n" + textwrap.dedent("""
+                import json, os, sys
+                args = sys.argv[1:]
+                with open(os.environ['GH_CALL_LOG'], 'a') as output:
+                    output.write(json.dumps(args) + '\\n')
+                if args[0] == 'api' and '--method' not in args:
+                    print(os.environ['CURRENT_TAG_SHA'])
+                elif args[:2] == ['release', 'view']:
+                    print('Existing authored release notes')
+            """))
+            gh.chmod(0o755)
+            result = subprocess.run(['bash', '-c', script], cwd=root, text=True, capture_output=True,
+                env={**os.environ, 'PATH': str(root) + os.pathsep + os.environ['PATH'],
+                    'GH_CALL_LOG': str(log), 'CURRENT_TAG_SHA': current_sha,
+                    'PREVIOUS_TAG_SHA': previous_sha, 'REPLACE_EXISTING': 'true' if previous_sha else 'false',
+                    'GITHUB_SHA': 'new', 'GITHUB_REPOSITORY': 'owner/repo',
+                    'VERSION': '0.1.0', 'VERSION_CODE': '2', 'RUNNER_TEMP': str(root)})
+            calls = [json.loads(line) for line in log.read_text().splitlines()]
+            notes_file = root / 'release-notes.md'
+            return result, calls, notes_file.read_text() if notes_file.exists() else ''
 
 
 if __name__ == '__main__':

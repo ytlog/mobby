@@ -12,6 +12,12 @@ on:
         required: true
         type: string
 
+      replace_existing:
+        description: "Replace an existing version after the new APK passes verification"
+        required: true
+        default: false
+        type: boolean
+
 permissions:
   contents: write
 
@@ -38,10 +44,12 @@ jobs:
           df -h "$GITHUB_WORKSPACE"
 
       - name: Validate release inputs and signing secrets
+        id: validate
         shell: bash
         env:
           VERSION: ${{ inputs.version }}
           VERSION_CODE: ${{ inputs.version_code }}
+          REPLACE_EXISTING: ${{ inputs.replace_existing }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           MOBBY_RELEASE_KEYSTORE_BASE64: ${{ secrets.MOBBY_RELEASE_KEYSTORE_BASE64 }}
           MOBBY_RELEASE_STORE_PASSWORD: ${{ secrets.MOBBY_RELEASE_STORE_PASSWORD }}
@@ -56,9 +64,9 @@ jobs:
           : "${MOBBY_RELEASE_STORE_PASSWORD:?Missing store password}"
           : "${MOBBY_RELEASE_KEY_ALIAS:?Missing key alias}"
           : "${MOBBY_RELEASE_KEY_PASSWORD:?Missing key password}"
-          if git ls-remote --exit-code --tags origin "refs/tags/v${VERSION}" >/dev/null; then
-            echo "Tag v${VERSION} already exists"
-            exit 1
+          if tag_ref=$(git ls-remote --exit-code --tags origin "refs/tags/v${VERSION}"); then
+            [[ "$REPLACE_EXISTING" == true ]] || { echo "Tag v${VERSION} already exists; select replace_existing to rebuild it"; exit 1; }
+            printf 'tag_sha=%s\n' "${tag_ref%%[[:space:]]*}" >> "$GITHUB_OUTPUT"
           else
             result=$?
             if (( result != 2 )); then
@@ -90,7 +98,7 @@ jobs:
           python3 -m unittest discover -s runtime -p 'test_*.py'
           node --test runtime/gateway-tests/bridge.test.cjs
           python3 runtime/check_dependency_sources.py
-          ./gradlew :app:testDebugUnitTest :termux-core:testDebugUnitTest :app:lintDebug
+          ./gradlew :app:testDebugUnitTest :runtime-android:testDebugUnitTest :termux-core:testDebugUnitTest :app:lintDebug
 
       - name: Build signed, optimized release APK
         env:
@@ -130,7 +138,25 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
-        run: gh release create "v${VERSION}" release-assets/* --target "$GITHUB_SHA" --title "v${VERSION}" --generate-notes
+          VERSION_CODE: ${{ inputs.version_code }}
+          REPLACE_EXISTING: ${{ inputs.replace_existing }}
+          PREVIOUS_TAG_SHA: ${{ steps.validate.outputs.tag_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="v${VERSION}"
+          if [[ -n "$PREVIOUS_TAG_SHA" ]]; then
+            [[ "$REPLACE_EXISTING" == true ]]
+            current_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq '.object.sha')
+            [[ "$current_sha" == "$PREVIOUS_TAG_SHA" ]] || { echo 'Release tag changed during build; refusing to replace it'; exit 1; }
+            gh release view "$tag" --json body --jq '.body' > "$RUNNER_TEMP/release-notes.md"
+            gh release upload "$tag" release-assets/* --clobber
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/$tag" -f sha="$GITHUB_SHA" -F force=true > /dev/null
+            printf '\n\nRebuilt from `%s` with Android versionCode `%s`.\n' "$GITHUB_SHA" "$VERSION_CODE" >> "$RUNNER_TEMP/release-notes.md"
+            gh release edit "$tag" --target "$GITHUB_SHA" --notes-file "$RUNNER_TEMP/release-notes.md"
+          else
+            gh release create "$tag" release-assets/* --target "$GITHUB_SHA" --title "$tag" --generate-notes
+          fi
 
       - name: Remove temporary signing keystore
         if: always()
