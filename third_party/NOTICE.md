@@ -32,7 +32,7 @@
 - Codex 配套的 bubblewrap 从同一固定 npm 包提取，安装为 `bin/bwrap` 供官方沙箱启动器发现；未修改二进制或关闭隔离。许可证见 [bubblewrap/COPYING](bubblewrap/COPYING)，对应源码为上述 Codex 固定标签内的 `codex-rs/vendor/bubblewrap`。
 - Codex 构建下载及 Claude Code 设备下载均按锁文件中的 npm SHA-512 integrity 校验。当前仅集成命令行任务所需文件，不包含 Codex 语音组件。
 - OpenCode：社区包 [C04-wq/opencode-termux](https://github.com/C04-wq/opencode-termux) `v1.18.32-0`（MIT）中的 `opencode-termux-aarch64.tar.gz`。它包含官方 OpenCode 1.18.32 的 ARM64 musl 程序，以及 musl 加载器、libgcc 与 libstdc++。官方程序本身不是 Android 可直接执行的 PIE，因此由本仓库的 `runtime/opencode_launcher.c` 交给随包的静态 musl 加载器启动。未修改这些二进制。
-- OpenCode 内置 Bun 1.3.14，Bun 静态链接的 JavaScriptCore 与 TinyCC 使用 LGPL；相应原文通知、许可证与重建源码一起提供。musl 1.2.5 使用 MIT，Alpine GCC 14.2.0-r4 运行库适用原许可证与 Runtime Library Exception，不能只以社区包 MIT 概括这些库。
+- OpenCode 内置 Bun 1.3.14，Bun 静态链接的 JavaScriptCore 与 TinyCC 使用 LGPL；相应原文通知、许可证与重建源码一起提供。musl 1.2.5 使用 MIT，完整版权文件保留在 `musl/COPYRIGHT` 并随 App 展示；Alpine GCC 14.2.0-r4 运行库适用原许可证与 Runtime Library Exception，不能只以社区包 MIT 概括这些库。
 - Codex 普通 ARM64 musl 依赖、Rust 标准库与内嵌 OpenSSL 的声明见 `codex/dependency-notices.json`；Bun 的原生库、WebKit 与内嵌 polyfill 声明见 `bun/dependency-notices.json`，随 App 离线展示。原文件与内容摘要一并保留；OpenCode 的普通 JavaScript 依赖与本平台原生辅助包声明见 `opencode-termux/dependency-notices.json`。
 - APK 额外携带 Codex 的 LICENSE/NOTICE、bubblewrap COPYING、OpenCode/社区包许可、Bun 及 LGPL 通知和 GCC 原文，位于 bootstrap 数据包的 `share/mobby/licenses/`。
 - `runtime/agent_launcher.c` 为 npm / npx / Pi / Claude Code 提供 Android 原生入口，参数直接传入 Node.js。

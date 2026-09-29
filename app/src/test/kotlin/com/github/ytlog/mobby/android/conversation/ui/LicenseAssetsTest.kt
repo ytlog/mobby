@@ -45,5 +45,7 @@ class LicenseAssetsTest {
         assertTrue(kleidi.getValue("text").jsonPrimitive.content.contains("Copyright 2025-2026 Arm Limited"))
         val androidCpp = runtime.single { it.getValue("id").jsonPrimitive.content == "share/mobby/licenses/Android-libc++-LICENSE" }
         assertTrue(androidCpp.getValue("text").jsonPrimitive.content.contains("LLVM"))
+        val musl = runtime.single { it.getValue("id").jsonPrimitive.content == "share/mobby/licenses/musl-COPYRIGHT" }
+        assertTrue(musl.getValue("text").jsonPrimitive.content.contains("Copyright © 2005-2020 Rich Felker"))
     }
 }

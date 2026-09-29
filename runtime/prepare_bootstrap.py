@@ -50,6 +50,7 @@ def prepare(output, ndk=None):
         'Bun-LICENSE.md': 'third_party/bun/LICENSE.md',
         'JavaScriptCore-COPYING.LIB': 'third_party/bun/JavaScriptCore-COPYING.LIB',
         'TinyCC-COPYING': 'third_party/bun/TinyCC-COPYING',
+        'musl-COPYRIGHT': 'third_party/musl/COPYRIGHT',
         'GCC-COPYING3': 'third_party/gcc/COPYING3',
         'GCC-COPYING.RUNTIME': 'third_party/gcc/COPYING.RUNTIME',
         'libtermux-LICENSE': 'third_party/libtermux-android/LICENSE',
