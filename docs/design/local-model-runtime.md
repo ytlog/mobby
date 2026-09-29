@@ -36,7 +36,7 @@
 `llama`、`litert-lm`、`onnx-genai`、`mlc`、`executorch`、`mnn` 等后端 ID 与引擎目录一致。候选项未实现时不创建假 adapter，目录可以列出但 `packaged=false`。HTTP 服务建议采用 Android 可用的嵌入式 JVM server（先验证 Ktor CIO 的固定版本）；选型必须兼容项目 Kotlin/AGP，不用动态版本或直接升级全项目来迁就 SDK。HTTP 框架封装在内部，不进入公共契约。
 
 ```text
-local-model/
+model/service/
   build.gradle.kts
   consumer-rules.pro
   src/main/AndroidManifest.xml
@@ -51,7 +51,7 @@ local-model-core/src/main/kotlin/.../           # 调度器、状态、租约
 local-model-http/src/main/kotlin/.../
   server/                                      # listener / auth / limits
   protocol/{responses,chat,messages,gemini,ollama}/
-local-model-backend-llama/src/main/{kotlin,cpp}/
+model/backend-llama/src/main/{kotlin,cpp}/
 local-model-backend-litert-lm/                  # 后续可选
 local-model-backend-onnx-genai/                 # 后续可选
 ```
@@ -68,7 +68,7 @@ include(":local-model-backend-llama")
 // app/build.gradle.kts
 // dependencies { implementation(project(":local-model")) }
 
-// local-model/build.gradle.kts
+// model/service/build.gradle.kts
 plugins { id("com.android.library"); kotlin("android") }
 android {
     namespace = "com.github.ytlog.mobby.android.localmodel"

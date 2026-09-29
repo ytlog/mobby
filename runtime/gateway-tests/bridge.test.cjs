@@ -3,7 +3,7 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const http=require('node:http');
 const {once}=require('node:events');
-const {endpoint,createBridge,agentLaunch}=require('../../runtime-android/src/main/assets/gateway/bridge.cjs');
+const {endpoint,createBridge,agentLaunch}=require('../../runtime/android/src/main/assets/gateway/bridge.cjs');
 async function mock(handler) {
   const server=http.createServer(async(req,res)=>{const chunks=[];for await(const c of req)chunks.push(c);await handler(req,res,JSON.parse(Buffer.concat(chunks).toString()||'{}'));});
   server.listen(0,'127.0.0.1');await once(server,'listening');
@@ -32,7 +32,7 @@ test('unsupported gateway protocol is refused before any Agent launches',async()
   }
 });
 test('all Agent/protocol combinations use only the authenticated local bridge',()=>{
-  const {agentLaunch}=require('../../runtime-android/src/main/assets/gateway/bridge.cjs');
+  const {agentLaunch}=require('../../runtime/android/src/main/assets/gateway/bridge.cjs');
   const bridge={url:'http://127.0.0.1:32123',token:'local-only-token'};
   for(const mode of ['CLAUDE','CODEX','OPEN_CODE']) for(const protocol of [mode==='CLAUDE'?'messages':'responses']) {
     const config={endpoint:'https://gateway.example/v1',protocol,model:'vendor/model',key:'upstream-secret'};
@@ -95,7 +95,7 @@ test('same-protocol auxiliary requests preserve body, query and native headers',
 
 test('controlled stdin file is opened without following symlinks and input path is not forwarded',()=>{
   const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
-  const {openAgentInput}=require('../../runtime-android/src/main/assets/gateway/bridge.cjs');
+  const {openAgentInput}=require('../../runtime/android/src/main/assets/gateway/bridge.cjs');
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'mobby-input-'));
   try {
     const file=path.join(root,'input.jsonl'); fs.writeFileSync(file,'{"message":"图像"}\n');
@@ -103,7 +103,7 @@ test('controlled stdin file is opened without following symlinks and input path 
     try {assert.equal(fs.readFileSync(descriptor,'utf8'),'{"message":"图像"}\n');} finally {fs.closeSync(descriptor);}
     const symlink=path.join(root,'link');fs.symlinkSync(file,symlink);
     assert.throws(()=>openAgentInput(symlink));assert.throws(()=>openAgentInput(root));
-    const launch=require('../../runtime-android/src/main/assets/gateway/bridge.cjs').agentLaunch('CLAUDE',[],{endpoint:'https://example.com/v1',protocol:'messages',model:'m',key:'fake'},{MOBBY_AGENT_INPUT_FILE:file},{url:'http://127.0.0.1:32123',token:'test-token'});
+    const launch=require('../../runtime/android/src/main/assets/gateway/bridge.cjs').agentLaunch('CLAUDE',[],{endpoint:'https://example.com/v1',protocol:'messages',model:'m',key:'fake'},{MOBBY_AGENT_INPUT_FILE:file},{url:'http://127.0.0.1:32123',token:'test-token'});
     assert.equal(launch.env.MOBBY_AGENT_INPUT_FILE,undefined);
   } finally {fs.rmSync(root,{recursive:true,force:true});}
 });
@@ -197,7 +197,7 @@ test('agent extra flags pass through the local bridge and are not written into u
 
 test('bridge diagnostics use the selected language without changing protocol validation', () => {
   const {spawnSync} = require('node:child_process');
-  const script = `const {endpoint}=require('./runtime-android/src/main/assets/gateway/bridge.cjs');
+  const script = `const {endpoint}=require('./runtime/android/src/main/assets/gateway/bridge.cjs');
     try { endpoint({protocol:'invalid', endpoint:'https://example.invalid'}); process.exit(2); }
     catch (error) { process.stdout.write(error.message); }`;
   for (const [language, expected] of [['zh', '网关协议无效'], ['en', 'Invalid gateway protocol']]) {

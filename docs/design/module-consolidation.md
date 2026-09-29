@@ -81,7 +81,7 @@ AppFunctionCatalog、Host、Skills 与 JSON 编解码放在 device-plugins 的 a
 
 app 仍通过独立 AppGraph 装配 RuntimeHost、InteractionFactory 和界面；页面不自行构造 Room、RuntimeHost 或设备 Host。既有 MainActivity 和 MobbyApplication 不变成业务中心。迁移初期保留源码包名，减少 import、Manifest、资源和测试的同时变更。
 
-合并后 app 因装配而依赖 interaction-data/runtime-android，UI 代码也能在编译层访问它们；因此必须增加 ui 包 import 规则，禁止展示代码绕过用例访问存储和 Runtime 实现。构造函数注入与替换假端口的测试继续保留，不为这次收敛引入 DI 框架。
+合并后 app 因装配而依赖 interaction-data 与 runtime-android，UI 代码也能在编译层访问它们；因此必须增加 ui 包 import 规则，禁止展示代码绕过用例访问存储和 Runtime 实现。构造函数注入与替换假端口的测试继续保留，不为这次收敛引入 DI 框架。
 
 代价：约 7,000 行展示代码进入 app，原 UI Library 的编译与测试缓存边界消失。若实测 UI 频繁变更导致构建明显退化，或出现第二个宿主，可以只实施前三项合并，维持 14 个模块。
 
@@ -206,3 +206,35 @@ Compose 与 App Functions 仪器测试使用已连接手机和已有环境。另
 - 手机覆盖安装先因默认版本号低于现有包而被拒绝；使用版本号 2 后仍因现有包与本机 Debug 签名不匹配被拒绝。没有卸载或清空设备数据；当前构建尚未完成手机验收，真实 CLI/网关、本地模型 HTTP、设备授权及 UI 触摸仍待原签名环境验证。
 
 本轮未得到可靠的前后增量构建对照，不能声称模块收敛提升构建速度。构建输出和本机签名配置不提交。
+
+
+## 按职责分组的目录（2026-09-29）
+
+模块按垂直职责放入一级目录，叶子目录对应实际 Gradle 模块。模块名与包名保持现有定义，通过 settings.gradle.kts 的 projectDir 映射定位源码，没有转发模块或兼容实现。
+
+```text
+app/                       应用入口、Compose 展示与装配
+interaction/
+  domain/                  会话领域与用例
+  data/                    数据库、投影与端口适配
+runtime/
+  api/                     Runtime 与设备协议契约
+  engine/                  Agent 协议与执行规则
+  android/                 Android 服务、网络与 Node 桥接
+  device-plugins/           设备操作与 App Functions
+  gateway-tests/           Node 桥接与 CLI 联调脚本
+model/
+  service/                 独立本地模型服务与管理 UI
+  backend-llama/           llama.cpp 原生后端
+shared/
+  speech/                  语音平台集成
+  localization/            统一文案
+third_party/               原位保留的第三方源码
+```
+
+runtime 下原有依赖准备脚本、测试和缓存仍归执行环境管理。模型目录只包含独立模型服务及后端，不引入对 Agent 运行层的依赖。第三方工程与应用入口保留原位。
+
+目录边界检查同时验证模块名与 projectDir 的准确映射，避免目录变更导致源代码扫描静默跳过。Node 网关脚本、主机 CLI 夹具和 CMake 第三方源码路径同步调整。
+
+
+本次目录调整验证：191 个受版本控制的模块文件全部保留；Python 22 项、Node 桥接 15 项通过；JDK 17 下应用 Debug 构建、各模块单测和 lint 通过，原生后端及 Vulkan 着色器在新目录重新构建成功。Kotlin/Android 单测合计 539 项通过、1 项既有跳过，lint 无错误。真机验收仍受前述签名环境缺失影响，本次未安装到手机。

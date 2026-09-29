@@ -9,7 +9,7 @@ if(ANDROID)
     if(MOBBY_GLSLC AND MOBBY_VULKAN_HEADERS)
         execute_process(COMMAND "${MOBBY_GLSLC}" -fshader-stage=compute --target-env=vulkan1.3
             -o "${CMAKE_BINARY_DIR}/mobby-vulkan-check.spv"
-            "${CMAKE_CURRENT_LIST_DIR}/../../../../third_party/llama.cpp/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn_decode_phase_2.comp"
+            "${CMAKE_CURRENT_LIST_DIR}/../../../../../third_party/llama.cpp/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn_decode_phase_2.comp"
             RESULT_VARIABLE _mobby_glslc_result ERROR_VARIABLE _mobby_glslc_error)
         if(_mobby_glslc_result EQUAL 0)
             set(_mobby_vulkan_enabled ON)
@@ -25,7 +25,7 @@ if(ANDROID)
     endif()
     set(GGML_VULKAN ${_mobby_vulkan_enabled} CACHE BOOL "Build Vulkan backend" FORCE)
 endif()
-set(LLAMA_SRC "${CMAKE_CURRENT_LIST_DIR}/../../../../third_party/llama.cpp")
+set(LLAMA_SRC "${CMAKE_CURRENT_LIST_DIR}/../../../../../third_party/llama.cpp")
 if(NOT EXISTS "${LLAMA_SRC}/include/llama.h")
     message(FATAL_ERROR "Initialize third_party/llama.cpp submodule before building")
 endif()

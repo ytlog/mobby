@@ -11,7 +11,7 @@ const {join,resolve}=require('node:path');
 const {once}=require('node:events');
 const assert=require('node:assert/strict');
 const {nativeResponse,sendNative}=require('./native-fixture.cjs');
-const bridge=resolve(__dirname,'../../runtime-android/src/main/assets/gateway/bridge.cjs');
+const bridge=resolve(__dirname,'../../runtime/android/src/main/assets/gateway/bridge.cjs');
 async function main() {
   const adb=process.env.MOBBY_TEST_ADB,cli=process.env.MOBBY_TEST_CLAUDE_JS;
   assert.ok(adb || cli,'Set MOBBY_TEST_ADB for device or MOBBY_TEST_CLAUDE_JS for host');

@@ -8,7 +8,7 @@ const {tmpdir}=require('node:os');
 const {join,resolve}=require('node:path');
 const {once}=require('node:events');
 const assert=require('node:assert/strict');
-const bridge=resolve(__dirname,'../../runtime-android/src/main/assets/gateway/bridge.cjs');
+const bridge=resolve(__dirname,'../../runtime/android/src/main/assets/gateway/bridge.cjs');
 const {nativeResponse,sendNative}=require('./native-fixture.cjs');
 async function main() {
   const codex=process.env.MOBBY_TEST_CODEX, claude=process.env.MOBBY_TEST_CLAUDE_JS;

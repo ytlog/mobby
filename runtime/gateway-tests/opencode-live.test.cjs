@@ -25,7 +25,7 @@ if(args[0]==='serve'){
  process.stdout.write(JSON.stringify({type:'step_finish',sessionID:'ses_persisted',part:{reason:'stop'}})+'\\n');
  setInterval(()=>{},1000);
 }`);
-  const bridge = join(__dirname, '../../runtime-android/src/main/assets/gateway/bridge.cjs');
+  const bridge = join(__dirname, '../../runtime/android/src/main/assets/gateway/bridge.cjs');
   const child = spawn(process.execPath, [bridge, 'OPEN_CODE', executable, 'serve', '--pure', '--hostname', '127.0.0.1'], {
     env:{...process.env, MOBBY_TEST_LOG:log,
       MOBBY_GATEWAY_CONFIG:JSON.stringify({endpoint:'http://127.0.0.1:9/v1',protocol:'responses',model:'test',key:'fixture'})},

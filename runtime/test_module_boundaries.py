@@ -18,6 +18,19 @@ ALLOWED = {
     "local-model": {"local-model-backend-llama", "localization"},
     "local-model-backend-llama": set(),
 }
+MODULE_DIRS = {
+    "app": "app",
+    "runtime-api": "runtime/api",
+    "runtime-engine": "runtime/engine",
+    "runtime-android": "runtime/android",
+    "device-plugins": "runtime/device-plugins",
+    "interaction-domain": "interaction/domain",
+    "interaction-data": "interaction/data",
+    "local-model": "model/service",
+    "local-model-backend-llama": "model/backend-llama",
+    "speech": "shared/speech",
+    "localization": "shared/localization",
+}
 REMOVED = {"interaction-ui", "device-interaction", "device-interaction-ui", "plugin:appfunction"}
 
 
@@ -38,12 +51,16 @@ class ModuleBoundaryTests(unittest.TestCase):
         includes = re.findall(r"include\(([^)]*)\)", settings)
         modules = set(re.findall(r'":([^"]+)"', " ".join(includes)))
         self.assertEqual(set(ALLOWED) | {"termux-core", "bootstrap-arm64"}, modules)
+        mappings = dict(re.findall(r'project\(":([^"\n]+)"\)\.projectDir = file\("([^"\n]+)"\)', settings))
+        for module, directory in MODULE_DIRS.items():
+            self.assertEqual(directory, mappings.get(module, module), module)
+            self.assertTrue((ROOT / directory / "src/main").is_dir(), module)
         for directory in ("interaction-ui", "device-interaction", "device-interaction-ui", "app-functions"):
             self.assertFalse((ROOT / directory / "src").exists(), f"Old source tree remains: {directory}")
 
     def test_production_project_dependencies_follow_design(self):
         for module, allowed in ALLOWED.items():
-            build = ROOT / module / "build.gradle.kts"
+            build = ROOT / MODULE_DIRS[module] / "build.gradle.kts"
             self.assertTrue(build.is_file(), f"Required module is missing: {module}")
             dependencies = set(re.findall(r'(?:implementation|api)\(project\(":([^"]+)"\)\)', build.read_text()))
             self.assertFalse(dependencies - allowed, f"{module} has forbidden edges: {dependencies - allowed}")
@@ -51,7 +68,7 @@ class ModuleBoundaryTests(unittest.TestCase):
 
     def test_production_imports_do_not_cross_layers(self):
         for module in ALLOWED:
-            for source in (ROOT / module / "src/main").rglob("*.kt"):
+            for source in (ROOT / MODULE_DIRS[module] / "src/main").rglob("*.kt"):
                 text = source.read_text()
                 if module.startswith("runtime-"):
                     self.assertFalse(any(ref.startswith(BASE + "interaction.") for ref in project_references(text)), str(source))
@@ -80,7 +97,7 @@ class ModuleBoundaryTests(unittest.TestCase):
         self.assertFalse(forbidden_references(f"import {BASE}runtime.api.device.*", ("runtime.api.device.",)))
 
     def test_host_and_native_dependencies_stay_separate_from_local_model_service(self):
-        for source in (ROOT / "local-model/src/main").rglob("*.kt"):
+        for source in (ROOT / MODULE_DIRS["local-model"] / "src/main").rglob("*.kt"):
             self.assertFalse(forbidden_references(source.read_text(), ("localmodel.", "localization.")), str(source))
-        manifest = (ROOT / "local-model/src/main/AndroidManifest.xml").read_text()
+        manifest = (ROOT / MODULE_DIRS["local-model"] / "src/main/AndroidManifest.xml").read_text()
         self.assertIn('android:process=":local_model"', manifest)

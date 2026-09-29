@@ -30,7 +30,7 @@ function cleanup(code) {
 }
 process.on('SIGTERM',()=>cleanup(143));process.on('SIGINT',()=>cleanup(130));
 server.listen(0,'127.0.0.1',()=>{
-  child=spawn(process.execPath,[resolve(__dirname,'../../runtime-android/src/main/assets/gateway/bridge.cjs'),'CLAUDE',process.execPath,cli,
+  child=spawn(process.execPath,[resolve(__dirname,'../../runtime/android/src/main/assets/gateway/bridge.cjs'),'CLAUDE',process.execPath,cli,
     '-p','--input-format','stream-json','--output-format','stream-json','--verbose','--permission-prompt-tool','stdio',...(resume?['--resume',resume]:[])],{
     cwd:work,detached:true,stdio:['pipe','pipe','pipe'],env:{PATH:process.env.PATH,HOME:work,TMPDIR:work,NO_COLOR:'1',DISABLE_AUTOUPDATER:'1',
       MOBBY_GATEWAY_CONFIG:JSON.stringify({endpoint:`http://127.0.0.1:${server.address().port}/v1`,protocol:'messages',model:'test-model',key:'fake-control-key'})}});

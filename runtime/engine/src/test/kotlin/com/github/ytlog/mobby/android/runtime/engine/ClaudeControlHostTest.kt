@@ -16,7 +16,7 @@ class ClaudeControlHostTest {
     @Test fun `production control session preserves images and allows denies and cancels real Claude writes`() = runBlocking {
         val cli = System.getenv("MOBBY_TEST_CLAUDE_JS")
         assumeTrue("Set MOBBY_TEST_CLAUDE_JS for real CLI gate", cli != null)
-        val fixture = File("../runtime/gateway-tests/approval-control-fixture.cjs").canonicalFile
+        val fixture = File("../gateway-tests/approval-control-fixture.cjs").canonicalFile
         var resumeHome: File? = null
         var resumeId: String? = null
         val roots = mutableListOf<File>()

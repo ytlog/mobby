@@ -21,3 +21,15 @@ include(":interaction-data", ":speech", ":device-plugins")
 include(":localization")
 
 include(":local-model", ":local-model-backend-llama")
+
+// Physical directories follow vertical responsibilities; each leaf is one Gradle module.
+project(":runtime-api").projectDir = file("runtime/api")
+project(":runtime-engine").projectDir = file("runtime/engine")
+project(":runtime-android").projectDir = file("runtime/android")
+project(":device-plugins").projectDir = file("runtime/device-plugins")
+project(":interaction-domain").projectDir = file("interaction/domain")
+project(":interaction-data").projectDir = file("interaction/data")
+project(":local-model").projectDir = file("model/service")
+project(":local-model-backend-llama").projectDir = file("model/backend-llama")
+project(":speech").projectDir = file("shared/speech")
+project(":localization").projectDir = file("shared/localization")

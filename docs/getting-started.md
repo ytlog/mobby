@@ -61,3 +61,8 @@ APK：`app/build/outputs/apk/debug/app-debug.apk`，仅 ARM64，Android 8.0 及�
 时间线通常先显示最近 40 轮，可点击顶部“加载更早的消息”。返回旧阅读位置或存在较早的运行任务时会加载所需范围。聊天查找、分享选择和附件列表会读取打开时的完整会话记录；查找旧消息后点击结果可回到原消息。
 
 Pi 0.87.1 已加入内置运行环境，在没有选择记录时作为新会话默认 Agent。初始化保留已有的 Agent 与网关选择；用户在会话配置中点击「应用」或新建会话中点击「创建」后，下次新建会话沿用这次选择的 Agent，项目内新建和重启应用后也一样；关闭菜单而未确认不改变记录。旧会话不切换 Agent，原共享技能会在内容一致且无同名冲突时补入 Pi 目录。接入与验证细节见 [Pi Agent](design/pi-agent.md)。
+
+
+## 源码目录
+
+`app/` 是应用入口与 UI；`interaction/{domain,data}/` 放会话业务与持久化；`runtime/{api,engine,android,device-plugins}/` 放执行契约、引擎与平台能力；`model/{service,backend-llama}/` 放独立模型服务与原生后端；`shared/{speech,localization}/` 放共享能力。Gradle 模块名通过 settings.gradle.kts 映射到这些目录，现有构建命令直接使用模块名。详细目录与职责见 [模块目录说明](design/module-consolidation.md#按职责分组的目录2026-09-29)。

@@ -10,7 +10,7 @@ const {createServer}=require('node:http');
 const {once}=require('node:events');
 const {randomUUID}=require('node:crypto');
 const {nativeResponse,sendNative}=require('./native-fixture.cjs');
-const bridge=path.resolve(__dirname,'../../runtime-android/src/main/assets/gateway/bridge.cjs');
+const bridge=path.resolve(__dirname,'../../runtime/android/src/main/assets/gateway/bridge.cjs');
 
 async function main() {
   const executable=process.env.MOBBY_TEST_PI;
