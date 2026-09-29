@@ -11,6 +11,13 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
 class ReleaseConfigurationTest(unittest.TestCase):
+    def test_release_checkout_includes_required_native_submodules(self):
+        workflow = (ROOT / '.github/workflows/release.yml').read_text()
+        checkout = workflow.split('      - uses: actions/checkout@', 1)[1].split('\n      - ', 1)[0]
+        self.assertIn('path = third_party/llama.cpp', (ROOT / '.gitmodules').read_text())
+        self.assertRegex(checkout, r'submodules:\s*recursive',
+                         'A cold release build needs the pinned llama.cpp submodule sources')
+
     def test_sdk_installation_uses_runner_sdk_without_path_entry(self):
         workflow = (ROOT / '.github/workflows/release.yml').read_text()
         block = workflow.split('      - name: Install Android build dependencies\n', 1)[1].split('\n      - ', 1)[0]

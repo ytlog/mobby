@@ -25,6 +25,8 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Validate release inputs and signing secrets
         shell: bash
