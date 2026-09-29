@@ -20,6 +20,8 @@
 
 GitHub 临时 runner 会在构建前清理未使用的 .NET、Haskell 和 CodeQL 工具，给 bootstrap、原生库和 APK 中间产物留出磁盘空间；此步骤不作用于开发机。
 
+R8 仅忽略三个已确认可选的缺失类：Ktor 2.3.12 的桌面 JVM 调试探测使用 `ManagementFactory` 和 `RuntimeMXBean`，其[实现](https://github.com/ktorio/ktor/blob/2.3.12/ktor-utils/jvm/src/io/ktor/util/debug/IntellijIdeaDebugDetectorJvm.kt)会捕获不可用错误并返回 false；SLF4J 1.7 的 `StaticLoggerBinder` 缺失时，按[官方说明](https://www.slf4j.org/codes.html#StaticLoggerBinder)使用自带的 NOP 日志实现。这些规则不关闭 R8，也不放行其他缺失依赖。
+
 编译前会检查锁定依赖的下载地址。Termux 仓库会移除旧包；检查报告 404 时，应根据官方 Packages 索引更新对应包在 `runtime/agents.lock.json` 中的版本、地址和 SHA-256，并校验下载文件。构建仍只使用锁定版本，不自动改用最新版或跳过校验。
 
 可在本机用以下命令生成第一个 Secret 的值；不要把输出保存到仓库文件中：
