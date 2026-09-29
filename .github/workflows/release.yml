@@ -78,6 +78,7 @@ jobs:
         run: |
           python3 -m unittest discover -s runtime -p 'test_*.py'
           node --test runtime/gateway-tests/bridge.test.cjs
+          python3 runtime/check_dependency_sources.py
           ./gradlew :app:testDebugUnitTest :termux-core:testDebugUnitTest :app:lintDebug
 
       - name: Build signed, optimized release APK

@@ -17,7 +17,7 @@
 | --- | --- | --- |
 | Git | 2.55.0 | Termux 官方仓库 |
 | Node.js | 24.18.0 | Termux 官方仓库 |
-| npm | 11.19.1 | Termux 官方仓库 |
+| npm | 11.20.0 | Termux 官方仓库 |
 | Claude Code | 2.1.112 | Anthropic 官方 npm JavaScript 版本 |
 | Codex | 0.155.1 | OpenAI 官方 npm ARM64 musl CLI |
 | OpenCode | 1.18.32-0 | C04-wq/opencode-termux，内含官方 1.18.32 musl 程序与 musl 加载器 |

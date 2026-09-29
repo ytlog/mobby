@@ -8,9 +8,9 @@
     },
     {
       "name": "ca-certificates",
-      "version": "1:2026.08.13",
-      "url": "https://packages.termux.dev/apt/termux-main/pool/main/c/ca-certificates/ca-certificates_1:2026.08.13_all.deb",
-      "sha256": "8e894fb885da738b4ca9a7932703e414d730fa32e78aba33046a747822547d5a"
+      "version": "1:2026.09.25",
+      "url": "https://packages.termux.dev/apt/termux-main/pool/main/c/ca-certificates/ca-certificates_1:2026.09.25_all.deb",
+      "sha256": "57fab24bf4561bfdd35afe71bc1929914e51c35458cfd1fca2b15e54bc8df7af"
     },
     {
       "name": "git",
@@ -20,15 +20,15 @@
     },
     {
       "name": "less",
-      "version": "704",
-      "url": "https://packages.termux.dev/apt/termux-main/pool/main/l/less/less_704_aarch64.deb",
-      "sha256": "350d5ec24969106b5fb43695944aed21e388571a7506d1716b1fa3d9d2110f3a"
+      "version": "710",
+      "url": "https://packages.termux.dev/apt/termux-main/pool/main/l/less/less_710_aarch64.deb",
+      "sha256": "bff261b48553bcde3a93e0d7c2a51dbb1b7e5025767a1ee9a1cb4459a3789499"
     },
     {
       "name": "libc++",
-      "version": "29",
-      "url": "https://packages.termux.dev/apt/termux-main/pool/main/libc/libc++/libc++_29_aarch64.deb",
-      "sha256": "bb9f12113c137aa0e8513bb51cc49fe77a5ce3ca39ab9e92c57d228ecdf00222"
+      "version": "30",
+      "url": "https://packages.termux.dev/apt/termux-main/pool/main/libc/libc++/libc++_30_aarch64.deb",
+      "sha256": "53d0b84a7ba7459024257cb94d5b136fe13ef858567f65a8064b35950799f2ca"
     },
     {
       "name": "libcurl",
@@ -38,9 +38,9 @@
     },
     {
       "name": "libexpat",
-      "version": "2.8.4",
-      "url": "https://packages.termux.dev/apt/termux-main/pool/main/libe/libexpat/libexpat_2.8.4_aarch64.deb",
-      "sha256": "71934cf00b404627702034bd1308cb58353dd851d9a2d3ecd9205b4ae6a67a27"
+      "version": "2.8.5",
+      "url": "https://packages.termux.dev/apt/termux-main/pool/main/libe/libexpat/libexpat_2.8.5_aarch64.deb",
+      "sha256": "3b2c9b061fa890b69b88d2f5dd993efba902d678fe8e1990268892d1faf15e5e"
     },
     {
       "name": "libiconv",
@@ -98,9 +98,9 @@
     },
     {
       "name": "npm",
-      "version": "11.19.1",
-      "url": "https://packages.termux.dev/apt/termux-main/pool/main/n/npm/npm_11.19.1_all.deb",
-      "sha256": "bb7a736be3229d28af7986365b0738e19619368d0f12cdd4d34b02962dc8b05c"
+      "version": "11.20.0",
+      "url": "https://packages.termux.dev/apt/termux-main/pool/main/n/npm/npm_11.20.0_all.deb",
+      "sha256": "a2775653a0626749138ccd6e37a7b63239f36a9e3c62a9e6740818ca4b2d088b"
     },
     {
       "name": "openssl",
@@ -110,9 +110,9 @@
     },
     {
       "name": "pcre2",
-      "version": "10.47",
-      "url": "https://packages.termux.dev/apt/termux-main/pool/main/p/pcre2/pcre2_10.47_aarch64.deb",
-      "sha256": "51f915d22de639bfca6ec029ae613987bbe3bc73626eede13319fd2e95f50b63"
+      "version": "10.49",
+      "url": "https://packages.termux.dev/apt/termux-main/pool/main/p/pcre2/pcre2_10.49_aarch64.deb",
+      "sha256": "c27995e5f52b8ecc9b8b3e662eb08e49f82a18bfd3f34343936acc7b23964724"
     },
     {
       "name": "resolv-conf",
