@@ -41,3 +41,18 @@ base64 < path/to/release.jks | tr -d '\n'
 ## 本地验证
 
 不设置四个签名环境变量时，`./gradlew :app:assembleRelease` 生成未签名的优化 APK，便于本地检查 R8；发布工作流则要求四个 GitHub Secrets 齐备。需要本地签名时设置 `MOBBY_RELEASE_STORE_FILE`、`MOBBY_RELEASE_STORE_PASSWORD`、`MOBBY_RELEASE_KEY_ALIAS`、`MOBBY_RELEASE_KEY_PASSWORD` 后构建。可用 `-Pmobby.versionName=0.1.0 -Pmobby.versionCode=1` 指定版本。不要将密钥、口令、APK、mapping 或本地配置提交到 Git。
+
+### 已连接手机上的 Release 回归
+
+使用现有 Android Studio 的 JDK 17 和本机 SDK 构建签名 Release，用 `adb -s <设备序列号> install --no-incremental -r app/build/outputs/apk/release/app-release.apk` 覆盖安装。签名必须与已安装版本一致；此流程不卸载应用、不清空数据。手机保持解锁且处于空闲状态后运行：
+
+```sh
+python3 runtime/android-release-smoke.py --serial <设备序列号> --repeat 5 --check-cli
+```
+
+脚本确认安装的是不可调试的 Release，冷启动后通过真实 UI 检查 Shell 重复执行、非零退出、停止执行，以及 Node、Pi、Codex、Claude Code、OpenCode 的版本命令。它不修改网关，不验证真实模型请求或本地模型推理；这些还需要单独验收。遇到失败会明确退出，不将错误或取消计为成功。
+
+进程注册会在启动期间最多等待约一秒，读取 `/proc/<pid>/stat` 中的进程起始时间。JNI 在注册回调完成前不回收子进程，等待期间 PID 不能被复用；仍无法确认身份时保持失败，避免向未知进程发送信号。
+
+
+2026-09-29 实机记录：使用长期发布密钥构建启用 R8 的非调试 Release，在 Xiaomi M2007J1SC / Android 13 上覆盖安装。91 项 runtime-android 单测通过；两轮冷启动下共 10 次 Shell 短命令、两次非零退出、两次取消、两次 Node 和四个 Agent CLI 启动检查全部通过。已修复启动期间进程身份暂时不可读导致 Shell 偶发失败的问题；真实模型请求和本地模型推理未在这次回归中验收。

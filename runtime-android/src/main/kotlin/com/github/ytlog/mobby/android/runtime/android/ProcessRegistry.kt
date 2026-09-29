@@ -7,13 +7,27 @@ import kotlinx.coroutines.delay
 import java.io.File
 
 /** Records process identity before observation, preventing PID reuse from targeting unrelated work. */
-internal class ProcessRegistry(context: Context) {
+internal class ProcessRegistry(
+    context: Context,
+    private val readStartTime: (Int) -> String? = { pid ->
+        runCatching { File("/proc/$pid/stat").readText().substringAfterLast(") ").split(' ')[19] }.getOrNull()
+    },
+    private val pause: () -> Unit = { Thread.sleep(10) },
+) {
     private val prefs = context.getSharedPreferences("runtime-process", Context.MODE_PRIVATE)
-    private fun startTime(pid: Int): String? = runCatching {
-        File("/proc/$pid/stat").readText().substringAfterLast(") ").split(' ')[19]
-    }.getOrNull()
+    private fun startTime(pid: Int): String? = readStartTime(pid)
     fun started(pid: Int) {
-        val identity = startTime(pid) ?: error("Cannot identify runtime process")
+        // spawn returns immediately after fork. Android may briefly hide /proc until
+        // the child finishes launch. JNI retains the child unreaped during this
+        // callback, so its PID cannot be reused while we wait for its identity.
+        var identity = startTime(pid)
+        repeat(100) {
+            if (identity == null) {
+                pause()
+                identity = startTime(pid)
+            }
+        }
+        checkNotNull(identity) { "Cannot identify runtime process" }
         check(prefs.edit().putInt("pid", pid).putString("identity", identity).commit())
     }
     fun terminated(exitCode: Int?) { if (exitCode != null) check(prefs.edit().clear().commit()) }

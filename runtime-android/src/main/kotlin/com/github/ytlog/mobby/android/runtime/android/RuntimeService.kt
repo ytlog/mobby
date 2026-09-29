@@ -255,7 +255,11 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
                     }
                 } catch (_: TimeoutCancellationException) { error = ErrorCode.TIMEOUT }
                 catch (_: CancellationException) { if (shellStopCause == null) error = ErrorCode.INTERRUPTED }
-                catch (_: Exception) { error = ErrorCode.PROTOCOL_ERROR }
+                catch (failure: Exception) {
+                    // Only code locations, never exception messages or runtime arguments.
+                    android.util.Log.w("MobbyRuntime", "Shell failure: ${failure.javaClass.name}; ${failure.stackTrace.take(6).joinToString()}")
+                    error = ErrorCode.PROTOCOL_ERROR
+                }
                 finally {
                     withContext(NonCancellable) {
                         val confirmed = !started || exit != null
