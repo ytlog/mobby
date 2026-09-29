@@ -61,3 +61,5 @@ Screen Q&A requires the floating button, permission to display over other apps, 
 [Build and usage guide](docs/getting-started.md) · [Gateway setup](docs/gateway.md) · [Project docs](docs/README.md) · [MIT license](LICENSE)
 
 The linked guides are currently in Chinese.
+
+Download the APK and matching `mobby-v<version>-sources.tar.gz` from the same [Release](https://github.com/ytlog/mobby/releases). Verify both with `SHA256SUMS.txt`. Component licenses, corresponding sources, build recipes and relinking instructions are described in [third-party sources](docs/third-party-sources.md). Claude Code is downloaded directly from its official registry on first initialization.

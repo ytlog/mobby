@@ -99,6 +99,19 @@ jobs:
           VERSION_CODE: ${{ inputs.version_code }}
         run: ./gradlew :app:assembleRelease -Pmobby.versionName="$VERSION" -Pmobby.versionCode="$VERSION_CODE"
 
+      - name: Package corresponding sources and verify dependency coverage
+        env:
+          VERSION: ${{ inputs.version }}
+        run: python3 runtime/release_sources.py --output "$RUNNER_TEMP/mobby-v${VERSION}-sources.tar.gz"
+
+      - name: Pass corresponding sources to publishing runner
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-sources-${{ github.run_id }}
+          path: ${{ runner.temp }}/mobby-v${{ inputs.version }}-sources.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Encrypt R8 mapping for its offline recipient
         shell: bash
         run: |
@@ -151,6 +164,10 @@ jobs:
         with:
           name: unsigned-apk-${{ github.run_id }}
           path: app/build/outputs/apk/release
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-sources-${{ github.run_id }}
+          path: release-assets
       - name: Sign APK without running project build scripts
         shell: bash
         env:
@@ -182,7 +199,8 @@ jobs:
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep -F "versionCode='$VERSION_CODE' versionName='$VERSION'"
           mkdir -p release-assets
           cp "$apk" "release-assets/mobby-v${VERSION}-arm64-v8a.apk"
-          (cd release-assets && sha256sum *.apk > SHA256SUMS.txt)
+          test -s "release-assets/mobby-v${VERSION}-sources.tar.gz"
+          (cd release-assets && sha256sum *.apk *-sources.tar.gz > SHA256SUMS.txt)
 
       - name: Publish GitHub Release
         env:

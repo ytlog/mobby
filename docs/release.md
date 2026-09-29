@@ -34,7 +34,7 @@ base64 < path/to/release.jks | tr -d '\n'
 
 1. 将待发布代码合入仓库默认分支。到 **Actions → Publish Android release → Run workflow**，选择默认分支；工作流会拒绝从其他分支发布。
 2. 输入 `version`，例如 `0.1.0`；输入递增的正整数 `version_code`，例如 `1`。前者会写入 APK `versionName` 并生成 `v0.1.0` 标签；后者写入 Android `versionCode`，每次覆盖升级都必须高于前一版。同名标签已存在时默认停止。如需重新发布同一版本，勾选 `replace_existing` 并递增 `version_code`；新 APK 构建和校验通过后，工作流替换附件、更新标签到本次提交，并保留原发布说明。
-3. 工作流成功后，在仓库 **Releases** 下载 `mobby-v<版本>-arm64-v8a.apk`，并用 `SHA256SUMS.txt` 校验。失败时不会创建新 Release；先查看失败步骤并修复后重跑。
+3. 工作流成功后，在仓库 **Releases** 下载 `mobby-v<版本>-arm64-v8a.apk`，以及同页的 `mobby-v<版本>-sources.tar.gz`，并用 `SHA256SUMS.txt` 校验两者。源码材料和重建说明见 [第三方源码](third-party-sources.md)。失败时不会创建新 Release；先查看失败步骤并修复后重跑。
 
 仅支持 ARM64 和 Android 8.0 及以上。签名和构建成功不能替代在真实手机上安装、覆盖升级和验证 Shell、Pi、Claude Code、Codex、OpenCode、网关及本地模型；首次发布前应完成这些验收。当前 debug APK 使用 Android 开发签名，通常不能被 release APK 直接覆盖；请先备份需保留的设备数据。
 
@@ -59,3 +59,5 @@ python3 runtime/android-release-smoke.py --serial <设备序列号> --repeat 5 -
 
 
 发布安全与公开前的剩余检查见 [审查记录](public-release-audit.md)。Actions artifact 在公开仓库中可下载，只有加密后的 mapping.txt.age 可以上传；仓库中的接收者不是私钥。构建和签名隔离，不向 Gradle、npm 或项目构建脚本提供签名 secrets。
+
+源码包在没有签名 secrets 的构建 runner 上生成。发布前比较最终包版本、依赖锁文件和源码清单，并校验每份下载归档；缺失、版本漂移或校验失败都会停止，不能只上传 APK。WebKit 使用不可变提交的稀疏检出，源码包仅包含已跟踪的构建源码。

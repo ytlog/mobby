@@ -1,3 +1,4 @@
+// Modified for mobby (2026-09-29): argv execution, process-group cancellation and streamed output.
 /**
  * LibTermux-Android
  * Copyright (c) 2026 AeonCoreX-Lab / cybernahid-dev.

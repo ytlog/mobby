@@ -1,3 +1,4 @@
+// Modified for mobby (2026-09-29): validate executable bootstrap resources and Android installation paths.
 /**
  * LibTermux-Android
  * Copyright (c) 2026 AeonCoreX-Lab / cybernahid-dev.

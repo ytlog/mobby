@@ -80,6 +80,15 @@ class ReleaseConfigurationTest(unittest.TestCase):
         self.assertIn('fetch-depth: 0', checks)
         self.assertIn('git --log-opts=--all --redact', checks)
 
+    def test_release_requires_sources_and_hashes_both_payloads(self):
+        workflow = (ROOT / '.github/workflows/release.yml').read_text()
+        build, publish = workflow.split('  publish:\n', 1)
+        self.assertIn('runtime/release_sources.py --output', build)
+        self.assertIn('release-sources-${{ github.run_id }}', build)
+        self.assertIn('release-sources-${{ github.run_id }}', publish)
+        self.assertIn('test -s "release-assets/mobby-v${VERSION}-sources.tar.gz"', publish)
+        self.assertIn('sha256sum *.apk *-sources.tar.gz', publish)
+
     def test_replacement_publishes_assets_then_moves_tag_and_preserves_notes(self):
         result, calls, _ = self.run_publish("old", "old")
         self.assertEqual(0, result.returncode, result.stderr)

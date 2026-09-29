@@ -33,6 +33,8 @@ class BootstrapTest(unittest.TestCase):
             with zipfile.ZipFile(root / 'out/assets/bootstrap/data.zip') as stream:
                 self.assertEqual(stream.read('etc/config'), b'data')
                 self.assertNotIn('bin/bash', stream.namelist())
+                self.assertEqual(stream.read('share/mobby/licenses/Codex-LICENSE'), (prepare.PROJECT / 'third_party/codex/LICENSE').read_bytes())
+                self.assertEqual(stream.read('share/mobby/licenses/bubblewrap-COPYING'), (prepare.PROJECT / 'third_party/bubblewrap/COPYING').read_bytes())
 
     def test_rebuild_removes_obsolete_native_files(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -111,6 +113,25 @@ class PiPayloadTest(unittest.TestCase):
             (target / 'node_modules/incompatible.node').write_bytes(b'\x7fELFwrong-architecture')
             with self.assertRaisesRegex(ValueError, 'Unexpected native Pi dependency'):
                 add_pi(root, {})
+
+class ExternalClaudePayloadTest(unittest.TestCase):
+    def test_claude_program_is_not_downloaded_or_redistributed_in_apk(self):
+        from unittest.mock import patch
+        from agent_bundle import add_agents
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cache = root / 'cache'; cache.mkdir()
+            (cache / 'agent-launcher').write_bytes(b'\x7fELFlauncher-fixture')
+            (root / 'agent_launcher.c').write_text('fixture launcher')
+            (root / 'agents.lock.json').write_text(json.dumps({'packages': [], 'npm': [{
+                'name': '@anthropic-ai/claude-code', 'delivery': 'device-download',
+                'url': 'https://registry.npmjs.org/claude.tgz', 'integrity': 'sha512-fixture'}]}))
+            files = {}
+            with patch('agent_bundle.checked_download') as download, patch('agent_bundle.subprocess.run'):
+                add_agents(root, files, {}, '/unused-fixture-ndk')
+            download.assert_not_called()
+            self.assertIn('bin/claude', files)
+            self.assertFalse(any('@anthropic-ai/claude-code/' in name for name in files))
 
 class CodexPayloadTest(unittest.TestCase):
     def test_codex_sandbox_program_is_installed_from_the_locked_archive(self):

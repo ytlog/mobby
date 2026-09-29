@@ -1,3 +1,4 @@
+// Modified for mobby (2026-09-29): adapt the sample dependency to the local Android build.
 plugins {
     alias(libs.plugins.android.application)
     // AGP 9.0+ has built-in Kotlin — kotlin.android must NOT be applied here.

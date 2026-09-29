@@ -203,6 +203,8 @@ import kotlinx.coroutines.*
             if (petEnabled && !petPermitted) SettingsCaption(AppStrings.permissionToDisplayOverOtherAppsIsRequired, error = true)
             SettingsGroup {
                 SettingsItem(AppStrings.archivedRecentlyDeleted, { navigate("archived") })
+                GroupDivider()
+                SettingsItem(AppStrings.openSourceLicenses, { navigate("licenses") })
             }
         }
     }

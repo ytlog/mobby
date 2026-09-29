@@ -59,3 +59,5 @@ mobby 让 Pi、Claude Code、Codex、OpenCode 这些 Code Agent 直接在 Androi
 页面问答需要开启桌面悬浮球、悬浮窗权限和屏幕无障碍服务；照片与文件按任务授权。
 
 [构建与使用](getting-started.md) · [网关设置](gateway.md) · [项目文档](README.md) · [MIT 许可证](../LICENSE)
+
+安装包和对应的 `mobby-v<版本>-sources.tar.gz` 在同一 [Release](https://github.com/ytlog/mobby/releases) 下载，使用 `SHA256SUMS.txt` 校验。组件许可证、对应源码、构建补丁和重新链接说明见 [第三方源码](third-party-sources.md)。Claude Code 在首次初始化时由设备直接从官方源下载。

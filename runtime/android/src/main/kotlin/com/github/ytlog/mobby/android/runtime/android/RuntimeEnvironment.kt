@@ -11,8 +11,10 @@ import android.system.Os
 import com.libtermux.*
 import com.libtermux.bootstrap.NativeLibBootstrapProvider
 import com.libtermux.executor.OutputLine
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.*
 import java.io.File
 import java.util.zip.ZipInputStream
@@ -23,6 +25,8 @@ class RuntimeEnvironment(private val context: Context) {
     var dependenciesReady: Boolean = false
         private set
     var opencodeReady: Boolean = false
+        private set
+    var claudeReady: Boolean = false
         private set
     internal val workspaces get() = WorkspaceStore.forContext(context)
     val workspace get() = File(sdk.vfs.homeDir, "workspace")
@@ -68,12 +72,24 @@ class RuntimeEnvironment(private val context: Context) {
         output("Bash ${probe.stdout.lineSequence().drop(1).firstOrNull().orEmpty()}")
         dependenciesReady = true
         opencodeReady = false
+        claudeReady = false
+        var claudeInstalled = false
+        try {
+            output(AppStrings.installingOfficialClaudeCode)
+            claudeInstalled = withTimeoutOrNull(60_000) { ClaudePackageInstaller(sdk.vfs.prefixDir).install(); true } ?: false
+            if (!claudeInstalled) output(AppStrings.claudeCodeDownloadFailed(AppStrings.timedOut))
+        } catch (error: CancellationException) { throw error }
+        catch (error: Exception) { output(AppStrings.claudeCodeDownloadFailed(error.message.orEmpty())) }
         for (name in listOf("git", "node", "npm", "pi", "claude", "codex", "opencode")) {
+            if (name == "claude" && !claudeInstalled) continue
             output(AppStrings.verifying(name))
             val result = sdk.executor.execute("$name --version", workspace)
             if (result.isSuccess && result.stdout.isNotBlank()) {
                 if (name == "opencode") opencodeReady = true
+                if (name == "claude") claudeReady = true
                 output("✓ $name：${result.stdout.lineSequence().first()}")
+            } else if (name == "claude") {
+                output(AppStrings.installationVerificationFailedExitCode(name, result.exitCode, result.stderr.ifBlank { result.stdout }))
             } else if (name == "opencode") {
                 output(AppStrings.opencodeFailedToStartExitCodeClaudeCodeAnd(result.exitCode, result.stderr.ifBlank { result.stdout }))
             } else {
@@ -112,7 +128,7 @@ class RuntimeEnvironment(private val context: Context) {
         val version = context.assets.open("bootstrap/version.txt").bufferedReader().use { it.readText() }
         val marker = File(sdk.vfs.root, ".mobby-bootstrap")
         // Data files remain writable and are not replaced on every launch.
-        val required = listOf("lib/node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js", "lib/node_modules/npm/bin/npm-cli.js", "lib/node_modules/@anthropic-ai/claude-code/cli.js")
+        val required = listOf("lib/node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js", "lib/node_modules/npm/bin/npm-cli.js")
         if (!marker.exists() || marker.readText() != version || required.any { !File(prefix, it).isFile }) {
             output(AppStrings.firstLaunchOrDependencyUpdateInstallingGitNodeJs)
             ZipInputStream(context.assets.open("bootstrap/data.zip")).use { zip ->

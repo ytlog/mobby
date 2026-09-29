@@ -18,8 +18,7 @@
 来源及 SHA-256：runtime/bootstrap.lock.json。
 程序打包来自 Termux 官方 bootstrap-aarch64.zip，保留原始数据与 share/ 中版权文件。
 其程序分别适用各自许可证，不能以 SDK 的 Apache-2.0 许可证替代。
-上游包配方与源码：https://github.com/termux/termux-packages/tree/master/packages
-当前 APK 为本地验证产物；对外分发前需逐包整理许可证及对应源码提供义务。
+最终版本、对应配方提交、源码归档与补丁见 `runtime/release-sources.lock.json`，与 APK 一起发布的源码包见 [源码说明](../docs/third-party-sources.md)。不能用 master 分支替代发布时的对应配方。
 
 ## 自动安装依赖
 
@@ -28,14 +27,18 @@
 应用启动时自动部署数据、链接和 JavaScript CLI，执行版本检查后报告安装状态。
 
 - Pi：官方 npm `@earendil-works/pi-coding-agent` 0.87.1（MIT），源码：[pi-mono](https://github.com/earendil-works/pi-mono)。`runtime/pi-package/package-lock.json` 固定全部传递依赖及 integrity，构建执行 `npm ci --ignore-scripts --omit=optional`；保留依赖中的 LICENSE 和运行资源，排除源码映射及 pi-tui 的桌面原生 TUI 辅助程序。Android RPC 使用内置 Node.js；不运行 npm 生命周期脚本、不纳入其他平台的可选 esbuild 二进制。
-- Claude Code：官方 npm `@anthropic-ai/claude-code` 2.1.112，保留 LICENSE.md。使用 JavaScript 版本配合 Android Node.js；未纳入其他平台的可选音频/图像原生插件。
+- Claude Code：APK 不再内置它的程序或 npm 归档。设备从官方 registry 下载固定 2.1.112，校验 SHA-512，保留官方 LICENSE.md。使用 JavaScript 版本配合 Android Node.js；下载失败不标为可用，不阻断其他 Agent。
 - Codex：官方 npm `@openai/codex` 0.155.1-linux-arm64 的静态 musl CLI。源码与许可证：https://github.com/openai/codex/tree/rust-v0.155.1
 - Codex 配套的 bubblewrap 从同一固定 npm 包提取，安装为 `bin/bwrap` 供官方沙箱启动器发现；未修改二进制或关闭隔离。许可证见 [bubblewrap/COPYING](bubblewrap/COPYING)，对应源码为上述 Codex 固定标签内的 `codex-rs/vendor/bubblewrap`。
-- 两个 npm 包均按锁文件中的 npm SHA-512 integrity 校验。当前仅集成命令行任务所需文件，不包含 Codex 语音组件。
+- Codex 构建下载及 Claude Code 设备下载均按锁文件中的 npm SHA-512 integrity 校验。当前仅集成命令行任务所需文件，不包含 Codex 语音组件。
 - OpenCode：社区包 [C04-wq/opencode-termux](https://github.com/C04-wq/opencode-termux) `v1.18.32-0`（MIT）中的 `opencode-termux-aarch64.tar.gz`。它包含官方 OpenCode 1.18.32 的 ARM64 musl 程序，以及 musl 加载器、libgcc 与 libstdc++。官方程序本身不是 Android 可直接执行的 PIE，因此由本仓库的 `runtime/opencode_launcher.c` 交给随包的静态 musl 加载器启动。未修改这些二进制。
+- OpenCode 内置 Bun 1.3.14，Bun 静态链接的 JavaScriptCore 与 TinyCC 使用 LGPL；相应原文通知、许可证与重建源码一起提供。musl 1.2.5 使用 MIT，Alpine GCC 14.2.0-r4 运行库适用原许可证与 Runtime Library Exception，不能只以社区包 MIT 概括这些库。
+- APK 额外携带 Codex 的 LICENSE/NOTICE、bubblewrap COPYING、OpenCode/社区包许可、Bun 及 LGPL 通知和 GCC 原文，位于 bootstrap 数据包的 `share/mobby/licenses/`。
 - `runtime/agent_launcher.c` 为 npm / npx / Pi / Claude Code 提供 Android 原生入口，参数直接传入 Node.js。
 
 ## 技能元信息解析
+
+Android 的完整运行依赖（含传递依赖）见 `third_party/maven/dependencies.lock.json`。构建按实际依赖保留原始许可和 NOTICE，打包到 App 的“设置 → 开源许可证”页面；该清单不替代各组件原文。
 
 技能导入使用 Maven 依赖 `org.yaml:snakeyaml:2.3`（Apache-2.0），通过 SafeConstructor 读取数据，禁止重复键、集合别名和任意对象构造；不执行导入文件。上游：https://bitbucket.org/snakeyaml/snakeyaml 。依赖由 Gradle 获取，不把构建缓存纳入仓库。
 
@@ -46,6 +49,8 @@
 ## 语音识别
 
 应用内识别使用 [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) 1.13.8（Apache-2.0）的 Android AAR。构建时按固定 SHA-256 获取 AAR；安装包只保留 arm64-v8a 的 JNI 与 ONNX Runtime 库，未使用的 C/C++ API 库不打包，AAR 不提交进仓库。
+
+其中 ONNX Runtime 1.28.2 的 MIT 许可及完整嵌套依赖声明保留在 `third_party/onnxruntime/`，并随 App 离线展示；受 MPL 覆盖的 Eigen 对应源码纳入 Release 源码清单。
 
 流式中文模型 [sherpa-onnx-streaming-zipformer-zh-14M-2023-02-23](https://huggingface.co/csukuangfj/sherpa-onnx-streaming-zipformer-zh-14M-2023-02-23)（Apache-2.0）不放入安装包。首次语音输入时下载官方归档并校验 SHA-256；只提取 int8 encoder、int8 joiner、decoder 和 tokens，随后删除归档。没有第二套本地语音模型或文字整理模型。归档及模型文件不提交进仓库。
 

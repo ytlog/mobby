@@ -1,3 +1,4 @@
+# Modified for mobby (2026-09-29): compile the process-group pipe executor.
 # LibTermux-Android
 # Copyright (c) 2026 AeonCoreX-Lab / cybernahid-dev.
 # Licensed under the Apache License, Version 2.0 (the "License");

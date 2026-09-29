@@ -1,3 +1,4 @@
+// Modified for mobby (2026-09-29): use the host runtime Bash without a com.termux shebang.
 /**
  * LibTermux-Android
  * Copyright (c) 2026 AeonCoreX-Lab / cybernahid-dev.

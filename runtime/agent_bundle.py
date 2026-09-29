@@ -114,14 +114,13 @@ def add_agents(root, files, links, ndk):
                 files[name] = files[safe_name(target)]
                 links.pop(name, None)
     for package in lock['npm']:
+        if package['name'] == '@anthropic-ai/claude-code':
+            if package.get('delivery') != 'device-download':
+                raise ValueError('Claude Code must be downloaded by the device, not bundled')
+            continue
         source = checked_download(package, cache)
         with tarfile.open(source, 'r:gz') as archive:
-            if package['name'] == '@anthropic-ai/claude-code':
-                for member in archive:
-                    name = safe_name(member.name.removeprefix('package/'))
-                    if member.isfile() and not name.startswith('vendor/'):
-                        files['lib/node_modules/@anthropic-ai/claude-code/' + name] = archive.extractfile(member).read()
-            else:
+            if package['name'] == '@openai/codex':
                 # The sandbox launcher searches PATH before package-relative resources.
                 # Keep the official helper available for explicit sandboxed CLI invocations.
                 for source_name, target in [('bin/codex', 'bin/codex'), ('codex-resources/bwrap', 'bin/bwrap')]:

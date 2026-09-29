@@ -144,7 +144,7 @@ class ConversationHostActions(
     BackHandler(route != "conversation") {
         route = when (route) {
             "gateway" -> if (gatewayFromIntro) "conversation" else "settings"
-            "history-limits", "diagnostic", "archived" -> "settings"
+            "history-limits", "diagnostic", "archived", "licenses" -> "settings"
             "plugins" -> "add"
             "app-functions" -> "add"
             "skills" -> "add"
@@ -192,6 +192,7 @@ class ConversationHostActions(
                         "gateway" -> GatewayPage(vm, startAdding = gatewayStartAdding) { route = if (gatewayFromIntro) "conversation" else "settings" }
                         "history-limits" -> EventHistoryPage(actions::eventHistoryLimits, actions::saveEventHistoryLimits) { route = "settings" }
                         "diagnostic" -> DiagnosticPage(vm) { route = "settings" }
+                        "licenses" -> LicensePage { route = "settings" }
                         "archived" -> ArchivedPage(state, vm) { route = "settings" }
                         "skills" -> SkillsPage(vm, onBack = { route = "add" }, onConversation = { route = "conversation" })
                         "plugins" -> PluginPage(vm) { route = "add" }

@@ -136,6 +136,7 @@
   "npm": [
     {
       "name": "@anthropic-ai/claude-code",
+      "delivery": "device-download",
       "version": "2.1.112",
       "url": "https://registry.npmjs.org/@anthropic-ai/claude-code/-/claude-code-2.1.112.tgz",
       "integrity": "sha512-9FUgJ0EOvILyhIqxFKNVliebiUjL68dwpEW3eGSSe0vkVDJ1c5qMDNWc22gW3zkD7zRAqtfQPSGv0t4vMM2DPA=="

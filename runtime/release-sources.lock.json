@@ -1,0 +1,1262 @@
+{
+  "bootstrap_sha256": "1f48f4d05da9fab3ce74fb1d9b137fdbc745ba1f7a6f9e8f743fd89b7047d17b",
+  "agents_lock_sha256": "5c88acebbdad91a3993ad441a1d4088933a9a1f8d03294ae1909c28cc7f8a687",
+  "packages": [
+    {
+      "name": "pcre2",
+      "version": "10.49",
+      "license": "BSD 3-Clause",
+      "recipe": "pcre2",
+      "recipe_commit": "e392c87ee0005397d3b3b9b43576c270bef76cd8",
+      "recipe_source_input": "termux-agent-recipes"
+    },
+    {
+      "name": "libandroid-selinux",
+      "version": "14.0.0.11-1",
+      "license": "Public Domain",
+      "recipe": "libandroid-selinux",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes"
+    },
+    {
+      "name": "libandroid-support",
+      "version": "29-1",
+      "license": "Apache-2.0, MIT",
+      "recipe": "libandroid-support",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes"
+    },
+    {
+      "name": "libc++",
+      "version": "30",
+      "license": "NCSA",
+      "recipe": "libc++",
+      "recipe_commit": "e392c87ee0005397d3b3b9b43576c270bef76cd8",
+      "recipe_source_input": "termux-agent-recipes"
+    },
+    {
+      "name": "libgmp",
+      "version": "6.3.0-2",
+      "license": "LGPL-3.0",
+      "recipe": "libgmp",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes",
+      "source_inputs": [
+        "termux-libgmp-1",
+        "termux-bootstrap-recipes"
+      ]
+    },
+    {
+      "name": "libiconv",
+      "version": "1.19",
+      "license": "LGPL-2.1, GPL-3.0",
+      "recipe": "libiconv",
+      "recipe_commit": "e392c87ee0005397d3b3b9b43576c270bef76cd8",
+      "recipe_source_input": "termux-agent-recipes",
+      "source_inputs": [
+        "termux-libiconv-1",
+        "termux-agent-recipes"
+      ]
+    },
+    {
+      "name": "ca-certificates",
+      "version": "1:2026.09.25",
+      "license": "MPL-2.0",
+      "recipe": "ca-certificates",
+      "recipe_commit": "e392c87ee0005397d3b3b9b43576c270bef76cd8",
+      "recipe_source_input": "termux-agent-recipes"
+    },
+    {
+      "name": "zlib",
+      "version": "1.3.2",
+      "license": "ZLIB",
+      "recipe": "zlib",
+      "recipe_commit": "e392c87ee0005397d3b3b9b43576c270bef76cd8",
+      "recipe_source_input": "termux-agent-recipes"
+    },
+    {
+      "name": "openssl",
+      "version": "1:3.6.3",
+      "license": "Apache-2.0",
+      "recipe": "openssl",
+      "recipe_commit": "e392c87ee0005397d3b3b9b43576c270bef76cd8",
+      "recipe_source_input": "termux-agent-recipes"
+    },
+    {
+      "name": "coreutils",
+      "version": "9.11",
+      "license": "GPL-3.0",
+      "recipe": "coreutils",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes",
+      "source_inputs": [
+        "termux-coreutils-1",
+        "termux-bootstrap-recipes"
+      ]
+    },
+    {
+      "name": "libbz2",
+      "version": "1.0.8-8",
+      "license": "BSD",
+      "recipe": "libbz2",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes"
+    },
+    {
+      "name": "bzip2",
+      "version": "1.0.8-8",
+      "license": "BSD",
+      "recipe": "libbz2",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes"
+    },
+    {
+      "name": "diffutils",
+      "version": "3.12-2",
+      "license": "GPL-3.0",
+      "recipe": "diffutils",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes",
+      "source_inputs": [
+        "termux-diffutils-1",
+        "termux-bootstrap-recipes"
+      ]
+    },
+    {
+      "name": "gzip",
+      "version": "1.14-1",
+      "license": "GPL-3.0",
+      "recipe": "gzip",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes",
+      "source_inputs": [
+        "termux-gzip-1",
+        "termux-bootstrap-recipes"
+      ]
+    },
+    {
+      "name": "ncurses",
+      "version": "6.6.20260307+really6.5.20250830",
+      "license": "MIT",
+      "recipe": "ncurses",
+      "recipe_commit": "e392c87ee0005397d3b3b9b43576c270bef76cd8",
+      "recipe_source_input": "termux-agent-recipes"
+    },
+    {
+      "name": "less",
+      "version": "710",
+      "license": "GPL-3.0, custom",
+      "recipe": "less",
+      "recipe_commit": "e392c87ee0005397d3b3b9b43576c270bef76cd8",
+      "recipe_source_input": "termux-agent-recipes",
+      "source_inputs": [
+        "termux-less-1",
+        "termux-agent-recipes"
+      ]
+    },
+    {
+      "name": "liblzma",
+      "version": "5.8.3",
+      "license": "LGPL-2.1, GPL-2.0, GPL-3.0",
+      "recipe": "liblzma",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes",
+      "source_inputs": [
+        "termux-liblzma-1",
+        "termux-bootstrap-recipes"
+      ]
+    },
+    {
+      "name": "libmd",
+      "version": "1.1.0-1",
+      "license": "custom",
+      "recipe": "libmd",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes"
+    },
+    {
+      "name": "attr",
+      "version": "2.5.2-1",
+      "license": "GPL-2.0",
+      "recipe": "attr",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes",
+      "source_inputs": [
+        "termux-attr-1",
+        "termux-bootstrap-recipes"
+      ]
+    },
+    {
+      "name": "libacl",
+      "version": "2.3.2",
+      "license": "LGPL-2.1, GPL-2.0",
+      "recipe": "libacl",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes",
+      "source_inputs": [
+        "termux-libacl-1",
+        "termux-bootstrap-recipes"
+      ]
+    },
+    {
+      "name": "libandroid-glob",
+      "version": "0.6-3",
+      "license": "BSD 3-Clause",
+      "recipe": "libandroid-glob",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes"
+    },
+    {
+      "name": "tar",
+      "version": "1.35-2",
+      "license": "GPL-3.0",
+      "recipe": "tar",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes",
+      "source_inputs": [
+        "termux-tar-1",
+        "termux-bootstrap-recipes"
+      ]
+    },
+    {
+      "name": "xz-utils",
+      "version": "5.8.3",
+      "license": "LGPL-2.1, GPL-2.0, GPL-3.0",
+      "recipe": "liblzma",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes",
+      "source_inputs": [
+        "termux-liblzma-1",
+        "termux-bootstrap-recipes"
+      ]
+    },
+    {
+      "name": "zstd",
+      "version": "1.5.7-1",
+      "license": "GPL-2.0",
+      "recipe": "zstd",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes",
+      "source_inputs": [
+        "termux-zstd-1",
+        "termux-bootstrap-recipes"
+      ]
+    },
+    {
+      "name": "dpkg",
+      "version": "1.22.6-5",
+      "license": "GPL-2.0",
+      "recipe": "dpkg",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes",
+      "source_inputs": [
+        "termux-dpkg-1",
+        "termux-bootstrap-recipes"
+      ]
+    },
+    {
+      "name": "findutils",
+      "version": "4.10.0-1",
+      "license": "GPL-3.0",
+      "recipe": "findutils",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes",
+      "source_inputs": [
+        "termux-findutils-1",
+        "termux-bootstrap-recipes"
+      ]
+    },
+    {
+      "name": "libgpg-error",
+      "version": "1.58",
+      "license": "LGPL-2.1",
+      "recipe": "libgpg-error",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes",
+      "source_inputs": [
+        "termux-libgpg-error-1",
+        "termux-bootstrap-recipes"
+      ]
+    },
+    {
+      "name": "libassuan",
+      "version": "3.0.2-1",
+      "license": "GPL-2.0",
+      "recipe": "libassuan",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes",
+      "source_inputs": [
+        "termux-libassuan-1",
+        "termux-bootstrap-recipes"
+      ]
+    },
+    {
+      "name": "libgcrypt",
+      "version": "1.11.2-1",
+      "license": "GPL-2.0, LGPL-2.1, BSD 3-Clause, MIT, Public Domain",
+      "recipe": "libgcrypt",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes",
+      "source_inputs": [
+        "termux-libgcrypt-1",
+        "termux-bootstrap-recipes"
+      ]
+    },
+    {
+      "name": "libnpth",
+      "version": "1.6-3",
+      "license": "LGPL-2.0",
+      "recipe": "libnpth",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes",
+      "source_inputs": [
+        "termux-libnpth-1",
+        "termux-bootstrap-recipes"
+      ]
+    },
+    {
+      "name": "gpgv",
+      "version": "2.5.17",
+      "license": "GPL-3.0",
+      "recipe": "gnupg",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes",
+      "source_inputs": [
+        "termux-gnupg-1",
+        "termux-bootstrap-recipes"
+      ]
+    },
+    {
+      "name": "grep",
+      "version": "3.12-3",
+      "license": "GPL-3.0",
+      "recipe": "grep",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes",
+      "source_inputs": [
+        "termux-grep-1",
+        "termux-bootstrap-recipes"
+      ]
+    },
+    {
+      "name": "libnettle",
+      "version": "4.0+really3.10.2",
+      "license": "GPL-2.0, LGPL-3.0",
+      "recipe": "libnettle",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes",
+      "source_inputs": [
+        "termux-libnettle-1",
+        "termux-bootstrap-recipes"
+      ]
+    },
+    {
+      "name": "libunistring",
+      "version": "1.3-1",
+      "license": "LGPL-3.0, GPL-2.0",
+      "recipe": "libunistring",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes",
+      "source_inputs": [
+        "termux-libunistring-1",
+        "termux-bootstrap-recipes"
+      ]
+    },
+    {
+      "name": "libidn2",
+      "version": "2.3.8-1",
+      "license": "LGPL-3.0, GPL-2.0, GPL-3.0",
+      "recipe": "libidn2",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes",
+      "source_inputs": [
+        "termux-libidn2-1",
+        "termux-bootstrap-recipes"
+      ]
+    },
+    {
+      "name": "libevent",
+      "version": "2.1.12-3",
+      "license": "BSD 3-Clause",
+      "recipe": "libevent",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes"
+    },
+    {
+      "name": "libnghttp2",
+      "version": "1.70.0",
+      "license": "MIT",
+      "recipe": "libnghttp2",
+      "recipe_commit": "e392c87ee0005397d3b3b9b43576c270bef76cd8",
+      "recipe_source_input": "termux-agent-recipes"
+    },
+    {
+      "name": "libngtcp2",
+      "version": "1.25.0",
+      "license": "MIT",
+      "recipe": "libngtcp2",
+      "recipe_commit": "e392c87ee0005397d3b3b9b43576c270bef76cd8",
+      "recipe_source_input": "termux-agent-recipes"
+    },
+    {
+      "name": "resolv-conf",
+      "version": "1.3",
+      "license": "Public Domain",
+      "recipe": "resolv-conf",
+      "recipe_commit": "e392c87ee0005397d3b3b9b43576c270bef76cd8",
+      "recipe_source_input": "termux-agent-recipes"
+    },
+    {
+      "name": "libunbound",
+      "version": "1.25.1",
+      "license": "BSD 3-Clause",
+      "recipe": "libunbound",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes"
+    },
+    {
+      "name": "libgnutls",
+      "version": "3.8.11",
+      "license": "LGPL-2.1, GPL-3.0",
+      "recipe": "libgnutls",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes",
+      "source_inputs": [
+        "termux-libgnutls-1",
+        "termux-bootstrap-recipes"
+      ]
+    },
+    {
+      "name": "liblz4",
+      "version": "1.10.0-1",
+      "license": "GPL-2.0",
+      "recipe": "liblz4",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes",
+      "source_inputs": [
+        "termux-liblz4-1",
+        "termux-bootstrap-recipes"
+      ]
+    },
+    {
+      "name": "sed",
+      "version": "4.9-2",
+      "license": "GPL-3.0",
+      "recipe": "sed",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes",
+      "source_inputs": [
+        "termux-sed-1",
+        "termux-bootstrap-recipes"
+      ]
+    },
+    {
+      "name": "termux-keyring",
+      "version": "3.13",
+      "license": "Apache-2.0",
+      "recipe": "termux-keyring",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes"
+    },
+    {
+      "name": "termux-licenses",
+      "version": "2.1",
+      "license": "GPL-3.0",
+      "recipe": "termux-licenses",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes",
+      "source_inputs": [
+        "termux-bootstrap-recipes"
+      ]
+    },
+    {
+      "name": "xxhash",
+      "version": "0.8.3-1",
+      "license": "BSD, GPL-2.0",
+      "recipe": "xxhash",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes",
+      "source_inputs": [
+        "termux-xxhash-1",
+        "termux-bootstrap-recipes"
+      ]
+    },
+    {
+      "name": "apt",
+      "version": "2.8.1-2",
+      "license": "GPL-2.0",
+      "recipe": "apt",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes",
+      "source_inputs": [
+        "termux-apt-1",
+        "termux-bootstrap-recipes"
+      ]
+    },
+    {
+      "name": "readline",
+      "version": "8.3.3",
+      "license": "GPL-3.0",
+      "recipe": "readline",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes",
+      "source_inputs": [
+        "termux-readline-1",
+        "termux-readline-2",
+        "termux-readline-3",
+        "termux-readline-4",
+        "termux-bootstrap-recipes"
+      ]
+    },
+    {
+      "name": "libnghttp3",
+      "version": "1.18.0",
+      "license": "MIT",
+      "recipe": "libnghttp3",
+      "recipe_commit": "e392c87ee0005397d3b3b9b43576c270bef76cd8",
+      "recipe_source_input": "termux-agent-recipes"
+    },
+    {
+      "name": "libssh2",
+      "version": "1.11.1-2",
+      "license": "BSD 3-Clause",
+      "recipe": "libssh2",
+      "recipe_commit": "e392c87ee0005397d3b3b9b43576c270bef76cd8",
+      "recipe_source_input": "termux-agent-recipes"
+    },
+    {
+      "name": "libcurl",
+      "version": "8.22.0",
+      "license": "MIT",
+      "recipe": "libcurl",
+      "recipe_commit": "e392c87ee0005397d3b3b9b43576c270bef76cd8",
+      "recipe_source_input": "termux-agent-recipes"
+    },
+    {
+      "name": "curl",
+      "version": "8.20.0",
+      "license": "MIT",
+      "recipe": "libcurl",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes"
+    },
+    {
+      "name": "dash",
+      "version": "0.5.12-2",
+      "license": "BSD 3-Clause",
+      "recipe": "dash",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes"
+    },
+    {
+      "name": "libmpfr",
+      "version": "4.2.1-1",
+      "license": "LGPL-3.0",
+      "recipe": "libmpfr",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes",
+      "source_inputs": [
+        "termux-libmpfr-1",
+        "termux-bootstrap-recipes"
+      ]
+    },
+    {
+      "name": "gawk",
+      "version": "5.3.2",
+      "license": "GPL-3.0",
+      "recipe": "gawk",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes",
+      "source_inputs": [
+        "termux-gawk-1",
+        "termux-bootstrap-recipes"
+      ]
+    },
+    {
+      "name": "procps",
+      "version": "3.3.17-6",
+      "license": "LGPL-2.0",
+      "recipe": "procps",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes",
+      "source_inputs": [
+        "termux-procps-1",
+        "termux-bootstrap-recipes"
+      ]
+    },
+    {
+      "name": "psmisc",
+      "version": "23.7-1",
+      "license": "GPL-2.0",
+      "recipe": "psmisc",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes",
+      "source_inputs": [
+        "termux-psmisc-1",
+        "termux-bootstrap-recipes"
+      ]
+    },
+    {
+      "name": "termux-am",
+      "version": "0.8.0-2",
+      "license": "Apache-2.0",
+      "recipe": "termux-am",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes"
+    },
+    {
+      "name": "termux-am-socket",
+      "version": "1.5.0-1",
+      "license": "GPL-3.0",
+      "recipe": "termux-am-socket",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes",
+      "source_inputs": [
+        "termux-termux-am-socket-1",
+        "termux-bootstrap-recipes"
+      ]
+    },
+    {
+      "name": "termux-core",
+      "version": "0.4.0-1",
+      "license": "MIT",
+      "recipe": "termux-core",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes"
+    },
+    {
+      "name": "termux-exec",
+      "version": "1:2.4.0-1",
+      "license": "Apache-2.0",
+      "recipe": "termux-exec",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes"
+    },
+    {
+      "name": "libandroid-posix-semaphore",
+      "version": "0.1-4",
+      "license": "MIT",
+      "recipe": "libandroid-posix-semaphore",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes"
+    },
+    {
+      "name": "libcap-ng",
+      "version": "2:0.9.3",
+      "license": "LGPL-2.1",
+      "recipe": "libcap-ng",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes",
+      "source_inputs": [
+        "termux-libcap-ng-1",
+        "termux-bootstrap-recipes"
+      ]
+    },
+    {
+      "name": "libsmartcols",
+      "version": "2.41.3",
+      "license": "GPL-3.0-or-later, GPL-2.0-or-later, LGPL-2.1-or-later, BSD 3-Clause, BSD, ISC",
+      "recipe": "util-linux",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes",
+      "source_inputs": [
+        "termux-util-linux-1",
+        "termux-bootstrap-recipes"
+      ]
+    },
+    {
+      "name": "util-linux",
+      "version": "2.41.3",
+      "license": "GPL-3.0-or-later, GPL-2.0-or-later, LGPL-2.1-or-later, BSD 3-Clause, BSD, ISC",
+      "recipe": "util-linux",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes",
+      "source_inputs": [
+        "termux-util-linux-1",
+        "termux-bootstrap-recipes"
+      ]
+    },
+    {
+      "name": "dialog",
+      "version": "1.3-20260107-1",
+      "license": "LGPL-2.1",
+      "recipe": "dialog",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes",
+      "source_inputs": [
+        "termux-dialog-1",
+        "termux-bootstrap-recipes"
+      ]
+    },
+    {
+      "name": "termux-tools",
+      "version": "1.46.0+really1.45.0-1",
+      "license": "GPL-3.0",
+      "recipe": "termux-tools",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes",
+      "source_inputs": [
+        "termux-termux-tools-1",
+        "termux-bootstrap-recipes"
+      ]
+    },
+    {
+      "name": "bash",
+      "version": "5.3.9",
+      "license": "GPL-3.0",
+      "recipe": "bash",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes",
+      "source_inputs": [
+        "termux-bash-1",
+        "termux-bash-2",
+        "termux-bash-3",
+        "termux-bash-4",
+        "termux-bash-5",
+        "termux-bash-6",
+        "termux-bash-7",
+        "termux-bash-8",
+        "termux-bash-9",
+        "termux-bash-10",
+        "termux-bootstrap-recipes"
+      ]
+    },
+    {
+      "name": "command-not-found",
+      "version": "3.4.1-10",
+      "license": "Apache-2.0",
+      "recipe": "command-not-found",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes"
+    },
+    {
+      "name": "ed",
+      "version": "1.22.5",
+      "license": "GPL-2.0",
+      "recipe": "ed",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes",
+      "source_inputs": [
+        "termux-ed-1",
+        "termux-bootstrap-recipes"
+      ]
+    },
+    {
+      "name": "debianutils",
+      "version": "5.23.2-1",
+      "license": "GPL-2.0",
+      "recipe": "debianutils",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes",
+      "source_inputs": [
+        "termux-debianutils-1",
+        "termux-bootstrap-recipes"
+      ]
+    },
+    {
+      "name": "dos2unix",
+      "version": "7.5.5",
+      "license": "BSD 2-Clause",
+      "recipe": "dos2unix",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes"
+    },
+    {
+      "name": "inetutils",
+      "version": "2.7",
+      "license": "GPL-3.0",
+      "recipe": "inetutils",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes",
+      "source_inputs": [
+        "termux-inetutils-1",
+        "termux-bootstrap-recipes"
+      ]
+    },
+    {
+      "name": "libtirpc",
+      "version": "1.3.7-1",
+      "license": "BSD",
+      "recipe": "libtirpc",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes"
+    },
+    {
+      "name": "lsof",
+      "version": "4.99.6",
+      "license": "custom",
+      "recipe": "lsof",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes"
+    },
+    {
+      "name": "nano",
+      "version": "9.0",
+      "license": "GPL-3.0",
+      "recipe": "nano",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes",
+      "source_inputs": [
+        "termux-nano-1",
+        "termux-bootstrap-recipes"
+      ]
+    },
+    {
+      "name": "net-tools",
+      "version": "2.10.0-1",
+      "license": "GPL-2.0",
+      "recipe": "net-tools",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes",
+      "source_inputs": [
+        "termux-net-tools-1",
+        "termux-bootstrap-recipes"
+      ]
+    },
+    {
+      "name": "patch",
+      "version": "2.8-1",
+      "license": "GPL-2.0",
+      "recipe": "patch",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes",
+      "source_inputs": [
+        "termux-patch-1",
+        "termux-bootstrap-recipes"
+      ]
+    },
+    {
+      "name": "unzip",
+      "version": "6.0-10",
+      "license": "BSD",
+      "recipe": "unzip",
+      "recipe_commit": "3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "recipe_source_input": "termux-bootstrap-recipes"
+    },
+    {
+      "name": "c-ares",
+      "version": "1.34.8",
+      "license": "MIT",
+      "recipe": "c-ares",
+      "recipe_commit": "e392c87ee0005397d3b3b9b43576c270bef76cd8",
+      "recipe_source_input": "termux-agent-recipes"
+    },
+    {
+      "name": "git",
+      "version": "2.55.0",
+      "license": "GPL-2.0",
+      "recipe": "git",
+      "recipe_commit": "e392c87ee0005397d3b3b9b43576c270bef76cd8",
+      "recipe_source_input": "termux-agent-recipes",
+      "source_inputs": [
+        "termux-git-1",
+        "termux-agent-recipes"
+      ]
+    },
+    {
+      "name": "libexpat",
+      "version": "2.8.5",
+      "license": "MIT",
+      "recipe": "libexpat",
+      "recipe_commit": "e392c87ee0005397d3b3b9b43576c270bef76cd8",
+      "recipe_source_input": "termux-agent-recipes"
+    },
+    {
+      "name": "libicu",
+      "version": "78.3",
+      "license": "custom",
+      "recipe": "libicu",
+      "recipe_commit": "e392c87ee0005397d3b3b9b43576c270bef76cd8",
+      "recipe_source_input": "termux-agent-recipes"
+    },
+    {
+      "name": "libsqlite",
+      "version": "3.53.4",
+      "license": "Public Domain",
+      "recipe": "libsqlite",
+      "recipe_commit": "e392c87ee0005397d3b3b9b43576c270bef76cd8",
+      "recipe_source_input": "termux-agent-recipes"
+    },
+    {
+      "name": "nodejs-lts",
+      "version": "24.18.0-1",
+      "license": "MIT",
+      "recipe": "nodejs-lts",
+      "recipe_commit": "e392c87ee0005397d3b3b9b43576c270bef76cd8",
+      "recipe_source_input": "termux-agent-recipes"
+    },
+    {
+      "name": "npm",
+      "version": "11.20.0",
+      "license": "Artistic-License-2.0",
+      "recipe": "npm",
+      "recipe_commit": "e392c87ee0005397d3b3b9b43576c270bef76cd8",
+      "recipe_source_input": "termux-agent-recipes"
+    },
+    {
+      "name": "ripgrep",
+      "version": "15.2.0",
+      "license": "MIT",
+      "recipe": "ripgrep",
+      "recipe_commit": "e392c87ee0005397d3b3b9b43576c270bef76cd8",
+      "recipe_source_input": "termux-agent-recipes"
+    }
+  ],
+  "inputs": [
+    {
+      "name": "termux-libgmp-1",
+      "url": "https://mirrors.kernel.org/gnu/gmp/gmp-6.3.0.tar.xz",
+      "sha256": "a3c2b80201b89e68616f4ad30bc66aee4927c3ce50e33929ca819d5c43538898"
+    },
+    {
+      "name": "termux-libiconv-1",
+      "url": "https://mirrors.kernel.org/gnu/libiconv/libiconv-1.19.tar.gz",
+      "sha256": "88dd96a8c0464eca144fc791ae60cd31cd8ee78321e67397e25fc095c4a19aa6"
+    },
+    {
+      "name": "termux-coreutils-1",
+      "url": "https://mirrors.kernel.org/gnu/coreutils/coreutils-9.11.tar.xz",
+      "sha256": "394024eda0a5955217ceda9cd1201e65dc8fa3aa29c2951135a49521d57c3cc3"
+    },
+    {
+      "name": "termux-diffutils-1",
+      "url": "https://mirrors.kernel.org/gnu/diffutils/diffutils-3.12.tar.xz",
+      "sha256": "7c8b7f9fc8609141fdea9cece85249d308624391ff61dedaf528fcb337727dfd"
+    },
+    {
+      "name": "termux-gzip-1",
+      "url": "https://mirrors.kernel.org/gnu/gzip/gzip-1.14.tar.xz",
+      "sha256": "01a7b881bd220bfdf615f97b8718f80bdfd3f6add385b993dcf6efd14e8c0ac6"
+    },
+    {
+      "name": "termux-less-1",
+      "url": "https://www.greenwoodsoftware.com/less/less-710.tar.gz",
+      "sha256": "d1008fb78dcae1323ddab664bcb352a61f022b1b131bd8018548e021d975ec7a"
+    },
+    {
+      "name": "termux-liblzma-1",
+      "url": "https://github.com/tukaani-project/xz/releases/download/v5.8.3/xz-5.8.3.tar.xz",
+      "sha256": "fff1ffcf2b0da84d308a14de513a1aa23d4e9aa3464d17e64b9714bfdd0bbfb6"
+    },
+    {
+      "name": "termux-attr-1",
+      "url": "https://download.savannah.gnu.org/releases/attr/attr-2.5.2.tar.gz",
+      "sha256": "39bf67452fa41d0948c2197601053f48b3d78a029389734332a6309a680c6c87"
+    },
+    {
+      "name": "termux-libacl-1",
+      "url": "https://download.savannah.gnu.org/releases/acl/acl-2.3.2.tar.gz",
+      "sha256": "5f2bdbad629707aa7d85c623f994aa8a1d2dec55a73de5205bac0bf6058a2f7c"
+    },
+    {
+      "name": "termux-tar-1",
+      "url": "https://mirrors.kernel.org/gnu/tar/tar-1.35.tar.xz",
+      "sha256": "4d62ff37342ec7aed748535323930c7cf94acf71c3591882b26a7ea50f3edc16"
+    },
+    {
+      "name": "termux-zstd-1",
+      "url": "https://github.com/facebook/zstd/archive/refs/tags/v1.5.7.tar.gz",
+      "sha256": "37d7284556b20954e56e1ca85b80226768902e2edabd3b649e9e72c0c9012ee3"
+    },
+    {
+      "name": "termux-dpkg-1",
+      "url": "https://salsa.debian.org/dpkg-team/dpkg/-/archive/1.22.6/dpkg-1.22.6.tar.gz",
+      "sha256": "6a75af618c58d83932c3e0ae5259ffc9168b0f024026bcbc8215ed9aa7594e94"
+    },
+    {
+      "name": "termux-findutils-1",
+      "url": "https://mirrors.kernel.org/gnu/findutils/findutils-4.10.0.tar.xz",
+      "sha256": "1387e0b67ff247d2abde998f90dfbf70c1491391a59ddfecb8ae698789f0a4f5"
+    },
+    {
+      "name": "termux-libgpg-error-1",
+      "url": "https://www.gnupg.org/ftp/gcrypt/libgpg-error/libgpg-error-1.58.tar.bz2",
+      "sha256": "f943aea9a830a8bd938e5124b579efaece24a3225ff4c3d27611a80ce1260c27"
+    },
+    {
+      "name": "termux-libassuan-1",
+      "url": "https://www.gnupg.org/ftp/gcrypt/libassuan/libassuan-3.0.2.tar.bz2",
+      "sha256": "d2931cdad266e633510f9970e1a2f346055e351bb19f9b78912475b8074c36f6"
+    },
+    {
+      "name": "termux-libgcrypt-1",
+      "url": "https://www.gnupg.org/ftp/gcrypt/libgcrypt/libgcrypt-1.11.2.tar.bz2",
+      "sha256": "6ba59dd192270e8c1d22ddb41a07d95dcdbc1f0fb02d03c4b54b235814330aac"
+    },
+    {
+      "name": "termux-libnpth-1",
+      "url": "https://www.gnupg.org/ftp/gcrypt/npth/npth-1.6.tar.bz2",
+      "sha256": "1393abd9adcf0762d34798dc34fdcf4d0d22a8410721e76f1e3afcd1daa4e2d1"
+    },
+    {
+      "name": "termux-gnupg-1",
+      "url": "https://www.gnupg.org/ftp/gcrypt/gnupg/gnupg-2.5.17.tar.bz2",
+      "sha256": "2c1fbe20e2958fd8fb53cf37d7c38e84a900edc0d561a1c4af4bc3a10888685d"
+    },
+    {
+      "name": "termux-grep-1",
+      "url": "https://mirrors.kernel.org/gnu/grep/grep-3.12.tar.xz",
+      "sha256": "2649b27c0e90e632eadcd757be06c6e9a4f48d941de51e7c0f83ff76408a07b9"
+    },
+    {
+      "name": "termux-libnettle-1",
+      "url": "https://mirrors.kernel.org/gnu/nettle/nettle-3.10.2.tar.gz",
+      "sha256": "fe9ff51cb1f2abb5e65a6b8c10a92da0ab5ab6eaf26e7fc2b675c45f1fb519b5"
+    },
+    {
+      "name": "termux-libunistring-1",
+      "url": "https://mirrors.kernel.org/gnu/libunistring/libunistring-1.3.tar.xz",
+      "sha256": "f245786c831d25150f3dfb4317cda1acc5e3f79a5da4ad073ddca58886569527"
+    },
+    {
+      "name": "termux-libidn2-1",
+      "url": "https://mirrors.kernel.org/gnu/libidn/libidn2-2.3.8.tar.gz",
+      "sha256": "f557911bf6171621e1f72ff35f5b1825bb35b52ed45325dcdee931e5d3c0787a"
+    },
+    {
+      "name": "termux-libgnutls-1",
+      "url": "https://www.gnupg.org/ftp/gcrypt/gnutls/v3.8/gnutls-3.8.11.tar.xz",
+      "sha256": "91bd23c4a86ebc6152e81303d20cf6ceaeb97bc8f84266d0faec6e29f17baa20"
+    },
+    {
+      "name": "termux-liblz4-1",
+      "url": "https://github.com/lz4/lz4/archive/refs/tags/v1.10.0.tar.gz",
+      "sha256": "537512904744b35e232912055ccf8ec66d768639ff3abe5788d90d792ec5f48b"
+    },
+    {
+      "name": "termux-sed-1",
+      "url": "https://mirrors.kernel.org/gnu/sed/sed-4.9.tar.xz",
+      "sha256": "6e226b732e1cd739464ad6862bd1a1aba42d7982922da7a53519631d24975181"
+    },
+    {
+      "name": "termux-xxhash-1",
+      "url": "https://github.com/Cyan4973/xxHash/archive/refs/tags/v0.8.3.tar.gz",
+      "sha256": "aae608dfe8213dfd05d909a57718ef82f30722c392344583d3f39050c7f29a80"
+    },
+    {
+      "name": "termux-apt-1",
+      "url": "https://salsa.debian.org/apt-team/apt/-/archive/2.8.1/apt-2.8.1.tar.bz2",
+      "sha256": "87ca18392c10822a133b738118505f7d04e0b31ba1122bf5d32911311cb2dc7e"
+    },
+    {
+      "name": "termux-readline-1",
+      "url": "https://mirrors.kernel.org/gnu/readline/readline-8.3.tar.gz",
+      "sha256": "fe5383204467828cd495ee8d1d3c037a7eba1389c22bc6a041f627976f9061cc"
+    },
+    {
+      "name": "termux-readline-2",
+      "url": "https://mirrors.kernel.org/gnu/readline/readline-8.3-patches/readline83-001",
+      "sha256": "21f0a03106dbe697337cd25c70eb0edbaa2bdb6d595b45f83285cdd35bac84de"
+    },
+    {
+      "name": "termux-readline-3",
+      "url": "https://mirrors.kernel.org/gnu/readline/readline-8.3-patches/readline83-002",
+      "sha256": "e27364396ba9f6debf7cbaaf1a669e2b2854241ae07f7eca74ca8a8ba0c97472"
+    },
+    {
+      "name": "termux-readline-4",
+      "url": "https://mirrors.kernel.org/gnu/readline/readline-8.3-patches/readline83-003",
+      "sha256": "72dee13601ce38f6746eb15239999a7c56f8e1ff5eb1ec8153a1f213e4acdb29"
+    },
+    {
+      "name": "termux-libmpfr-1",
+      "url": "https://mirrors.kernel.org/gnu/mpfr/mpfr-4.2.1.tar.xz",
+      "sha256": "277807353a6726978996945af13e52829e3abd7a9a5b7fb2793894e18f1fcbb2"
+    },
+    {
+      "name": "termux-gawk-1",
+      "url": "https://mirrors.kernel.org/gnu/gawk/gawk-5.3.2.tar.xz",
+      "sha256": "f8c3486509de705192138b00ef2c00bbbdd0e84c30d5c07d23fc73a9dc4cc9cc"
+    },
+    {
+      "name": "termux-procps-1",
+      "url": "https://sourceforge.net/projects/procps-ng/files/Production/procps-ng-3.3.17.tar.xz",
+      "sha256": "4518b3e7aafd34ec07d0063d250fd474999b20b200218c3ae56f5d2113f141b4"
+    },
+    {
+      "name": "termux-psmisc-1",
+      "url": "https://fossies.org/linux/misc/psmisc-23.7.tar.xz",
+      "sha256": "58c55d9c1402474065adae669511c191de374b0871eec781239ab400b907c327"
+    },
+    {
+      "name": "termux-termux-am-socket-1",
+      "url": "https://github.com/termux/termux-am-socket/archive/refs/tags/1.5.0.tar.gz",
+      "sha256": "5175023c7fd675492451a72d06b75c772f257685b69fe117227bae5a5e6f5494"
+    },
+    {
+      "name": "termux-libcap-ng-1",
+      "url": "https://github.com/stevegrubb/libcap-ng/archive/refs/tags/v0.9.3.tar.gz",
+      "sha256": "fe11ebbb55904763b3532f19069f13ec319042634620180a03bd4653d301563e"
+    },
+    {
+      "name": "termux-util-linux-1",
+      "url": "https://www.kernel.org/pub/linux/utils/util-linux/v2.41/util-linux-2.41.3.tar.xz",
+      "sha256": "3330d873f0fceb5560b89a7dc14e4f3288bbd880e96903ed9b50ec2b5799e58b"
+    },
+    {
+      "name": "termux-dialog-1",
+      "url": "https://invisible-island.net/archives/dialog/dialog-1.3-20260107.tgz",
+      "sha256": "78b3dd18d95e50f0be8f9b9c1e7cffe28c9bf1cdf20d5b3ef17279c4da35c5b5"
+    },
+    {
+      "name": "termux-termux-tools-1",
+      "url": "https://github.com/termux/termux-tools/archive/refs/tags/v1.45.0.tar.gz",
+      "sha256": "1ae29b1b875d95cc626dae323b45a2ace759969862d96094b2fa6d13bffe20d2"
+    },
+    {
+      "name": "termux-bash-1",
+      "url": "https://mirrors.kernel.org/gnu/bash/bash-5.3.tar.gz",
+      "sha256": "0d5cd86965f869a26cf64f4b71be7b96f90a3ba8b3d74e27e8e9d9d5550f31ba"
+    },
+    {
+      "name": "termux-bash-2",
+      "url": "https://mirrors.kernel.org/gnu/bash/bash-5.3-patches/bash53-001",
+      "sha256": "1f608434364af86b9b45c8b0ea3fb3b165fb830d27697e6cdfc7ac17dee3287f"
+    },
+    {
+      "name": "termux-bash-3",
+      "url": "https://mirrors.kernel.org/gnu/bash/bash-5.3-patches/bash53-002",
+      "sha256": "e385548a00130765ec7938a56fbdca52447ab41fabc95a25f19ade527e282001"
+    },
+    {
+      "name": "termux-bash-4",
+      "url": "https://mirrors.kernel.org/gnu/bash/bash-5.3-patches/bash53-003",
+      "sha256": "f245d9c7dc3f5a20d84b53d249334747940936f09dc97e1dcb89fc3ab37d60ed"
+    },
+    {
+      "name": "termux-bash-5",
+      "url": "https://mirrors.kernel.org/gnu/bash/bash-5.3-patches/bash53-004",
+      "sha256": "9591d245045529f32f0812f94180b9d9ce9023f5a765c039b852e5dfc99747d0"
+    },
+    {
+      "name": "termux-bash-6",
+      "url": "https://mirrors.kernel.org/gnu/bash/bash-5.3-patches/bash53-005",
+      "sha256": "cca1ef52dbbf433bc98e33269b64b2c814028efe2538be1e2c9a377da90bc99d"
+    },
+    {
+      "name": "termux-bash-7",
+      "url": "https://mirrors.kernel.org/gnu/bash/bash-5.3-patches/bash53-006",
+      "sha256": "29119addefed8eff91ae37fd51822c31780ee30d4a28376e96002706c995ff10"
+    },
+    {
+      "name": "termux-bash-8",
+      "url": "https://mirrors.kernel.org/gnu/bash/bash-5.3-patches/bash53-007",
+      "sha256": "c0976bbfffa1453c7cfdd62058f206a318568ff2d690f5d4fa048793fa3eb299"
+    },
+    {
+      "name": "termux-bash-9",
+      "url": "https://mirrors.kernel.org/gnu/bash/bash-5.3-patches/bash53-008",
+      "sha256": "097cd723cbfb8907674ac32214063a3fd85282657ec5b4e544d2c0f719653fb4"
+    },
+    {
+      "name": "termux-bash-10",
+      "url": "https://mirrors.kernel.org/gnu/bash/bash-5.3-patches/bash53-009",
+      "sha256": "eee30fe78a4b0cb2fe20e010e00308899cfc613e0774ebb3c8557a1552f24f8c"
+    },
+    {
+      "name": "termux-ed-1",
+      "url": "https://mirrors.kernel.org/gnu/ed/ed-1.22.5.tar.lz",
+      "sha256": "56e107ddc2f29dad6690376c15bf9751509e1ee3b8241710e44edbe5c3a158cc"
+    },
+    {
+      "name": "termux-debianutils-1",
+      "url": "https://deb.debian.org/debian/pool/main/d/debianutils/debianutils_5.23.2.tar.xz",
+      "sha256": "79e524b7526dba2ec5c409d0ee52ebec135815cf5b2907375d444122e0594b69"
+    },
+    {
+      "name": "termux-inetutils-1",
+      "url": "https://mirrors.kernel.org/gnu/inetutils/inetutils-2.7.tar.gz",
+      "sha256": "a156be1cde3c5c0ffefc262180d9369a60484087907aa554c62787d2f40ec086"
+    },
+    {
+      "name": "termux-nano-1",
+      "url": "https://www.nano-editor.org/dist/v9/nano-9.0.tar.xz",
+      "sha256": "9f384374b496110a25b73ad5a5febb384783c6e3188b37063f677ac908013fde"
+    },
+    {
+      "name": "termux-net-tools-1",
+      "url": "https://sourceforge.net/projects/net-tools/files/net-tools-2.10.tar.xz",
+      "sha256": "b262435a5241e89bfa51c3cabd5133753952f7a7b7b93f32e08cb9d96f580d69"
+    },
+    {
+      "name": "termux-patch-1",
+      "url": "https://mirrors.kernel.org/gnu/patch/patch-2.8.tar.xz",
+      "sha256": "f87cee69eec2b4fcbf60a396b030ad6aa3415f192aa5f7ee84cad5e11f7f5ae3"
+    },
+    {
+      "name": "termux-git-1",
+      "url": "https://mirrors.kernel.org/pub/software/scm/git/git-2.55.0.tar.xz",
+      "sha256": "457fdb04dc8728e007d4688695e6912e6f680727920f2a40bf11eacc17505357"
+    },
+    {
+      "name": "termux-bootstrap-recipes",
+      "url": "https://codeload.github.com/termux/termux-packages/tar.gz/3326a2db3ffdc2920d99376e990f17ca9151b5d2",
+      "sha256": "d3b42633d1ebeb8bb6527b46f7bc6acf9a6364880fada16136194ce068cefcc4"
+    },
+    {
+      "name": "termux-agent-recipes",
+      "url": "https://codeload.github.com/termux/termux-packages/tar.gz/e392c87ee0005397d3b3b9b43576c270bef76cd8",
+      "sha256": "1f7f54d1b468ae4adaa7947d060ee3ceaa0186329e2c3469c9156eec92105479"
+    },
+    {
+      "name": "codex",
+      "url": "https://codeload.github.com/openai/codex/tar.gz/refs/tags/rust-v0.155.1",
+      "sha256": "b9e18d40d322586913e94d6747f3f934922c4f5130eb5a349ba019c57b83dad8"
+    },
+    {
+      "name": "opencode-termux",
+      "url": "https://codeload.github.com/C04-wq/opencode-termux/tar.gz/refs/tags/v1.18.32-0",
+      "sha256": "41c96f82efdfa58e40cc2bd5b7615ed9b1c9690eb0cda4e16e67fca5b5ed202a"
+    },
+    {
+      "name": "bun",
+      "url": "https://codeload.github.com/oven-sh/bun/tar.gz/refs/tags/bun-v1.3.14",
+      "sha256": "112a5915992807f04b183854d360c2bf87ac7c1587fb5da3c560bdbb75b8c92e"
+    },
+    {
+      "name": "alpine-gcc-recipes",
+      "url": "https://codeload.github.com/alpinelinux/aports/tar.gz/1a03a2a9c9e77f1a07d48b6f6805e72c8c63c03f",
+      "sha256": "fa78002197d55fe1c360efcbba9d6e914ec171987648f388b04a161740d15f22"
+    },
+    {
+      "name": "gcc",
+      "url": "https://gcc.gnu.org/pub/gcc/releases/gcc-14.2.0/gcc-14.2.0.tar.xz",
+      "sha256": "a7b39bc69cbf9e25826c5a60ab26477001f7c08d85cec04bc0e29cabed6f3cc9"
+    },
+    {
+      "name": "musl",
+      "url": "https://musl.libc.org/releases/musl-1.2.5.tar.gz",
+      "sha256": "a9a118bbe84d8764da0ea0d28b3ab3fae8477fc7e4085d90102b8596fc7c75e4"
+    },
+    {
+      "name": "opencode",
+      "url": "https://codeload.github.com/anomalyco/opencode/tar.gz/545f51d26cc39a907d2867492d498d9607ea5fa4",
+      "sha256": "9c7ae695989dd2db9641ff0ba1c151db45c953539d76a03ac6472a97c81fb53c"
+    },
+    {
+      "name": "tinycc",
+      "url": "https://codeload.github.com/oven-sh/tinycc/tar.gz/12882eee073cfe5c7621bcfadf679e1372d4537b",
+      "sha256": "6b50485fcbbfa90a99c56e8e2b6a92014dcd34377d5edb23e1938dc9ec96f0aa"
+    },
+    {
+      "name": "llama.cpp",
+      "url": "https://codeload.github.com/ggml-org/llama.cpp/tar.gz/a72e04abe0fe9b36e203033ac71bd5f379c35bc5",
+      "sha256": "305d1925e5922f3697fb59f21601d87a2c6cbe4712224f1cfafb23f4c0e03061"
+    },
+    {
+      "name": "onnxruntime-eigen",
+      "url": "https://github.com/eigen-mirror/eigen/archive/1d8b82b0740839c0de7f1242a3585e3390ff5f33/eigen-1d8b82b0740839c0de7f1242a3585e3390ff5f33.zip",
+      "sha256": "6a60d76351f97132669daeeb721d6bf14b008101883ad2d687a3201c5c461eb0"
+    }
+  ],
+  "webkit": {
+    "commit": "5488984d20e0dbfe4be2c3ba8fb18eb81a5e0e8b",
+    "repository": "https://github.com/oven-sh/WebKit",
+    "source_directories": [
+      "Source",
+      "Tools",
+      "WebKitLibraries",
+      ".github"
+    ]
+  }
+}

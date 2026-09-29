@@ -63,6 +63,7 @@ internal class AndroidRuntimePorts(
             AgentCapability(agent, models,
                 unavailableReason = when {
                     state.value.phase != EnvironmentPhase.READY -> RuntimeError(ErrorCode.NOT_READY, true)
+                    agent == AgentId.CLAUDE_CODE && !runtime.claudeReady -> RuntimeError(ErrorCode.NOT_READY, true)
                     agent == AgentId.OPEN_CODE && !runtime.opencodeReady -> RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY)
                     configs.isEmpty() -> RuntimeError(ErrorCode.INVALID_CONFIG)
                     else -> null
@@ -109,6 +110,7 @@ internal class AndroidRuntimePorts(
         catch (_: java.io.FileNotFoundException) { return@withContext RuntimeError(ErrorCode.RESOURCE_MISSING) }
         catch (_: Exception) { return@withContext RuntimeError(ErrorCode.INVALID_CONFIG) }
         val mode = mode(request.agentId)
+        if (request.agentId == AgentId.CLAUDE_CODE && !runtime.claudeReady) return@withContext RuntimeError(ErrorCode.NOT_READY, true)
         if (request.agentId == AgentId.OPEN_CODE && !runtime.opencodeReady) return@withContext RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY)
         if (request.sessionRef?.value?.matches(AgentSessionId) == false) return@withContext RuntimeError(ErrorCode.INVALID_CONFIG)
         val valid = runCatching {

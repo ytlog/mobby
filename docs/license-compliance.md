@@ -1,0 +1,39 @@
+# 第三方许可的处理规则与当前实现
+
+## 法律与许可条款
+
+开源软件仍受著作权保护。以中国法为例，《著作权法》第十条规定复制、发行等权利，第二十六条规定使用他人作品的许可规则；取得开源许可意味着在该许可条件内使用，并不意味着放弃版权。[国家版权局公布的法律原文](https://www.ncac.gov.cn/xxfb/flfg/flfg_532/202103/t20210309_50530.html)
+
+分发时具体需要保留哪些材料，取决于组件的许可版本、是否修改、链接与组合方式，而非组件是否“引用自 GitHub”。
+
+| 许可 | 分发时需处理的核心内容 | 是否统一强制 App 界面列出 |
+| --- | --- | --- |
+| MIT | 保留原版权声明和完整许可条件、免责声明；只写 MIT 或仓库链接不足以替代 | 未统一规定必须做设置页 |
+| BSD-2/3-Clause | 源码保留声明；二进制的随附材料保留版权、条件与免责声明；BSD-3 另有限制背书条款 | 可在随附文档或材料中保留 |
+| Apache-2.0 | 提供许可副本；保留适用的原 NOTICE；修改的原文件带明显修改说明；源码保留适用声明 | NOTICE 可在随附 NOTICE、文档或界面中保留，不是必须启动弹窗 |
+| GPL | 保留许可与声明，按对应版本提供完整对应源码、构建脚本及修改材料；组合/衍生作品还需审查许可范围 | 某些交互界面的法律通知义务与是否修改、上游界面有关，不能一概而论 |
+| LGPL | 保留许可与声明、库源码；静态链接时还需提供能修改库并重新链接所需的使用方材料，不能只写 LGPL | 设置页不能代替源码及重新链接条件 |
+| MPL-2.0 | 对受 MPL 覆盖的文件提供对应源码及获取方式，保留通知；范围通常按文件判断 | 告知接收者源码获取方式，不等于强制全部 App 改许可 |
+| 专有许可 | 先核对是否有再分发授权；署名或放许可文本不能自行创造授权 | 按其实际许可处理 |
+
+依据：[MIT 原文](https://opensource.org/license/mit)、[BSD-3 原文](https://opensource.org/license/bsd-3-clause)、[Apache-2.0 第 4 条](https://www.apache.org/licenses/LICENSE-2.0)、[GPLv3 第 5、6 条](https://gcc.gnu.org/onlinedocs/libstdc++/manual/appendix_gpl.html)、[LGPL-2.1 第 6 条](https://www.gnu.org/licenses/old-licenses/lgpl-2.1.en.html)、[MPL-2.0 第 3 条](https://www.mozilla.org/en-US/MPL/2.0/)。不能把所有 GPL/LGPL 版本、例外条款或组合方式混为一谈。
+
+## 本项目采用的三处保留
+
+1. **App 中**：设置 → 开源许可证。离线显示原版权、许可与 NOTICE，提供同版本 Release 的对应源码入口及 Claude Code 官方许可入口。无需先初始化 Agent 或登录网关。
+2. **仓库中**：`third_party/` 保留原文通知与必要的许可副本；`third_party/maven/dependencies.lock.json` 记录经审查的 Android 运行依赖；`runtime/release-sources.lock.json` 记录运行程序、配方与对应源码材料；项目根 MIT 仅覆盖本项目有权许可的部分。
+3. **Release 中**：APK 与对应源码包在同页下载，附两者的校验和。源码包不靠“请自行找上游 master”替代对应版本的实际材料。说明见 [对应源码](third-party-sources.md)。
+
+## Android 与运行依赖
+
+实际 release 解析结果是 114 个产物，按重复坐标归并为 **113 个 Maven 依赖**，包含传递依赖：105 个 Apache-2.0、5 个 BSD-2-Clause、3 个 MIT。构建读取实际 releaseRuntimeClasspath、Maven POM 及父 POM，保留 JAR/AAR（含 classes.jar）里的许可与 NOTICE；缺少原文的 autolink、SLF4J 使用固定版本的官方原文。新增依赖、版本或许可变化须审查清单，不能自动以项目 MIT 填充。
+
+Sherpa-ONNX AAR 另外包含 ONNX Runtime 1.28.2。其版本与 Sherpa 固定版本的 Android 构建配方及实际 ELF 字符串一致；MIT 原文和完整 ThirdPartyNotices 随 App 保留。Eigen 的 MPL 覆盖源码按 ONNX 1.28.2 deps.txt 的固定提交与校验和提供。当前 ARM64 JNI 没有检出 espeak/piper 符号，上游也已移除该依赖；不凭名称把它误判为旧版 GPL TTS 组合。
+
+Termux 最终 87 个包单独按自身许可处理。Pi 与 npm 依赖中的原文继续保留；Codex 保留 Apache LICENSE/NOTICE，bubblewrap 保留其 **LGPL-2.0 原文**及源码。OpenCode 内置 Bun 的 JavaScriptCore、TinyCC 使用 LGPL，GCC 运行库还需考虑 Runtime Library Exception；这些不能概括为 OpenCode 的 MIT。Claude Code 不随 APK 再分发程序，改由设备向官方 registry 直接下载并校验。
+
+项目没有把 GPL 程序的源码编译进 App 的 Kotlin/JNI 实现；它们通过独立命令行进程执行。依据 [GPL 的独立作品聚合条款](https://gcc.gnu.org/onlinedocs/libstdc++/manual/appendix_gpl.html)，同处一个 APK 本身不意味着所有代码都必须改成 GPL。这里是基于当前代码边界的合规处理判断；若以后复制 GPL 实现、增加紧密链接或修改组件，必须重新审查，不能沿用这一结论。
+
+这份记录说明已核对的材料与工程措施，不构成对任何司法辖区、发行方式或全部链接关系的法律认证。不能仅凭设置页存在就声称所有分发义务都已完成。
+
+尚未完成的检查：Codex 的 Rust 传递依赖，以及 Bun 静态链接库和嵌入 polyfill 的逐项原版权声明覆盖。当前保留上游发布的 LICENSE/NOTICE 和已收集的库许可证，但不能据此认定这些嵌套组件已经全部核对。正式公开分发前还需完成这项检查及最终源码包验收。
