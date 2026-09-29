@@ -21,3 +21,8 @@ __pycache__/
 *.p12
 keystore.properties
 signing.properties
+
+# Offline release-diagnostics identities and decrypted mappings.
+r8-identity.txt
+*.agekey
+mapping.txt

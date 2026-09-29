@@ -8,6 +8,7 @@
 | --- | --- |
 | [项目介绍（英文）](../README.md) · [中文](README.zh-CN.md) | 页面问答、照片与文件、应用操作和手机编程四个使用场景 |
 | [构建与使用](getting-started.md) | 环境要求、构建命令、使用方式、当前状态和开发数据库规则 |
+| [公开仓库与发布安全排查](public-release-audit.md) | 历史密钥、Actions 产物、分发授权及公开前的检查记录 |
 | [GitHub 手动发布](release.md) | Release 签名密钥、手动触发、版本号、R8 和验收 |
 | [项目需求](requirements.md) | 第一阶段本地 Agent 运行验证的目标与范围 |
 | [运行验证方案](design/runtime-test-plan.md) | 初始测试控制台方案；实际实现与验证进展以实施记录为准 |

@@ -19,20 +19,23 @@ on:
         type: boolean
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: android-release
   cancel-in-progress: false
 
 jobs:
-  release:
+  build:
+    outputs:
+      tag_sha: ${{ steps.validate.outputs.tag_sha }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           submodules: recursive
+          persist-credentials: false
 
       - name: Free hosted runner disk for native builds
         shell: bash
@@ -43,7 +46,7 @@ jobs:
           sudo rm -rf /usr/share/dotnet /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
           df -h "$GITHUB_WORKSPACE"
 
-      - name: Validate release inputs and signing secrets
+      - name: Validate release inputs
         id: validate
         shell: bash
         env:
@@ -51,19 +54,11 @@ jobs:
           VERSION_CODE: ${{ inputs.version_code }}
           REPLACE_EXISTING: ${{ inputs.replace_existing }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-          MOBBY_RELEASE_KEYSTORE_BASE64: ${{ secrets.MOBBY_RELEASE_KEYSTORE_BASE64 }}
-          MOBBY_RELEASE_STORE_PASSWORD: ${{ secrets.MOBBY_RELEASE_STORE_PASSWORD }}
-          MOBBY_RELEASE_KEY_ALIAS: ${{ secrets.MOBBY_RELEASE_KEY_ALIAS }}
-          MOBBY_RELEASE_KEY_PASSWORD: ${{ secrets.MOBBY_RELEASE_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           [[ "$GITHUB_REF" == "refs/heads/$DEFAULT_BRANCH" ]] || { echo 'Select the repository default branch for releases'; exit 1; }
           [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Version must be major.minor.patch'; exit 1; }
           [[ "$VERSION_CODE" =~ ^[1-9][0-9]*$ ]] && (( ${#VERSION_CODE} <= 10 )) && (( VERSION_CODE <= 2100000000 )) || { echo 'Invalid Android versionCode'; exit 1; }
-          : "${MOBBY_RELEASE_KEYSTORE_BASE64:?Missing keystore secret}"
-          : "${MOBBY_RELEASE_STORE_PASSWORD:?Missing store password}"
-          : "${MOBBY_RELEASE_KEY_ALIAS:?Missing key alias}"
-          : "${MOBBY_RELEASE_KEY_PASSWORD:?Missing key password}"
           if tag_ref=$(git ls-remote --exit-code --tags origin "refs/tags/v${VERSION}"); then
             [[ "$REPLACE_EXISTING" == true ]] || { echo "Tag v${VERSION} already exists; select replace_existing to rebuild it"; exit 1; }
             printf 'tag_sha=%s\n' "${tag_ref%%[[:space:]]*}" >> "$GITHUB_OUTPUT"
@@ -74,10 +69,8 @@ jobs:
               exit "$result"
             fi
           fi
-          printf '%s' "$MOBBY_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/mobby-release.jks"
-          test -s "$RUNNER_TEMP/mobby-release.jks"
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: temurin
           java-version: '17'
@@ -100,15 +93,81 @@ jobs:
           python3 runtime/check_dependency_sources.py
           ./gradlew :app:testDebugUnitTest :runtime-android:testDebugUnitTest :termux-core:testDebugUnitTest :app:lintDebug
 
-      - name: Build signed, optimized release APK
+      - name: Build optimized unsigned release APK
         env:
           VERSION: ${{ inputs.version }}
           VERSION_CODE: ${{ inputs.version_code }}
-          MOBBY_RELEASE_STORE_FILE: ${{ runner.temp }}/mobby-release.jks
+        run: ./gradlew :app:assembleRelease -Pmobby.versionName="$VERSION" -Pmobby.versionCode="$VERSION_CODE"
+
+      - name: Encrypt R8 mapping for its offline recipient
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 2 https://github.com/FiloSottile/age/releases/download/v1.3.2/age-v1.3.2-linux-amd64.tar.gz -o "$RUNNER_TEMP/age.tar.gz"
+          printf 'cbe24006683f8eb669266162894b9a522a1af52f2665fbc63a4bb032ed26ac10  %s\n' "$RUNNER_TEMP/age.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/age.tar.gz" -C "$RUNNER_TEMP" age/age
+          "$RUNNER_TEMP/age/age" -R .github/r8-mapping-recipient.txt -o "$RUNNER_TEMP/mapping.txt.age" app/build/outputs/mapping/release/mapping.txt
+
+      - name: Save encrypted R8 mapping for crash analysis
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: r8-mapping-v${{ inputs.version }}
+          path: ${{ runner.temp }}/mapping.txt.age
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Pass unsigned APK to isolated signing runner
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: unsigned-apk-${{ github.run_id }}
+          path: app/build/outputs/apk/release/app-release-unsigned.apk
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install APK signing and verification tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          set +o pipefail
+          yes | "$sdkmanager" --licenses >/dev/null
+          set -o pipefail
+          "$sdkmanager" --install 'build-tools;35.0.0'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: unsigned-apk-${{ github.run_id }}
+          path: app/build/outputs/apk/release
+      - name: Sign APK without running project build scripts
+        shell: bash
+        env:
+          MOBBY_RELEASE_KEYSTORE_BASE64: ${{ secrets.MOBBY_RELEASE_KEYSTORE_BASE64 }}
           MOBBY_RELEASE_STORE_PASSWORD: ${{ secrets.MOBBY_RELEASE_STORE_PASSWORD }}
           MOBBY_RELEASE_KEY_ALIAS: ${{ secrets.MOBBY_RELEASE_KEY_ALIAS }}
           MOBBY_RELEASE_KEY_PASSWORD: ${{ secrets.MOBBY_RELEASE_KEY_PASSWORD }}
-        run: ./gradlew :app:assembleRelease -Pmobby.versionName="$VERSION" -Pmobby.versionCode="$VERSION_CODE"
+        run: |
+          set -euo pipefail
+          : "${MOBBY_RELEASE_KEYSTORE_BASE64:?Missing keystore secret}"
+          : "${MOBBY_RELEASE_STORE_PASSWORD:?Missing store password}"
+          : "${MOBBY_RELEASE_KEY_ALIAS:?Missing key alias}"
+          : "${MOBBY_RELEASE_KEY_PASSWORD:?Missing key password}"
+          trap 'rm -f "$RUNNER_TEMP/mobby-release.jks"' EXIT
+          umask 077
+          printf '%s' "$MOBBY_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/mobby-release.jks"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" sign --ks "$RUNNER_TEMP/mobby-release.jks" --ks-key-alias "$MOBBY_RELEASE_KEY_ALIAS" --ks-pass env:MOBBY_RELEASE_STORE_PASSWORD --key-pass env:MOBBY_RELEASE_KEY_PASSWORD --out app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/app-release-unsigned.apk
 
       - name: Verify APK and prepare release assets
         shell: bash
@@ -119,27 +178,18 @@ jobs:
           set -euo pipefail
           apk=app/build/outputs/apk/release/app-release.apk
           test -s "$apk"
-          test -s app/build/outputs/mapping/release/mapping.txt
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$apk"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep -F "versionCode='$VERSION_CODE' versionName='$VERSION'"
           mkdir -p release-assets
           cp "$apk" "release-assets/mobby-v${VERSION}-arm64-v8a.apk"
           (cd release-assets && sha256sum *.apk > SHA256SUMS.txt)
 
-      - name: Save R8 mapping for crash analysis
-        uses: actions/upload-artifact@v4
-        with:
-          name: r8-mapping-v${{ inputs.version }}
-          path: app/build/outputs/mapping/release/mapping.txt
-          if-no-files-found: error
-          retention-days: 90
-
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
           REPLACE_EXISTING: ${{ inputs.replace_existing }}
-          PREVIOUS_TAG_SHA: ${{ steps.validate.outputs.tag_sha }}
+          PREVIOUS_TAG_SHA: ${{ needs.build.outputs.tag_sha }}
         shell: bash
         run: |
           set -euo pipefail

@@ -43,11 +43,42 @@ class ReleaseConfigurationTest(unittest.TestCase):
         workflow = (ROOT / '.github/workflows/release.yml').read_text()
         installed = set(re.findall(r'platforms;android-(\d+)', workflow))
         required = set()
-        for build in ROOT.glob('*/build.gradle.kts'):
+        for build in (path for group in ('app', 'runtime', 'conversation', 'model', 'shared') for path in (ROOT / group).rglob('build.gradle.kts') if 'build' not in path.parts):
             required.update(re.findall(r'compileSdk\s*=\s*(\d+)', build.read_text()))
         self.assertTrue(required)
         self.assertEqual(set(), required - installed,
                          'Release runner is missing SDK platforms used by Android modules')
+
+    def test_build_runner_cannot_access_signing_secrets(self):
+        workflow = (ROOT / '.github/workflows/release.yml').read_text()
+        build, publish = workflow.split('  publish:\n', 1)
+        self.assertNotIn('secrets.', build)
+        self.assertNotIn('mobby-release.jks', build)
+        self.assertIn('needs: build', publish)
+        self.assertNotIn('./gradlew', publish)
+        self.assertIn('--ks-pass env:MOBBY_RELEASE_STORE_PASSWORD', publish)
+        self.assertIn('trap', publish)
+
+    def test_mapping_upload_contains_only_recipient_encrypted_output(self):
+        workflow = (ROOT / '.github/workflows/release.yml').read_text()
+        block = workflow.split('      - name: Save encrypted R8 mapping for crash analysis', 1)[1].split('\n      - ', 1)[0]
+        self.assertIn('mapping.txt.age', block)
+        self.assertNotIn('path: app/build/outputs/mapping', block)
+        self.assertIn('-R .github/r8-mapping-recipient.txt', workflow)
+        recipient = (ROOT / '.github/r8-mapping-recipient.txt').read_text().strip()
+        self.assertRegex(recipient, r'^age1[a-z0-9]+$')
+        self.assertNotIn('AGE-SECRET-KEY', recipient)
+
+    def test_third_party_actions_are_pinned_and_credentials_are_not_persisted(self):
+        for file in (ROOT / '.github/workflows').glob('*.yml'):
+            workflow = file.read_text()
+            for action in re.findall(r'uses:\s*(\S+)', workflow):
+                self.assertRegex(action, r'@[^\s]{40}$', action)
+                self.assertRegex(action.split('@')[1], r'^[0-9a-f]{40}$')
+            self.assertIn('persist-credentials: false', workflow)
+        checks = (ROOT / '.github/workflows/runtime-checks.yml').read_text()
+        self.assertIn('fetch-depth: 0', checks)
+        self.assertIn('git --log-opts=--all --redact', checks)
 
     def test_replacement_publishes_assets_then_moves_tag_and_preserves_notes(self):
         result, calls, _ = self.run_publish("old", "old")

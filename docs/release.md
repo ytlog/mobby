@@ -1,6 +1,6 @@
 # GitHub 手动发布 Android Release
 
-仓库的 **Publish Android release** 工作流只通过 GitHub Actions 的 **Run workflow** 手动运行。它执行运行时检查、Android 单测和 lint，构建经过 R8 压缩、优化、混淆及资源收缩的 ARM64 release APK，验证签名和版本信息，然后创建 `v<版本>` 标签与 GitHub Release。APK 与 SHA-256 校验文件是公开的 Release 附件；R8 `mapping.txt` 只保存在 Actions artifact 中 90 天，用于崩溃堆栈反混淆。
+仓库的 **Publish Android release** 工作流只通过 GitHub Actions 的 **Run workflow** 手动运行。它使用不含签名 secrets 的构建 runner 执行运行时检查、Android 单测和 lint，构建经过 R8 压缩、优化、混淆及资源收缩的 ARM64 未签名 release APK，再由独立 runner 使用原发布密钥签名、验证签名和版本信息，然后创建 `v<版本>` 标签与 GitHub Release。APK 与 SHA-256 校验文件是公开的 Release 附件；R8 `mapping.txt` 以 age 接收者加密后保存在 Actions artifact 中 90 天，用于崩溃堆栈反混淆。
 
 ## 首次设置
 
@@ -56,3 +56,6 @@ python3 runtime/android-release-smoke.py --serial <设备序列号> --repeat 5 -
 
 
 2026-09-29 实机记录：使用长期发布密钥构建启用 R8 的非调试 Release，在 Xiaomi M2007J1SC / Android 13 上覆盖安装。91 项 runtime-android 单测通过；两轮冷启动下共 10 次 Shell 短命令、两次非零退出、两次取消、两次 Node 和四个 Agent CLI 启动检查全部通过。已修复启动期间进程身份暂时不可读导致 Shell 偶发失败的问题；真实模型请求和本地模型推理未在这次回归中验收。
+
+
+发布安全与公开前的剩余检查见 [审查记录](public-release-audit.md)。Actions artifact 在公开仓库中可下载，只有加密后的 mapping.txt.age 可以上传；仓库中的接收者不是私钥。构建和签名隔离，不向 Gradle、npm 或项目构建脚本提供签名 secrets。
