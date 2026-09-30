@@ -2,6 +2,7 @@ package com.github.ytlog.mobby.android.deviceoperation.ui
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -53,6 +54,17 @@ class DeviceTaskCardTest {
         compose.onNodeWithText("fixture body").assertDoesNotExist()
         compose.onAllNodes(hasClickAction()).onFirst().performClick()
         compose.onNodeWithText("fixture body").assertExists()
+    }
+    @Test fun `completed photo keeps its preview visible while details are folded`() {
+        val photo = operation("capture").copy(plugin = "camera", action = "photo", status = DeviceStatus.SUCCEEDED,
+            result = DeviceResult("capture_resource", EffectState.NONE,
+                buildJsonObject { put("mediaType", "image/jpeg") }, resourceRefs = listOf("photo-ref")))
+        compose.setContent { MaterialTheme {
+            DeviceTaskCard(photo, DeviceCardActions(), thumbnail = { Text("preview:$it") })
+        } }
+        compose.onNodeWithText("preview:photo-ref").assertIsDisplayed()
+        compose.onAllNodes(hasClickAction()).onFirst().performClick()
+        compose.onNodeWithText("preview:photo-ref").assertIsDisplayed()
     }
     @Test fun `unavailable capability offers no execution action`() {
         compose.setContent { MaterialTheme { DeviceUnavailableCard("Candidate", "Not implemented") } }

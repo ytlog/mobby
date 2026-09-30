@@ -31,6 +31,9 @@ class DeviceCardActions(
     val status = if (stopping && !operation.status.terminal) DeviceLabels.status(DeviceStatus.CANCELLING) else DeviceLabels.phase(operation)
     val title = DeviceLabels.title(operation.plugin, operation.action)
     val detailsVisible = !operation.status.terminal || expanded
+    val result = operation.result
+    val collapsedPhoto = operation.status.terminal && !expanded && operation.displayType == "capture" &&
+        result?.kind == "capture_resource" && result.data.text("mediaType").startsWith("image/")
     Surface(modifier.fillMaxWidth().semantics { contentDescription = title; stateDescription = status },
         shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         color = MaterialTheme.colorScheme.surface) {
@@ -54,6 +57,9 @@ class DeviceCardActions(
                     drawLine(chevron, middle, last, 2.dp.toPx())
                 }
             }
+        }
+        if (collapsedPhoto && thumbnail != null) {
+            result?.resourceRefs?.firstOrNull()?.let { thumbnail(it) }
         }
         if (detailsVisible) {
             if (operation.subject.label.isNotBlank()) Text(operation.subject.label, style = MaterialTheme.typography.bodyMedium)
