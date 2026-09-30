@@ -580,6 +580,11 @@ private val DrawerRowHeight = 40.dp
             focus.clearFocus()
         } else snapshot.value = null
     }
+    fun sendAndDismiss(mode: MessageDeliveryMode = MessageDeliveryMode.QUEUE) {
+        vm.send(mode)
+        keyboard?.hide()
+        focus.clearFocus()
+    }
     val stop = active?.execution != null
     val micAvailable = !stop && composer.value.text.isEmpty() && detail.conversation.draft.attachments.isEmpty()
     LaunchedEffect(detail.conversation.id) { capture.error = null }
@@ -623,8 +628,8 @@ private val DrawerRowHeight = 40.dp
             sendEnabled = !unavailable && system.ready && system.connected && !system.diagnosticBusy && detail.conversation.draft.pendingAttachment == null && (composer.value.text.isNotBlank() || detail.conversation.draft.attachments.isNotEmpty()),
             onAdd = onAdd,
             onStop = { active?.execution?.let(vm::stop) },
-            onSend = { vm.send() },
-            onInsert = { vm.send(MessageDeliveryMode.INSERT) },
+            onSend = { sendAndDismiss() },
+            onInsert = { sendAndDismiss(MessageDeliveryMode.INSERT) },
             onEnterVoice = {
                 hint = null
                 capture.error = null
