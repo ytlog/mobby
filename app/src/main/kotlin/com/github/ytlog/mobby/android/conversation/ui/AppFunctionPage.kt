@@ -5,6 +5,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -81,7 +82,8 @@ import com.github.ytlog.mobby.android.conversation.ui.UiStrings as AppStrings
         }
     }
     detail?.let { function ->
-        AlertDialog(onDismissRequest = { detail = null }, title = { Text(function.functionId.substringAfterLast('#').substringAfterLast('.')) },
+        AlertDialog(onDismissRequest = { detail = null }, containerColor = raisedColor(), shape = RoundedCornerShape(24.dp),
+            title = { Text(function.functionId.substringAfterLast('#').substringAfterLast('.')) },
             text = {
                 Column(Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(function.appName + " · " + function.packageName, style = MaterialTheme.typography.bodySmall,

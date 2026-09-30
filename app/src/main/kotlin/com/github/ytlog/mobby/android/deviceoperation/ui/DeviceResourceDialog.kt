@@ -6,6 +6,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -13,6 +14,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.github.ytlog.mobby.android.deviceoperation.ui.DeviceLabels
+import com.github.ytlog.mobby.android.conversation.ui.raisedColor
 import java.io.File
 
 class DevicePreview(val name: String, val mediaType: String, val bytes: ByteArray)
@@ -27,7 +29,8 @@ class DevicePreview(val name: String, val mediaType: String, val bytes: ByteArra
     var player by remember { mutableStateOf<MediaPlayer?>(null) }
     var audioFile by remember { mutableStateOf<File?>(null) }
     DisposableEffect(ref) { onDispose { player?.release(); audioFile?.delete() } }
-    AlertDialog(onDismissRequest = onDismiss, title = { Text(preview?.name ?: DeviceLabels.text("附件", "Attachment")) },
+    AlertDialog(onDismissRequest = onDismiss, containerColor = raisedColor(), shape = RoundedCornerShape(24.dp),
+        title = { Text(preview?.name ?: DeviceLabels.text("附件", "Attachment")) },
         text = { Column(Modifier.fillMaxWidth().heightIn(max = 500.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             when {
                 loading -> CircularProgressIndicator()

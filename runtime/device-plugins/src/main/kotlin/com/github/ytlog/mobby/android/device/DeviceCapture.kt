@@ -9,6 +9,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.ImageFormat
+import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraDevice
 import android.hardware.camera2.CameraManager
@@ -22,9 +25,13 @@ import android.os.Looper
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.View
+import android.view.Gravity
 import android.widget.Button
+import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.content.res.Configuration
 import java.io.File
 import java.util.concurrent.TimeUnit
 
@@ -89,6 +96,11 @@ class DeviceCaptureActivity : Activity() {
     private lateinit var dest: File
     private var operationId = ""
     private var kind = ""
+    private val palette by lazy {
+        val preference = getSharedPreferences("interaction-ui", Context.MODE_PRIVATE).getString("appearance", "SYSTEM")
+        val systemDark = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
+        CapturePalette(preference == "DARK" || preference != "LIGHT" && systemDark)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -108,9 +120,34 @@ class DeviceCaptureActivity : Activity() {
             return
         }
         val preview = SurfaceView(this)
-        val shutter = button(AppStrings.takePhoto) { takePhoto() }
+        val shutter = Button(this).apply {
+            text = ""
+            contentDescription = AppStrings.takePhoto
+            background = rounded(Color.WHITE, 100)
+            elevation = dp(4).toFloat()
+            setOnClickListener { takePhoto() }
+        }
         shutter.isEnabled = false
-        setContentView(column(preview, shutter, button(AppStrings.cancel) { complete(Result.failure(DeviceFailure(DeviceError(DeviceErrorCode.CANCELLED)))) }))
+        window.statusBarColor = Color.BLACK
+        window.navigationBarColor = Color.BLACK
+        window.decorView.systemUiVisibility = 0
+        val root = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
+        root.addView(preview, FrameLayout.LayoutParams(-1, -1))
+        val top = LinearLayout(this).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(20), dp(18), dp(20), dp(18))
+            setBackgroundColor(0x99000000.toInt())
+            addView(label(AppStrings.takePhoto, Color.WHITE, 20f, true), LinearLayout.LayoutParams(0, -2, 1f))
+            addView(textAction(AppStrings.cancel, Color.WHITE) { cancelCapture() })
+        }
+        root.addView(top, FrameLayout.LayoutParams(-1, -2, Gravity.TOP))
+        val controls = FrameLayout(this).apply {
+            setPadding(dp(20), dp(22), dp(20), dp(26))
+            setBackgroundColor(0x99000000.toInt())
+        }
+        controls.addView(shutter, FrameLayout.LayoutParams(dp(76), dp(76), Gravity.CENTER))
+        root.addView(controls, FrameLayout.LayoutParams(-1, dp(124), Gravity.BOTTOM))
+        setContentView(root)
         thread = HandlerThread("device-camera").also { it.start() }
         handler = Handler(thread!!.looper)
         reader = ImageReader.newInstance(1280, 720, ImageFormat.JPEG, 2)
@@ -184,7 +221,7 @@ class DeviceCaptureActivity : Activity() {
             complete(Result.failure(IllegalStateException(AppStrings.microphonePermissionWasRevoked)))
             return
         }
-        val status = TextView(this).apply { text = AppStrings.recording; textSize = 22f }
+        val status = label(AppStrings.recording, palette.ink, 24f, true)
         try {
             recorder = newRecorder().apply {
                 setAudioSource(MediaRecorder.AudioSource.MIC)
@@ -202,7 +239,16 @@ class DeviceCaptureActivity : Activity() {
         recorder?.setOnInfoListener { _, what, _ ->
             if (what == MediaRecorder.MEDIA_RECORDER_INFO_MAX_DURATION_REACHED) finishRecording(true)
         }
-        setContentView(column(status, button(AppStrings.done) { finishRecording(true) }, button(AppStrings.cancel) { finishRecording(false) }))
+        val body = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            background = rounded(palette.card, 24)
+            addView(label("●", palette.primary, 38f, false), LinearLayout.LayoutParams(-2, -2))
+            addView(status, LinearLayout.LayoutParams(-2, -2))
+        }
+        showPanel(AppStrings.recordAudio, body,
+            primaryAction(AppStrings.done) { finishRecording(true) },
+            secondaryAction(AppStrings.cancel) { finishRecording(false) })
     }
 
     private fun newRecorder(): MediaRecorder = if (Build.VERSION.SDK_INT >= 31) MediaRecorder(this) else @Suppress("DEPRECATION") MediaRecorder()
@@ -228,37 +274,99 @@ class DeviceCaptureActivity : Activity() {
         reader?.close(); reader = null
         thread?.quitSafely(); thread = null
         DeviceCapture.stage(operationId, "capture.confirm")
-        val preview: View = if (kind == "photo") android.widget.ImageView(this).apply {
+        val preview: View = if (kind == "photo") ImageView(this).apply {
             setImageBitmap(android.graphics.BitmapFactory.decodeFile(dest.absolutePath))
-            adjustViewBounds = true
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            setBackgroundColor(Color.BLACK)
             contentDescription = AppStrings.photoPreview
-        } else button(AppStrings.playRecording) {
+        } else secondaryAction(AppStrings.playRecording) {
             try {
                 playback?.release()
                 playback = android.media.MediaPlayer().apply { setDataSource(dest.absolutePath); prepare(); start() }
             } catch (_: Exception) { complete(Result.failure(DeviceFailure(DeviceError(DeviceErrorCode.UNAVAILABLE)))) }
         }
-        setContentView(column(preview,
-            button(AppStrings.useCapturedMaterial) {
+        showPanel(if (kind == "photo") AppStrings.photoPreview else AppStrings.recordAudio, preview,
+            primaryAction(AppStrings.useCapturedMaterial) {
                 if (!dest.isFile || dest.length() == 0L) complete(Result.failure(IllegalStateException(AppStrings.operationFailed)))
                 else complete(Result.success(dest.absolutePath))
             },
-            button(AppStrings.captureAgain) {
+            secondaryAction(AppStrings.captureAgain) {
                 playback?.release(); playback = null
                 dest.delete()
                 DeviceCapture.stage(operationId, "capture.$kind")
                 if (kind == "photo") showCamera() else showRecorder()
-            }, button(AppStrings.cancel) { complete(Result.failure(DeviceFailure(DeviceError(DeviceErrorCode.CANCELLED)))) }))
+            }, secondaryAction(AppStrings.cancel) { cancelCapture() })
     }
 
-    private fun button(label: String, click: () -> Unit) = Button(this).apply { text = label; setOnClickListener { click() } }
-    private fun column(vararg children: View) = LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL
-        children.forEach { addView(it, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)) }
-        if (children.first() is SurfaceView) (children.first().layoutParams as LinearLayout.LayoutParams).height = 0
-        if (children.first() is SurfaceView) (children.first().layoutParams as LinearLayout.LayoutParams).weight = 1f
+    private fun cancelCapture() = complete(Result.failure(DeviceFailure(DeviceError(DeviceErrorCode.CANCELLED))))
+
+    private fun showPanel(title: String, content: View, vararg actions: View) {
+        window.statusBarColor = palette.page
+        window.navigationBarColor = palette.page
+        window.decorView.systemUiVisibility = if (palette.dark) 0 else View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(palette.page)
+            setPadding(dp(20), dp(20), dp(20), dp(20))
+        }
+        root.addView(label(title, palette.ink, 22f, true), LinearLayout.LayoutParams(-1, dp(52)))
+        val frame = FrameLayout(this).apply {
+            background = rounded(palette.card, 24)
+            clipToOutline = true
+            addView(content, FrameLayout.LayoutParams(-1, -1))
+        }
+        root.addView(frame, LinearLayout.LayoutParams(-1, 0, 1f).apply { bottomMargin = dp(16) })
+        actions.forEach { action -> root.addView(action, LinearLayout.LayoutParams(-1, dp(52)).apply { topMargin = dp(8) }) }
+        setContentView(root)
     }
 
+    private fun primaryAction(title: String, action: () -> Unit) = Button(this).apply {
+        text = title
+        textSize = 16f
+        isAllCaps = false
+        setTextColor(if (palette.dark) 0xFF102033.toInt() else Color.WHITE)
+        background = rounded(palette.primary, 16)
+        setOnClickListener { action() }
+    }
+
+    private fun secondaryAction(title: String, action: () -> Unit) = Button(this).apply {
+        text = title
+        textSize = 16f
+        isAllCaps = false
+        setTextColor(palette.ink)
+        background = rounded(palette.card, 16)
+        setOnClickListener { action() }
+    }
+
+    private fun textAction(title: String, color: Int, action: () -> Unit) = TextView(this).apply {
+        text = title
+        textSize = 15f
+        setTextColor(color)
+        setPadding(dp(12), dp(10), dp(12), dp(10))
+        setOnClickListener { action() }
+    }
+
+    private fun label(value: String, color: Int, size: Float, bold: Boolean) = TextView(this).apply {
+        text = value
+        textSize = size
+        setTextColor(color)
+        gravity = Gravity.CENTER_VERTICAL
+        if (bold) setTypeface(null, Typeface.BOLD)
+    }
+
+    private fun rounded(color: Int, radius: Int) = GradientDrawable().apply {
+        setColor(color)
+        cornerRadius = dp(radius).toFloat()
+    }
+
+    private fun dp(value: Int) = (value * resources.displayMetrics.density + 0.5f).toInt()
+
+    private data class CapturePalette(val dark: Boolean) {
+        val page = if (dark) 0xFF121212.toInt() else 0xFFF5F5F7.toInt()
+        val card = if (dark) 0xFF1E1E1E.toInt() else Color.WHITE
+        val ink = if (dark) 0xFFEDEDED.toInt() else 0xFF1A1A1A.toInt()
+        val primary = if (dark) 0xFF80BAFF.toInt() else 0xFF2F80FF.toInt()
+    }
     private fun complete(result: Result<String>) {
         if (Looper.myLooper() != Looper.getMainLooper()) {
             runOnUiThread { complete(result) }
