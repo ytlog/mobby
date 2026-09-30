@@ -4,9 +4,11 @@ import com.github.ytlog.mobby.android.localization.AppStrings
 import com.github.ytlog.mobby.android.runtime.api.device.*
 
 import android.Manifest
+import android.content.ComponentName
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import android.provider.Settings
 import com.github.ytlog.mobby.android.runtime.api.CapabilityRef
 import com.github.ytlog.mobby.android.runtime.api.PluginAccessKind
 import com.github.ytlog.mobby.android.runtime.api.PluginGrantSummary
@@ -42,12 +44,19 @@ object DeviceHost {
         val spec = DeviceCatalog.all.firstOrNull { it.ref == ref || it.grantRef == ref } ?: return false
         if (spec.grantRef == ref) return spec.grant!!.permissions.all { allowed(context, it) }
         return when (spec.id) {
-            "screen" -> ScreenAccessService.connected()
+            "screen" -> screenPermissionEnabled(context)
             "media" -> mediaGranted(context)
             "storage" -> DeviceStorage.tree(context) != null
             "location" -> allowed(context, Manifest.permission.ACCESS_COARSE_LOCATION) || allowed(context, Manifest.permission.ACCESS_FINE_LOCATION)
             else -> spec.permissions.all { allowed(context, it) }
         }
+    }
+    private fun screenPermissionEnabled(context: Context): Boolean {
+        // Admission checks the user's grant; a service rebind must not reject a whole turn.
+        if (Settings.Secure.getInt(context.contentResolver, Settings.Secure.ACCESSIBILITY_ENABLED, 0) != 1) return false
+        val expected = ComponentName(context, ScreenAccessService::class.java)
+        return Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
+            .orEmpty().split(':').mapNotNull(ComponentName::unflattenFromString).any { it == expected }
     }
     fun reason(context: Context, ref: String): String? {
         if (granted(context, ref)) return null

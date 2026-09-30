@@ -29,6 +29,11 @@ import java.util.concurrent.atomic.AtomicReference
 class ScreenAccessService : AccessibilityService() {
     private val stay = ScreenStay(ServiceDisplay())
 
+    override fun onCreate() {
+        super.onCreate()
+        // The framework may create and bind the service before delivering its connection callback.
+        instance = this
+    }
     override fun onServiceConnected() { instance = this }
     override fun onAccessibilityEvent(event: android.view.accessibility.AccessibilityEvent?) = Unit
     override fun onInterrupt() = Unit
