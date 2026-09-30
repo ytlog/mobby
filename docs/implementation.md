@@ -17,7 +17,7 @@
 
 | 依赖 | 版本 | 来源 |
 | --- | --- | --- |
-| Git | 2.55.0 | Termux 官方仓库 |
+| Git | 2.56.0 | Termux 官方仓库 |
 | Node.js | 24.18.0 | Termux 官方仓库 |
 | npm | 11.20.0 | Termux 官方仓库 |
 | Claude Code | 2.1.112 | Anthropic 官方 npm JavaScript 版本 |

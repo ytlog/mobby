@@ -14,9 +14,9 @@
     },
     {
       "name": "git",
-      "version": "2.55.0",
-      "url": "https://packages.termux.dev/apt/termux-main/pool/main/g/git/git_2.55.0_aarch64.deb",
-      "sha256": "21b16fa06837e5bf94ad257da532c40eb049c120d21f6cb60a6411c0bcee7197"
+      "version": "2.56.0",
+      "url": "https://packages.termux.dev/apt/termux-main/pool/main/g/git/git_2.56.0_aarch64.deb",
+      "sha256": "dcdd22c5fdf7bdb5b825a03a17441d43858ed8515fea57fbb37eb42e733ca82f"
     },
     {
       "name": "less",

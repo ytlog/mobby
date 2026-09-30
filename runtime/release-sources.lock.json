@@ -1,6 +1,6 @@
 {
   "bootstrap_sha256": "1f48f4d05da9fab3ce74fb1d9b137fdbc745ba1f7a6f9e8f743fd89b7047d17b",
-  "agents_lock_sha256": "5c88acebbdad91a3993ad441a1d4088933a9a1f8d03294ae1909c28cc7f8a687",
+  "agents_lock_sha256": "839702db23ddcb5bc19f3f1473f5633d5bf340fa85b3a75c180979d0d1b7dac5",
   "packages": [
     {
       "name": "pcre2",
@@ -843,14 +843,14 @@
     },
     {
       "name": "git",
-      "version": "2.55.0",
+      "version": "2.56.0",
       "license": "GPL-2.0",
       "recipe": "git",
-      "recipe_commit": "e392c87ee0005397d3b3b9b43576c270bef76cd8",
-      "recipe_source_input": "termux-agent-recipes",
+      "recipe_commit": "0cf3093fae6257ca7b67430061f8b704e0d1c924",
+      "recipe_source_input": "termux-git-recipes",
       "source_inputs": [
         "termux-git-1",
-        "termux-agent-recipes"
+        "termux-git-recipes"
       ]
     },
     {
@@ -1185,8 +1185,8 @@
     },
     {
       "name": "termux-git-1",
-      "url": "https://mirrors.kernel.org/pub/software/scm/git/git-2.55.0.tar.xz",
-      "sha256": "457fdb04dc8728e007d4688695e6912e6f680727920f2a40bf11eacc17505357"
+      "url": "https://www.kernel.org/pub/software/scm/git/git-2.56.0.tar.xz",
+      "sha256": "26c56c296b38c0695b26fa95f475f1d01704d2d38e73465ca30b0b2f5dc789d3"
     },
     {
       "name": "termux-bootstrap-recipes",
@@ -1197,6 +1197,11 @@
       "name": "termux-agent-recipes",
       "url": "https://codeload.github.com/termux/termux-packages/tar.gz/e392c87ee0005397d3b3b9b43576c270bef76cd8",
       "sha256": "1f7f54d1b468ae4adaa7947d060ee3ceaa0186329e2c3469c9156eec92105479"
+    },
+    {
+      "name": "termux-git-recipes",
+      "url": "https://codeload.github.com/termux/termux-packages/tar.gz/0cf3093fae6257ca7b67430061f8b704e0d1c924",
+      "sha256": "e32db376811014255045c739e9b5338f842d2d449767da5f87969c5d863b70cd"
     },
     {
       "name": "codex",
