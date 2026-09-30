@@ -14,6 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          submodules: recursive
           persist-credentials: false
       - name: Check module boundaries and bootstrap preparation
         run: python3 -m unittest discover -s runtime -p 'test_*.py'
