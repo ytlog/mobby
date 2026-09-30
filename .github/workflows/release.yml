@@ -100,6 +100,9 @@ jobs:
           VERSION_CODE: ${{ inputs.version_code }}
         run: ./gradlew :app:assembleRelease -Pmobby.versionName="$VERSION" -Pmobby.versionCode="$VERSION_CODE"
 
+      - name: Check sherpa-onnx JNI names survive R8
+        run: python3 runtime/check_sherpa_jni_mapping.py app/build/outputs/mapping/release/mapping.txt app/build/outputs/mapping/release/seeds.txt
+
       - name: Package corresponding sources and verify dependency coverage
         env:
           VERSION: ${{ inputs.version }}
