@@ -44,8 +44,8 @@ private val pluginOptions get() = listOf(
                         color = if (chosen) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else raisedColor(),
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = if (chosen) 0.45f else 0.32f)),
                     ) {
-                        Row(Modifier.padding(horizontal = 12.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)) {
                             AppIcon(if (chosen) AppIcons.Check else option.icon, null, Modifier.size(18.dp), tint = ink)
                             Text(option.label, color = ink, style = MaterialTheme.typography.labelLarge)
                         }
