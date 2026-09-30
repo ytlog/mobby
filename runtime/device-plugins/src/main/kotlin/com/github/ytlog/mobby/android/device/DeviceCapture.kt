@@ -96,6 +96,7 @@ class DeviceCaptureActivity : Activity() {
     private lateinit var dest: File
     private var operationId = ""
     private var kind = ""
+    private val edgeToEdgeFlags = View.SYSTEM_UI_FLAG_LAYOUT_STABLE or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
     private val palette by lazy {
         val preference = getSharedPreferences("interaction-ui", Context.MODE_PRIVATE).getString("appearance", "SYSTEM")
         val systemDark = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
@@ -130,7 +131,7 @@ class DeviceCaptureActivity : Activity() {
         shutter.isEnabled = false
         window.statusBarColor = Color.BLACK
         window.navigationBarColor = Color.BLACK
-        window.decorView.systemUiVisibility = 0
+        window.decorView.systemUiVisibility = edgeToEdgeFlags
         val root = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
         root.addView(preview, FrameLayout.LayoutParams(-1, -1))
         val top = LinearLayout(this).apply {
@@ -146,7 +147,17 @@ class DeviceCaptureActivity : Activity() {
             setBackgroundColor(0x99000000.toInt())
         }
         controls.addView(shutter, FrameLayout.LayoutParams(dp(76), dp(76), Gravity.CENTER))
-        root.addView(controls, FrameLayout.LayoutParams(-1, dp(124), Gravity.BOTTOM))
+        val controlLayout = FrameLayout.LayoutParams(-1, dp(124), Gravity.BOTTOM)
+        root.addView(controls, controlLayout)
+        root.setOnApplyWindowInsetsListener { _, insets ->
+            top.setPadding(dp(20) + insets.systemWindowInsetLeft, dp(18) + insets.systemWindowInsetTop,
+                dp(20) + insets.systemWindowInsetRight, dp(18))
+            controls.setPadding(dp(20) + insets.systemWindowInsetLeft, dp(22), dp(20) + insets.systemWindowInsetRight,
+                dp(26) + insets.systemWindowInsetBottom)
+            controlLayout.height = dp(124) + insets.systemWindowInsetBottom
+            controls.layoutParams = controlLayout
+            insets
+        }
         setContentView(root)
         thread = HandlerThread("device-camera").also { it.start() }
         handler = Handler(thread!!.looper)
@@ -303,11 +314,17 @@ class DeviceCaptureActivity : Activity() {
     private fun showPanel(title: String, content: View, vararg actions: View) {
         window.statusBarColor = palette.page
         window.navigationBarColor = palette.page
-        window.decorView.systemUiVisibility = if (palette.dark) 0 else View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+        window.decorView.systemUiVisibility = edgeToEdgeFlags or
+            (if (palette.dark) 0 else View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR)
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(palette.page)
             setPadding(dp(20), dp(20), dp(20), dp(20))
+        }
+        root.setOnApplyWindowInsetsListener { _, insets ->
+            root.setPadding(dp(20) + insets.systemWindowInsetLeft, dp(20) + insets.systemWindowInsetTop,
+                dp(20) + insets.systemWindowInsetRight, dp(20) + insets.systemWindowInsetBottom)
+            insets
         }
         root.addView(label(title, palette.ink, 22f, true), LinearLayout.LayoutParams(-1, dp(52)))
         val frame = FrameLayout(this).apply {
