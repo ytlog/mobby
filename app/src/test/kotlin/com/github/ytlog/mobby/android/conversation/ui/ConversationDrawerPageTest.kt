@@ -107,6 +107,14 @@ class ConversationDrawerPageTest {
         val list = compose.onNodeWithTag("drawer-new").getUnclippedBoundsInRoot()
         val detail = compose.onNodeWithTag("conversation-transcript").getUnclippedBoundsInRoot()
         assertTrue("list must be left of detail", list.right <= detail.left)
+        compose.onNodeWithTag("sidebar-collapse").performClick()
+        compose.onNodeWithTag("drawer-new").assertDoesNotExist()
+        compose.onNodeWithContentDescription("展开会话侧栏").assertExists()
+        val expandedDetail = compose.onNodeWithTag("conversation-transcript").getUnclippedBoundsInRoot()
+        assertTrue("detail should use the released width", expandedDetail.left < detail.left)
+        compose.onNodeWithContentDescription("展开会话侧栏").performClick()
+        compose.onNodeWithTag("drawer-new").assertExists()
+        compose.onNodeWithContentDescription("展开会话侧栏").assertDoesNotExist()
     }
 
     private fun swipeFromLeftEdge() {
