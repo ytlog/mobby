@@ -10,6 +10,8 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
 import com.github.ytlog.mobby.android.conversation.domain.*
@@ -107,6 +109,7 @@ class ConversationDrawerPageTest {
         val list = compose.onNodeWithTag("drawer-new").getUnclippedBoundsInRoot()
         val detail = compose.onNodeWithTag("conversation-transcript").getUnclippedBoundsInRoot()
         assertTrue("list must be left of detail", list.right <= detail.left)
+        compose.onNodeWithContentDescription("搜索会话").performTextInput("keep-search")
         compose.onNodeWithTag("sidebar-collapse").performClick()
         compose.onNodeWithTag("drawer-new").assertDoesNotExist()
         compose.onNodeWithContentDescription("展开会话侧栏").assertExists()
@@ -115,6 +118,7 @@ class ConversationDrawerPageTest {
         compose.onNodeWithContentDescription("展开会话侧栏").performClick()
         compose.onNodeWithTag("drawer-new").assertExists()
         compose.onNodeWithContentDescription("展开会话侧栏").assertDoesNotExist()
+        compose.onNodeWithContentDescription("搜索会话").assertTextEquals("keep-search")
     }
 
     private fun swipeFromLeftEdge() {

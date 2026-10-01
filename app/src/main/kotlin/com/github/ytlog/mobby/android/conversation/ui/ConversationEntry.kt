@@ -105,11 +105,11 @@ class ConversationHostActions(
         fileTarget = null; fileWorkspace = null
         if (uri != null && id != null && workspace != null) vm.importAttachment(ConversationId(id), workspace, uri.toString())
     }
-    var route by rememberSaveable { mutableStateOf("conversation") }
-    var projectRoute by rememberSaveable { mutableStateOf<String?>(null) }
-    var projectsBackRoute by rememberSaveable { mutableStateOf("conversation") }
+    var navigation by rememberSaveable(stateSaver = AppNavigationState.Saver) { mutableStateOf(AppNavigationState()) }
     var drawer by rememberSaveable { mutableStateOf(false) }
     var sidebarExpanded by rememberSaveable { mutableStateOf(true) }
+    var conversationQuery by rememberSaveable { mutableStateOf("") }
+    val conversationListScroll = rememberLazyListState()
     val appearance by actions.appearance.collectAsStateWithLifecycle()
     var dialog by rememberSaveable { mutableStateOf<String?>(null) }
     var gatewayIntroSeen by rememberSaveable { mutableStateOf(false) }
@@ -119,7 +119,7 @@ class ConversationHostActions(
     val skillProposal by vm.skillProposal.collectAsStateWithLifecycle()
     val skillProposalSaved by vm.skillProposalSaved.collectAsStateWithLifecycle()
     LaunchedEffect(skillProposalSaved?.operation) {
-        skillProposalSaved?.let { route = "skills"; vm.consumeSkillProposalSaved(it.operation) }
+        skillProposalSaved?.let { navigation = navigation.open(AppPage.SKILLS); vm.consumeSkillProposalSaved(it.operation) }
     }
     var reading by remember { mutableStateOf<Pair<String, String>?>(null) }
     val snackbar = remember { SnackbarHostState() }
@@ -133,12 +133,12 @@ class ConversationHostActions(
             drawer = false
             dialog = null
             reading = null
-            route = "conversation"
+            navigation = navigation.open(AppPage.CONVERSATION)
             consumedNavigation = conversationNavigation
         }
     }
-    LaunchedEffect(route, system.ready, gatewaysLoaded, gateways.isEmpty(), dialog) {
-        if (!gatewayIntroSeen && route == "conversation" && system.ready && gatewaysLoaded && gateways.isEmpty() && dialog == null) {
+    LaunchedEffect(navigation.page, system.ready, gatewaysLoaded, gateways.isEmpty(), dialog) {
+        if (!gatewayIntroSeen && navigation.page == AppPage.CONVERSATION && system.ready && gatewaysLoaded && gateways.isEmpty() && dialog == null) {
             gatewayIntroSeen = true
             dialog = "gateway-intro"
         }
@@ -152,25 +152,18 @@ class ConversationHostActions(
     }
     var viewportOrigin by remember { mutableStateOf(Offset.Zero) }
     LaunchedEffect(vm) { for (message in vm.feedback) snackbar.showSnackbar(message) }
-    fun navigate(next: String) { keyboard?.hide(); focus.clearFocus(); drawer = false; route = next }
-    BackHandler(route != "conversation") {
-        route = when (route) {
-            "gateway" -> if (gatewayFromIntro) "conversation" else "settings"
-            "history-limits", "diagnostic", "archived", "licenses" -> "settings"
-            "plugins" -> "add"
-            "app-functions" -> "add"
-            "skills" -> "add"
-            "projects" -> projectsBackRoute
-            "project-detail" -> "conversation"
-            else -> "conversation"
-        }
+    fun navigate(next: AppPage) { keyboard?.hide(); focus.clearFocus(); drawer = false; navigation = navigation.open(next) }
+    fun navigateProjects(from: AppPage) { keyboard?.hide(); focus.clearFocus(); drawer = false; navigation = navigation.openProjects(from) }
+    fun showAddSheet() { keyboard?.hide(); focus.clearFocus(); drawer = false; navigation = navigation.openAddSheet() }
+    BackHandler(navigation.page != AppPage.CONVERSATION || navigation.addSheetOpen) {
+        navigation = navigation.back(gatewayFromIntro)
     }
     MaterialTheme(colorScheme = colors) {
         val selectPlugin = rememberDirectPluginSelector(vm, state.selected?.conversation)
         val camera = rememberCameraCapture(actions, { captured ->
             actions.importAttachment(ConversationId(captured.conversation), captured.workspace, requireNotNull(captured.attachmentUri))
         }, { message -> vm.report(OperationResult.Failed(message)) })
-        val pageColor = if (route == "conversation" || route == "project-detail") conversationCanvas() else MaterialTheme.colorScheme.background
+        val pageColor = if (navigation.page == AppPage.CONVERSATION || navigation.page == AppPage.PROJECT_DETAIL) conversationCanvas() else MaterialTheme.colorScheme.background
         Surface(Modifier.fillMaxSize(), color = pageColor) {
             ConversationViewport(onPosition = { viewportOrigin = it }) {
                 val fullWidth = maxWidth
@@ -218,39 +211,41 @@ class ConversationHostActions(
                     shadowElevation = 0.dp,
                     tonalElevation = 0.dp,
                 ) {
-                    when (route) {
-                        "projects" -> ProjectPage(vm, { route = projectsBackRoute }) { name -> projectRoute = name; route = "project-detail" }
-                        "project-detail" -> projectRoute?.let { name -> ProjectDetailPage(name, vm,
-                            back = { route = "conversation" }, moreProjects = { projectsBackRoute = "project-detail"; route = "projects" },
-                            openConversation = { conversation -> vm.enqueue { actions.select(conversation.id) }; route = "conversation" },
-                            openedNewConversation = { route = "conversation" }) }
-                        "settings" -> SettingsPage(system, appearance, { value -> vm.enqueue { vm.report(actions.setAppearance(value)) } }, { next ->
-                            if (next == "gateway") { gatewayStartAdding = false; gatewayFromIntro = false }
-                            navigate(next)
-                        }, { route = "conversation" }, vm, petEnabled, petPermitted, hostActions.pet)
-                        "gateway" -> GatewayPage(vm, startAdding = gatewayStartAdding) { route = if (gatewayFromIntro) "conversation" else "settings" }
-                        "history-limits" -> EventHistoryPage(actions::eventHistoryLimits, actions::saveEventHistoryLimits) { route = "settings" }
-                        "diagnostic" -> DiagnosticPage(vm) { route = "settings" }
-                        "licenses" -> LicensePage { route = "settings" }
-                        "archived" -> ArchivedPage(state, vm) { route = "settings" }
-                        "skills" -> SkillsPage(vm, onBack = { route = "add" }, onConversation = { route = "conversation" })
-                        "plugins" -> PluginPage(vm) { route = "add" }
-                        "app-functions" -> AppFunctionPage(vm) { route = "add" }
-                        else -> ConversationPane(
+                    when (navigation.page) {
+                        AppPage.PROJECTS -> ProjectPage(vm, { navigation = navigation.open(navigation.projectsBackPage) }) { name -> navigation = navigation.openProject(name) }
+                        AppPage.PROJECT_DETAIL -> navigation.projectName?.let { name -> ProjectDetailPage(name, vm,
+                            back = { navigation = navigation.open(AppPage.CONVERSATION) }, moreProjects = { navigateProjects(AppPage.PROJECT_DETAIL) },
+                            openConversation = { conversation -> vm.enqueue { actions.select(conversation.id) }; navigation = navigation.open(AppPage.CONVERSATION) },
+                            openedNewConversation = { navigation = navigation.open(AppPage.CONVERSATION) }) }
+                        AppPage.SETTINGS -> SettingsPage(system, appearance, { value -> vm.enqueue { vm.report(actions.setAppearance(value)) } }, { next ->
+                            val page = AppPage.fromSettingsRoute(next)
+                            if (page == AppPage.GATEWAY) { gatewayStartAdding = false; gatewayFromIntro = false }
+                            navigate(page)
+                        }, { navigation = navigation.open(AppPage.CONVERSATION) }, vm, petEnabled, petPermitted, hostActions.pet)
+                        AppPage.GATEWAY -> GatewayPage(vm, startAdding = gatewayStartAdding) { navigation = navigation.open(if (gatewayFromIntro) AppPage.CONVERSATION else AppPage.SETTINGS) }
+                        AppPage.HISTORY_LIMITS -> EventHistoryPage(actions::eventHistoryLimits, actions::saveEventHistoryLimits) { navigation = navigation.open(AppPage.SETTINGS) }
+                        AppPage.DIAGNOSTIC -> DiagnosticPage(vm) { navigation = navigation.open(AppPage.SETTINGS) }
+                        AppPage.LICENSES -> LicensePage { navigation = navigation.open(AppPage.SETTINGS) }
+                        AppPage.ARCHIVED -> ArchivedPage(state, vm) { navigation = navigation.open(AppPage.SETTINGS) }
+                        AppPage.SKILLS -> SkillsPage(vm, onBack = { navigation = navigation.openAddSheet() }, onConversation = { navigation = navigation.open(AppPage.CONVERSATION) })
+                        AppPage.PLUGINS -> PluginPage(vm) { navigation = navigation.openAddSheet() }
+                        AppPage.APP_FUNCTIONS -> AppFunctionPage(vm) { navigation = navigation.openAddSheet() }
+                        AppPage.CONVERSATION -> ConversationPane(
                             state, system, vm, hostActions, selectPlugin, Modifier.fillMaxSize().then(swipe),
                             showMenu = !showSidebar,
                             menuLabel = if (wide) AppStrings.expandConversationSidebar else AppStrings.openConversationDrawer,
                             onMenu = { keyboard?.hide(); focus.clearFocus(); if (wide) sidebarExpanded = true else drawer = true },
                             onNew = { dialog = "new" }, onMore = { dialog = it },
-                            onAnchor = { toolbarAnchor = it }, onAdd = { navigate("add") },
+                            onAnchor = { toolbarAnchor = it }, onAdd = { showAddSheet() },
                             onRead = { title, value -> reading = title to value },
                         )
                     }
                 }
                 if (!wide && drawer) Box(Modifier.offset { IntOffset(x + (pixels * progress).roundToInt(), y) }.requiredWidth(contentWidth).height(availableHeight).then(swipe).clickable { drawer = false })
-                if (showSidebar || (!wide && (drawer || progress > 0f))) ConversationListPane(state, onSelect = { c -> vm.enqueue { actions.select(c.id) }; drawer = false; route = "conversation" },
-                    onNew = { drawer = false; dialog = "new" }, onSettings = { navigate("settings") }, onProjects = { projectsBackRoute = "conversation"; navigate("projects") },
-                    onProject = { name -> drawer = false; projectRoute = name; route = "project-detail" },
+                if (showSidebar || (!wide && (drawer || progress > 0f))) ConversationListPane(state, conversationQuery, { conversationQuery = it }, conversationListScroll,
+                    onSelect = { c -> vm.enqueue { actions.select(c.id) }; drawer = false; navigation = navigation.open(AppPage.CONVERSATION) },
+                    onNew = { drawer = false; dialog = "new" }, onSettings = { navigate(AppPage.SETTINGS) }, onProjects = { navigateProjects(AppPage.CONVERSATION) },
+                    onProject = { name -> drawer = false; navigation = navigation.openProject(name) },
                     onCollapse = if (wide) ({ sidebarExpanded = false }) else null,
                     modifier = if (layout is ConversationLayout.Dual) Modifier.width(layout.listWidth).height(layout.height).offset {
                         IntOffset(with(density) { layout.listLeft.roundToPx() }, with(density) { layout.top.roundToPx() })
@@ -258,27 +253,27 @@ class ConversationHostActions(
                         IntOffset(x + ((progress - 1f) * pixels).roundToInt(), y)
                     }.then(swipe))
                 SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
-                if (route == "add") ModalBottomSheet(onDismissRequest = { route = "conversation" }, modifier = Modifier.offset(x = sheetOffset), sheetMaxWidth = overlayWidth, shape = RoundedCornerShape(28.dp, 28.dp, 0.dp, 0.dp), containerColor = addSheetColor(), contentColor = addInkColor()) {
+                if (navigation.addSheetOpen) ModalBottomSheet(onDismissRequest = { navigation = navigation.closeAddSheet() }, modifier = Modifier.offset(x = sheetOffset), sheetMaxWidth = overlayWidth, shape = RoundedCornerShape(28.dp, 28.dp, 0.dp, 0.dp), containerColor = addSheetColor(), contentColor = addInkColor()) {
                     val target = state.selected?.conversation
                     val canImport = target != null && !target.archived && !target.deleted && target.draft.pendingAttachment == null && target.draft.attachments.size < 4
                     val images = canImport && !camera.busy && agentOptions.any { it.agent == target?.config?.agent && it.images && it.unavailable == null }
                     val files = target != null && !target.archived && !target.deleted && target.draft.pendingAttachment == null && target.draft.attachments.size < 4 && agentOptions.any { it.agent == target.config.agent && it.resources && it.unavailable == null }
                     Column(Modifier.fillMaxWidth().heightIn(max = (availableHeight - 48.dp).coerceAtLeast(120.dp)).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            AttachmentTile(AppStrings.takePhoto, AppIcons.Camera, images, Modifier.weight(1f)) { if (target != null) { navigate("conversation"); camera.start(target) } }
+                            AttachmentTile(AppStrings.takePhoto, AppIcons.Camera, images, Modifier.weight(1f)) { if (target != null) { navigate(AppPage.CONVERSATION); camera.start(target) } }
                             AttachmentTile(AppStrings.photos, AppIcons.Photo, images, Modifier.weight(1f)) {
                                 if (target != null) {
-                                    fileTarget = target.id.value; fileWorkspace = target.config.workspace; route = "conversation"
+                                    fileTarget = target.id.value; fileWorkspace = target.config.workspace; navigation = navigation.open(AppPage.CONVERSATION)
                                     photoPicker.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                                 }
                             }
                             AttachmentTile(AppStrings.localFile, AppIcons.Upload, files, Modifier.weight(1f)) {
-                                if (target != null) { fileTarget = target.id.value; fileWorkspace = target.config.workspace; route = "conversation"; filePicker.launch(arrayOf("*/*")) }
+                                if (target != null) { fileTarget = target.id.value; fileWorkspace = target.config.workspace; navigation = navigation.open(AppPage.CONVERSATION); filePicker.launch(arrayOf("*/*")) }
                             }
                         }
-                        CapabilityRow(AppStrings.devicePlugins, AppStrings.connectDeviceCapabilitiesToExpandYourTasks, AppIcons.Plugin) { route = "plugins" }
-                        CapabilityRow(AppStrings.appFunctions, AppStrings.appFunctionsDescription, AppIcons.Plugin) { route = "app-functions" }
-                        CapabilityRow(AppStrings.skills, AppStrings.reuseExpertiseForSpecificTasks, AppIcons.Skill) { route = "skills" }
+                        CapabilityRow(AppStrings.devicePlugins, AppStrings.connectDeviceCapabilitiesToExpandYourTasks, AppIcons.Plugin) { navigation = navigation.open(AppPage.PLUGINS) }
+                        CapabilityRow(AppStrings.appFunctions, AppStrings.appFunctionsDescription, AppIcons.Plugin) { navigation = navigation.open(AppPage.APP_FUNCTIONS) }
+                        CapabilityRow(AppStrings.skills, AppStrings.reuseExpertiseForSpecificTasks, AppIcons.Skill) { navigation = navigation.open(AppPage.SKILLS) }
                         Spacer(Modifier.height(16.dp))
                     }
                 }
@@ -307,11 +302,11 @@ class ConversationHostActions(
                     title = { Text(AppStrings.configureAGatewayFirst) },
                     text = { Text(AppStrings.addAModelGatewayBeforeStartingAConversationThe) },
                     confirmButton = { TextButton(onClick = {
-                        dialog = null; gatewayStartAdding = true; gatewayFromIntro = true; navigate("gateway")
+                        dialog = null; gatewayStartAdding = true; gatewayFromIntro = true; navigate(AppPage.GATEWAY)
                     }) { Text(AppStrings.setUpGateway) } },
                     dismissButton = { TextButton(onClick = { dialog = null }) { Text(AppStrings.later) } },
                 )
-                if (dialog == "new") ConfigDialog(vm, c, onDismiss = { dialog = null }, onApply = { config, project -> vm.enqueue { actions.create(config, project) }; route = "conversation"; dialog = null }, anchor = toolbarAnchor)
+                if (dialog == "new") ConfigDialog(vm, c, onDismiss = { dialog = null }, onApply = { config, project -> vm.enqueue { actions.create(config, project) }; navigation = navigation.open(AppPage.CONVERSATION); dialog = null }, anchor = toolbarAnchor)
                 if (c != null) when (dialog) {
                     "rename" -> TextEditDialog(AppStrings.rename, c.title, { dialog = null }) { value -> vm.enqueue { vm.report(actions.rename(c.id, value)) }; dialog = null }
                     "project" -> ProjectGroupDialog(c, state.projects, { dialog = null }) { project -> vm.enqueue { vm.report(actions.project(c.id, project)) }; dialog = null }
@@ -382,8 +377,7 @@ class ConversationHostActions(
     }
 }
 
-@Composable private fun ConversationListPane(state: ConversationState, onSelect: (Conversation) -> Unit, onNew: () -> Unit, onSettings: () -> Unit, onProjects: () -> Unit, onProject: (String) -> Unit, onCollapse: (() -> Unit)?, modifier: Modifier) {
-    var query by rememberSaveable { mutableStateOf("") }
+@Composable private fun ConversationListPane(state: ConversationState, query: String, onQuery: (String) -> Unit, listScroll: LazyListState, onSelect: (Conversation) -> Unit, onNew: () -> Unit, onSettings: () -> Unit, onProjects: () -> Unit, onProject: (String) -> Unit, onCollapse: (() -> Unit)?, modifier: Modifier) {
     val control = drawerControlColor()
     Surface(modifier, color = drawerColor(), contentColor = conversationInk()) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
@@ -402,7 +396,7 @@ class ConversationHostActions(
             val projectNames = state.projects.map { it.name }.filter { name ->
                 query.isBlank() || name.contains(query, true) || visible.any { it.conversation.project == name }
             }.take(3)
-            LazyColumn(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
+            LazyColumn(Modifier.weight(1f), state = listScroll, horizontalAlignment = Alignment.Start) {
                 if (pinned.isNotEmpty()) {
                     item(key = "section:pinned") { DrawerSection(AppStrings.pin) }
                     items(pinned, key = { it.conversation.id.value }) { DrawerConversation(it, state, onSelect) }
@@ -421,7 +415,7 @@ class ConversationHostActions(
                 }
             }
             Row(Modifier.fillMaxWidth().padding(top = if (darkChrome()) 0.dp else 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                DrawerSearch(query, { query = it }, control, Modifier.weight(1f).testTag("drawer-search"))
+                DrawerSearch(query, onQuery, control, Modifier.weight(1f).testTag("drawer-search"))
                 DrawerCircle(AppStrings.settings, onSettings, control, AppIcons.Settings)
             }
         }
