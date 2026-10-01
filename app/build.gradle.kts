@@ -40,6 +40,11 @@ android {
         }
     }
     buildTypes {
+        getByName("debug") {
+            providers.gradleProperty("mobby.debugApplicationIdSuffix").orNull?.takeIf { it.isNotBlank() }?.let {
+                applicationIdSuffix = it
+            }
+        }
         getByName("release") {
             isMinifyEnabled = true
             isShrinkResources = true
@@ -83,6 +88,7 @@ dependencies {
     implementation(platform("androidx.compose:compose-bom:2025.06.00"))
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.compose.material3:material3")
+    implementation("androidx.window:window:1.5.1")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.7.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")

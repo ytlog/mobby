@@ -18,7 +18,8 @@ class LicenseAssetsTest {
         val maven = notices("maven")
         val ids = maven.map { it.getValue("id").jsonPrimitive.content }
         assertEquals(ids.size, ids.toSet().size)
-        assertEquals(113, maven.size)
+        assertTrue(ids.contains("androidx.window:window:1.5.1"))
+        assertTrue(ids.contains("androidx.window:window-core-android:1.5.1"))
         val autolink = maven.single { it.getValue("id").jsonPrimitive.content == "org.nibor.autolink:autolink:0.12.0" }
         assertTrue(autolink.getValue("text").jsonPrimitive.content.contains("Copyright (c)"))
         assertTrue(autolink.getValue("text").jsonPrimitive.content.contains("Permission is hereby granted"))

@@ -68,20 +68,22 @@ import kotlin.math.roundToInt
     val margin = with(density) { 16.dp.roundToPx() }
     val gap = with(density) { 8.dp.roundToPx() }
     val windowWidth = host.rootView.width.takeIf { it > 0 } ?: host.resources.displayMetrics.widthPixels
-    val popupWidth = (windowWidth - margin * 2).coerceAtLeast(1)
+    val popupWidth = minOf((windowWidth - margin * 2).coerceAtLeast(1), with(density) { 420.dp.roundToPx() })
+    val popupLeft = (if (anchor.width > 0) anchor.left else margin)
+        .coerceIn(margin, (windowWidth - popupWidth - margin).coerceAtLeast(margin))
     val predictedHeight = with(density) { 560.dp.roundToPx() }
     val frostTop = if (anchor.bottom > 0) anchor.bottom + gap else margin + with(density) { 56.dp.roundToPx() }
     var cardHeight by remember { mutableStateOf(predictedHeight) }
-    val frost = remember(snapshot, popupWidth, frostTop, cardHeight) {
-        snapshot?.let { frostRegion(it, margin, frostTop, popupWidth, cardHeight).asImageBitmap() }
+    val frost = remember(snapshot, popupLeft, popupWidth, frostTop, cardHeight) {
+        snapshot?.let { frostRegion(it, popupLeft, frostTop, popupWidth, cardHeight).asImageBitmap() }
     }
     val shape = RoundedCornerShape(22.dp)
     val scrim = menuScrim()
     val stroke = menuStroke()
-    val position = remember(margin, gap, frostTop, anchor) {
+    val position = remember(margin, gap, frostTop, anchor, popupLeft) {
         object : PopupPositionProvider {
             override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize): IntOffset {
-                val x = margin.coerceAtMost((windowSize.width - popupContentSize.width).coerceAtLeast(0))
+                val x = popupLeft.coerceAtMost((windowSize.width - popupContentSize.width).coerceAtLeast(0))
                 val rawY = when {
                     anchor.bottom > 0 -> anchor.bottom + gap
                     anchorBounds.bottom > 0 -> anchorBounds.bottom + gap

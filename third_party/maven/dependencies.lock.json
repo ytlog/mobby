@@ -185,6 +185,12 @@
   "androidx.versionedparcelable:versionedparcelable:1.1.1": [
     "Apache-2.0"
   ],
+  "androidx.window:window-core-android:1.5.1": [
+    "Apache-2.0"
+  ],
+  "androidx.window:window:1.5.1": [
+    "Apache-2.0"
+  ],
   "androidx.work:work-runtime-ktx:2.9.0": [
     "Apache-2.0"
   ],

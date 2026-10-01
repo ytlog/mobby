@@ -14,6 +14,10 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.WindowManager
+import androidx.window.WindowSdkExtensions
+import androidx.window.layout.FoldingFeature
+import androidx.window.layout.WindowInfoTracker
+import androidx.window.layout.WindowLayoutInfo
 import android.widget.LinearLayout
 import com.github.ytlog.mobby.android.conversation.domain.ConversationId
 import com.github.ytlog.mobby.android.conversation.domain.ExecutionId
@@ -22,19 +26,52 @@ import com.github.ytlog.mobby.android.conversation.domain.ConversationState
 import kotlin.math.abs
 import kotlin.math.min
 import kotlin.math.sin
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 
 internal interface PetWindow {
     val attached: Boolean
     fun attach(view: View, frame: PetFrame)
     fun update(frame: PetFrame)
     fun detach()
+    fun foldRegion(): OverlayFold? = null
+    fun onFoldChanged(callback: () -> Unit) = Unit
 }
 
 internal class SystemPetWindow(context: Context) : PetWindow {
-    private val wm = context.getSystemService(WindowManager::class.java)
+    private val baseContext = context
+    private val windowContext = overlayWindowContext(context)
+    private val wm = windowContext.getSystemService(WindowManager::class.java)
     private var view: View? = null
     private var params: WindowManager.LayoutParams? = null
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var foldJob: Job? = null
+    private var foldChanged: (() -> Unit)? = null
+    private var observedFold: OverlayFold? = null
+    private var hasFoldUpdate = false
     override val attached get() = view != null
+
+    override fun onFoldChanged(callback: () -> Unit) { foldChanged = callback }
+
+    override fun foldRegion(): OverlayFold? {
+        if (hasFoldUpdate) return observedFold
+        if (windowContext === baseContext || WindowSdkExtensions.getInstance().extensionVersion < 9) return null
+        val info = WindowInfoTracker.getOrCreate(windowContext).getCurrentWindowLayoutInfo(windowContext)
+        return foldFrom(info)
+    }
+
+    private fun foldFrom(info: WindowLayoutInfo): OverlayFold? {
+        val feature = info.displayFeatures.filterIsInstance<FoldingFeature>().firstOrNull {
+            it.isSeparating || it.occlusionType == FoldingFeature.OcclusionType.FULL
+        } ?: return null
+        return OverlayFold(feature.bounds.left, feature.bounds.top, feature.bounds.right, feature.bounds.bottom,
+            feature.orientation == FoldingFeature.Orientation.VERTICAL)
+    }
 
     override fun attach(view: View, frame: PetFrame) {
         if (this.view === view) {
@@ -47,6 +84,15 @@ internal class SystemPetWindow(context: Context) : PetWindow {
             wm.addView(view, next)
             this.view = view
             params = next
+            if (windowContext !== baseContext) foldJob = scope.launch {
+                WindowInfoTracker.getOrCreate(windowContext).windowLayoutInfo(windowContext)
+                    .map(::foldFrom).distinctUntilChanged().collect { fold ->
+                        val changed = !hasFoldUpdate || observedFold != fold
+                        hasFoldUpdate = true
+                        observedFold = fold
+                        if (changed) foldChanged?.invoke()
+                    }
+            }
         } catch (_: RuntimeException) {
             this.view = null
             params = null
@@ -70,6 +116,10 @@ internal class SystemPetWindow(context: Context) : PetWindow {
     }
 
     override fun detach() {
+        foldJob?.cancel()
+        foldJob = null
+        observedFold = null
+        hasFoldUpdate = false
         val view = view ?: return
         wm.removeViewImmediate(view)
         check(!view.isAttachedToWindow) { "Floating window is still attached" }
@@ -140,8 +190,11 @@ class DesktopPet internal constructor(
     private var lastPermitted = false
 
     init {
-        if (prefs.contains(KEY_X)) session.ballX = prefs.getInt(KEY_X, 0)
-        if (prefs.contains(KEY_Y)) session.ballY = prefs.getInt(KEY_Y, 0)
+        window.onFoldChanged(::refresh)
+        if (prefs.contains(KEY_X) && prefs.contains(KEY_Y)) session.restorePosition(
+            prefs.getInt(KEY_X, 0), prefs.getInt(KEY_Y, 0),
+            prefs.getInt(KEY_SCREEN_W, 0), prefs.getInt(KEY_SCREEN_H, 0),
+        )
     }
 
     fun update(state: ConversationState, foreground: Boolean, enabled: Boolean, permitted: Boolean) {
@@ -209,17 +262,20 @@ class DesktopPet internal constructor(
             applied = null
             return
         }
-        val key = RenderKey(target, session.expanded, metrics)
-        val rebuild = rendered != key || !window.attached
         val trayWidth = (min(metrics.trayW, metrics.screenW - metrics.ball) - petPx(8, metrics.density)).coerceAtLeast(0)
-        val tray = if (rebuild && session.expanded) tray(target, trayWidth).apply {
+        val tray = if (session.expanded) tray(target, trayWidth).apply {
             measure(
                 View.MeasureSpec.makeMeasureSpec(trayWidth, View.MeasureSpec.EXACTLY),
                 View.MeasureSpec.makeMeasureSpec(metrics.screenH, View.MeasureSpec.AT_MOST),
             )
             measuredTrayHeight = measuredHeight
         } else null
-        val frame = session.place(metrics.screenW, metrics.screenH, metrics.ball, metrics.trayW, measuredTrayHeight)
+        val rawFrame = session.place(metrics.screenW, metrics.screenH, metrics.ball, metrics.trayW, measuredTrayHeight)
+        val (frame, collapsed) = petFrameOutsideFold(rawFrame, metrics.screenW, metrics.screenH, metrics.ball, window.foldRegion())
+        if (collapsed) session.expanded = false
+        session.adoptFrame(frame, metrics.ball)
+        val key = RenderKey(target, session.expanded, metrics)
+        val rebuild = rendered != key || !window.attached
         if (!rebuild && applied?.ballOnRight == frame.ballOnRight) {
             if (applied != frame) {
                 applied = frame
@@ -248,11 +304,18 @@ class DesktopPet internal constructor(
             onDrag = { dx, dy ->
                 val current = metrics()
                 val moved = session.drag(dragFrameX, dragFrameY, dx, dy, current.screenW, current.screenH, current.ball)
-                window.update(moved)
+                val (fitted, collapsed) = petFrameOutsideFold(moved, current.screenW, current.screenH, current.ball, window.foldRegion())
+                if (collapsed) session.expanded = false
+                session.adoptFrame(fitted, current.ball)
+                window.update(fitted)
             }
             onDragEnd = {
                 dragging = false
-                session.ballX?.let { x -> session.ballY?.let { y -> prefs.edit().putInt(KEY_X, x).putInt(KEY_Y, y).apply() } }
+                session.ballX?.let { x -> session.ballY?.let { y ->
+                    val size = overlayDisplaySize(context)
+                    prefs.edit().putInt(KEY_X, x).putInt(KEY_Y, y)
+                        .putInt(KEY_SCREEN_W, size.first).putInt(KEY_SCREEN_H, size.second).apply()
+                } }
                 refresh()
             }
             layoutParams = LinearLayout.LayoutParams(metrics.ball, metrics.ball)
@@ -308,8 +371,9 @@ class DesktopPet internal constructor(
     private fun metrics(): PetMetrics {
         val display = context.resources.displayMetrics
         val config = context.resources.configuration
+        val (screenW, screenH) = overlayDisplaySize(context)
         val ball = petPx(PET_BALL_DP, display.density).coerceAtLeast(1)
-        return PetMetrics(display.widthPixels, display.heightPixels, display.density, ball,
+        return PetMetrics(screenW, screenH, display.density, ball,
             petPx(PET_TRAY_WIDTH_DP, display.density), config.fontScale, config.locales.toLanguageTags())
     }
 
@@ -324,6 +388,8 @@ class DesktopPet internal constructor(
         const val ENABLED = "enabled"
         private const val KEY_X = "x"
         private const val KEY_Y = "y"
+        private const val KEY_SCREEN_W = "screen-width"
+        private const val KEY_SCREEN_H = "screen-height"
     }
 }
 

@@ -102,6 +102,8 @@ internal class PetSession {
     var expanded: Boolean = false
     var ballX: Int? = null
     var ballY: Int? = null
+    private var lastScreenW: Int? = null
+    private var lastScreenH: Int? = null
     var frame: PetFrame? = null
         private set
 
@@ -115,7 +117,27 @@ internal class PetSession {
         return show
     }
 
+    fun restorePosition(x: Int, y: Int, screenW: Int?, screenH: Int?) {
+        ballX = x
+        ballY = y
+        lastScreenW = screenW?.takeIf { it > 0 }
+        lastScreenH = screenH?.takeIf { it > 0 }
+    }
+
+    fun adoptFrame(next: PetFrame, ball: Int) {
+        frame = next
+        val (x, y) = ballOrigin(next, ball.coerceAtMost(next.width))
+        ballX = x
+        ballY = y
+    }
+
     fun place(screenW: Int, screenH: Int, ball: Int, trayW: Int, trayH: Int): PetFrame {
+        val oldW = lastScreenW
+        val oldH = lastScreenH
+        if (oldW != null && oldW != screenW) ballX = ballX?.let { proportionalPosition(it, oldW, screenW, ball) }
+        if (oldH != null && oldH != screenH) ballY = ballY?.let { proportionalPosition(it, oldH, screenH, ball) }
+        lastScreenW = screenW
+        lastScreenH = screenH
         val x = ballX ?: (screenW - ball - (ball / 5)).coerceAtLeast(0)
         val y = ballY ?: ((screenH - ball) * 2 / 3).coerceAtLeast(0)
         return moveBall(x, y, screenW, screenH, ball, trayW, trayH)
@@ -154,4 +176,10 @@ internal class PetSession {
         tucked = false
         tuckedExecution = null
     }
+}
+
+private fun proportionalPosition(position: Int, oldSize: Int, newSize: Int, ball: Int): Int {
+    val oldTravel = (oldSize - ball).coerceAtLeast(1)
+    val newTravel = (newSize - ball).coerceAtLeast(0)
+    return (position.coerceIn(0, oldTravel).toLong() * newTravel / oldTravel).toInt()
 }

@@ -17,7 +17,7 @@
 | [Android 对话 UI 评审稿](design/conversation-ui-review.html) | 当前交互规范：会话与执行、顶部菜单、输入、插件/技能、Android 行为、实现架构及可点击原型；原生接入进度见实施记录 |
 | [App 图标](design/app-icon.md) | 确认稿、蓝色环带矢量资源、自适应图层与单色图标 |
 | [悬浮对话](design/floating-conversation.md) | 悬浮球职责、共享会话执行与时间线、屏幕识别入口、窗口生命周期和验收范围 |
-| [平板与折叠屏自适应界面重构方案](design/adaptive-large-screen.md) | 窗口与铰链布局、状态所有权、导航重构、实施顺序和验收标准；待评审设计 |
+| [平板与折叠屏自适应界面重构方案](design/adaptive-large-screen.md) | 窗口与铰链布局、状态所有权、实施方案与首版实现状态 |
 | [交互三层架构与 Runtime 技术设计](design/conversation-runtime-architecture.html) | Compose 展示包、三层职责、Runtime 模块、固定接口与事件协议、数据所有权和迁移验收 |
 | [Gradle 模块收敛评审](design/module-consolidation.md) | 17 → 13 个模块的核查与合并、按职责分组的目录、边界检查与验证 |
 | [会话运行状态管理](design/conversation-state-management.md) | 统一运行状态规则、快照投影、独立输出加载、恢复和摘要一致性 |

@@ -6,6 +6,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
@@ -20,6 +22,7 @@ import kotlinx.coroutines.flow.flowOf
 import org.junit.After
 import org.junit.Rule
 import org.junit.Test
+import org.junit.Assert.assertTrue
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
@@ -73,6 +76,37 @@ class ConversationDrawerPageTest {
         compose.onNodeWithContentDescription("打开会话抽屉").assertExists()
         swipeFromLeftEdge()
         compose.onNodeWithText("新对话").assertExists()
+    }
+
+    @Test @Config(sdk = [34], qualifiers = "w1000dp-h800dp")
+    fun `expanded window keeps conversation list visible without drawer button`() {
+        val repository = stub<ConversationStore> { name -> when (name) {
+            "getState" -> MutableStateFlow(ConversationState(loading = false))
+            "awaitAttachmentRecovery" -> Unit
+            else -> error(name)
+        } }
+        val system = stub<SystemPort> { name -> when (name) {
+            "getStatus" -> flowOf(SystemStatus(true, true))
+            "getDiagnostic" -> flowOf(DiagnosticOutput(null, emptyList()))
+            "agents" -> emptyList<AgentOption>()
+            "gateways" -> emptyList<GatewayProfile>()
+            "defaultGateway" -> null
+            "capture" -> DataResult.Loaded<CameraCapture?>(null)
+            else -> error(name)
+        } }
+        val preferences = stub<PreferencePort> { name -> when (name) {
+            "getAppearance" -> MutableStateFlow(Appearance.DARK)
+            else -> error(name)
+        } }
+        val actions = ConversationUseCases(repository, stub<ExecutionPort> { error(it) }, system, { "fixture" }, scope, preferences)
+        compose.setContent { ConversationEntry(actions, ConversationHostActions({}, {})) }
+        compose.onNodeWithText("稍后").performClick()
+        compose.onNodeWithTag("drawer-new").assertExists()
+        compose.onNodeWithContentDescription("打开会话抽屉").assertDoesNotExist()
+        compose.onNodeWithTag("conversation-transcript").assertExists()
+        val list = compose.onNodeWithTag("drawer-new").getUnclippedBoundsInRoot()
+        val detail = compose.onNodeWithTag("conversation-transcript").getUnclippedBoundsInRoot()
+        assertTrue("list must be left of detail", list.right <= detail.left)
     }
 
     private fun swipeFromLeftEdge() {

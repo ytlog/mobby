@@ -26,7 +26,7 @@
 
 ## Android 与运行依赖
 
-实际 release 解析结果是 114 个产物，按重复坐标归并为 **113 个 Maven 依赖**，包含传递依赖：105 个 Apache-2.0、5 个 BSD-2-Clause、3 个 MIT。构建读取实际 releaseRuntimeClasspath、Maven POM 及父 POM，保留 JAR/AAR（含 classes.jar）里的许可与 NOTICE；缺少原文的 autolink、SLF4J 使用固定版本的官方原文。新增依赖、版本或许可变化须审查清单，不能自动以项目 MIT 填充。
+当前 release 解析结果是 116 个产物，按重复坐标归并为 **115 个 Maven 依赖**，包含传递依赖：107 个 Apache-2.0、5 个 BSD-2-Clause、3 个 MIT。新增的 AndroidX WindowManager 两个坐标已核对其 POM 与 Apache-2.0 许可并写入锁定清单。构建读取实际 releaseRuntimeClasspath、Maven POM 及父 POM，保留 JAR/AAR（含 classes.jar）里的许可与 NOTICE；缺少原文的 autolink、SLF4J 使用固定版本的官方原文。新增依赖、版本或许可变化须审查清单，不能自动以项目 MIT 填充。
 
 Sherpa-ONNX AAR 另外包含 ONNX Runtime 1.28.2。其版本与 Sherpa 固定版本的 Android 构建配方及实际 ELF 字符串一致；MIT 原文和完整 ThirdPartyNotices 随 App 保留。Eigen 的 MPL 覆盖源码按 ONNX 1.28.2 deps.txt 的固定提交与校验和提供。当前 ARM64 JNI 没有检出 espeak/piper 符号，上游也已移除该依赖；不凭名称把它误判为旧版 GPL TTS 组合。
 

@@ -64,6 +64,8 @@ class FloatingConversationWindow internal constructor(
     private var screenOperations = 0
     private var applied: PetFrame? = null
 
+    init { window.onFoldChanged(::refresh) }
+
     fun show(id: ConversationId?) {
         if (isOpen) return
         isOpen = true
@@ -92,11 +94,8 @@ class FloatingConversationWindow internal constructor(
 
     fun refresh() {
         if (!isOpen || screenOperations > 0) { window.detach(); applied = null; return }
-        val display = context.resources.displayMetrics
-        val width = minOf(petPx(420, display.density), display.widthPixels - petPx(24, display.density)).coerceAtLeast(1)
-        val height = minOf(petPx(FloatingConversationHeight, display.density), display.heightPixels - petPx(96, display.density)).coerceAtLeast(1)
-        val frame = PetFrame((display.widthPixels - width) / 2,
-            ((display.heightPixels - height) / 3).coerceAtLeast(0), width, height, true, focusable = true)
+        val (screenW, screenH) = overlayDisplaySize(context)
+        val frame = floatingConversationFrame(screenW, screenH, context.resources.displayMetrics.density, window.foldRegion())
         if (applied != frame || !window.attached) {
             window.attach(view, frame)
             applied = if (window.attached) frame else null

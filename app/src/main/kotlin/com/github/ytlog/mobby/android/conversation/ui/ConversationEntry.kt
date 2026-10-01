@@ -6,10 +6,13 @@ import com.github.ytlog.mobby.android.conversation.ui.gateway.GatewayPage
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.content.Context
+import android.content.ContextWrapper
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.PredictiveBackHandler
+import androidx.activity.ComponentActivity
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
@@ -66,6 +69,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.ytlog.mobby.android.conversation.domain.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
+import androidx.window.layout.FoldingFeature
+import androidx.window.layout.WindowInfoTracker
+import androidx.window.layout.WindowLayoutInfo
 import kotlin.math.roundToInt
 
 class ConversationHostActions(
@@ -139,6 +145,11 @@ class ConversationHostActions(
     val dark = appearance == Appearance.DARK || appearance == Appearance.SYSTEM && isSystemInDarkTheme()
     LaunchedEffect(dark) { hostActions.appearance(dark) }
     val colors = if (dark) MobbyDarkScheme else MobbyLightScheme
+    val activity = LocalContext.current.findHostActivity()
+    val windowInfo by produceState<WindowLayoutInfo?>(null, activity) {
+        if (activity != null) WindowInfoTracker.getOrCreate(activity).windowLayoutInfo(activity).collect { value = it }
+    }
+    var viewportOrigin by remember { mutableStateOf(Offset.Zero) }
     LaunchedEffect(vm) { for (message in vm.feedback) snackbar.showSnackbar(message) }
     fun navigate(next: String) { keyboard?.hide(); focus.clearFocus(); drawer = false; route = next }
     BackHandler(route != "conversation") {
@@ -160,21 +171,45 @@ class ConversationHostActions(
         }, { message -> vm.report(OperationResult.Failed(message)) })
         val pageColor = if (route == "conversation" || route == "project-detail") conversationCanvas() else MaterialTheme.colorScheme.background
         Surface(Modifier.fillMaxSize(), color = pageColor) {
-            ConversationViewport {
+            ConversationViewport(onPosition = { viewportOrigin = it }) {
                 val fullWidth = maxWidth
-                val availableHeight = maxHeight
-                val drawerWidth = minOf(360.dp, (fullWidth - 56.dp).coerceAtLeast(0.dp))
-                val motion = rememberDrawerMotion(drawer) { open ->
+                val density = LocalDensity.current
+                val fold = windowInfo?.displayFeatures?.filterIsInstance<FoldingFeature>()?.firstOrNull {
+                    it.isSeparating || it.occlusionType == FoldingFeature.OcclusionType.FULL
+                }?.let { feature ->
+                    with(density) {
+                        FoldRegion(
+                            (feature.bounds.left - viewportOrigin.x).toDp(),
+                            (feature.bounds.top - viewportOrigin.y).toDp(),
+                            (feature.bounds.right - viewportOrigin.x).toDp(),
+                            (feature.bounds.bottom - viewportOrigin.y).toDp(),
+                            feature.orientation == FoldingFeature.Orientation.VERTICAL,
+                        )
+                    }
+                }
+                val layout = conversationLayout(fullWidth, maxHeight, fold)
+                val wide = layout is ConversationLayout.Dual
+                val availableHeight = when (layout) { is ConversationLayout.Single -> layout.height; is ConversationLayout.Dual -> layout.height }
+                val contentWidth = when (layout) { is ConversationLayout.Single -> layout.width; is ConversationLayout.Dual -> layout.detailWidth }
+                val drawerWidth = minOf(360.dp, (contentWidth - 56.dp).coerceAtLeast(0.dp))
+                LaunchedEffect(wide) { if (wide) drawer = false }
+                val motion = rememberDrawerMotion(drawer && !wide) { open ->
                     if (open) { keyboard?.hide(); focus.clearFocus() }
                     drawer = open
                 }
                 val progress by motion
-                val pixels = with(LocalDensity.current) { drawerWidth.toPx() }
+                val pixels = with(density) { drawerWidth.toPx() }
                 motion.width = pixels
-                val swipe = Modifier.drawerSwipe(motion, with(LocalDensity.current) { DrawerSwipeEdge.toPx() })
+                val swipe = if (wide) Modifier else Modifier.drawerSwipe(motion, with(density) { DrawerSwipeEdge.toPx() })
+                val contentLeft = when (layout) { is ConversationLayout.Single -> layout.left; is ConversationLayout.Dual -> layout.detailLeft }
+                val contentTop = when (layout) { is ConversationLayout.Single -> layout.top; is ConversationLayout.Dual -> layout.top }
+                val overlayWidth = minOf(contentWidth, 520.dp)
+                val overlayLeft = with(density) { viewportOrigin.x.toDp() } + contentLeft + (contentWidth - overlayWidth) / 2
+                val x = with(density) { contentLeft.roundToPx() }
+                val y = with(density) { contentTop.roundToPx() }
                 Surface(
-                    Modifier.requiredWidth(fullWidth).fillMaxHeight().offset { IntOffset((pixels * progress).roundToInt(), 0) }
-                        .then(if (drawer) Modifier.clearAndSetSemantics {} else Modifier),
+                    Modifier.requiredWidth(contentWidth).height(availableHeight).offset { IntOffset(x + if (wide) 0 else (pixels * progress).roundToInt(), y) }
+                        .then(if (drawer && !wide) Modifier.clearAndSetSemantics {} else Modifier),
                     color = pageColor,
                     shadowElevation = 0.dp,
                     tonalElevation = 0.dp,
@@ -197,63 +232,32 @@ class ConversationHostActions(
                         "skills" -> SkillsPage(vm, onBack = { route = "add" }, onConversation = { route = "conversation" })
                         "plugins" -> PluginPage(vm) { route = "add" }
                         "app-functions" -> AppFunctionPage(vm) { route = "add" }
-                        else -> Column(Modifier.fillMaxSize().then(swipe)) {
-                            ConversationToolbar(
-                                state.selected?.conversation, vm,
-                                modifier = Modifier.fillMaxWidth().testTag("conversation-toolbar"),
-                                onMenu = { keyboard?.hide(); focus.clearFocus(); drawer = true },
-                                onNew = { dialog = "new" }, onMore = { dialog = it },
-                                onAnchor = { toolbarAnchor = it },
-                            )
-                            if (!system.connected || !system.ready) Text(
-                                system.message,
-                                Modifier.padding(horizontal = 20.dp, vertical = 4.dp).align(Alignment.CenterHorizontally),
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                            Box(Modifier.weight(1f).fillMaxWidth().clipToBounds().testTag("conversation-transcript")) {
-                                CompositionLocalProvider(LocalContentColor provides conversationInk()) {
-                                Box(Modifier.fillMaxSize()) {
-                                when {
-                                    state.error != null -> Text(state.error!!, Modifier.align(Alignment.Center).padding(24.dp), color = MaterialTheme.colorScheme.error)
-                                    state.loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
-                                    state.selected == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                            EmptyPlaceholder(AppStrings.noConversationsYet, AppStrings.startAConversationWithASpecificTask)
-                                            Button(onClick = { dialog = "new" }, colors = filledButtonColors()) { Text(AppStrings.newConversation2) }
-                                        }
-                                    }
-                                    else -> {
-                                        val detail = state.selected!!
-                                        key(detail.conversation.id) {
-                                            Timeline(
-                                                detail, vm, Modifier.fillMaxSize(),
-                                                read = { title, text -> reading = title to text }, hostActions = hostActions, proposal = vm::openSkillProposal,
-                                                onSelectPlugin = selectPlugin,
-                                            )
-                                        }
-                                    }
-                                }
-                                }
-                                }
-                            }
-                            if (state.selected != null && state.error == null && !state.loading) {
-                                Composer(state.selected!!, state, system, vm, modifier = Modifier.fillMaxWidth().testTag("conversation-composer"), onAdd = { navigate("add") })
-                            }
-                        }
+                        else -> ConversationPane(
+                            state, system, vm, hostActions, selectPlugin, Modifier.fillMaxSize().then(swipe),
+                            showMenu = !wide,
+                            onMenu = { keyboard?.hide(); focus.clearFocus(); drawer = true },
+                            onNew = { dialog = "new" }, onMore = { dialog = it },
+                            onAnchor = { toolbarAnchor = it }, onAdd = { navigate("add") },
+                            onRead = { title, value -> reading = title to value },
+                        )
                     }
                 }
-                if (drawer) Box(Modifier.offset { IntOffset((pixels * progress).roundToInt(), 0) }.fillMaxSize().then(swipe).clickable { drawer = false })
-                if (drawer || progress > 0f) ConversationDrawer(state, onSelect = { c -> vm.enqueue { actions.select(c.id) }; drawer = false; route = "conversation" },
+                if (!wide && drawer) Box(Modifier.offset { IntOffset(x + (pixels * progress).roundToInt(), y) }.requiredWidth(contentWidth).height(availableHeight).then(swipe).clickable { drawer = false })
+                if (wide || drawer || progress > 0f) ConversationListPane(state, onSelect = { c -> vm.enqueue { actions.select(c.id) }; drawer = false; route = "conversation" },
                     onNew = { drawer = false; dialog = "new" }, onSettings = { navigate("settings") }, onProjects = { projectsBackRoute = "conversation"; navigate("projects") },
                     onProject = { name -> drawer = false; projectRoute = name; route = "project-detail" },
-                    modifier = Modifier.width(drawerWidth).fillMaxHeight().offset { IntOffset(((progress - 1f) * pixels).roundToInt(), 0) }.then(swipe))
+                    modifier = if (layout is ConversationLayout.Dual) Modifier.width(layout.listWidth).height(layout.height).offset {
+                        IntOffset(with(density) { layout.listLeft.roundToPx() }, with(density) { layout.top.roundToPx() })
+                    } else Modifier.width(drawerWidth).height(availableHeight).offset {
+                        IntOffset(x + ((progress - 1f) * pixels).roundToInt(), y)
+                    }.then(swipe))
                 SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
-                if (route == "add") ModalBottomSheet(onDismissRequest = { route = "conversation" }, shape = RoundedCornerShape(28.dp, 28.dp, 0.dp, 0.dp), containerColor = addSheetColor(), contentColor = addInkColor()) {
+                if (route == "add") ModalBottomSheet(onDismissRequest = { route = "conversation" }, sheetMaxWidth = Dp.Unspecified, shape = RoundedCornerShape(28.dp, 28.dp, 0.dp, 0.dp), containerColor = addSheetColor(), contentColor = addInkColor()) {
                     val target = state.selected?.conversation
                     val canImport = target != null && !target.archived && !target.deleted && target.draft.pendingAttachment == null && target.draft.attachments.size < 4
                     val images = canImport && !camera.busy && agentOptions.any { it.agent == target?.config?.agent && it.images && it.unavailable == null }
                     val files = target != null && !target.archived && !target.deleted && target.draft.pendingAttachment == null && target.draft.attachments.size < 4 && agentOptions.any { it.agent == target.config.agent && it.resources && it.unavailable == null }
-                    Column(Modifier.heightIn(max = (availableHeight - 48.dp).coerceAtLeast(120.dp)).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(Modifier.offset(x = overlayLeft).width(overlayWidth).heightIn(max = (availableHeight - 48.dp).coerceAtLeast(120.dp)).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             AttachmentTile(AppStrings.takePhoto, AppIcons.Camera, images, Modifier.weight(1f)) { if (target != null) { navigate("conversation"); camera.start(target) } }
                             AttachmentTile(AppStrings.photos, AppIcons.Photo, images, Modifier.weight(1f)) {
@@ -276,8 +280,8 @@ class ConversationHostActions(
                 reading?.let { (title, text) ->
                     val ink = readerInk()
                     val muted = readerMuted()
-                    ModalBottomSheet(onDismissRequest = { reading = null }, containerColor = raisedColor(), contentColor = if (dark) ink else contentColorFor(raisedColor())) {
-                        Column(Modifier.fillMaxWidth().heightIn(max = (availableHeight - 48.dp).coerceAtLeast(120.dp))) {
+                    ModalBottomSheet(onDismissRequest = { reading = null }, sheetMaxWidth = Dp.Unspecified, containerColor = raisedColor(), contentColor = if (dark) ink else contentColorFor(raisedColor())) {
+                        Column(Modifier.offset(x = overlayLeft).width(overlayWidth).heightIn(max = (availableHeight - 48.dp).coerceAtLeast(120.dp))) {
                             Text(title, Modifier.fillMaxWidth().padding(horizontal = 16.dp), color = if (dark) muted else Color.Unspecified, style = MaterialTheme.typography.titleMedium)
                             val clipboard = LocalClipboardManager.current
                             TextButton(onClick = { clipboard.setText(AnnotatedString(text)) }, colors = if (dark) textButtonColors(muted) else textButtonColors()) { Text(AppStrings.copyOriginalText) }
@@ -326,7 +330,53 @@ class ConversationHostActions(
     }
 }
 
-@Composable private fun ConversationDrawer(state: ConversationState, onSelect: (Conversation) -> Unit, onNew: () -> Unit, onSettings: () -> Unit, onProjects: () -> Unit, onProject: (String) -> Unit, modifier: Modifier) {
+@Composable private fun ConversationPane(
+    state: ConversationState, system: SystemStatus, vm: ConversationViewModel,
+    hostActions: ConversationHostActions, onSelectPlugin: (String) -> Unit, modifier: Modifier,
+    showMenu: Boolean, onMenu: () -> Unit, onNew: () -> Unit, onMore: (String) -> Unit,
+    onAnchor: (IntRect) -> Unit, onAdd: () -> Unit, onRead: (String, String) -> Unit,
+) {
+    Column(modifier) {
+        ConversationToolbar(state.selected?.conversation, vm,
+            modifier = Modifier.fillMaxWidth().testTag("conversation-toolbar"),
+            onMenu = onMenu, onNew = onNew, onMore = onMore, onAnchor = onAnchor, showMenu = showMenu)
+        if (!system.connected || !system.ready) Text(
+            system.message,
+            Modifier.padding(horizontal = 20.dp, vertical = 4.dp).align(Alignment.CenterHorizontally),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Box(Modifier.weight(1f).fillMaxWidth().clipToBounds().testTag("conversation-transcript")) {
+            CompositionLocalProvider(LocalContentColor provides conversationInk()) {
+                Box(Modifier.align(Alignment.Center).widthIn(max = 760.dp).fillMaxSize()) {
+                    when {
+                        state.error != null -> Text(state.error!!, Modifier.align(Alignment.Center).padding(24.dp), color = MaterialTheme.colorScheme.error)
+                        state.loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
+                        state.selected == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                EmptyPlaceholder(AppStrings.noConversationsYet, AppStrings.startAConversationWithASpecificTask)
+                                Button(onClick = onNew, colors = filledButtonColors()) { Text(AppStrings.newConversation2) }
+                            }
+                        }
+                        else -> {
+                            val detail = state.selected!!
+                            key(detail.conversation.id) {
+                                Timeline(detail, vm, Modifier.fillMaxSize(), read = onRead,
+                                    hostActions = hostActions, proposal = vm::openSkillProposal, onSelectPlugin = onSelectPlugin)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (state.selected != null && state.error == null && !state.loading) {
+            Composer(state.selected!!, state, system, vm,
+                modifier = Modifier.align(Alignment.CenterHorizontally).widthIn(max = 760.dp).fillMaxWidth().testTag("conversation-composer"),
+                onAdd = onAdd)
+        }
+    }
+}
+
+@Composable private fun ConversationListPane(state: ConversationState, onSelect: (Conversation) -> Unit, onNew: () -> Unit, onSettings: () -> Unit, onProjects: () -> Unit, onProject: (String) -> Unit, modifier: Modifier) {
     var query by rememberSaveable { mutableStateOf("") }
     val control = drawerControlColor()
     Surface(modifier, color = drawerColor(), contentColor = conversationInk()) {
@@ -444,13 +494,13 @@ private val DrawerRowHeight = 40.dp
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable private fun ConversationToolbar(c: Conversation?, vm: ConversationViewModel, onMenu: () -> Unit, onNew: () -> Unit, onMore: (String) -> Unit, onAnchor: (IntRect) -> Unit = {}, modifier: Modifier = Modifier) {
+@Composable private fun ConversationToolbar(c: Conversation?, vm: ConversationViewModel, onMenu: () -> Unit, onNew: () -> Unit, onMore: (String) -> Unit, onAnchor: (IntRect) -> Unit = {}, modifier: Modifier = Modifier, showMenu: Boolean = true) {
     var config by remember { mutableStateOf(false) }
     var more by remember { mutableStateOf(false) }
     var chip by remember { mutableStateOf(IntRect.Zero) }
     var actions by remember { mutableStateOf(IntRect.Zero) }
     Row(modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, top = 8.dp, bottom = if (darkChrome()) 0.dp else 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Surface(Modifier.size(ToolbarControl), shape = CircleShape, color = buttonColor(), contentColor = onButtonColor(), shadowElevation = floatingElevation(), tonalElevation = 0.dp) { ActionIcon(AppStrings.openConversationDrawer, onMenu, AppIcons.Menu) }
+            if (showMenu) Surface(Modifier.size(ToolbarControl), shape = CircleShape, color = buttonColor(), contentColor = onButtonColor(), shadowElevation = floatingElevation(), tonalElevation = 0.dp) { ActionIcon(AppStrings.openConversationDrawer, onMenu, AppIcons.Menu) }
             Box(Modifier.padding(horizontal = 6.dp).onGloballyPositioned { coordinates ->
                 val origin = coordinates.positionInWindow()
                 chip = IntRect(origin.x.roundToInt(), origin.y.roundToInt(), origin.x.roundToInt() + coordinates.size.width, origin.y.roundToInt() + coordinates.size.height)
@@ -940,8 +990,16 @@ internal fun capabilityLabel(ref: String): String {
 }
 }
 
-@Composable internal fun ConversationViewport(content: @Composable BoxWithConstraintsScope.() -> Unit) {
-    BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding().clipToBounds(), content = content)
+@Composable internal fun ConversationViewport(onPosition: (Offset) -> Unit = {}, content: @Composable BoxWithConstraintsScope.() -> Unit) {
+    Box(Modifier.fillMaxSize().safeDrawingPadding()) {
+        BoxWithConstraints(Modifier.fillMaxSize().onGloballyPositioned { onPosition(it.positionInWindow()) }.clipToBounds(), content = content)
+    }
+}
+
+private tailrec fun Context.findHostActivity(): ComponentActivity? = when (this) {
+    is ComponentActivity -> this
+    is ContextWrapper -> baseContext.findHostActivity()
+    else -> null
 }
 
 // Wide enough that a swipe can start inside the app, past the system back gesture inset.
