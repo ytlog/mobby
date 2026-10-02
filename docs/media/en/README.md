@@ -11,7 +11,7 @@ Recorded on 29 September 2026 with Codex in mobby on a Xiaomi M2007J1SC running 
 
 Via's package is `mark.via`; Android reports its first installation and update at 05:44:29 on the recording date, with `com.xiaomi.market` as installer. Google Play is disabled on this device. Earlier VLC and Edge attempts were stopped and are not presented as successful demos; Edge was already installed on the phone.
 
-The README embeds looping GIFs, matching the image-based animation approach in the [AionUi README](https://github.com/iOfficeAI/AionUi/blob/main/docs/readme/readme_ch.md). Static openings, tails, repeated waits, and part of the app-store navigation recovery were removed; retained waits play at 2–12× speed. These are edited demonstrations, not uninterrupted recordings.
+The README embeds looping GIFs inside a drawn phone frame. The unframed GIFs in this directory remain the source demos; `framed/` contains presentation copies generated with [`frame_device.py`](../frame_device.py). The source GIFs match the image-based animation approach in the [AionUi README](https://github.com/iOfficeAI/AionUi/blob/main/docs/readme/readme_ch.md). Static openings, tails, repeated waits, and part of the app-store navigation recovery were removed; retained waits play at 2–12× speed. These are edited demonstrations, not uninterrupted recordings.
 
 | Demo | Original duration | Edited duration |
 | --- | --- | --- |
@@ -21,6 +21,8 @@ The README embeds looping GIFs, matching the image-based animation approach in t
 | On-device coding | 231 seconds | 46 seconds |
 
 The exact cut points and speeds are in [edits.json](edits.json); [edit_recordings.py](edit_recordings.py) reproduces the GIFs from local original recordings. MP4 originals and edited videos are kept outside Git; only GIF animations and still images are committed.
+
+After regenerating an unframed GIF, regenerate its README copy with Pillow: `python docs/media/frame_device.py phone docs/media/en/screen-qa.gif docs/media/en/framed/screen-qa.gif`. The same script accepts `tablet` and a PNG input when a tablet screenshot is ready.
 
 Screen operations were observed with screenshots during execution. Running `uiautomator dump` appeared to interrupt the app's accessibility service during an earlier attempt, so it was avoided during active screen tasks. App control still needs supervision: store ads and layout changes can lead to wrong taps or extra navigation.
 

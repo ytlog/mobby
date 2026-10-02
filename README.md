@@ -24,7 +24,7 @@ Reading a page you don't understand? Tap the floating button, open the floating 
 
 > What is this page about? What makes Python useful, and where should a beginner start?
 
-<p><img src="docs/media/en/screen-qa.gif" width="360" alt="Floating chat explaining the Python website"></p>
+<p><img src="docs/media/en/framed/screen-qa.gif" width="360" alt="Phone demo: floating chat explaining the Python website"></p>
 
 ## Work with photos and files
 
@@ -32,7 +32,7 @@ Add photo or file access to a task and choose the photos or folder to share. Ask
 
 > Look at my recent photos, copy the latest one to the folder I selected, and create an image summary and a file list.
 
-<p><img src="docs/media/en/media-files.gif" width="360" alt="Completed photo analysis and file export"></p>
+<p><img src="docs/media/en/framed/media-files.gif" width="360" alt="Phone demo: completed photo analysis and file export"></p>
 
 ## Let it use apps for you
 
@@ -40,7 +40,7 @@ Add phone or tablet access to a task and describe what you want to do. mobby rea
 
 > Install Via browser from the app store and open Bookmarks.
 
-<p><img src="docs/media/en/app-feature.gif" width="360" alt="Bookmarks in Via browser"></p>
+<p><img src="docs/media/en/framed/app-feature.gif" width="360" alt="Phone demo: Bookmarks in Via browser"></p>
 
 ## Build something useful on your Android device
 
@@ -48,7 +48,7 @@ Describe what you need. Let the agent write the code in your device's workspace,
 
 > Make a travel packing list with categories for documents, clothes, electronics, and toiletries. Let me check off, add, and delete items, and keep my changes after a refresh.
 
-<p><img src="docs/media/en/travel-checklist.gif" width="360" alt="Travel packing checklist running in the phone browser"></p>
+<p><img src="docs/media/en/framed/travel-checklist.gif" width="360" alt="Phone demo: travel packing checklist running in the browser"></p>
 
 [Browse the example code](docs/examples/travel-checklist-en/)
 

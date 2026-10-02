@@ -31,7 +31,9 @@ node docs/examples/travel-checklist/server.cjs
 
 ## README 精剪动画
 
-中文 README 已嵌入循环播放的 GIF。精剪删除无效首尾、部分误点恢复过程和重复静止画面，保留任务、关键操作与结果；不是连续完整录屏。上表链接精剪动画，原视频保留在本机目录，已知问题和验收范围保持不变。
+中文 README 已嵌入带绘制手机边框的循环 GIF。当前目录的无边框 GIF 是演示原件；`framed/` 中的展示副本由 [`frame_device.py`](../frame_device.py) 生成。精剪删除无效首尾、部分误点恢复过程和重复静止画面，保留任务、关键操作与结果；不是连续完整录屏。上表链接精剪动画，原视频保留在本机目录，已知问题和验收范围保持不变。
+
+更新原 GIF 后，可用 Pillow 重新生成展示副本，例如：`python docs/media/frame_device.py phone docs/media/cn/screen-qa.gif docs/media/cn/framed/screen-qa.gif`。以后取得可公开的平板截图时，同一脚本可用 `tablet` 参数为 PNG 绘制平板外形。
 
 | 场景 | 精剪时长 | 视频 |
 | --- | --- | --- |

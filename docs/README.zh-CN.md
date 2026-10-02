@@ -24,7 +24,7 @@ mobby 让 Pi、Claude Code、Codex、OpenCode 这些 Code Agent 直接在 Androi
 
 > 这个页面在讲什么？Python 有哪些特点，初学者应该从哪里开始？
 
-<p><img src="media/cn/screen-qa.gif" width="360" alt="在 Python 网页上打开悬浮对话，用中文解释当前页面"></p>
+<p><img src="media/cn/framed/screen-qa.gif" width="360" alt="手机演示：在 Python 网页上打开悬浮对话，用中文解释当前页面"></p>
 
 ## 处理照片和文件
 
@@ -32,7 +32,7 @@ mobby 让 Pi、Claude Code、Codex、OpenCode 这些 Code Agent 直接在 Androi
 
 > 看一下最近的照片，把最新一张复制到指定文件夹，再写一份图片说明和文件清单。
 
-<p><img src="media/cn/media-files.gif" width="360" alt="照片识别和文件导出完成后的对话"></p>
+<p><img src="media/cn/framed/media-files.gif" width="360" alt="手机演示：照片识别和文件导出完成后的对话"></p>
 
 ## 让它帮你操作 App
 
@@ -40,7 +40,7 @@ mobby 让 Pi、Claude Code、Codex、OpenCode 这些 Code Agent 直接在 Androi
 
 > 去应用商店下载番茄ToDo，打开添加待办的功能。
 
-<p><img src="media/cn/app-feature.gif" width="360" alt="番茄ToDo 的自定义时长页面"></p>
+<p><img src="media/cn/framed/app-feature.gif" width="360" alt="手机演示：番茄ToDo 的自定义时长页面"></p>
 
 ## 在 Android 设备上写个能用的小程序
 
@@ -48,7 +48,7 @@ mobby 让 Pi、Claude Code、Codex、OpenCode 这些 Code Agent 直接在 Androi
 
 > 做一个旅行打包清单，按证件、衣物、电子和洗漱用品分类。可以勾选、添加、删除，刷新后还能保留。
 
-<p><img src="media/cn/travel-checklist.gif" width="360" alt="手机浏览器中的旅行打包清单"></p>
+<p><img src="media/cn/framed/travel-checklist.gif" width="360" alt="手机演示：浏览器中的旅行打包清单"></p>
 
 [查看示例源码](examples/travel-checklist/)
 
