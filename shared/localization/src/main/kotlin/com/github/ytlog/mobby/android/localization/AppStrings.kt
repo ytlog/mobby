@@ -315,6 +315,7 @@ open class StringCatalog(private val fixedLanguage: AppLanguage? = null) {
     val photoHasNotBeenAddedToTheDraftCheck get() = text("照片尚未加入草稿，请检查原会话后重试", "Photo has not been added to the draft. Check the original conversation and retry")
     val cannotOpenTheSystemCameraCheckTheCameraApp get() = text("无法打开系统相机，请检查相机应用和权限", "Cannot open the system camera. Check the camera app and permissions")
     val cannotStartPhotoCaptureCheckTheCurrentConversationAnd get() = text("无法开始拍照，请检查当前会话后重试", "Cannot start photo capture. Check the current conversation and retry")
+    val cameraPermissionNotGranted get() = text("需要相机权限才能拍照，请在系统设置中允许后重试", "Camera permission is required to take a photo. Allow it in system settings and retry")
     val useCapturedMaterial get() = text("确认使用", "Use capture")
     val captureAgain get() = text("重新采集", "Capture again")
     val photoPreview get() = text("拍照预览", "Photo preview")

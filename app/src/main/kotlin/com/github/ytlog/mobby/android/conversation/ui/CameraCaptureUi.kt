@@ -5,6 +5,8 @@ import com.github.ytlog.mobby.android.conversation.ui.UiStrings as AppStrings
 import android.content.ClipData
 import android.content.Context
 import android.content.Intent
+import android.Manifest
+import android.content.pm.PackageManager
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -14,6 +16,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.github.ytlog.mobby.android.conversation.domain.*
 import kotlinx.coroutines.launch
@@ -30,12 +33,16 @@ internal class CapturePictureContract : ActivityResultContracts.TakePicture() {
 /** Kept composed at screen root, so leaving the add sheet cannot unregister the result callback. */
 @Composable internal fun rememberCameraCapture(actions: ConversationUseCases, onImport: suspend (CameraCapture) -> DataResult<Attachment>, report: (String) -> Unit): CameraLaunch {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     var capture by remember { mutableStateOf<CameraCapture?>(null) }
     var problem by remember { mutableStateOf<String?>(null) }
     fun fail(message: String) { problem = message; if (capture == null) report(message) }
     var busy by remember { mutableStateOf(true) }
     var revision by remember { mutableIntStateOf(0) }
     var launchId by rememberSaveable { mutableStateOf<String?>(null) }
+    var permissionConversation by rememberSaveable { mutableStateOf<String?>(null) }
+    var permissionWorkspace by rememberSaveable { mutableStateOf<String?>(null) }
+    var permissionGranted by rememberSaveable { mutableStateOf(false) }
     fun update(result: DataResult<CameraCapture?>) {
         when (result) {
             is DataResult.Loaded -> capture = result.value?.takeUnless { it.phase in setOf(CapturePhase.IMPORTING, CapturePhase.DISCARDING) }
@@ -101,12 +108,12 @@ internal class CapturePictureContract : ActivityResultContracts.TakePicture() {
             scope.launch { try { update(actions.finishCapture(current.id, true)) } finally { busy = false } }
         }, problem = problem)
     }
-    return CameraLaunch(busy || capture != null || launchId != null) { conversation ->
+    fun begin(id: ConversationId, workspace: String) {
         if (!busy && capture == null && launchId == null) {
             revision++; problem = null; busy = true
             scope.launch {
                 try {
-                    when (val result = actions.beginCapture(conversation.id, conversation.config.workspace)) {
+                    when (val result = actions.beginCapture(id, workspace)) {
                         is DataResult.Failed -> fail(result.message)
                         is DataResult.Loaded -> {
                             capture = result.value; launchId = result.value.id
@@ -121,6 +128,33 @@ internal class CapturePictureContract : ActivityResultContracts.TakePicture() {
                 catch (_: Exception) { fail(AppStrings.cannotStartPhotoCaptureCheckTheCurrentConversationAnd) }
                 finally { busy = false }
             }
+        }
+    }
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) permissionGranted = true
+        else {
+            permissionConversation = null
+            permissionWorkspace = null
+            fail(AppStrings.cameraPermissionNotGranted)
+        }
+    }
+    LaunchedEffect(permissionGranted, busy, capture, launchId) {
+        val id = permissionConversation
+        val workspace = permissionWorkspace
+        if (permissionGranted && !busy && capture == null && launchId == null && id != null && workspace != null) {
+            permissionGranted = false
+            permissionConversation = null
+            permissionWorkspace = null
+            if (context.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) begin(ConversationId(id), workspace)
+            else fail(AppStrings.cameraPermissionNotGranted)
+        }
+    }
+    return CameraLaunch(busy || capture != null || launchId != null || permissionConversation != null) { conversation ->
+        if (context.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) begin(conversation.id, conversation.config.workspace)
+        else if (!busy && capture == null && launchId == null && permissionConversation == null) {
+            permissionConversation = conversation.id.value
+            permissionWorkspace = conversation.config.workspace
+            permissionLauncher.launch(Manifest.permission.CAMERA)
         }
     }
 }

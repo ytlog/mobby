@@ -68,7 +68,7 @@ internal class AndroidRuntimePorts(
                     configs.isEmpty() -> RuntimeError(ErrorCode.INVALID_CONFIG)
                     else -> null
                 },
-                supportsResume = true, supportsApproval = agent == AgentId.CLAUDE_CODE, supportsResources = true, supportsImages = configs.isNotEmpty(), supportsDeviceCards = true, skillCapabilities = skills.list(agent).filter { it.available }.map { it.ref }.toSet())
+                supportsResume = true, supportsApproval = agent == AgentId.CLAUDE_CODE, supportsResources = true, supportsImages = true, supportsDeviceCards = true, skillCapabilities = skills.list(agent).filter { it.available }.map { it.ref }.toSet())
         }))
     }
     override suspend fun validate(request: RunRequest): RuntimeError? = withContext(Dispatchers.IO) {

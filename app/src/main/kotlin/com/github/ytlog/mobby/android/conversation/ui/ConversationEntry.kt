@@ -255,19 +255,17 @@ class ConversationHostActions(
                 SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
                 if (navigation.addSheetOpen) ModalBottomSheet(onDismissRequest = { navigation = navigation.closeAddSheet() }, modifier = Modifier.offset(x = sheetOffset), sheetMaxWidth = overlayWidth, shape = RoundedCornerShape(28.dp, 28.dp, 0.dp, 0.dp), containerColor = addSheetColor(), contentColor = addInkColor()) {
                     val target = state.selected?.conversation
-                    val canImport = target != null && !target.archived && !target.deleted && target.draft.pendingAttachment == null && target.draft.attachments.size < 4
-                    val images = canImport && !camera.busy && agentOptions.any { it.agent == target?.config?.agent && it.images && it.unavailable == null }
-                    val files = target != null && !target.archived && !target.deleted && target.draft.pendingAttachment == null && target.draft.attachments.size < 4 && agentOptions.any { it.agent == target.config.agent && it.resources && it.unavailable == null }
+                    val availability = attachmentAvailability(target, agentOptions, system.ready, camera.busy)
                     Column(Modifier.fillMaxWidth().heightIn(max = (availableHeight - 48.dp).coerceAtLeast(120.dp)).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            AttachmentTile(AppStrings.takePhoto, AppIcons.Camera, images, Modifier.weight(1f)) { if (target != null) { navigate(AppPage.CONVERSATION); camera.start(target) } }
-                            AttachmentTile(AppStrings.photos, AppIcons.Photo, images, Modifier.weight(1f)) {
+                            AttachmentTile(AppStrings.takePhoto, AppIcons.Camera, availability.photos, Modifier.weight(1f)) { if (target != null) { navigate(AppPage.CONVERSATION); camera.start(target) } }
+                            AttachmentTile(AppStrings.photos, AppIcons.Photo, availability.photos, Modifier.weight(1f)) {
                                 if (target != null) {
                                     fileTarget = target.id.value; fileWorkspace = target.config.workspace; navigation = navigation.open(AppPage.CONVERSATION)
                                     photoPicker.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                                 }
                             }
-                            AttachmentTile(AppStrings.localFile, AppIcons.Upload, files, Modifier.weight(1f)) {
+                            AttachmentTile(AppStrings.localFile, AppIcons.Upload, availability.files, Modifier.weight(1f)) {
                                 if (target != null) { fileTarget = target.id.value; fileWorkspace = target.config.workspace; navigation = navigation.open(AppPage.CONVERSATION); filePicker.launch(arrayOf("*/*")) }
                             }
                         }
