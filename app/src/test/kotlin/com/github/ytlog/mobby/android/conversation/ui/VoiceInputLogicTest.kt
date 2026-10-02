@@ -27,10 +27,20 @@ class VoiceInputLogicTest {
         val moving = spectrumBars(0.6f, 2f)
         assertTrue(moving.maxOrNull()!! - moving.minOrNull()!! > 0.5f)
         val center = moving.slice(moving.size / 2 - 12 until moving.size / 2 + 12)
-        assertTrue(center.maxOrNull()!! - center.minOrNull()!! > 0.7f)
+        assertTrue(center.maxOrNull()!! - center.minOrNull()!! > 0.45f)
+        assertTrue(moving.toList().zipWithNext().all { (a, b) -> kotlin.math.abs(a - b) < 0.2f })
         val middle = loud.slice(loud.size / 2 - 8 until loud.size / 2 + 8).average()
         val sides = (loud.take(8) + loud.takeLast(8)).average()
         assertTrue(middle > sides * 2.5)
+    }
+
+    @Test fun `spectrum opacity tapers smoothly at both ends`() {
+        val opacity = (0 until VoiceSpectrumBars).map { spectrumEdgeOpacity(it, VoiceSpectrumBars) }
+        assertEquals(0f, opacity.first(), 0.001f)
+        assertEquals(0f, opacity.last(), 0.001f)
+        assertTrue(opacity.take(12).zipWithNext().all { (a, b) -> b >= a })
+        assertTrue(opacity.takeLast(12).zipWithNext().all { (a, b) -> b <= a })
+        assertTrue(opacity[VoiceSpectrumBars / 2] > 0.99f)
     }
 
     @Test fun `model transfer reports percent size and a full bar while loading`() {

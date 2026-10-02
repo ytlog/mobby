@@ -17,7 +17,6 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
@@ -28,13 +27,17 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -52,7 +55,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import kotlin.coroutines.cancellation.CancellationException
-import kotlin.math.abs
 import kotlin.math.sin
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -103,13 +105,21 @@ internal fun spectrumBars(level: Float, time: Float, count: Int = VoiceSpectrumB
     val boosted = kotlin.math.sqrt(level.coerceIn(0f, 1f)).coerceIn(0f, 1f).let { (it * 1.35f).coerceAtMost(1f) }
     return FloatArray(count) { index ->
         val x = if (count <= 1) 0.5f else index / (count - 1f)
-        val shaped = (1f - abs(x * 2f - 1f)).coerceIn(0f, 1f)
+        val shaped = sin(Math.PI.toFloat() * x).coerceAtLeast(0f)
         val envelope = shaped * shaped
-        val wave = sin(index * 0.42f + time * (7.5f + (index % 5) * 1.4f))
+        val wave = 0.5f * sin(index * 0.36f + time * 7.2f) +
+            0.3f * sin(index * 0.17f - time * 4.3f) +
+            0.2f * sin(index * 0.73f + time * 2.1f)
         val flutter = (wave + 1f) / 2f
         val travel = (0.08f + 0.92f * boosted) * envelope
-        (0.02f + travel * flutter).coerceIn(0f, 1f)
+        (0.02f + travel * (0.2f + 0.8f * flutter)).coerceIn(0f, 1f)
     }
+}
+
+internal fun spectrumEdgeOpacity(index: Int, count: Int): Float {
+    val x = if (count <= 1) 0.5f else index / (count - 1f)
+    val fade = sin(Math.PI.toFloat() * x).coerceIn(0f, 1f)
+    return fade * fade
 }
 
 /** One capture. The speech engine and its model are created only from [start], so composing the composer does not load native code. */
@@ -377,9 +387,29 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectVo
     val wash = voiceWash(cancelArmed)
     val hint = if (cancelArmed) AppStrings.releaseToCancel else AppStrings.releaseToSendSwipeUpToCancel
     Box(
-        modifier.fillMaxWidth().heightIn(min = 168.dp).background(Brush.verticalGradient(listOf(Color.Transparent, wash))),
+        modifier.fillMaxWidth().heightIn(min = 168.dp),
         contentAlignment = Alignment.BottomCenter,
     ) {
+        Spacer(Modifier.matchParentSize().graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }.drawWithCache {
+            val vertical = Brush.verticalGradient(
+                0f to Color.Transparent,
+                0.25f to wash.copy(alpha = 0.08f),
+                0.6f to wash.copy(alpha = 0.38f),
+                1f to wash.copy(alpha = 0.76f),
+            )
+            val horizontal = Brush.horizontalGradient(
+                0f to Color.Transparent,
+                0.12f to Color.White.copy(alpha = 0.18f),
+                0.28f to Color.White,
+                0.72f to Color.White,
+                0.88f to Color.White.copy(alpha = 0.18f),
+                1f to Color.Transparent,
+            )
+            onDrawBehind {
+                drawRect(vertical)
+                drawRect(horizontal, blendMode = BlendMode.DstIn)
+            }
+        })
         Column(Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, bottom = 88.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             if (transcript.isNotBlank()) Text(transcript, color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodyLarge, maxLines = 3)
             Text(hint, color = if (cancelArmed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
@@ -406,7 +436,7 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectVo
         bars.forEachIndexed { index, value ->
             val height = minH + (size.height - minH) * value
             val x = index * (width + gap) + width / 2f
-            drawLine(color, Offset(x, (size.height - height) / 2f), Offset(x, (size.height + height) / 2f), width, StrokeCap.Round)
+            drawLine(color.copy(alpha = spectrumEdgeOpacity(index, count)), Offset(x, (size.height - height) / 2f), Offset(x, (size.height + height) / 2f), width, StrokeCap.Round)
         }
     }
 }
