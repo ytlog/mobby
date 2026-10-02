@@ -23,16 +23,17 @@ import com.github.ytlog.mobby.android.conversation.ui.UiStrings as AppStrings
 
 private data class PluginOption(val ref: String, val label: String, val icon: AppGlyph)
 
-private val pluginOptions get() = listOf(
-    PluginOption("plugin:device:screen", AppStrings.usePhonePlugin, AppIcons.Phone),
+private fun pluginOptions(tablet: Boolean) = listOf(
+    PluginOption("plugin:device:screen", if (tablet) AppStrings.useTabletPlugin else AppStrings.usePhonePlugin, if (tablet) AppIcons.Tablet else AppIcons.Phone),
     PluginOption("plugin:device:media", AppStrings.viewPhotosPlugin, AppIcons.Photo),
     PluginOption("plugin:device:storage", AppStrings.browseFilesPlugin, AppIcons.Folder),
     PluginOption("plugin:device:camera", AppStrings.useCameraPlugin, AppIcons.Camera),
 )
 
 @Composable internal fun EmptyConversationPlugins(selected: Set<String>, onSelect: (String) -> Unit) {
+    val tablet = isTabletDisplay()
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        pluginOptions.chunked(2).forEach { pair ->
+        pluginOptions(tablet).chunked(2).forEach { pair ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 pair.forEach { option ->
                     val chosen = option.ref in selected

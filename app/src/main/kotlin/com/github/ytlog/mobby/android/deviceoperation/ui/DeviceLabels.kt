@@ -22,7 +22,7 @@ object DeviceLabels {
     }
     fun title(plugin: String, action: String): String {
         val name = when (plugin) {
-            "screen" -> text("手机屏幕", "Phone screen"); "sms" -> text("短信", "Messages")
+            "screen" -> text("屏幕", "Screen"); "sms" -> text("短信", "Messages")
             "contacts" -> text("联系人", "Contacts"); "calendar" -> text("日历", "Calendar")
             "media" -> text("相册与媒体", "Photos and media"); "storage" -> text("文件", "Files")
             "camera" -> text("拍摄照片", "Take photo"); "microphone" -> text("录音", "Record audio")

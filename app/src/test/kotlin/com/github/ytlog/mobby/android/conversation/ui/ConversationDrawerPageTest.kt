@@ -29,6 +29,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.lang.reflect.Proxy
+import kotlin.math.abs
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], qualifiers = "w360dp-h640dp")
@@ -107,6 +108,10 @@ class ConversationDrawerPageTest {
         compose.onNodeWithContentDescription("打开会话抽屉").assertDoesNotExist()
         compose.onNodeWithTag("conversation-transcript").assertExists()
         val list = compose.onNodeWithTag("drawer-new").getUnclippedBoundsInRoot()
+        val collapse = compose.onNodeWithTag("sidebar-collapse").getUnclippedBoundsInRoot()
+        val detailNew = compose.onNodeWithContentDescription("新建对话").getUnclippedBoundsInRoot()
+        assertTrue("sidebar controls need room for their shadows", collapse.left - list.right >= 8.dp)
+        assertTrue("list and detail controls must share a center line", abs((list.top + list.bottom - detailNew.top - detailNew.bottom).value) <= 2f)
         val detail = compose.onNodeWithTag("conversation-transcript").getUnclippedBoundsInRoot()
         assertTrue("list must be left of detail", list.right <= detail.left)
         compose.onNodeWithContentDescription("搜索会话").performTextInput("keep-search")

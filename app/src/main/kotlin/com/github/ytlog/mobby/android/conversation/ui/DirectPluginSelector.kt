@@ -25,6 +25,7 @@ import kotlinx.coroutines.delay
 @Composable
 internal fun rememberDirectPluginSelector(vm: ConversationViewModel, conversation: Conversation?): (String) -> Unit {
     val context = LocalContext.current
+    val tablet = isTabletDisplay()
     var pending by remember { mutableStateOf<Pair<ConversationId, String>?>(null) }
     var rationale by remember { mutableStateOf<Plugin?>(null) }
 
@@ -74,7 +75,7 @@ internal fun rememberDirectPluginSelector(vm: ConversationViewModel, conversatio
         AlertDialog(
             onDismissRequest = { finishAccess(false) },
             containerColor = raisedColor(),
-            title = { Text(AppStrings.allowThisPluginToUseDeviceCapabilities) },
+            title = { Text(if (tablet) AppStrings.allowThisPluginToUseTabletCapabilities else AppStrings.allowThisPluginToUseDeviceCapabilities) },
             text = { Text(plugin.description) },
             confirmButton = { TextButton(onClick = { rationale = null; permissions.launch(plugin.permissions.toTypedArray()) }) { Text(AppStrings.`continue`) } },
             dismissButton = { TextButton(onClick = { finishAccess(false) }) { Text(AppStrings.cancel) } },

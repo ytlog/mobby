@@ -380,7 +380,7 @@ class ConversationHostActions(
 @Composable private fun ConversationListPane(state: ConversationState, query: String, onQuery: (String) -> Unit, listScroll: LazyListState, onSelect: (Conversation) -> Unit, onNew: () -> Unit, onSettings: () -> Unit, onProjects: () -> Unit, onProject: (String) -> Unit, onCollapse: (() -> Unit)?, modifier: Modifier) {
     val control = drawerControlColor()
     Surface(modifier, color = drawerColor(), contentColor = conversationInk()) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+        Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 12.dp)) {
             Row(Modifier.fillMaxWidth().padding(bottom = if (darkChrome()) 0.dp else 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(AppStrings.appName, Modifier.weight(1f), color = conversationInk(), style = MaterialTheme.typography.headlineSmall)
                 DrawerPill(onNew, control, Modifier.testTag("drawer-new")) {
@@ -388,7 +388,10 @@ class ConversationHostActions(
                     Spacer(Modifier.width(8.dp))
                     Text(AppStrings.newConversation, style = MaterialTheme.typography.titleMedium)
                 }
-                if (onCollapse != null) DrawerCircle(AppStrings.collapseConversationSidebar, onCollapse, control, AppIcons.Back, Modifier.testTag("sidebar-collapse"))
+                if (onCollapse != null) {
+                    Spacer(Modifier.width(8.dp))
+                    DrawerCircle(AppStrings.collapseConversationSidebar, onCollapse, control, AppIcons.Back, Modifier.testTag("sidebar-collapse"))
+                }
             }
             val visible = state.conversations.filter { !it.conversation.archived && !it.conversation.deleted && it.conversation.title.contains(query, true) }
             val pinned = visible.filter { it.conversation.pinned }

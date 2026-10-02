@@ -260,7 +260,7 @@ internal fun modelMenuLabel(id: String, names: Map<String, String>): String {
     }
 }
 private val pluginCatalogIds = listOf(CatalogIds.PHONE, CatalogIds.COMMUNICATION, CatalogIds.FILES)
-private val pluginCatalogTabs get() = listOf(AppStrings.phone, AppStrings.communication, AppStrings.files)
+private fun pluginCatalogTabs(tablet: Boolean) = listOf(if (tablet) AppStrings.tablet else AppStrings.phone, AppStrings.communication, AppStrings.files)
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable internal fun PluginPage(
@@ -272,7 +272,9 @@ private val pluginCatalogTabs get() = listOf(AppStrings.phone, AppStrings.commun
     val catalogue by vm.plugins.collectAsStateWithLifecycle()
     val error by vm.pluginsError.collectAsStateWithLifecycle()
     val loading by vm.pluginsLoading.collectAsStateWithLifecycle()
-    val pagerState = rememberPagerState(pageCount = { pluginCatalogTabs.size })
+    val tablet = isTabletDisplay()
+    val tabs = pluginCatalogTabs(tablet)
+    val pagerState = rememberPagerState(pageCount = { tabs.size })
     val scope = rememberCoroutineScope()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val context = LocalContext.current
@@ -304,11 +306,11 @@ private val pluginCatalogTabs get() = listOf(AppStrings.phone, AppStrings.commun
     Column(Modifier.fillMaxSize()) {
         PageHeader(AppStrings.plugins, onBack)
         rationale?.let { (explanation, needed) ->
-            AlertDialog(onDismissRequest = { rationale = null }, containerColor = raisedColor(), shape = RoundedCornerShape(24.dp), title = { Text(AppStrings.allowThisPluginToUseDeviceCapabilities) }, text = { Text(explanation) },
+            AlertDialog(onDismissRequest = { rationale = null }, containerColor = raisedColor(), shape = RoundedCornerShape(24.dp), title = { Text(if (tablet) AppStrings.allowThisPluginToUseTabletCapabilities else AppStrings.allowThisPluginToUseDeviceCapabilities) }, text = { Text(explanation) },
                 confirmButton = { TextButton(onClick = { val request = needed; rationale = null; permissions.launch(request.toTypedArray()) }) { Text(AppStrings.`continue`) } },
                 dismissButton = { TextButton(onClick = { rationale = null }) { Text(AppStrings.cancel) } })
         }
-        CatalogTabs(pluginCatalogTabs, pagerState.currentPage) { scope.launch { pagerState.animateScrollToPage(it) } }
+        CatalogTabs(tabs, pagerState.currentPage) { scope.launch { pagerState.animateScrollToPage(it) } }
         error?.let { Text(it, Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.error); TextButton(onClick = vm::loadPlugins) { Text(AppStrings.retry) } }
         if (loading) LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 16.dp))
         HorizontalPager(state = pagerState, modifier = Modifier.weight(1f).fillMaxWidth(), key = { pluginCatalogIds[it] }) { page ->

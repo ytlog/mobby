@@ -63,6 +63,7 @@ internal object AppIcons {
     val Upload = glyph("M3 6h7l2 3h9v12H3zM12 18v-6m-3 3 3-3 3 3")
     val Plugin = glyph("M12 22v-5M9 8V2M15 8V2M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z")
     val Phone = glyph("M8 3h8v18H8zM12 18h.01")
+    val Tablet = glyph("M3 5h18v14H3zM12 16h.01")
     val Skill = glyph("M5 3h14v18H5zM8 7h8M8 11h8M8 15h5")
     val Globe = glyph("M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0M3 12h18M12 3c-5 5-5 13 0 18M12 3c5 5 5 13 0 18")
     val ArrowDown = glyph("M12 4v16m-6-6 6 6 6-6")

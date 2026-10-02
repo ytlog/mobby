@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="screen_accessibility_label">屏幕</string>
-    <string name="screen_accessibility_description">在你开启并把“屏幕”插件加入对话后，允许 mobby 读取当前屏幕的无障碍树，并代为点击、输入或返回。使用该插件的这一轮会保持屏幕常亮，结束后恢复系统原来的息屏时间。未选择该插件时不操作手机，也不保持常亮。</string>
+    <string name="screen_accessibility_description">在你开启并把“屏幕”插件加入对话后，允许 mobby 读取当前屏幕的无障碍树，并代为点击、输入或返回。使用该插件的这一轮会保持屏幕常亮，结束后恢复系统原来的息屏时间。未选择该插件时不操作设备，也不保持常亮。</string>
 </resources>

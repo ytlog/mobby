@@ -35,4 +35,11 @@ class EmptyConversationPluginsTest {
         assertEquals(bounds[2].top, bounds[3].top)
         assertTrue(bounds[2].top > bounds[0].bottom)
     }
+
+    @Test @Config(sdk = [34], qualifiers = "sw700dp-w1000dp-h800dp-mdpi")
+    fun `tablet screen entry names the tablet`() {
+        compose.setContent { MaterialTheme { EmptyConversationPlugins(emptySet()) {} } }
+        compose.onNodeWithText("使用平板").assertIsDisplayed()
+        compose.onNodeWithText("使用手机").assertDoesNotExist()
+    }
 }
