@@ -1,7 +1,6 @@
 package com.github.ytlog.mobby.android.conversation.ui
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -16,7 +15,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.github.ytlog.mobby.android.conversation.ui.UiStrings as AppStrings
@@ -39,8 +37,9 @@ private fun pluginOptions(tablet: Boolean) = listOf(
                     val chosen = option.ref in selected
                     val ink = if (chosen) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                     Surface(
-                        modifier = Modifier.weight(1f).heightIn(min = 62.dp).testTag(option.ref)
-                            .clickable(enabled = !chosen, role = Role.Button) { onSelect(option.ref) },
+                        onClick = { onSelect(option.ref) },
+                        enabled = !chosen,
+                        modifier = Modifier.weight(1f).heightIn(min = 62.dp).testTag(option.ref),
                         shape = RoundedCornerShape(18.dp),
                         color = if (chosen) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else raisedColor(),
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = if (chosen) 0.45f else 0.32f)),
