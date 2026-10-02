@@ -4,7 +4,7 @@
 
 <h1 align="center">mobby</h1>
 
-<p align="center">Ask about your screen, work with files, use apps, and write code on your phone.</p>
+<p align="center">Ask about your screen, work with files, use apps, and write code on your Android phone or tablet.</p>
 
 <p align="center">English · <a href="docs/README.zh-CN.md">简体中文</a></p>
 
@@ -12,11 +12,11 @@
   <a href="#ask-about-whats-on-your-screen">Screen Q&amp;A</a> ·
   <a href="#work-with-photos-and-files">Photos and files</a> ·
   <a href="#let-it-use-apps-for-you">App control</a> ·
-  <a href="#build-something-useful-on-your-phone">Coding on your phone</a> ·
+  <a href="#build-something-useful-on-your-android-device">Coding on Android</a> ·
   <a href="#getting-started">Getting started</a>
 </p>
 
-mobby runs coding agents such as Pi, Claude Code, Codex, and OpenCode directly on Android, with access to your screen, photos, and files. Use it as your personal AI assistant to understand a page, work with files, operate apps, or write and run code on your phone.
+mobby runs coding agents such as Pi, Claude Code, Codex, and OpenCode directly on Android, with access to your screen, photos, and files. Use it as your personal AI assistant to understand a page, work with files, operate apps, or write and run code on your phone or tablet. On wide tablet windows, the conversation list and current chat appear side by side; narrower windows use a single-column layout.
 
 ## Ask about what's on your screen
 
@@ -36,15 +36,15 @@ Add photo or file access to a task and choose the photos or folder to share. Ask
 
 ## Let it use apps for you
 
-Add phone access to a task and describe what you want to do. mobby reads the screen, taps buttons, types text, and moves between pages to carry out the steps.
+Add phone or tablet access to a task and describe what you want to do. mobby reads the screen, taps buttons, types text, and moves between pages to carry out the steps.
 
 > Install Via browser from the app store and open Bookmarks.
 
 <p><img src="docs/media/en/app-feature.gif" width="360" alt="Bookmarks in Via browser"></p>
 
-## Build something useful on your phone
+## Build something useful on your Android device
 
-Describe what you need. Let the agent write the code in your phone's workspace, start a local server, and open the result in your browser.
+Describe what you need. Let the agent write the code in your device's workspace, start a local server, and open the result in your browser.
 
 > Make a travel packing list with categories for documents, clothes, electronics, and toiletries. Let me check off, add, and delete items, and keep my changes after a refresh.
 
@@ -54,7 +54,7 @@ Describe what you need. Let the agent write the code in your phone's workspace, 
 
 ## Getting started
 
-mobby currently supports ARM64 devices running Android 8.0 or later. On first launch, it sets up the runtime included in the APK. Enter your service URL, API key, and model in the gateway settings, save them, and start a conversation.
+mobby currently supports ARM64 Android phones and tablets running Android 8.0 or later. On first launch, it sets up the runtime included in the APK. Enter your service URL, API key, and model in the gateway settings, save them, and start a conversation.
 
 Screen Q&A requires the floating button, permission to display over other apps, and the screen accessibility service. Grant photo and file access for the tasks that need them.
 
