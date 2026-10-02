@@ -42,6 +42,17 @@ class CodexAppServerSession(private val cwd: String, private val model: String, 
         activeTurnId = null
         if (step == Step.READY) sendTurn()
     }
+    @Synchronized override fun startNewThread(turn: AgentTurn): Boolean {
+        if (finished || turnOpen || queued != null || pending != null || step != Step.READY || sessionId == null) return false
+        require(turn.images.all { it.path.startsWith("/") && '\u0000' !in it.path })
+        queued = turn
+        sessionId = null
+        activeTurnId = null
+        turnEnded = false
+        messageText.clear(); reasoningSummary.clear(); reasoningContent.clear(); commandOutput.clear(); commands.clear(); steerIds.clear()
+        sendThread(null)
+        return true
+    }
     @Synchronized override fun insert(text: String): Boolean {
         val thread = sessionId ?: return false
         val turn = activeTurnId ?: return false
@@ -94,6 +105,8 @@ class CodexAppServerSession(private val cwd: String, private val model: String, 
         }
         val method = value.text("method") ?: return emptyList()
         val params = value["params"] as? JsonObject
+        val currentThread = sessionId ?: return emptyList()
+        if (params?.text("threadId")?.let { it != currentThread } == true) return emptyList()
         if (method == "turn/started") activeTurnId = (params?.get("turn") as? JsonObject)?.text("id") ?: activeTurnId
         if (method == "turn/completed") {
             val turn = params?.get("turn") as? JsonObject
@@ -146,10 +159,10 @@ class CodexAppServerSession(private val cwd: String, private val model: String, 
         }
     }
     @Synchronized override fun close() { finished = true; queue.cancel() }
-    private fun sendThread() {
-        val resume = resumeThreadId != null
+    private fun sendThread(resumeId: String? = resumeThreadId) {
+        val resume = resumeId != null
         send(id(), if (resume) "thread/resume" else "thread/start", buildJsonObject {
-            if (resume) put("threadId", resumeThreadId)
+            if (resume) put("threadId", resumeId)
             put("cwd", cwd); put("model", model); put("approvalPolicy", "never"); put("sandbox", "danger-full-access")
         })
         step = Step.THREAD

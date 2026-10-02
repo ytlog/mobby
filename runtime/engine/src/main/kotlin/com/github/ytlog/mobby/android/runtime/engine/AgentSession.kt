@@ -45,6 +45,8 @@ interface AgentSession : Closeable {
     fun sessionId(): String?
     fun onStdout(line: String, autoAllow: Boolean = false): List<String>
     fun submit(turn: AgentTurn)
+    /** Start an unrelated conversation on a retained multiplexer process, if supported. */
+    fun startNewThread(turn: AgentTurn): Boolean = false
     /** Insert text while the current turn is open; false means unsupported or no longer active. */
     fun insert(text: String): Boolean = false
     fun offer(requestId: RequestId, approvalId: String, choice: ApprovalChoice): Boolean

@@ -116,7 +116,9 @@ import kotlinx.coroutines.*
     var agentChosen by rememberSaveable { mutableStateOf(false) }
     val remembered = ConversationGatewayResolver.newConversation(agent, c, state.conversations, profiles, defaultGateway)
     val canCreate = remembered != null && (project == null || state.projects.any { it.name == project })
-    LaunchedEffect(Unit) { vm.enqueue { vm.refresh() } }
+    // The ViewModel loads gateways when the runtime becomes ready. Re-reading the
+    // runtime on every menu opening delays creation behind its serial UI queue.
+    LaunchedEffect(Unit) { if (!vm.gatewaysLoaded.value) vm.enqueue { vm.refresh() } }
     LaunchedEffect(defaultGateway, profiles, state.conversations) {
         if (!agentChosen) {
             agent = ConversationGatewayResolver.preferred(profiles, defaultGateway)?.agent ?: AgentId.PI

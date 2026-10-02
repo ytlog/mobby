@@ -33,6 +33,9 @@ class WorkspacePickerTest {
     private val savedProjects = mutableListOf<Project>()
     private var projectConfig: NextTurnConfig? = null
     private var gatewayDefault: AgentId? = AgentId.CODEX
+    private var gatewayReads = 0
+    private var gatewayReadGate: CompletableDeferred<Unit>? = null
+    private var newSessionCreated = false
     private inline fun <reified T> stub(crossinline body: (String, Array<out Any?>) -> Any?): T =
         Proxy.newProxyInstance(T::class.java.classLoader, arrayOf(T::class.java)) { _, m, a -> body(m.name.substringBefore("-"), a ?: emptyArray()) } as T
     private fun vm(): ConversationViewModel {
@@ -40,13 +43,15 @@ class WorkspacePickerTest {
             "getStatus" -> flowOf(SystemStatus(true, true))
             "getDiagnostic" -> flowOf(DiagnosticOutput(null, emptyList()))
             "agents" -> listOf(AgentOption(AgentId.CLAUDE_CODE, mapOf("claude-fixture" to emptySet()), null, true, emptySet()))
-            "gateways" -> listOf(
-                GatewayProfile(AgentId.PI, "PI", 1, "https://example.test/v1", "pi-model", "RESPONSES", true,
-                    listOf(GatewayModel("pi-model", "pi-model"))),
-                GatewayProfile(AgentId.CODEX, "CODEX", 1, "https://example.test/v1", "model", "RESPONSES", true,
-                    listOf(GatewayModel("model", "model"))),
-                GatewayProfile(AgentId.CLAUDE_CODE, "CLAUDE", 1, "https://example.test/v1", "claude-fixture", "MESSAGES", true,
-                    listOf(GatewayModel("claude-fixture", "claude-fixture"))))
+            "gateways" -> {
+                gatewayReads++
+                gatewayReadGate?.let { gate ->
+                    @Suppress("UNCHECKED_CAST") val continuation = args.last() as Continuation<Any?>
+                    scope.launch { try { gate.await(); continuation.resume(gatewayProfiles()) } catch (e: Exception) { continuation.resumeWithException(e) } }
+                    return@stub COROUTINE_SUSPENDED
+                }
+                gatewayProfiles()
+            }
             "defaultGateway" -> gatewayDefault?.let { GatewayDefault(it, if (it == AgentId.CODEX) "CODEX" else if (it == AgentId.PI) "PI" else "CLAUDE", 1) }
             "selectDefaultGateway" -> { gatewayDefault = (args[0] as GatewayProfile).agent; OperationResult.Done }
             "workspaces" -> DataResult.Loaded(options.toList())
@@ -61,6 +66,7 @@ class WorkspacePickerTest {
         val repository = stub<ConversationStore> { name, args -> when (name) {
             "getState" -> conversations
             "configure" -> args[0] as String
+            "create" -> { newSessionCreated = true; ConversationId("new") }
             "createInProject" -> { projectConfig = args[0] as NextTurnConfig; "project-created" }
             "editDraft" -> Draft(text = args[1] as String)
             "prepareTurn" -> PrepareTurnResult.Queued(TurnId("queued"))
@@ -83,7 +89,25 @@ class WorkspacePickerTest {
         return ConversationViewModel(ConversationUseCases(repository, stub<ExecutionPort> { name, _ -> error(name) }, system, { "id" }, scope,
             stub<PreferencePort> { name, _ -> error(name) })).also { store.put("vm", it) }
     }
+    private fun gatewayProfiles() = listOf(
+        GatewayProfile(AgentId.PI, "PI", 1, "https://example.test/v1", "pi-model", "RESPONSES", true,
+            listOf(GatewayModel("pi-model", "pi-model"))),
+        GatewayProfile(AgentId.CODEX, "CODEX", 1, "https://example.test/v1", "model", "RESPONSES", true,
+            listOf(GatewayModel("model", "model"))),
+        GatewayProfile(AgentId.CLAUDE_CODE, "CLAUDE", 1, "https://example.test/v1", "claude-fixture", "MESSAGES", true,
+            listOf(GatewayModel("claude-fixture", "claude-fixture"))))
     @After fun cleanup() { compose.runOnIdle { store.clear(); scope.cancel() } }
+    @Test fun `opening a new session is not blocked by another gateway read`() {
+        val vm = vm()
+        compose.waitForIdle()
+        Assert.assertTrue(vm.gatewaysLoaded.value)
+        gatewayReadGate = CompletableDeferred()
+        compose.setContent { MaterialTheme { ConfigDialog(vm, null, {}, { config, _ -> vm.enqueue { vm.actions.create(config) } }) } }
+        compose.onNodeWithText("创建").performClick()
+        compose.waitForIdle()
+        Assert.assertTrue(newSessionCreated)
+        Assert.assertEquals(1, gatewayReads)
+    }
     @Test fun `new conversation defaults to Pi even when the current conversation uses Codex`() {
         gatewayDefault = null
         val vm = vm()

@@ -15,6 +15,10 @@ data class LiveSessionBinding(
     fun accepts(request: RunRequest) = agentId == request.agentId && workspaceRef == request.workspaceRef && modelId == request.modelId &&
         gatewayProfileRef == request.gatewayProfileRef && capabilityRefs == request.capabilityRefs &&
         requestedOutput == request.requestedOutput && sessionId == request.sessionRef?.value
+    fun acceptsNewThread(request: RunRequest) = agentId == AgentId.CODEX && request.sessionRef == null &&
+        agentId == request.agentId && workspaceRef == request.workspaceRef && modelId == request.modelId &&
+        gatewayProfileRef == request.gatewayProfileRef && capabilityRefs == request.capabilityRefs &&
+        requestedOutput == request.requestedOutput
 }
 interface ProcessPort {
     /** True only if a live adapter accepts this text for the named request. */

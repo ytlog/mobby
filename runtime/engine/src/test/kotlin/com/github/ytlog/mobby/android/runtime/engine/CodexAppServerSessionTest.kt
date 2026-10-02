@@ -13,8 +13,35 @@ import org.junit.Test
 class CodexAppServerSessionTest {
     private val turn = AgentTurn(RequestId("turn"), "look", listOf(TurnImage("image/png", "/private/image.png", "AQI=")),
         Json.parseToJsonElement("""{"type":"object"}"""))
+    @Test fun `a new conversation starts an independent thread on the live server`() = runTest {
+        val session = CodexAppServerSession("/workspace", "model", null).also { it.submit(turn) }
+        val sent = Channel<JsonObject>(8)
+        backgroundScope.launch { session.input.collect { sent.send(Json.parseToJsonElement(it.decodeToString()).jsonObject) } }
+        runCurrent(); sent.receive() // initialize
+        session.onStdout("""{"id":"1","result":{}}"""); runCurrent()
+        sent.receive() // initialized
+        assertEquals("thread/start", sent.receive().getValue("method").jsonPrimitive.content)
+        session.onStdout("""{"id":"2","result":{"thread":{"id":"thread-one"}}}"""); runCurrent()
+        assertEquals("turn/start", sent.receive().getValue("method").jsonPrimitive.content)
+        session.onStdout("""{"id":"3","result":{"turn":{"id":"turn-one"}}}""")
+        session.onStdout("""{"method":"turn/completed","params":{"turn":{"id":"turn-one","status":"completed"}}}""")
+        assertTrue(session.takeTurnEnded())
+        assertTrue(session.startNewThread(AgentTurn(RequestId("next"), "fresh")))
+        runCurrent()
+        val freshThread = sent.receive()
+        assertEquals("thread/start", freshThread.getValue("method").jsonPrimitive.content)
+        assertFalse(freshThread.getValue("params").jsonObject.containsKey("threadId"))
+        assertNull(session.sessionId())
+        session.onStdout("""{"id":"4","result":{"thread":{"id":"thread-two"}}}"""); runCurrent()
+        val freshTurn = sent.receive()
+        assertEquals("thread-two", freshTurn.getValue("params").jsonObject.getValue("threadId").jsonPrimitive.content)
+        assertEquals("fresh", freshTurn.getValue("params").jsonObject.getValue("input").jsonArray[0].jsonObject.getValue("text").jsonPrimitive.content)
+        assertTrue(session.onStdout("""{"method":"item/agentMessage/delta","params":{"threadId":"thread-one","itemId":"old","delta":"stale"}}""").isEmpty())
+        session.close()
+    }
     @Test fun `cold start resumes only when asked and the next turn is just turn start`() = runTest {
         for (saved in listOf(null, "session-123")) {
+            val threadId = saved ?: "thread-1"
             val session = CodexAppServerSession("/workspace", "model", saved).also { it.submit(turn) }
             val sent = Channel<JsonObject>(8)
             val writer = backgroundScope.launch { session.input.collect { sent.send(Json.parseToJsonElement(it.decodeToString()).jsonObject) } }
@@ -26,8 +53,8 @@ class CodexAppServerSessionTest {
             val thread = sent.receive()
             assertEquals(if (saved == null) "thread/start" else "thread/resume", thread.getValue("method").jsonPrimitive.content)
             if (saved != null) assertEquals(saved, thread.getValue("params").jsonObject.getValue("threadId").jsonPrimitive.content)
-            val started = session.onStdout("""{"id":"2","result":{"thread":{"id":"${saved ?: "thread-1"}"}}}""")
-            assertEquals(listOf(AgentFact.Session(saved ?: "thread-1")), started.flatMap { ProtocolDecoder(AgentId.CODEX).decode(it) })
+            val started = session.onStdout("""{"id":"2","result":{"thread":{"id":"$threadId"}}}""")
+            assertEquals(listOf(AgentFact.Session(threadId)), started.flatMap { ProtocolDecoder(AgentId.CODEX).decode(it) })
             runCurrent()
             val first = sent.receive()
             assertEquals("turn/start", first.getValue("method").jsonPrimitive.content)
@@ -43,13 +70,13 @@ class CodexAppServerSessionTest {
             assertEquals("look", input[0].jsonObject.getValue("text").jsonPrimitive.content)
             assertEquals("/private/image.png", input[1].jsonObject.getValue("path").jsonPrimitive.content)
             assertEquals("object", first.getValue("params").jsonObject.getValue("outputSchema").jsonObject.getValue("type").jsonPrimitive.content)
-            val thought = session.onStdout("""{"method":"item/reasoning/textDelta","params":{"delta":"先想","itemId":"r","threadId":"t","turnId":"u"}}""")
+            val thought = session.onStdout("""{"method":"item/reasoning/textDelta","params":{"delta":"先想","itemId":"r","threadId":"$threadId","turnId":"u"}}""")
             assertEquals(listOf(AgentFact.Tool("r", StepBody.Thinking, "先想")), thought.flatMap { ProtocolDecoder(AgentId.CODEX).decode(it) })
             val answer = session.onStdout("""{"method":"item/completed","params":{"item":{"id":"a","type":"reasoning","summary":[],"content":[{"type":"reasoning_text","text":"<arg_value>已写好</arg_value>"}]}}}""")
             assertEquals(listOf(AgentFact.Text("a", "已写好")), answer.flatMap { ProtocolDecoder(AgentId.CODEX).decode(it) })
-            val delta = session.onStdout("""{"method":"item/agentMessage/delta","params":{"delta":"你","itemId":"m","threadId":"t","turnId":"u"}}""")
+            val delta = session.onStdout("""{"method":"item/agentMessage/delta","params":{"delta":"你","itemId":"m","threadId":"$threadId","turnId":"u"}}""")
             assertEquals(listOf(AgentFact.Text("m", "你")), delta.flatMap { ProtocolDecoder(AgentId.CODEX).decode(it) })
-            assertTrue(session.onStdout("""{"method":"turn/completed","params":{"threadId":"t","turn":{"id":"u","items":[],"status":"completed"}}}""").flatMap { ProtocolDecoder(AgentId.CODEX).decode(it) }.filterIsInstance<AgentFact.Completed>().single().success)
+            assertTrue(session.onStdout("""{"method":"turn/completed","params":{"threadId":"$threadId","turn":{"id":"u","items":[],"status":"completed"}}}""").flatMap { ProtocolDecoder(AgentId.CODEX).decode(it) }.filterIsInstance<AgentFact.Completed>().single().success)
             assertTrue(session.takeTurnEnded())
             assertFalse(session.insert("late"))
             assertFalse(writer.isCompleted)
