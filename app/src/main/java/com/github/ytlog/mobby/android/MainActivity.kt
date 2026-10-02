@@ -18,6 +18,7 @@ import com.github.ytlog.mobby.android.conversation.domain.ConversationId
 import com.github.ytlog.mobby.android.conversation.ui.ConversationEntry
 import com.github.ytlog.mobby.android.conversation.ui.ConversationHostActions
 import com.github.ytlog.mobby.android.conversation.ui.mobbySystemBarColor
+import com.github.ytlog.mobby.android.speech.SpeechEngines
 import kotlinx.coroutines.launch
 import java.util.UUID
 
@@ -35,6 +36,7 @@ class MainActivity : ComponentActivity() {
     private val app get() = application as MobbyApplication
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        SpeechEngines.preload(this)
         petEnabled = app.petEnabled()
         petPermitted = Settings.canDrawOverlays(this)
         app.setPetPermitted(petPermitted)

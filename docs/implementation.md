@@ -884,6 +884,8 @@ Android 13 真机先复现：进入“设置与运行环境”，通过显式 AC
 
 按住说话不再调用 Android SpeechRecognizer，也不再打开系统语音引擎授权页。识别放在独立模块 `:speech`，使用 Apache-2.0 的 sherpa-onnx 流式 Zipformer 中英双语模型，自动识别中文和英文，无需手动切换。模型不进 APK；中国地区优先从 [ModelScope 手机优化版](https://modelscope.cn/models/liaowenbin/sherpa-onnx-streaming-zipformer-small-bilingual-zh-en-2023-02-16-mobile)逐文件下载约 50 MB 的四个推理文件并校验 SHA-256，失败时回退到 [sherpa-onnx 官方归档](https://github.com/k2-fsa/sherpa-onnx/releases/tag/asr-models)。其他地区先尝试官方归档，失败时也可回退到 ModelScope。官方归档约 458 MB，校验后只提取推理文件并删除归档；双语模型成功安装后清除旧中文模型和 Vosk 下载缓存。进程内只加载一份识别器；模型下载或加载完成前松开不发送，下载继续，下次按住可复用。录音期间实时显示部分转写；录音结束后直接使用识别文本，不再调用大模型网关整理。音量来自 16 kHz PCM。进入后台、失去焦点、上滑取消或切换会话不会发送文字。
 
+主界面创建后由 `:speech` 在后台预先下载或载入识别模型，每个 App 进程只触发一次；长按时若仍未准备好，继续等待同一份模型并显示准备状态。预加载失败后，长按仍可重新尝试。
+
 旧 Vosk 引擎及其依赖已移除；APK 仅需保留当前设备架构的 sherpa-onnx 原生库。首次下载、实时转写和上滑取消仍须在真机验收。
 
 下载过程改为输入区上方的 3dp 圆角进度条，右侧显示百分比，中间显示已下载和总大小。大小未知或尚未开始时用滑动指示；模型开始加载后进度保持满格并改文案。手指松开后不发送，进度条继续更新到下载结束；上滑取消、进入后台或切换会话会收起进度条。
