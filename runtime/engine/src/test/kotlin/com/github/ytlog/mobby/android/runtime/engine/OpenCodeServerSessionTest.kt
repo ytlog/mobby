@@ -7,6 +7,19 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class OpenCodeServerSessionTest {
+    @Test fun `fresh conversation tells the live adapter to discard the previous session`() = runBlocking {
+        val session = OpenCodeServerSession("model", "ses_original")
+        session.submit(AgentTurn(RequestId("first"), "one"))
+        session.input.first()
+        session.onStdout("""{"type":"step_finish","part":{"reason":"stop"}}""")
+        assertTrue(session.takeTurnEnded())
+        assertTrue(session.startNewSession(AgentTurn(RequestId("second"), "two")))
+        val command = session.input.first().decodeToString()
+        assertTrue(command.contains("\"newSession\":true"))
+        assertFalse(command.contains("ses_original"))
+        assertNull(session.sessionId())
+        session.close()
+    }
     @Test fun `live server takes another prompt on the same input after terminal event`() = runBlocking {
         val session = OpenCodeServerSession("model", "ses_existing")
         session.submit(AgentTurn(RequestId("r"), "hello"))

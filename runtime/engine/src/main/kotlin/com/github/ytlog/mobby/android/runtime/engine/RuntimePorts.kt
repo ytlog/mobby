@@ -12,13 +12,11 @@ data class LiveSessionBinding(
     val agentId: AgentId, val workspaceRef: WorkspaceRef, val modelId: String, val gatewayProfileRef: GatewayProfileRef,
     val capabilityRefs: Set<CapabilityRef>, val requestedOutput: RequestedOutput, val sessionId: String,
 ) {
-    fun accepts(request: RunRequest) = agentId == request.agentId && workspaceRef == request.workspaceRef && modelId == request.modelId &&
-        gatewayProfileRef == request.gatewayProfileRef && capabilityRefs == request.capabilityRefs &&
-        requestedOutput == request.requestedOutput && sessionId == request.sessionRef?.value
-    fun acceptsNewThread(request: RunRequest) = agentId == AgentId.CODEX && request.sessionRef == null &&
-        agentId == request.agentId && workspaceRef == request.workspaceRef && modelId == request.modelId &&
+    private fun sameExecution(request: RunRequest) = agentId == request.agentId && workspaceRef == request.workspaceRef && modelId == request.modelId &&
         gatewayProfileRef == request.gatewayProfileRef && capabilityRefs == request.capabilityRefs &&
         requestedOutput == request.requestedOutput
+    fun accepts(request: RunRequest) = sameExecution(request) && sessionId == request.sessionRef?.value
+    fun acceptsNewSession(request: RunRequest) = sameExecution(request) && request.sessionRef == null
 }
 interface ProcessPort {
     /** True only if a live adapter accepts this text for the named request. */

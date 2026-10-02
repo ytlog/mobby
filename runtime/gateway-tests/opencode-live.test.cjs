@@ -48,8 +48,10 @@ if(args[0]==='serve'){
     await waitFor('"reason":"stop"');
     child.stdin.write(JSON.stringify({type:'prompt',text:'two',model:'test',sessionId:'ses_persisted',images:[]})+'\n');
     await waitFor('answer-two');
+    child.stdin.write(JSON.stringify({type:'prompt',text:'three',model:'test',newSession:true,images:[]})+'\n');
+    await waitFor('answer-three');
     const calls = readFileSync(log,'utf8').trim().split('\n').map(JSON.parse);
-    assert.deepEqual(calls.map(args=>args[0]),['serve','run','run']);
+    assert.deepEqual(calls.map(args=>args[0]),['serve','run','run','run']);
     assert.ok(calls[0].includes('--pure'));
     assert.deepEqual(calls[0].slice(calls[0].indexOf('--hostname'),calls[0].indexOf('--hostname')+2),
       ['--hostname','127.0.0.1']);
@@ -57,6 +59,7 @@ if(args[0]==='serve'){
     assert.ok(!calls[1].includes('--session'));
     assert.deepEqual(calls[2].slice(calls[2].indexOf('--session'),calls[2].indexOf('--session')+2),
       ['--session','ses_persisted']);
+    assert.ok(!calls[3].includes('--session'));
     assert.equal(child.exitCode,null);
   } finally {
     child.kill('SIGTERM');

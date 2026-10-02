@@ -8,6 +8,7 @@ import kotlinx.serialization.json.*
 
 /** Commands the long-lived OpenCode server adapter over the gateway process' stdin. */
 class OpenCodeServerSession(private val model: String, initialSession: String?) : AgentSession {
+    override val supportsNewSession = true
     private val queue = Channel<ByteArray>(18)
     override val input = queue.receiveAsFlow()
     private var sessionId = initialSession
@@ -17,9 +18,19 @@ class OpenCodeServerSession(private val model: String, initialSession: String?) 
     override fun sessionId() = sessionId
     @Synchronized override fun submit(turn: AgentTurn) {
         check(!finished && !turnOpen) { "OpenCode cannot accept another turn" }
+        prompt(turn, newSession = false)
+    }
+    @Synchronized override fun startNewSession(turn: AgentTurn): Boolean {
+        if (finished || turnOpen || sessionId == null) return false
+        sessionId = null
+        prompt(turn, newSession = true)
+        return true
+    }
+    private fun prompt(turn: AgentTurn, newSession: Boolean) {
         require(turn.images.all { it.path.startsWith("/") && '\u0000' !in it.path })
         val command = buildJsonObject {
             put("type", "prompt"); put("requestId", turn.requestId.value); put("text", turn.prompt); put("model", model)
+            if (newSession) put("newSession", true)
             sessionId?.let { put("sessionId", it) }
             putJsonArray("images") { turn.images.forEach { image ->
                 add(buildJsonObject { put("path", image.path); put("mediaType", image.mediaType) })

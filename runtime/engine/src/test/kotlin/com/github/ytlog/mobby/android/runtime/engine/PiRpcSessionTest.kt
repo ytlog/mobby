@@ -11,6 +11,29 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class PiRpcSessionTest {
+    @Test fun `fresh session on live Pi creates a distinct identity before prompting`() = runTest {
+        val session = PiRpcSession("original")
+        val sent = Channel<JsonObject>(20)
+        backgroundScope.launch { session.input.collect { sent.send(Json.parseToJsonElement(it.decodeToString()).jsonObject) } }
+        session.submit(AgentTurn(RequestId("first"), "one")); runCurrent()
+        val state = sent.receive()
+        session.onStdout("""{"id":"${state["id"]!!.jsonPrimitive.content}","type":"response","command":"get_state","success":true,"data":{"sessionId":"original"}}""")
+        runCurrent(); val prompt = sent.receive()
+        session.onStdout("""{"id":"${prompt["id"]!!.jsonPrimitive.content}","type":"response","command":"prompt","success":true}""")
+        session.onStdout("""{"type":"agent_settled"}""")
+        assertTrue(session.takeTurnEnded())
+        assertTrue(session.startNewSession(AgentTurn(RequestId("second"), "two")))
+        assertNull(session.sessionId())
+        runCurrent(); val fresh = sent.receive()
+        assertEquals("new_session", fresh["type"]!!.jsonPrimitive.content)
+        session.onStdout("""{"id":"${fresh["id"]!!.jsonPrimitive.content}","type":"response","command":"new_session","success":true,"data":{"cancelled":false}}""")
+        runCurrent(); val newState = sent.receive()
+        assertEquals("get_state", newState["type"]!!.jsonPrimitive.content)
+        val facts = session.onStdout("""{"id":"${newState["id"]!!.jsonPrimitive.content}","type":"response","command":"get_state","success":true,"data":{"sessionId":"different"}}""")
+        assertEquals(listOf(AgentFact.Session("different")), facts.flatMap { ProtocolDecoder(AgentId.PI).decode(it) })
+        runCurrent(); assertEquals("two", sent.receive()["message"]!!.jsonPrimitive.content)
+        session.close()
+    }
     @Test fun `RPC accepts images and later turns but completes only at settled`() = runTest {
         val session = PiRpcSession("saved-session")
         val sent = Channel<JsonObject>(20)

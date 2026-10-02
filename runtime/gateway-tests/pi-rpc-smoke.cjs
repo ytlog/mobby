@@ -103,6 +103,14 @@ async function main() {
     assert.ok(JSON.stringify(requests.at(-1)).includes('PI_READ_OKPI_EDIT_OK'),'Actual bash result must roundtrip');
     mode='text';await live.turn('SECOND_TURN');
     assert.ok(JSON.stringify(requests.at(-1)).includes('PI_READ_OK'),'Live turn must retain context');
+    live.send({id:'fresh-session',type:'new_session'});
+    const fresh=(await live.wait(e=>e.type==='response'&&e.id==='fresh-session')).data;
+    assert.equal(fresh.cancelled,false);
+    live.send({id:'fresh-state',type:'get_state'});
+    const freshId=(await live.wait(e=>e.type==='response'&&e.id==='fresh-state')).data.sessionId;
+    assert.notEqual(freshId,id,'New session must have a distinct identity');
+    await live.turn('FRESH_TURN');
+    assert.ok(!JSON.stringify(requests.at(-1)).includes('SECOND_TURN'),'New session must not inherit the prior transcript');
     mode='steer';const steered=live.turn('STEER_TURN');
     await steerStarted;live.send({id:'steer',type:'steer',message:'STEER_INSERTED'});
     assert.equal((await live.wait(e=>e.command==='steer')).success,true);releaseSteer();await steered;
@@ -120,7 +128,7 @@ async function main() {
     resumed.child.kill('SIGTERM');await resumed.exited;await cancelClosed;
     assert.equal(fs.readFileSync(path.join(piHome,'models.json'),'utf8'),original);
     assert.deepEqual(fs.readdirSync(tmp).filter(n=>n.startsWith('mobby-pi-')),[],'Temporary bridge config must be removed');
-    console.log('PASS Pi RPC: images, UTF-8, skills, read/write/edit/bash, live turns, steering, cold resume, errors, cancellation and config isolation');
+    console.log('PASS Pi RPC: images, UTF-8, skills, tools, live turns, fresh session, steering, cold resume, errors, cancellation and config isolation');
   } finally {
     for(const child of children)if(child.exitCode===null && child.signalCode===null)child.kill('SIGTERM');
     server.closeAllConnections();server.close();fs.rmSync(root,{recursive:true,force:true});

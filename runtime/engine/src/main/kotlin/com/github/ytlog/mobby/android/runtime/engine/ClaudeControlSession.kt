@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.serialization.json.*
 import java.util.UUID
 
-/** Claude Code stream-json transport behind [AgentSession]. */
+/** Claude Code stream-json transport. Its stdin continues one session; a fresh session needs a new CLI process. */
 class ClaudeControlSession : AgentSession {
     override val supportsInsertion = true
     private val initializeId = "initialize-${UUID.randomUUID()}"

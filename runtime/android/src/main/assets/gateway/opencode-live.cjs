@@ -63,12 +63,21 @@ async function runOpenCodeLive(executable, serverArguments, environment, bridge)
     try { command = JSON.parse(raw); } catch (_) { return; }
     if (command.type !== 'prompt' || typeof command.text !== 'string' ||
       typeof command.model !== 'string' || !Array.isArray(command.images)) return;
+    if (command.newSession !== undefined && typeof command.newSession !== 'boolean') {
+      process.stdout.write(JSON.stringify({type:'error', error:{message:'Invalid OpenCode session selection'}}) + '\n');
+      return;
+    }
     if (active || closed) {
       process.stdout.write(JSON.stringify({type:'error', error:{message:'OpenCode is still running'}}) + '\n');
       return;
     }
+    if (command.newSession === true && command.sessionId) {
+      process.stdout.write(JSON.stringify({type:'error', error:{message:'Conflicting OpenCode session selection'}}) + '\n');
+      return;
+    }
     active = true;
-    const selectedSession = command.sessionId || sessionId;
+    const selectedSession = command.newSession === true ? null : command.sessionId || sessionId;
+    if (command.newSession === true) sessionId = null;
     const args = ['run', '--attach', address, '--format', 'json', '--pure', '--auto',
       '-m', `openai/${command.model}`];
     if (selectedSession) args.push('--session', selectedSession);
@@ -86,7 +95,7 @@ async function runOpenCodeLive(executable, serverArguments, environment, bridge)
     let ended = false;
     let buffer = '';
     const emit = line => {
-      if (!line) return;
+      if (!line || client !== run) return;
       process.stdout.write(line + '\n');
       let event;
       try { event = JSON.parse(line); } catch (_) { return; }

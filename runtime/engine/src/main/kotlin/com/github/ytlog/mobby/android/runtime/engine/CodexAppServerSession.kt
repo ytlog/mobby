@@ -12,6 +12,7 @@ import kotlinx.serialization.json.*
  */
 class CodexAppServerSession(private val cwd: String, private val model: String, private val resumeThreadId: String?) : AgentSession {
     override val supportsInsertion = true
+    override val supportsNewSession = true
     private val queue = Channel<ByteArray>(18)
     override val input = queue.receiveAsFlow()
     private var nextId = 1
@@ -42,7 +43,7 @@ class CodexAppServerSession(private val cwd: String, private val model: String, 
         activeTurnId = null
         if (step == Step.READY) sendTurn()
     }
-    @Synchronized override fun startNewThread(turn: AgentTurn): Boolean {
+    @Synchronized override fun startNewSession(turn: AgentTurn): Boolean {
         if (finished || turnOpen || queued != null || pending != null || step != Step.READY || sessionId == null) return false
         require(turn.images.all { it.path.startsWith("/") && '\u0000' !in it.path })
         queued = turn

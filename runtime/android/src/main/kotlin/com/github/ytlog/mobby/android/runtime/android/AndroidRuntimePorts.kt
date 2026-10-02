@@ -136,7 +136,7 @@ internal class AndroidRuntimePorts(
                 val prepared = assemble(request, reusable.extras)
                 files = prepared.files
                 activeInput = request.requestId
-                try { reusable.run(prepared.turn, stop, submit = true, newThread = request.sessionRef == null) { line, error -> output(sanitize(line, config), error) } }
+                try { reusable.run(prepared.turn, stop, submit = true, newSession = request.sessionRef == null) { line, error -> output(sanitize(line, config), error) } }
                 finally { activeInput = null }
             } else {
                 shutdownLive()
@@ -300,17 +300,17 @@ private class LiveAgent(
     private var binding: LiveSessionBinding? = null
     private val anchor = request
     fun accepts(request: RunRequest) = alive && ::job.isInitialized && job.isActive &&
-        (binding?.accepts(request) == true || binding?.acceptsNewThread(request) == true)
+        (binding?.accepts(request) == true || session.supportsNewSession && binding?.acceptsNewSession(request) == true)
     fun shutdown(force: Boolean) {
         deviceStop.set(null)
         if (!::job.isInitialized) return
         if (force) job.cancel() else session.release()
     }
-    suspend fun run(turn: AgentTurn, stop: StateFlow<StopCause?>, submit: Boolean, newThread: Boolean = false, output: suspend (String, Boolean) -> Unit): ProcessResult {
+    suspend fun run(turn: AgentTurn, stop: StateFlow<StopCause?>, submit: Boolean, newSession: Boolean = false, output: suspend (String, Boolean) -> Unit): ProcessResult {
         deviceStop.set(stop)
         try {
             if (submit) {
-                if (newThread) check(session.startNewThread(turn)) { "Live agent could not start a new thread" }
+                if (newSession) check(session.startNewSession(turn)) { "Live agent could not start a new session" }
                 else session.submit(turn)
             }
             while (true) {

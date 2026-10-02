@@ -26,7 +26,7 @@ class CodexAppServerSessionTest {
         session.onStdout("""{"id":"3","result":{"turn":{"id":"turn-one"}}}""")
         session.onStdout("""{"method":"turn/completed","params":{"turn":{"id":"turn-one","status":"completed"}}}""")
         assertTrue(session.takeTurnEnded())
-        assertTrue(session.startNewThread(AgentTurn(RequestId("next"), "fresh")))
+        assertTrue(session.startNewSession(AgentTurn(RequestId("next"), "fresh")))
         runCurrent()
         val freshThread = sent.receive()
         assertEquals("thread/start", freshThread.getValue("method").jsonPrimitive.content)
