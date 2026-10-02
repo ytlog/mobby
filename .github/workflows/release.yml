@@ -205,6 +205,10 @@ jobs:
           cp "$apk" "release-assets/mobby-v${VERSION}-arm64-v8a.apk"
           test -s "release-assets/mobby-v${VERSION}-sources.tar.gz"
           (cd release-assets && sha256sum *.apk *-sources.tar.gz > SHA256SUMS.txt)
+          apk_sha=$(sha256sum "release-assets/mobby-v${VERSION}-arm64-v8a.apk" | cut -d' ' -f1)
+          jq -n --arg version "$VERSION" --argjson versionCode "$VERSION_CODE" \
+            --arg apk "mobby-v${VERSION}-arm64-v8a.apk" --arg sha256 "$apk_sha" \
+            '{schemaVersion:1, version:$version, versionCode:$versionCode, apk:$apk, sha256:$sha256}' > release-assets/update.json
 
       - name: Publish GitHub Release
         env:

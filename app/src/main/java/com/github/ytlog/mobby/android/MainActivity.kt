@@ -62,7 +62,7 @@ class MainActivity : ComponentActivity() {
                 startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
             }
         })
-        setContent { ConversationEntry(actions, host, conversationNavigation, petEnabled, petPermitted, gatewayRefresh = gatewayRefresh) }
+        setContent { ConversationEntry(actions, host, conversationNavigation, petEnabled, petPermitted, gatewayRefresh = gatewayRefresh, updates = app.updates) }
         if (android.os.Build.VERSION.SDK_INT >= 33) {
             val notice = getPreferences(MODE_PRIVATE)
             if (!notice.getBoolean("task-notification-requested", false) &&
@@ -78,6 +78,8 @@ class MainActivity : ComponentActivity() {
     }
     override fun onResume() {
         super.onResume()
+        app.updates.onResume()
+        app.updates.checkIfDue()
         gatewayRefresh++
         val allowed = Settings.canDrawOverlays(this)
         petPermitted = allowed

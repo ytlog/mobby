@@ -67,6 +67,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.ytlog.mobby.android.conversation.domain.*
+import com.github.ytlog.mobby.android.AppUpdateManager
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import androidx.window.layout.FoldingFeature
@@ -82,6 +83,7 @@ class ConversationHostActions(
 @Composable fun ConversationEntry(
     actions: ConversationUseCases, hostActions: ConversationHostActions, conversationNavigation: String? = null,
     petEnabled: Boolean = false, petPermitted: Boolean = false, gatewayRefresh: Int = 0,
+    updates: AppUpdateManager? = null,
 ) {
     val factory = remember(actions) { object : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST") override fun <T : ViewModel> create(modelClass: Class<T>): T = ConversationViewModel(actions) as T
@@ -159,6 +161,12 @@ class ConversationHostActions(
         navigation = navigation.back(gatewayFromIntro)
     }
     MaterialTheme(colorScheme = colors) {
+        if (updates?.state?.phase == AppUpdateManager.Phase.READY && updates.dismissedVersion != updates.state.version) {
+            AlertDialog(onDismissRequest = updates::dismissNotice, title = { Text(AppStrings.updateAvailable(updates.state.version.orEmpty())) },
+                text = { Text(AppStrings.updateReadyToInstall) },
+                confirmButton = { TextButton(onClick = { updates.dismissNotice(); updates.install() }) { Text(AppStrings.installUpdate) } },
+                dismissButton = { TextButton(onClick = updates::dismissNotice) { Text(AppStrings.later) } })
+        }
         val selectPlugin = rememberDirectPluginSelector(vm, state.selected?.conversation)
         val camera = rememberCameraCapture(actions, { captured ->
             actions.importAttachment(ConversationId(captured.conversation), captured.workspace, requireNotNull(captured.attachmentUri))
@@ -226,6 +234,7 @@ class ConversationHostActions(
                         AppPage.HISTORY_LIMITS -> EventHistoryPage(actions::eventHistoryLimits, actions::saveEventHistoryLimits) { navigation = navigation.open(AppPage.SETTINGS) }
                         AppPage.DIAGNOSTIC -> DiagnosticPage(vm) { navigation = navigation.open(AppPage.SETTINGS) }
                         AppPage.LICENSES -> LicensePage { navigation = navigation.open(AppPage.SETTINGS) }
+                        AppPage.UPDATES -> updates?.let { AppUpdatePage(it) { navigation = navigation.open(AppPage.SETTINGS) } }
                         AppPage.ARCHIVED -> ArchivedPage(state, vm) { navigation = navigation.open(AppPage.SETTINGS) }
                         AppPage.SKILLS -> SkillsPage(vm, onBack = { navigation = navigation.openAddSheet() }, onConversation = { navigation = navigation.open(AppPage.CONVERSATION) })
                         AppPage.PLUGINS -> PluginPage(vm) { navigation = navigation.openAddSheet() }

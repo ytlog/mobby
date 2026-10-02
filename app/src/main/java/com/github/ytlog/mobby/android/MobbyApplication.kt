@@ -25,6 +25,8 @@ class MobbyApplication : Application() {
     private val petScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private lateinit var pet: DesktopPet
     private lateinit var floatingConversation: FloatingConversationWindow
+    lateinit var updates: AppUpdateManager
+        private set
     private var latest = ConversationState()
     private var foreground = false
     private var holdForUi = true
@@ -51,6 +53,7 @@ class MobbyApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         if (isLocalModelProcess()) return
+        updates = AppUpdateManager(this)
         com.github.ytlog.mobby.android.conversation.ui.LanguagePreferences.initialize(this)
         graph = AppGraph(this) {
             PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)

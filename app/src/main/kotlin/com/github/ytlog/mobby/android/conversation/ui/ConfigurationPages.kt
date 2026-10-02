@@ -174,6 +174,8 @@ import kotlinx.coroutines.*
                 SettingsItem(AppStrings.gatewaySettings, { navigate("gateway") }, AppStrings.configuredGatewaysAndModels)
                 GroupDivider()
                 SettingsItem(AppStrings.storageRetention, { navigate("history-limits") }, AppStrings.conversationAndAttachmentRetention)
+                GroupDivider()
+                SettingsItem(AppStrings.appUpdates, { navigate("updates") }, AppStrings.updateSettingSummary)
             }
             SettingsGroup(AppStrings.runtime) {
                 SettingsItem(AppStrings.shellDiagnostics, { navigate("diagnostic") })

@@ -71,6 +71,7 @@ dependencies {
     implementation("org.commonmark:commonmark-ext-autolink:0.30.0")
     implementation("org.commonmark:commonmark-ext-task-list-items:0.30.0")
     implementation("androidx.compose.material:material-icons-extended")
+    implementation("androidx.core:core:1.13.1")
     testImplementation("org.robolectric:robolectric:4.12.2")
     testImplementation("androidx.compose.ui:ui-test-junit4")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")

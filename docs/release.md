@@ -2,6 +2,8 @@
 
 仓库的 **Publish Android release** 工作流只通过 GitHub Actions 的 **Run workflow** 手动运行。它使用不含签名 secrets 的构建 runner 执行运行时检查、Android 单测和 lint，构建经过 R8 压缩、优化、混淆及资源收缩的 ARM64 未签名 release APK，再由独立 runner 使用原发布密钥签名、验证签名和版本信息，然后创建 `v<版本>` 标签与 GitHub Release。APK 与 SHA-256 校验文件是公开的 Release 附件；R8 `mapping.txt` 以 age 接收者加密后保存在 Actions artifact 中 90 天，用于崩溃堆栈反混淆。
 
+同一 Release 还生成 `update.json`，包含版本名、递增的 versionCode、APK 附件名和签名后 APK 的 SHA-256。App 打开时默认每天检查一次最新正式 Release，读取此元数据并自动下载高版本 APK；安装前再次校验摘要、包名、versionCode 与当前安装包签名，再交给 Android 安装器。设置页可关闭自动检查或手动检查。系统可能要求允许此来源及确认安装；只有覆盖安装完成、系统报告的新版本实际存在，才视为已更新。旧 Release 没有 `update.json` 时不能自动更新，需手动下载安装；debug 与正式签名不同，也不能直接覆盖。
+
 ## 首次设置
 
 1. 准备一个长期保存的 Android 签名 keystore。若已有对外发布的同一 `applicationId`，必须使用它原来的签名密钥；签名不同的 APK 不能覆盖安装。不要使用开发机的 debug keystore。妥善离线备份 keystore、别名和口令。项目源码包与 `applicationId` 均为 `com.github.ytlog.mobby.android`。
