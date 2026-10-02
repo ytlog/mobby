@@ -33,7 +33,7 @@ class AppUpdateManager(private val context: Context) {
     private val directory = File(context.cacheDir, "updates")
     private var release: Release? = null
     private var busy = false
-    var state by mutableStateOf(State())
+    var state by mutableStateOf(restoredState())
         private set
     var autoCheck by mutableStateOf(prefs.getBoolean("auto_check", true))
         private set
@@ -53,7 +53,7 @@ class AppUpdateManager(private val context: Context) {
         if (!autoCheck || busy || state.phase == Phase.READY || state.phase == Phase.INSTALLING) return
         val last = prefs.getLong("last_check", 0)
         val now = System.currentTimeMillis()
-        if (last > 0 && now >= last && now - last < 24L * 60 * 60 * 1000) return
+        if (state.phase == Phase.CURRENT && last > 0 && now >= last && now - last < 24L * 60 * 60 * 1000) return
         check()
     }
 
@@ -77,7 +77,9 @@ class AppUpdateManager(private val context: Context) {
                         state = State(Phase.READY, found.version)
                     }
                 }
-                prefs.edit().putLong("last_check", System.currentTimeMillis()).apply()
+                prefs.edit().putLong("last_check", System.currentTimeMillis())
+                    .putString("last_outcome", if (state.phase == Phase.CURRENT) "current" else "ready")
+                    .putLong("checked_app_code", installedVersionCode()).apply()
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) { state = State(Phase.ERROR, message = e.message ?: "Update check failed") }
             finally { busy = false }
@@ -123,6 +125,15 @@ class AppUpdateManager(private val context: Context) {
     private fun installedVersionCode(): Long {
         val info = context.packageManager.getPackageInfo(context.packageName, 0)
         return if (Build.VERSION.SDK_INT >= 28) info.longVersionCode else @Suppress("DEPRECATION") info.versionCode.toLong()
+    }
+
+    private fun restoredState(): State {
+        val last = prefs.getLong("last_check", 0)
+        val now = System.currentTimeMillis()
+        return if (prefs.getString("last_outcome", null) == "current" &&
+            prefs.getLong("checked_app_code", -1) == installedVersionCode() &&
+            last > 0 && now >= last && now - last < 24L * 60 * 60 * 1000) State(Phase.CURRENT)
+        else State()
     }
 
     private fun fetchRelease(): Release? {

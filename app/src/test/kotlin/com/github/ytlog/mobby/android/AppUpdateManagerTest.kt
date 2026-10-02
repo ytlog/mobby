@@ -6,11 +6,23 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.RuntimeEnvironment
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class AppUpdateManagerTest {
     private val sha = "a".repeat(64)
+
+    @Test fun restoresRecentSuccessfulCheckAfterProcessRestart() {
+        val context = RuntimeEnvironment.getApplication()
+        val code = context.packageManager.getPackageInfo(context.packageName, 0).longVersionCode
+        val prefs = context.getSharedPreferences("mobby.updates", 0)
+        try {
+            prefs.edit().putLong("last_check", System.currentTimeMillis())
+                .putString("last_outcome", "current").putLong("checked_app_code", code).commit()
+            assertEquals(AppUpdateManager.Phase.CURRENT, AppUpdateManager(context).state.phase)
+        } finally { prefs.edit().clear().commit() }
+    }
 
     @Test fun parsesMatchingReleaseMetadata() {
         val release = AppUpdateManager.Release.parse(metadata("0.2.0", 12, "mobby-v0.2.0-arm64-v8a.apk", sha), "v0.2.0")
