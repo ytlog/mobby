@@ -83,8 +83,9 @@ class ConversationDrawerPageTest {
 
     @Test @Config(sdk = [34], qualifiers = "w1000dp-h800dp")
     fun `expanded window keeps conversation list visible without drawer button`() {
+        val conversation = Conversation(ConversationId("wide"), NextTurnConfig(AgentId.CODEX, "model", null, "default", "CODEX"))
         val repository = stub<ConversationStore> { name -> when (name) {
-            "getState" -> MutableStateFlow(ConversationState(loading = false))
+            "getState" -> MutableStateFlow(ConversationState(loading = false, selected = ConversationDetail(conversation, emptyList())))
             "awaitAttachmentRecovery" -> Unit
             else -> error(name)
         } }
@@ -112,6 +113,12 @@ class ConversationDrawerPageTest {
         val detailNew = compose.onNodeWithContentDescription("新建对话").getUnclippedBoundsInRoot()
         assertTrue("sidebar controls need room for their shadows", collapse.left - list.right >= 8.dp)
         assertTrue("list and detail controls must share a center line", abs((list.top + list.bottom - detailNew.top - detailNew.bottom).value) <= 2f)
+        val search = compose.onNodeWithTag("drawer-search").getUnclippedBoundsInRoot()
+        val settings = compose.onNodeWithContentDescription("设置").getUnclippedBoundsInRoot()
+        val mic = compose.onNodeWithTag("voice-mic").getUnclippedBoundsInRoot()
+        assertTrue("bottom search must match the visible composer height", abs((search.bottom - search.top - mic.bottom + mic.top - 8.dp).value) <= 1f)
+        assertTrue("bottom search and composer should share a top line", abs((search.top - mic.top + 4.dp).value) <= 1f)
+        assertTrue("bottom settings and composer should share a bottom line", abs((settings.bottom - mic.bottom - 4.dp).value) <= 1f)
         val detail = compose.onNodeWithTag("conversation-transcript").getUnclippedBoundsInRoot()
         assertTrue("list must be left of detail", list.right <= detail.left)
         compose.onNodeWithContentDescription("搜索会话").performTextInput("keep-search")
