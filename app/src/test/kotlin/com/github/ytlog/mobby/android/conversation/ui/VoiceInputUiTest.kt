@@ -15,6 +15,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -53,16 +54,27 @@ class VoiceInputUiTest {
         compose.onNodeWithContentDescription("语音输入").assertIsDisplayed()
     }
 
-    @Test fun `running agent offers queue insert and stop as separate actions`() {
+    @Test fun `running agent replaces stop with one send action while draft has content`() {
         val events = mutableListOf<String>()
-        compose.setContent { MaterialTheme { bar(stop = true, sendEnabled = true,
+        val hasDraft = mutableStateOf(true)
+        compose.setContent { MaterialTheme { bar(stop = true, hasDraftContent = hasDraft.value, sendEnabled = hasDraft.value,
             onSend = { events += "queue" }, onInsert = { events += "insert" }, onStop = { events += "stop" }) } }
-        compose.onNodeWithContentDescription("选择发送方式").assertIsDisplayed().performClick()
+        compose.onNodeWithContentDescription("选择发送方式").assertIsDisplayed()
+        compose.onNodeWithContentDescription("停止当前任务").assertDoesNotExist()
+        compose.onNodeWithContentDescription("选择发送方式").performClick()
         compose.onNodeWithText("排队发送").assertIsDisplayed().performClick()
         compose.onNodeWithContentDescription("选择发送方式").performClick()
         compose.onNodeWithText("插入当前运行").assertIsDisplayed().performClick()
+        compose.runOnIdle { hasDraft.value = false }
+        compose.onNodeWithContentDescription("选择发送方式").assertDoesNotExist()
         compose.onNodeWithContentDescription("停止当前任务").assertIsDisplayed().performClick()
         assertEquals(listOf("queue", "insert", "stop"), events)
+    }
+
+    @Test fun `running agent keeps disabled send in place when draft cannot be sent yet`() {
+        compose.setContent { MaterialTheme { bar(stop = true, hasDraftContent = true, sendEnabled = false) } }
+        compose.onNodeWithContentDescription("选择发送方式").assertIsDisplayed().assertIsNotEnabled()
+        compose.onNodeWithContentDescription("停止当前任务").assertDoesNotExist()
     }
 
     @Test fun `short press asks to hold and long press arms cancel before release`() {
@@ -185,6 +197,7 @@ class VoiceInputUiTest {
         recording: Boolean = false,
         cancelArmed: Boolean = false,
         stop: Boolean = false,
+        hasDraftContent: Boolean = false,
         sendEnabled: Boolean = false,
         onSend: () -> Unit = {},
         onInsert: () -> Unit = {},
@@ -206,6 +219,7 @@ class VoiceInputUiTest {
             micAvailable = true,
             stop = stop,
             stopEnabled = true,
+            hasDraftContent = hasDraftContent,
             sendEnabled = sendEnabled,
             onAdd = {},
             onStop = onStop,

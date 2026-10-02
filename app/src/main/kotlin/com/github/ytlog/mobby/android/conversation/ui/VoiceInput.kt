@@ -451,6 +451,7 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectVo
     micAvailable: Boolean,
     stop: Boolean,
     stopEnabled: Boolean,
+    hasDraftContent: Boolean,
     sendEnabled: Boolean,
     onAdd: () -> Unit,
     onStop: () -> Unit,
@@ -485,16 +486,15 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectVo
                 textField()
                 when {
                     stop -> {
-                        if (sendEnabled) {
+                        if (hasDraftContent) {
                             Box {
-                                ActionIcon(AppStrings.chooseMessageDelivery, { deliveryMenu = true }, AppIcons.Send, enabled = true, filled = true)
+                                ActionIcon(AppStrings.chooseMessageDelivery, { deliveryMenu = true }, AppIcons.Send, enabled = sendEnabled, filled = true)
                                 DropdownMenu(expanded = deliveryMenu, onDismissRequest = { deliveryMenu = false }) {
                                     DropdownMenuItem(text = { Text(AppStrings.insertCurrentMessage) }, onClick = { deliveryMenu = false; onInsert() })
                                     DropdownMenuItem(text = { Text(AppStrings.queueNextMessage) }, onClick = { deliveryMenu = false; onSend() })
                                 }
                             }
-                        }
-                        ActionIcon(AppStrings.stopCurrentTask, onStop, AppIcons.Stop, enabled = stopEnabled, filled = true, glyphSize = 16.dp)
+                        } else ActionIcon(AppStrings.stopCurrentTask, onStop, AppIcons.Stop, enabled = stopEnabled, filled = true, glyphSize = 16.dp)
                     }
                     micAvailable -> HoldIcon(AppStrings.voiceInput, AppIcons.Mic, enabled, "voice-mic", onEnterVoice, onHoldStart, onHoldMove, onHoldEnd)
                     else -> ActionIcon(AppStrings.sendTask, onSend, AppIcons.Send, enabled = sendEnabled, filled = true)

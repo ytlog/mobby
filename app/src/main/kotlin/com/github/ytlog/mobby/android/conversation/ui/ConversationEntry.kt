@@ -649,6 +649,7 @@ private val DrawerRowHeight = 40.dp
         focus.clearFocus()
     }
     val stop = active?.execution != null
+    val hasDraftContent = composer.value.text.isNotBlank() || detail.conversation.draft.attachments.isNotEmpty()
     val micAvailable = !stop && composer.value.text.isEmpty() && detail.conversation.draft.attachments.isEmpty()
     LaunchedEffect(detail.conversation.id) { capture.error = null }
     LaunchedEffect(micAvailable, stop) { if (!micAvailable || stop) voiceMode = false }
@@ -688,7 +689,8 @@ private val DrawerRowHeight = 40.dp
             micAvailable = micAvailable,
             stop = stop,
             stopEnabled = active?.phase != ExecutionPhase.CANCELLING,
-            sendEnabled = !unavailable && system.ready && system.connected && !system.diagnosticBusy && detail.conversation.draft.pendingAttachment == null && (composer.value.text.isNotBlank() || detail.conversation.draft.attachments.isNotEmpty()),
+            hasDraftContent = hasDraftContent,
+            sendEnabled = !unavailable && system.ready && system.connected && !system.diagnosticBusy && detail.conversation.draft.pendingAttachment == null && hasDraftContent,
             onAdd = onAdd,
             onStop = { active?.execution?.let(vm::stop) },
             onSend = { sendAndDismiss() },

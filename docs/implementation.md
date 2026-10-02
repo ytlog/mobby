@@ -1004,7 +1004,7 @@ Codex、Claude Code、OpenCode 运行时，输入框仍允许编辑与发送。�
 
 上层统一使用 `ConversationUseCases.prepareMessage(conversationId, mode)` 与 `deliverMessage(prepared)`，`mode` 为 `QUEUE` 或 `INSERT`，不调用具体 Agent API。排队轮次由 `TurnManager` 持久化并在当前任务结束后提交。直接插入只接受当前会话内正在运行的任务和文本消息；它把消息 ID 与目标执行 ID 持久化，以相同 ID 调用 `RuntimeClient.insert`，失败时保留草稿，不会转成排队。重复命令只投递一次。`Accepted` 表示实时适配器接收命令，不表示模型已处理。
 
-Codex 通过 app-server `turn/steer` 插入当前 turn；Claude Code 通过仍打开的 stream-json 输入发送用户消息。OpenCode 当前版本不提供可靠的忙碌会话 steer，返回 `UNSUPPORTED_CAPABILITY`。输入框运行中通过发送菜单选择“排队发送”或“插入当前运行”，停止按钮始终保留；插入附件暂不支持，会明确拒绝。Codex 和 Claude Code 的真 CLI 运行中插入仍需设备验收，尤其要核对 Claude Code 进程重启后的上下文保留情况。
+Codex 通过 app-server `turn/steer` 插入当前 turn；Claude Code 通过仍打开的 stream-json 输入发送用户消息。OpenCode 当前版本不提供可靠的忙碌会话 steer，返回 `UNSUPPORTED_CAPABILITY`。输入框运行中有草稿内容时，右侧的停止按钮切换为单个发送按钮，点击后仍可选择“排队发送”或“插入当前运行”；草稿为空时恢复停止按钮。插入附件暂不支持，会明确拒绝。Codex 和 Claude Code 的真 CLI 运行中插入仍需设备验收，尤其要核对 Claude Code 进程重启后的上下文保留情况。
 
 ## 执行过程时间线（2026-09-27）
 
