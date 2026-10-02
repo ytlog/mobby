@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="screen_accessibility_label">Screen</string>
-    <string name="screen_accessibility_description">After you enable the Screen plugin and add it to a conversation, mobby can read the current accessibility tree, tap, type and go back for you. The screen stays on during that turn, then its previous timeout is restored. Without the plugin selected, mobby does not interact with the device or keep the screen on.</string>
+    <string name="screen_accessibility_label">mobby Screen Control</string>
+    <string name="screen_accessibility_description">After you enable the mobby Screen Control service and add the Screen plugin to a conversation, mobby can read the current accessibility tree, tap, type and go back for you. The screen stays on during that turn, then its previous timeout is restored. Without the plugin selected, mobby does not interact with the device or keep the screen on.</string>
 </resources>
