@@ -418,9 +418,9 @@ class ConversationHostActions(
                 }
             }
             val footerHeight = if (onCollapse != null) ToolbarControl + 8.dp else ToolbarControl
-            Row(Modifier.fillMaxWidth().padding(top = if (darkChrome()) 0.dp else 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(Modifier.fillMaxWidth().padding(top = if (darkChrome()) 0.dp else 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 DrawerSearch(query, onQuery, control, Modifier.weight(1f).testTag("drawer-search"), footerHeight)
-                DrawerCircle(AppStrings.settings, onSettings, control, AppIcons.Settings, size = footerHeight)
+                DrawerCircle(AppStrings.settings, onSettings, control, AppIcons.Settings, size = footerHeight, softShadow = true)
             }
         }
     }
@@ -466,8 +466,9 @@ private val DrawerRowHeight = 40.dp
     }
 }
 
-@Composable private fun DrawerCircle(label: String, onClick: () -> Unit, color: Color, icon: AppGlyph, modifier: Modifier = Modifier, size: Dp = ToolbarControl) {
-    Box(modifier.size(size).then(drawerControlShadow()).clip(CircleShape).background(color).clickable(onClick = onClick).semantics { contentDescription = label }, contentAlignment = Alignment.Center) {
+@Composable private fun DrawerCircle(label: String, onClick: () -> Unit, color: Color, icon: AppGlyph, modifier: Modifier = Modifier, size: Dp = ToolbarControl, softShadow: Boolean = false) {
+    val shadow = if (softShadow && !darkChrome()) Modifier.lightInputShadow(size / 2) else drawerControlShadow()
+    Box(modifier.size(size).then(shadow).clip(CircleShape).background(color).clickable(onClick = onClick).semantics { contentDescription = label }, contentAlignment = Alignment.Center) {
         AppIcon(icon, null, Modifier.size(22.dp), tint = onButtonColor())
     }
 }

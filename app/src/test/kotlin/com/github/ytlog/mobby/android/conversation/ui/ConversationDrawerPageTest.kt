@@ -115,6 +115,7 @@ class ConversationDrawerPageTest {
         assertTrue("list and detail controls must share a center line", abs((list.top + list.bottom - detailNew.top - detailNew.bottom).value) <= 2f)
         val search = compose.onNodeWithTag("drawer-search").getUnclippedBoundsInRoot()
         val settings = compose.onNodeWithContentDescription("设置").getUnclippedBoundsInRoot()
+        assertTrue("footer shadows must not overlap between search and settings", settings.left - search.right >= 14.dp)
         val mic = compose.onNodeWithTag("voice-mic").getUnclippedBoundsInRoot()
         assertTrue("bottom search must match the visible composer height", abs((search.bottom - search.top - mic.bottom + mic.top - 8.dp).value) <= 1f)
         assertTrue("bottom search and composer should share a top line", abs((search.top - mic.top + 4.dp).value) <= 1f)
