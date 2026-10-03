@@ -18,7 +18,7 @@
 
 mobby runs coding agents such as Pi, Claude Code, Codex, and OpenCode directly on Android, with access to your screen, photos, and files. Use it as your personal AI assistant to understand a page, work with files, operate apps, or write and run code on your device.
 
-<p align="center"><img src="docs/media/showcase/phone-tablet-poster.png" width="900" alt="mobby on an Android tablet and phone, shown together in device frames"></p>
+<p align="center"><img src="docs/media/showcase/phone-tablet-poster-en.png" width="900" alt="mobby on an Android tablet and phone"></p>
 
 ## Ask about what's on your screen
 

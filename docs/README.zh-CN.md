@@ -18,7 +18,7 @@
 
 mobby 让 Pi、Claude Code、Codex、OpenCode 这些 Code Agent 直接在 Android 设备上运行，接入屏幕、相册、文件等设备能力，成为你的个人 AI 助手。你可以让它看懂当前页面、处理照片和文件、操作 App，也可以直接在设备上写代码、运行程序。
 
-<p align="center"><img src="media/showcase/phone-tablet-poster.png" width="900" alt="带设备边框、叠放展示的 Android 平板与手机 mobby 界面"></p>
+<p align="center"><img src="media/showcase/phone-tablet-poster-zh.png" width="900" alt="Android 平板与手机上的 mobby"></p>
 
 ## 看着页面，直接问
 
