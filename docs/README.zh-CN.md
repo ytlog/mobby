@@ -4,7 +4,7 @@
 
 <h1 align="center">mobby</h1>
 
-<p align="center">在 Android 手机或平板上看页面、处理文件、操作应用、写程序。</p>
+<p align="center">在 Android 设备上看页面、处理文件、操作应用、写程序。</p>
 
 <p align="center"><a href="../README.md">English</a> · 简体中文</p>
 
@@ -16,7 +16,9 @@
   <a href="#开始使用">开始使用</a>
 </p>
 
-mobby 让 Pi、Claude Code、Codex、OpenCode 这些 Code Agent 直接在 Android 手机或平板上运行，接入屏幕、相册、文件等设备能力，成为你的个人 AI 助手。你可以让它看懂当前页面、处理照片和文件、操作 App，也可以直接在设备上写代码、运行程序。平板宽窗口会并排显示会话列表和当前对话；窗口较窄时使用单栏布局。
+mobby 让 Pi、Claude Code、Codex、OpenCode 这些 Code Agent 直接在 Android 设备上运行，接入屏幕、相册、文件等设备能力，成为你的个人 AI 助手。你可以让它看懂当前页面、处理照片和文件、操作 App，也可以直接在设备上写代码、运行程序。
+
+<p align="center"><img src="media/showcase/phone-tablet-poster.png" width="900" alt="带设备边框、叠放展示的 Android 平板与手机 mobby 界面"></p>
 
 ## 看着页面，直接问
 

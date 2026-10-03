@@ -4,7 +4,7 @@
 
 <h1 align="center">mobby</h1>
 
-<p align="center">Ask about your screen, work with files, use apps, and write code on your Android phone or tablet.</p>
+<p align="center">Ask about your screen, work with files, use apps, and write code on Android.</p>
 
 <p align="center">English · <a href="docs/README.zh-CN.md">简体中文</a></p>
 
@@ -16,7 +16,9 @@
   <a href="#getting-started">Getting started</a>
 </p>
 
-mobby runs coding agents such as Pi, Claude Code, Codex, and OpenCode directly on Android, with access to your screen, photos, and files. Use it as your personal AI assistant to understand a page, work with files, operate apps, or write and run code on your phone or tablet. On wide tablet windows, the conversation list and current chat appear side by side; narrower windows use a single-column layout.
+mobby runs coding agents such as Pi, Claude Code, Codex, and OpenCode directly on Android, with access to your screen, photos, and files. Use it as your personal AI assistant to understand a page, work with files, operate apps, or write and run code on your device.
+
+<p align="center"><img src="docs/media/showcase/phone-tablet-poster.png" width="900" alt="mobby on an Android tablet and phone, shown together in device frames"></p>
 
 ## Ask about what's on your screen
 
