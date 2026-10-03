@@ -56,10 +56,10 @@ mobby 让 Pi、Claude Code、Codex、OpenCode 这些 Code Agent 直接在 Androi
 
 ## 开始使用
 
-目前支持 Android 8.0 及以上的 ARM64 手机和平板。首次打开会初始化随安装包提供的运行环境；在网关设置中填写服务地址、API Key 和模型，保存后即可开始对话。
+支持 Android 8.0 及以上的 ARM64 手机和平板。
 
-页面问答需要开启桌面悬浮球、悬浮窗权限和屏幕无障碍服务；照片与文件按任务授权。
+1. **安装 mobby。** 从 [Releases](https://github.com/ytlog/mobby/releases) 下载 APK，在设备上安装并打开。等待运行环境初始化；Claude Code 会在此时从官方源下载。
+2. **配置网关。** 打开「设置 → 网关设置」，选择服务或填写 Base 地址和 API Key，点「获取模型」，选择默认模型，再保存网关。
+3. **开始对话。** 选好网关后发送任务。使用页面问答时，开启桌面悬浮球、悬浮窗权限和「屏幕」无障碍服务；使用照片或文件功能时再授权。
 
 [构建与使用](getting-started.md) · [网关设置](gateway.md) · [项目文档](README.md) · [MIT 许可证](../LICENSE)
-
-安装包和对应的 `mobby-v<版本>-sources.tar.gz` 在同一 [Release](https://github.com/ytlog/mobby/releases) 下载，使用 `SHA256SUMS.txt` 校验。组件许可证、对应源码、构建补丁和重新链接说明见 [第三方源码](third-party-sources.md)。Claude Code 在首次初始化时由设备直接从官方源下载。

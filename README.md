@@ -56,12 +56,10 @@ Describe what you need. Let the agent write the code in your device's workspace,
 
 ## Getting started
 
-mobby currently supports ARM64 Android phones and tablets running Android 8.0 or later. On first launch, it sets up the runtime included in the APK. Enter your service URL, API key, and model in the gateway settings, save them, and start a conversation.
+mobby supports ARM64 Android phones and tablets running Android 8.0 or later.
 
-Screen Q&A requires the floating button, permission to display over other apps, and the screen accessibility service. Grant photo and file access for the tasks that need them.
+1. **Install mobby.** Get the APK from [Releases](https://github.com/ytlog/mobby/releases) and open it on your device. Wait for the runtime to initialize; Claude Code downloads from its official source during setup.
+2. **Set up a gateway.** Open **Settings → Gateway settings**, choose a service or enter its base URL and API key, tap **Get models**, select a default model, then save the gateway.
+3. **Start a conversation.** Select the gateway and send a task. For screen Q&A, enable the floating button, display-over-other-apps permission, and the Screen accessibility service. Grant photo or file access when you use those features.
 
 [Build and usage guide](docs/getting-started.md) · [Gateway setup](docs/gateway.md) · [Project docs](docs/README.md) · [MIT license](LICENSE)
-
-The linked guides are currently in Chinese.
-
-Download the APK and matching `mobby-v<version>-sources.tar.gz` from the same [Release](https://github.com/ytlog/mobby/releases). Verify both with `SHA256SUMS.txt`. Component licenses, corresponding sources, build recipes and relinking instructions are described in [third-party sources](docs/third-party-sources.md). Claude Code is downloaded directly from its official registry on first initialization.
