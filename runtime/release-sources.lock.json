@@ -1,6 +1,6 @@
 {
   "bootstrap_sha256": "1f48f4d05da9fab3ce74fb1d9b137fdbc745ba1f7a6f9e8f743fd89b7047d17b",
-  "agents_lock_sha256": "839702db23ddcb5bc19f3f1473f5633d5bf340fa85b3a75c180979d0d1b7dac5",
+  "agents_lock_sha256": "08ee1a960883cfb01d58859c76de49d46e59767b6ff9b7d85c96292d02b057ab",
   "packages": [
     {
       "name": "pcre2",
@@ -76,11 +76,11 @@
     },
     {
       "name": "openssl",
-      "version": "1:3.6.3",
+      "version": "1:3.6.5",
       "license": "Apache-2.0",
       "recipe": "openssl",
-      "recipe_commit": "e392c87ee0005397d3b3b9b43576c270bef76cd8",
-      "recipe_source_input": "termux-agent-recipes"
+      "recipe_commit": "6d9ca4360b69878b2f290446359b60b69f8d4c7a",
+      "recipe_source_input": "termux-openssl-recipes"
     },
     {
       "name": "coreutils",
@@ -1197,6 +1197,11 @@
       "name": "termux-agent-recipes",
       "url": "https://codeload.github.com/termux/termux-packages/tar.gz/e392c87ee0005397d3b3b9b43576c270bef76cd8",
       "sha256": "1f7f54d1b468ae4adaa7947d060ee3ceaa0186329e2c3469c9156eec92105479"
+    },
+    {
+      "name": "termux-openssl-recipes",
+      "url": "https://codeload.github.com/termux/termux-packages/tar.gz/6d9ca4360b69878b2f290446359b60b69f8d4c7a",
+      "sha256": "551bc9e64ed49228c214786d3eb75b939956d8994d3a076e3ce48b1581841fea"
     },
     {
       "name": "termux-git-recipes",

@@ -36,7 +36,7 @@ Termux 最终 87 个包单独按自身许可处理。Pi 与 npm 依赖中的原�
 
 这份记录说明已核对的材料与工程措施，不构成对任何司法辖区、发行方式或全部链接关系的法律认证。不能仅凭设置页存在就声称所有分发义务都已完成。
 
-补充材料按固定发布版本筛选：Codex 使用 `codex-cli`、`codex-bwrap` 在 `aarch64-unknown-linux-musl` 上的普通依赖图，排除测试依赖、构建工具和过程宏；原 crate 用 Cargo.lock 的 SHA-256 校验，Git 依赖使用锁定提交。Rust 标准库和实际 ELF 中的 OpenSSL 3.6.3 单独保留许可。材料见 `third_party/codex/dependency-notices.json`。
+补充材料按固定发布版本筛选：Codex 使用 `codex-cli`、`codex-bwrap` 在 `aarch64-unknown-linux-musl` 上的普通依赖图，排除测试依赖、构建工具和过程宏；原 crate 用 Cargo.lock 的 SHA-256 校验，Git 依赖使用锁定提交。Rust 标准库和实际 ELF 中的 OpenSSL 单独保留许可；实际随包版本以 `runtime/agents.lock.json` 为准。材料见 `third_party/codex/dependency-notices.json`。
 
 Bun 材料见 `third_party/bun/dependency-notices.json`，包括 Linux ARM64 构建输入、WebKit 内的原版权声明、内嵌 polyfill 的普通依赖闭包和原手工维护 JS 文件的声明；排除仅用于 Windows 的 libuv 和 npm 构建工具 esbuild。原上游 LICENSE 文件保持完整，不删改其中的历史说明。Termux 许可模板仍保留在上游数据包内，App 页面仅展示最终包清单实际使用的模板。
 
