@@ -32,7 +32,7 @@ internal class DeviceWorkflowManager(context: Context, private val inspect: (Str
         val before = observe(query, null)
         val response = execute(line)
         val receipt = try { DeviceJson.decodeFromString<DeviceResponse>(response) } catch (_: Exception) { null }
-        val after = observe(query, args["text"])
+        val after = observeAfter(request.action, before, query, args["text"], receipt)
         val checked = stepVerified(request.action, before, after, receipt, null)
         val step = WorkflowStep(request.action, query?.takeIf(::safeLabel), if (request.action == "type") "input" else null,
             before?.mark(), after?.mark(), receipt?.status?.name ?: "unknown", checked, requestId = request.requestId)
@@ -223,6 +223,24 @@ internal class DeviceWorkflowManager(context: Context, private val inspect: (Str
     }
 
     private fun observe(query: String?, input: String?): ScreenEvidence? = try { inspect(query, input) } catch (_: Exception) { null }
+
+    private fun observeAfter(action: String, before: ScreenEvidence?, query: String?, input: String?,
+        receipt: DeviceResponse?): ScreenEvidence? {
+        if (receipt?.status != DeviceStatus.SUCCEEDED || before == null) return observe(query, input)
+        val deadline = System.nanoTime() + 2_000_000_000L
+        var latest: ScreenEvidence?
+        do {
+            latest = observe(query, input)
+            if (latest != null && if (action == "type") latest.inputMatches else
+                    latest.packageName != before.packageName || latest.shape != before.shape) return latest
+            if (System.nanoTime() >= deadline) return latest
+            try { Thread.sleep(50) } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return latest
+            }
+        } while (true)
+    }
+
     private fun lineSize(raw: JsonObject) = raw.toString().toByteArray().size
     private fun safeLabel(value: String): Boolean = value.isNotBlank() && value.length <= 40 &&
         value.none { it.isDigit() || it in "@:/\\\n\r" }

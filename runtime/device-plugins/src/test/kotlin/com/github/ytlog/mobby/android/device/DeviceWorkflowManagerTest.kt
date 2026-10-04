@@ -23,15 +23,16 @@ class DeviceWorkflowManagerTest {
     private lateinit var context: Context
     private val allow = mapOf("screen" to setOf("snapshot", "click", "type", "back"))
     private val actors = mutableListOf<DeviceWorkflowManager>()
-    private var page = "home"
+    @Volatile private var page = "home"
     private var input = ""
     private var matches = 1
     private var actions = 0
+    private var delayedBackMillis = 0L
 
     @Before fun setUp() {
         context = RuntimeEnvironment.getApplication()
         context.deleteDatabase("device-workflow-history.db")
-        page = "home"; input = ""; matches = 1; actions = 0
+        page = "home"; input = ""; matches = 1; actions = 0; delayedBackMillis = 0
     }
     @After fun tearDown() { actors.forEach { it.close() }; context.deleteDatabase("device-workflow-history.db") }
 
@@ -45,13 +46,32 @@ class DeviceWorkflowManagerTest {
         return DeviceJson.decodeFromString(manager.handle(line, "fixture", allow, ::perform))
     }
 
+    @Test fun delayedBackWaitsForActualPageTransitionBeforeSealingAndReplaying() {
+        delayedBackMillis = 150
+        val manager = manager()
+        val first = invoke(manager, "run", """{"steps":[{"action":"click","query":"显示与亮度"},{"action":"back"}]}""")
+        assertEquals(DeviceStatus.SUCCEEDED, first.status)
+        val record = invoke(manager, "list").result!!.data["workflows"]!!.jsonArray.single().jsonObject
+        assertTrue(record["replayable"]!!.jsonPrimitive.boolean)
+        assertEquals("home", page)
+
+        val workflowId = record["workflowId"]!!.jsonPrimitive.content
+        val replay = invoke(manager(), "replay", """{"workflowId":"$workflowId"}""")
+        assertEquals(DeviceStatus.SUCCEEDED, replay.status)
+        assertEquals(2, replay.result!!.data["completed"]!!.jsonPrimitive.int)
+        assertEquals("home", page)
+    }
+
     private fun perform(line: String): String {
         val request = DeviceJson.decodeFromJsonElement<DeviceRequest>(JsonObject(DeviceJson.parseToJsonElement(line).jsonObject - "token"))
         actions++
         when (request.action) {
             "click" -> page = "search"
             "type" -> input = request.args.getValue("text").jsonPrimitive.content
-            "back" -> page = "home"
+            "back" -> if (delayedBackMillis == 0L) page = "home" else Thread {
+                Thread.sleep(delayedBackMillis)
+                page = "home"
+            }.start()
         }
         return DeviceJson.encodeToString(DeviceResponse(requestId = request.requestId, accepted = true,
             status = DeviceStatus.SUCCEEDED, result = DeviceResult("screen_observation", EffectState.CONFIRMED, JsonObject(emptyMap()))))
