@@ -16,6 +16,7 @@ import com.github.ytlog.mobby.android.conversation.domain.ConversationState
 import com.github.ytlog.mobby.android.conversation.domain.StopResult
 import com.github.ytlog.mobby.android.conversation.ui.DesktopPet
 import com.github.ytlog.mobby.android.conversation.ui.FloatingConversationWindow
+import com.github.ytlog.mobby.android.conversation.ui.AppUpdateManager
 import kotlinx.coroutines.*
 
 class MobbyApplication : Application() {

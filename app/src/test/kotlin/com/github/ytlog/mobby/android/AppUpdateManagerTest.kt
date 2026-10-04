@@ -1,5 +1,6 @@
 package com.github.ytlog.mobby.android
 
+import com.github.ytlog.mobby.android.conversation.ui.AppUpdateManager
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test

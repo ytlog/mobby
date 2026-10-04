@@ -67,7 +67,6 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.ytlog.mobby.android.conversation.domain.*
-import com.github.ytlog.mobby.android.AppUpdateManager
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import androidx.window.layout.FoldingFeature

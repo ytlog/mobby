@@ -1,4 +1,4 @@
-package com.github.ytlog.mobby.android
+package com.github.ytlog.mobby.android.conversation.ui
 
 import android.content.Context
 import android.content.Intent
@@ -265,5 +265,3 @@ class AppUpdateManager(private val context: Context) {
 
     private companion object { const val MAX_APK_BYTES = 2L * 1024 * 1024 * 1024 }
 }
-
-class UpdateFileProvider : FileProvider()
