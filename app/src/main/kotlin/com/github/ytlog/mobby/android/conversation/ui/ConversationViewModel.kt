@@ -447,6 +447,7 @@ internal class ConversationViewModel(val actions: ConversationUseCases) : ViewMo
         Failure.INPUT_TOO_LARGE -> AppStrings.textAndAttachmentsExceedTheKibInputLimitIncluding
         Failure.BUSY -> AppStrings.aTaskIsAlreadyRunningDraftPreserved
         Failure.INVALID_CONFIG -> AppStrings.checkGatewayAndModelSettingsFirst
+        Failure.PERMISSION_DENIED -> AppStrings.permissionDeniedTaskDidNotComplete
         Failure.UNSUPPORTED_CAPABILITY -> AppStrings.thisAgentDoesNotSupportTheSelectedCapability
         Failure.EMPTY_DRAFT -> AppStrings.enterATaskFirst
         Failure.PENDING_SUBMISSION -> AppStrings.previousRequestIsUnconfirmedCheckTheOriginalRequestFirst

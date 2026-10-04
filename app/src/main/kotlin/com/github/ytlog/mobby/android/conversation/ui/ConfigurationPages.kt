@@ -294,7 +294,9 @@ private fun pluginCatalogTabs(tablet: Boolean) = listOf(if (tablet) AppStrings.t
         val target = if (grant) plugin.grant else null
         when {
             grant && target == null -> Unit
-            !grant && plugin.access == PluginAccess.ACCESSIBILITY -> context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            !grant && plugin.access == PluginAccess.ACCESSIBILITY -> context.startActivity(
+                if (plugin.ref == "plugin:device:screen") screenAccessSettingsIntent(context)
+                else Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
             !grant && plugin.access == PluginAccess.DOCUMENT_TREE -> tree.launch(null)
             else -> {
                 val needed = if (grant) target?.permissions.orEmpty() else plugin.permissions

@@ -39,7 +39,7 @@ sealed interface PrepareInsertionResult {
     data class Prepared(val insertion: PreparedInsertion) : PrepareInsertionResult
     data class Rejected(val reason: Failure) : PrepareInsertionResult
 }
-enum class Failure { PENDING_ATTACHMENT, INPUT_TOO_LARGE, BUSY, INVALID_CONFIG, UNSUPPORTED_CAPABILITY, UNAVAILABLE, EMPTY_DRAFT, PENDING_SUBMISSION }
+enum class Failure { PENDING_ATTACHMENT, INPUT_TOO_LARGE, BUSY, INVALID_CONFIG, PERMISSION_DENIED, UNSUPPORTED_CAPABILITY, UNAVAILABLE, EMPTY_DRAFT, PENDING_SUBMISSION }
 sealed interface Submission {
     data class Accepted(val executionId: ExecutionId) : Submission
     data class Queued(val turnId: TurnId) : Submission

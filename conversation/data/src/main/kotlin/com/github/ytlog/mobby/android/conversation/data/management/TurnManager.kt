@@ -110,6 +110,7 @@ internal class TurnManager(private val db: ConversationDatabase, private val now
                     Failure.INPUT_TOO_LARGE -> AppStrings.requestRejectedTextAndAttachmentsExceedTheInputLimit
                     Failure.BUSY -> AppStrings.requestRejectedAnotherTaskIsUsingTheRuntimeDraft
                     Failure.INVALID_CONFIG -> AppStrings.requestRejectedCheckGatewayModelPermissionsOrAnExisting
+                    Failure.PERMISSION_DENIED -> if ("plugin:device:screen" in turn.draft.capabilities) AppStrings.requestRejectedScreenPermission else AppStrings.permissionDeniedTaskDidNotComplete
                     Failure.UNSUPPORTED_CAPABILITY -> AppStrings.requestRejectedThisCapabilityIsUnavailableDraftPreserved
                     else -> AppStrings.requestRejectedDraftPreservedCheckTheConnectionAndRetry
                 }))

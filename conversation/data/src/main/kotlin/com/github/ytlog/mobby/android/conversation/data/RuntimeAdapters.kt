@@ -41,7 +41,8 @@ internal fun RuntimeError.failure() = when (code) {
     ErrorCode.INPUT_TOO_LARGE -> Failure.INPUT_TOO_LARGE
     ErrorCode.BUSY -> Failure.BUSY
     ErrorCode.UNSUPPORTED_CAPABILITY -> Failure.UNSUPPORTED_CAPABILITY
-    ErrorCode.INVALID_CONFIG, ErrorCode.PERMISSION_DENIED -> Failure.INVALID_CONFIG
+    ErrorCode.INVALID_CONFIG -> Failure.INVALID_CONFIG
+    ErrorCode.PERMISSION_DENIED -> Failure.PERMISSION_DENIED
     else -> Failure.UNAVAILABLE
 }
 internal fun TurnExecution.request() = RunRequest(RequestId(turnId.value), RuntimeAgent.valueOf(config.agent.name), WorkspaceRef(config.workspace),

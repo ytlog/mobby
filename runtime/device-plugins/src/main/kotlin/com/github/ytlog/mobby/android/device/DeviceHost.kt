@@ -4,6 +4,7 @@ import com.github.ytlog.mobby.android.localization.AppStrings
 import com.github.ytlog.mobby.android.runtime.api.device.*
 
 import android.Manifest
+import android.app.NotificationManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.pm.PackageManager
@@ -44,7 +45,7 @@ object DeviceHost {
         val spec = DeviceCatalog.all.firstOrNull { it.ref == ref || it.grantRef == ref } ?: return false
         if (spec.grantRef == ref) return spec.grant!!.permissions.all { allowed(context, it) }
         return when (spec.id) {
-            "screen" -> screenPermissionEnabled(context)
+            "screen" -> screenPermissionEnabled(context) && screenNotificationsEnabled(context)
             "media" -> mediaGranted(context)
             "storage" -> DeviceStorage.tree(context) != null
             "location" -> allowed(context, Manifest.permission.ACCESS_COARSE_LOCATION) || allowed(context, Manifest.permission.ACCESS_FINE_LOCATION)
@@ -58,11 +59,17 @@ object DeviceHost {
         return Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
             .orEmpty().split(':').mapNotNull(ComponentName::unflattenFromString).any { it == expected }
     }
+    private fun screenNotificationsEnabled(context: Context): Boolean {
+        val manager = context.getSystemService(NotificationManager::class.java)
+        return manager.areNotificationsEnabled() &&
+            manager.getNotificationChannel("runtime")?.importance != NotificationManager.IMPORTANCE_NONE
+    }
     fun reason(context: Context, ref: String): String? {
         if (granted(context, ref)) return null
         val spec = DeviceCatalog.all.firstOrNull { it.ref == ref || it.grantRef == ref } ?: return AppStrings.unknownPlugin
         return when {
             spec.grantRef == ref -> AppStrings.allowForFirst(spec.name, spec.grant!!.label)
+            spec.id == "screen" && !screenNotificationsEnabled(context) -> AppStrings.enableMobbyNotificationsForScreenTasks
             spec.id == "screen" -> AppStrings.enableMobbySScreenAccessibilityServiceInSystemSettings
             spec.id == "storage" -> AppStrings.selectADirectoryToAllowAccess
             spec.id == "media" -> AppStrings.allowAccessToPhotosVideosOrAudioInYour

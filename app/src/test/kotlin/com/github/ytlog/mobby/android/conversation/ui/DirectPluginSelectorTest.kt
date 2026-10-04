@@ -1,6 +1,7 @@
 package com.github.ytlog.mobby.android.conversation.ui
 
 import androidx.activity.ComponentActivity
+import android.app.NotificationManager
 import android.provider.Settings
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.assertIsDisplayed
@@ -137,6 +138,25 @@ class DirectPluginSelectorTest {
         val shadow = Shadows.shadowOf(compose.activity)
         compose.waitUntil(5_000) { shadow.peekNextStartedActivityForResult() != null }
         assertEquals(Settings.ACTION_ACCESSIBILITY_SETTINGS, shadow.nextStartedActivityForResult.intent.action)
+        assertTrue(written.isEmpty())
+    }
+
+    @Test fun `screen selection opens notification settings before adding the capability`() {
+        val notifications = compose.activity.getSystemService(NotificationManager::class.java)
+        Shadows.shadowOf(notifications).setNotificationsEnabled(false)
+        val written = mutableListOf<String>()
+        val (vm, conversation) = viewModel({ Plugin("plugin:device:screen", "屏幕", "读取屏幕", false, "需要通知权限",
+            access = PluginAccess.ACCESSIBILITY) }, written)
+        compose.setContent {
+            MaterialTheme {
+                val select = rememberDirectPluginSelector(vm, conversation)
+                EmptyConversationPlugins(emptySet(), select)
+            }
+        }
+        compose.onNodeWithText("使用手机").performClick()
+        val shadow = Shadows.shadowOf(compose.activity)
+        compose.waitUntil(5_000) { shadow.peekNextStartedActivityForResult() != null }
+        assertEquals(Settings.ACTION_APP_NOTIFICATION_SETTINGS, shadow.nextStartedActivityForResult.intent.action)
         assertTrue(written.isEmpty())
     }
 

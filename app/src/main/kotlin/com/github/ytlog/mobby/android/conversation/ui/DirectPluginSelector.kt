@@ -94,7 +94,8 @@ internal fun rememberDirectPluginSelector(vm: ConversationViewModel, conversatio
                         plugin.available -> vm.report(vm.actions.setPlugin(id, plugin, true))
                         plugin.access == PluginAccess.ACCESSIBILITY -> {
                             pending = id to ref
-                            accessibility.launch(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                            accessibility.launch(if (ref == "plugin:device:screen") screenAccessSettingsIntent(context)
+                            else Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                         }
                         plugin.access == PluginAccess.DOCUMENT_TREE -> {
                             pending = id to ref
