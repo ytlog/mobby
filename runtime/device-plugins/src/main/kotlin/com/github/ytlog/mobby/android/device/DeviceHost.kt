@@ -92,8 +92,16 @@ object DeviceHost {
             val allow = DeviceCatalog.allow(refs)
             val gate = DeviceActionGate(isCancelled)
             val actions = DeviceActions(context, inbox, workspace, gate, DeviceResourceRegistrar(registerResource), DeviceResourceRegistrar(registerCachedResource))
-            val bridge = DeviceBridge(gate::close) { line ->
-                DeviceCommands.handle(line, token, allow, operations, gate::checkActive, exportResource) { plugin, action, args, execution -> actions.perform(plugin, action, args, execution) }
+            val workflow = DeviceWorkflowManager(context) { query, input ->
+                gate.checkActive()
+                (ScreenAccessService.instance ?: deviceFailure(DeviceErrorCode.UNAVAILABLE)).inspect(query, input)
+            }
+            val bridge = DeviceBridge(gate::close, workflow::close) { line ->
+                workflow.handle(line, token, allow) { request ->
+                    DeviceCommands.handle(request, token, allow, operations, gate::checkActive, exportResource) { plugin, action, args, execution ->
+                        actions.perform(plugin, action, args, execution)
+                    }
+                }
             }
             try {
                 bridge to DeviceSkillPack.write(root, node, bridge.port, token, refs)
@@ -138,6 +146,7 @@ class DeviceSession internal constructor(
 
 internal class DeviceBridge(
     private val onClose: () -> Unit = {},
+    private val afterWorker: () -> Unit = {},
     private val handle: (String) -> String,
 ) : AutoCloseable {
     private val running = AtomicBoolean(true)
@@ -146,7 +155,7 @@ internal class DeviceBridge(
     private val socketLock = Any()
     private var accepted: java.net.Socket? = null
     private val worker = thread(name = "device-bridge", isDaemon = true) {
-        while (running.get()) {
+        try { while (running.get()) {
             val socket = try { server.accept() } catch (_: java.io.IOException) { continue }
             synchronized(socketLock) {
                 if (running.get()) accepted = socket else socket.close()
@@ -171,7 +180,7 @@ internal class DeviceBridge(
             } finally {
                 synchronized(socketLock) { if (accepted === socket) accepted = null }
             }
-        }
+        } } finally { afterWorker() }
     }
     fun awaitIdle(checkActive: () -> Unit) {
         val deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(125)
