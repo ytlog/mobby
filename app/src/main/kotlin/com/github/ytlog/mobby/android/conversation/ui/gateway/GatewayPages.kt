@@ -7,6 +7,7 @@ import com.github.ytlog.mobby.android.conversation.domain.gateway.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -19,6 +20,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.dp
@@ -32,6 +34,7 @@ internal fun gatewayBaseAddress(value: String): String = value.trim().trimEnd('/
     .replace(Regex("(?i)/(?:responses|messages|chat/completions)$"), "")
 
 @Composable internal fun GatewayPage(vm: ConversationViewModel, startAdding: Boolean = false,
+                                     signIn: suspend () -> GatewaySignInResult = { GatewaySignInResult.Failed(AppStrings.gatewaySignInUnavailable) },
                                      back: () -> Unit) {
     val profiles by vm.gateways.collectAsStateWithLifecycle()
     val visibleProfiles = profiles.filterNot { it.temporary }
@@ -39,6 +42,7 @@ internal fun gatewayBaseAddress(value: String): String = value.trim().trimEnd('/
     val defaultGateway by vm.defaultGateway.collectAsStateWithLifecycle()
     val agents by vm.agents.collectAsStateWithLifecycle()
     var editing by rememberSaveable { mutableStateOf<String?>(if (startAdding) "new" else null) }
+    var freeExperience by rememberSaveable { mutableStateOf(startAdding) }
     var notice by rememberSaveable { mutableStateOf("") }
     LaunchedEffect(Unit) {
         while (true) {
@@ -47,10 +51,12 @@ internal fun gatewayBaseAddress(value: String): String = value.trim().trimEnd('/
         }
     }
     if (editing == null) GatewayList(visibleProfiles, notice, defaultGateway, state.selected?.conversation?.config, agents, back,
-        select = vm::chooseGateway, open = { editing = it ?: "new"; notice = "" })
+        select = vm::chooseGateway, open = { freeExperience = false; editing = it ?: "new"; notice = "" },
+        freeTrial = { freeExperience = true; editing = "new"; notice = "" })
     else key(editing) {
         GatewayForm(visibleProfiles, vm::enqueue, vm.actions::saveGateway, vm.actions::fetchGatewayModels, vm::refresh, { editing = null }, vm.actions::checkGateway,
             editingId = editing.takeUnless { it == "new" } ?: "", delete = vm.actions::deleteGateway,
+            freeExperience = freeExperience, signIn = signIn,
             onSaved = { message ->
             notice = message
             editing = null
@@ -59,7 +65,8 @@ internal fun gatewayBaseAddress(value: String): String = value.trim().trimEnd('/
 }
 
 @Composable internal fun GatewayList(profiles: List<GatewayProfile>, notice: String, defaultGateway: GatewayDefault?, current: NextTurnConfig?,
-    agents: List<AgentOption>, back: () -> Unit, select: (GatewayProfile, String, String?) -> Unit, open: (String?) -> Unit) {
+    agents: List<AgentOption>, back: () -> Unit, select: (GatewayProfile, String, String?) -> Unit, open: (String?) -> Unit,
+    freeTrial: () -> Unit = {}) {
     val configured = profiles.filter { it.endpoint.isNotBlank() }
     val selectedId = current?.gatewayProfile?.takeIf { id -> configured.any { it.id == id } }
         ?: defaultGateway?.id?.takeIf { id -> configured.any { it.id == id } }
@@ -124,6 +131,7 @@ internal fun gatewayBaseAddress(value: String): String = value.trim().trimEnd('/
                 }
             }
             if (notice.isNotBlank()) SettingsCaption(notice)
+            SettingsGroup { SettingsAction(AppStrings.freeGatewayExperience) { freeTrial() } }
             SettingsGroup { SettingsAction(AppStrings.addGateway) { open(null) } }
             SettingsCaption(AppStrings.gatewaySelectionHelp)
         }
@@ -167,9 +175,14 @@ internal fun gatewayLabel(profile: GatewayProfile): String {
     editingId: String? = profiles.singleOrNull()?.id,
     delete: suspend (String) -> OperationResult = { OperationResult.Failed(AppStrings.cannotDelete) },
     onSaved: ((String) -> Unit)? = null,
+    freeExperience: Boolean = false,
+    signIn: suspend () -> GatewaySignInResult = { GatewaySignInResult.Failed(AppStrings.gatewaySignInUnavailable) },
+    openLink: ((String) -> Unit)? = null,
 ) {
     val group = profiles.filter { it.id == editingId }
     val saved = group.firstOrNull()
+    val trial = freeExperience && saved == null
+    val uriHandler = LocalUriHandler.current
     var providerId by remember { mutableStateOf(GatewayProviders.CUSTOM) }
     var baseEndpoint by remember { mutableStateOf("") }
     var model by remember { mutableStateOf("") }
@@ -194,6 +207,9 @@ internal fun gatewayLabel(profile: GatewayProfile): String {
     var fetchingModels by remember { mutableStateOf(false) }
     var savingGateway by remember { mutableStateOf(false) }
     var checking by remember { mutableStateOf(false) }
+    var signingIn by remember { mutableStateOf(false) }
+    var quotaConfirmed by remember { mutableStateOf(false) }
+    var signInJob by remember { mutableStateOf<Job?>(null) }
     var checkJob by remember { mutableStateOf<Job?>(null) }
     val checkScope = rememberCoroutineScope()
     LaunchedEffect(editingId) {
@@ -203,9 +219,9 @@ internal fun gatewayLabel(profile: GatewayProfile): String {
             matched.takeIf { id -> GatewayProviders.find(id)?.candidates()?.let { candidates ->
                 group.all { profile -> candidates.forAgent(profile.agent) == profile.endpoint }
             } == true } ?: GatewayProviders.CUSTOM
-        } ?: GatewayProviders.CUSTOM
+        } ?: if (trial) GatewayFreeOptions.preferred(LanguagePreferences.current).providerId else GatewayProviders.CUSTOM
         baseEndpoint = gatewayBaseAddress(GatewayProviders.find(providerId)?.candidates()?.responses ?: first?.endpoint.orEmpty())
-        model = first?.model.orEmpty()
+        model = first?.model ?: if (trial) GatewayFreeOptions.find(providerId)?.suggestedModel.orEmpty() else ""
         selectedModels = first?.models?.map { it.id }?.toSet().orEmpty()
         manualModels = first?.models?.map { it.id }?.toSet().orEmpty()
         key = ""; keyEdited = false; catalog = null
@@ -217,29 +233,57 @@ internal fun gatewayLabel(profile: GatewayProfile): String {
     fun changed() {
         noticeError = false; catalog = null; connectionNotice = ""; notice = ""
         modelExpanded = false; modelSearch = ""
-        if (saved == null) { model = ""; selectedModels = emptySet(); manualModels = emptySet() }
+        quotaConfirmed = false
+        if (saved == null) {
+            model = if (trial) GatewayFreeOptions.find(providerId)?.suggestedModel.orEmpty() else ""
+            selectedModels = emptySet(); manualModels = emptySet()
+        }
     }
     fun modelChanged(value: String) {
+        if (model != value) quotaConfirmed = false
         model = value
         selectedModels = selectedModels + value
         noticeError = false; connectionNotice = ""; notice = ""
     }
     val savedMatches = saved != null && model.trim() == saved.model && !keyEdited &&
         group.all { candidates().forAgent(it.agent) == it.endpoint }
+    val offer = if (trial) GatewayFreeOptions.find(providerId) else null
+    val trialReady = !trial || (key.isNotBlank() && (offer?.quotaConfirmation != true || quotaConfirmed))
+    fun openOfficial(url: String) {
+        try { if (openLink != null) openLink(url) else uriHandler.openUri(url) }
+        catch (_: Exception) { noticeError = true; notice = AppStrings.cannotOpenThisLink }
+    }
     Column(Modifier.fillMaxSize()) {
-        PageHeader(if (!editingId.isNullOrBlank()) AppStrings.editGateway else AppStrings.addGateway, back)
+        PageHeader(if (trial) AppStrings.freeGatewayExperience else if (!editingId.isNullOrBlank()) AppStrings.editGateway else AppStrings.addGateway, back)
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            SettingsCaption(AppStrings.enterABaseAddressAndKeyThenProbeThe)
+            SettingsCaption(if (trial) AppStrings.freeGatewayHelp else AppStrings.enterABaseAddressAndKeyThenProbeThe)
             SettingsGroup { Box(Modifier.fillMaxWidth().onGloballyPositioned { coordinates ->
                 val origin = coordinates.positionInWindow()
                 providerAnchor = IntRect(origin.x.roundToInt(), origin.y.roundToInt(),
                     origin.x.roundToInt() + coordinates.size.width, origin.y.roundToInt() + coordinates.size.height)
             }) {
-                SettingsAction(AppStrings.serviceLabel(GatewayProviders.find(providerId)?.label ?: AppStrings.custom), enabled = !busy && !checking) { providerExpanded = true }
+                SettingsAction(AppStrings.serviceLabel(GatewayProviders.find(providerId)?.label ?: AppStrings.custom), enabled = !busy && !checking && !signingIn) { providerExpanded = true }
                 FrostedMenu(providerExpanded, { providerExpanded = false }, providerAnchor) {
                     Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState()).padding(bottom = 12.dp)) {
-                        MenuSection(AppStrings.selectService) {
+                        if (trial) {
+                            val options = GatewayFreeOptions.ordered(LanguagePreferences.current)
+                            options.groupBy { it.domestic }.forEach { (domestic, entries) ->
+                                MenuSection(if (domestic) AppStrings.domesticGatewayProviders else AppStrings.internationalGatewayProviders) {
+                                    entries.forEach { item ->
+                                        MenuOption(item.provider.label, item.providerId == providerId) {
+                                            if (providerId != item.providerId) {
+                                                providerId = item.providerId
+                                                baseEndpoint = gatewayBaseAddress(item.provider.candidates().responses)
+                                                key = ""; keyEdited = false
+                                                changed()
+                                            }
+                                            providerExpanded = false
+                                        }
+                                    }
+                                }
+                            }
+                        } else MenuSection(AppStrings.selectService) {
                         (GatewayProviders.all.map { it.id to it.label } +
                             (GatewayProviders.CUSTOM to AppStrings.custom)).forEach { (id, label) ->
                             MenuOption(label, id == providerId) {
@@ -253,12 +297,43 @@ internal fun gatewayLabel(profile: GatewayProfile): String {
                     }
                 }
             } }
+            if (offer != null) {
+                SettingsCaption(offer.summary)
+                SettingsGroup {
+                    if (offer.providerId == "openrouter") {
+                        GatewayFormAction(if (signingIn) AppStrings.signingInGateway else AppStrings.signInOpenRouter, signingIn,
+                            enabled = !busy && !checking && !signingIn, loadingTag = "gateway-sign-in-loading") {
+                            signingIn = true; notice = ""; noticeError = false
+                            signInJob = checkScope.launch {
+                                try {
+                                    when (val result = signIn()) {
+                                        is GatewaySignInResult.Credential -> try {
+                                            ensureActive()
+                                            key = result.value.concatToString(); keyEdited = true; changed()
+                                            notice = AppStrings.gatewayKeyReceived
+                                        } finally { result.value.fill('\u0000') }
+                                        is GatewaySignInResult.Failed -> { noticeError = true; notice = result.message }
+                                    }
+                                } catch (e: CancellationException) { notice = AppStrings.gatewaySignInCancelled; throw e }
+                                catch (_: Exception) { noticeError = true; notice = AppStrings.gatewaySignInFailed }
+                                finally { signingIn = false; signInJob = null }
+                            }
+                        }
+                        GroupDivider()
+                    }
+                    SettingsAction(AppStrings.getFreeGatewayKey, enabled = !busy && !checking && !signingIn) { openOfficial(offer.keyUrl) }
+                    GroupDivider()
+                    SettingsAction(AppStrings.viewFreeGatewayRules, enabled = !busy && !checking && !signingIn) { openOfficial(offer.termsUrl) }
+                    if (signingIn) { GroupDivider(); SettingsAction(AppStrings.cancelGatewaySignIn) { signInJob?.cancel() } }
+                }
+
+            }
             SettingsGroup {
-                SettingsField(baseEndpoint, { baseEndpoint = it; changed() }, AppStrings.baseAddress, enabled = !busy && !checking && providerId == GatewayProviders.CUSTOM)
+                SettingsField(baseEndpoint, { baseEndpoint = it; changed() }, AppStrings.baseAddress, enabled = !busy && !checking && !signingIn && providerId == GatewayProviders.CUSTOM)
                 GroupDivider()
                 SettingsField(key, { key = it; keyEdited = true; changed() },
                     if (saved?.hasCredential == true && !keyEdited) AppStrings.keySavedEnterAReplacement else AppStrings.apiKeyOptionalWithoutAuthentication,
-                    enabled = !busy && !checking, visualTransformation = PasswordVisualTransformation())
+                    enabled = !busy && !checking && !signingIn, visualTransformation = PasswordVisualTransformation())
                 if (saved?.hasCredential == true) {
                     GroupDivider()
                     SettingsAction(AppStrings.removeSavedKey, enabled = !busy && !checking) { key = ""; keyEdited = true; changed() }
@@ -269,7 +344,7 @@ internal fun gatewayLabel(profile: GatewayProfile): String {
             if (listOf(candidates().responses, candidates().messages).any { it.startsWith("http://", ignoreCase = true) })
                 SettingsCaption(AppStrings.httpSendsKeysAndContentInPlainTextUse, error = true)
             SettingsGroup { GatewayFormAction(AppStrings.fetchGatewayModels, fetchingModels,
-                enabled = !busy && !checking && candidates().responses.isNotBlank(), loadingTag = "gateway-fetch-loading") {
+                enabled = !busy && !checking && !signingIn && (!trial || key.isNotBlank()) && candidates().responses.isNotBlank(), loadingTag = "gateway-fetch-loading") {
                 if (providerId == GatewayProviders.CUSTOM) baseEndpoint = gatewayBaseAddress(baseEndpoint)
                 noticeError = false; busy = true; fetchingModels = true; notice = ""
                 submit {
@@ -277,8 +352,10 @@ internal fun gatewayLabel(profile: GatewayProfile): String {
                     try {
                         when (val result = fetchModels(request)) {
                             is DataResult.Loaded -> {
-                                catalog = result.value
-                                val available = result.value.models.map { it.id }.toSet()
+                                val models = offer?.models(result.value.models) ?: result.value.models
+                                catalog = result.value.copy(models = models, catalogError = result.value.catalogError
+                                    ?: AppStrings.freeGatewayNoModels.takeIf { offer != null && models.isEmpty() })
+                                val available = models.map { it.id }.toSet()
                                 manualModels = (manualModels + selectedModels) - available
                             }
                             is DataResult.Failed -> { noticeError = true; notice = result.message }
@@ -309,6 +386,7 @@ internal fun gatewayLabel(profile: GatewayProfile): String {
                             MenuAction(AppStrings.add) {
                                 val id = newModelId.trim()
                                 if (id.isBlank() || id.length > 200 || id.any { it.isISOControl() || it == ',' }) modelError = AppStrings.enterValidModelId
+                                else if (offer != null && !offer.allowsModel(id)) modelError = AppStrings.freeGatewayModelRequired
                                 else {
                                     manualModels = manualModels + id
                                     selectedModels = selectedModels + id
@@ -349,8 +427,18 @@ internal fun gatewayLabel(profile: GatewayProfile): String {
                 }
             } }
             SettingsCaption(AppStrings.selectedDiscoveredModels((selectedModels + model).count { it.isNotBlank() }, fetchedCatalog.models.size))
+                if (offer?.quotaConfirmation == true) {
+                    SettingsCaption(AppStrings.freeGatewayAccountQuota)
+                    SettingsGroup {
+                        Row(Modifier.fillMaxWidth().toggleable(value = quotaConfirmed, enabled = !busy && !checking && !signingIn,
+                            role = Role.Checkbox, onValueChange = { quotaConfirmed = it }).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(quotaConfirmed, onCheckedChange = null)
+                            Text(AppStrings.freeQuotaConfirmed, Modifier.weight(1f).padding(start = 8.dp), style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                }
             SettingsGroup { GatewayFormAction(AppStrings.saveGateway, savingGateway,
-                enabled = !busy && !checking && model.isNotBlank(), loadingTag = "gateway-save-loading") {
+                enabled = !busy && !checking && !signingIn && trialReady && model.isNotBlank() && (offer == null || offer.allowsModel(model)), loadingTag = "gateway-save-loading") {
                 noticeError = false; busy = true; savingGateway = true; notice = ""
                 submit {
                     val request = edit()

@@ -31,6 +31,9 @@ internal object GatewayProviders {
         provider("zhipu", AppStrings.zhipuGlm, "https://open.bigmodel.cn/api/v1", "https://open.bigmodel.cn/api/anthropic/v1"),
         provider("xai", AppStrings.xaiName, "https://api.x.ai/v1"),
         provider("groq", AppStrings.groqName, "https://api.groq.com/openai/v1"),
+        provider("bailian", AppStrings.aliyunBailianName, "https://dashscope.aliyuncs.com/compatible-mode/v1", "https://dashscope.aliyuncs.com/apps/anthropic/v1"),
+        provider("volcengine", AppStrings.volcengineArkName, "https://ark.cn-beijing.volces.com/api/v3", "https://ark.cn-beijing.volces.com/api/compatible/v1"),
+        provider("requesty", AppStrings.requestyName, "https://router.requesty.ai/v1", "https://router.requesty.ai/anthropic/v1"),
     )
     fun find(id: String): GatewayProvider? = all.firstOrNull { it.id == id }
 

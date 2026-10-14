@@ -63,7 +63,8 @@ class GatewayListTest {
 
     @Test fun `first launch enters add gateway form directly`() {
         page(emptyList(), startAdding = true)
-        compose.onNodeWithText("服务：自定义").assertExists()
+        compose.onNodeWithText("服务：阿里云百炼").assertExists()
+        compose.onNodeWithText("免费体验").assertExists()
         compose.onNodeWithText("还没有配置网关").assertDoesNotExist()
     }
 

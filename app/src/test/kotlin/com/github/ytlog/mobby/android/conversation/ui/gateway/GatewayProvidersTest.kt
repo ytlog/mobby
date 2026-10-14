@@ -9,8 +9,8 @@ import org.junit.Test
 
 class GatewayProvidersTest {
     @Test fun `presets expose the native base and custom is not implied by an unknown host`() {
-        assertEquals(listOf("openrouter", "openai", "deepseek", "mimo", "kimi", "zhipu", "xai", "groq"), GatewayProviders.all.filter { it.responses != null }.map { it.id })
-        assertEquals(listOf("openrouter", "anthropic", "deepseek", "mimo", "kimi", "zhipu"), GatewayProviders.all.filter { it.messages != null }.map { it.id })
+        assertEquals(listOf("openrouter", "openai", "deepseek", "mimo", "kimi", "zhipu", "xai", "groq", "bailian", "volcengine", "requesty"), GatewayProviders.all.filter { it.responses != null }.map { it.id })
+        assertEquals(listOf("openrouter", "anthropic", "deepseek", "mimo", "kimi", "zhipu", "bailian", "volcengine", "requesty"), GatewayProviders.all.filter { it.messages != null }.map { it.id })
         assertEquals("openai", GatewayProviders.match(AgentId.CODEX, "https://api.openai.com/v1/responses"))
         assertEquals("groq", GatewayProviders.match(AgentId.CODEX, "https://api.groq.com/openai/v1/"))
         assertEquals("deepseek", GatewayProviders.match(AgentId.CLAUDE_CODE, "https://api.deepseek.com/anthropic/v1/messages"))

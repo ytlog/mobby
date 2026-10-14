@@ -12,6 +12,13 @@ data class GatewayProfile(val agent: AgentId, val id: String, val version: Long,
 data class GatewayDefault(val agent: AgentId, val id: String, val version: Long)
 data class GatewayCheckReport(val passed: Boolean, val message: String)
 data class GatewayCatalogResult(val models: List<GatewayModel>, val catalogError: String?)
+/** A browser authorization result stays in memory and never enters SavedState or a log. */
+sealed interface GatewaySignInResult {
+    class Credential(val value: CharArray) : GatewaySignInResult {
+        override fun toString() = "GatewaySignInResult.Credential([redacted])"
+    }
+    data class Failed(val message: String) : GatewaySignInResult
+}
 sealed interface GatewaySaveResult {
     data class Saved(val models: List<GatewayModel>, val catalogError: String?, val agents: Set<AgentId> = emptySet()) : GatewaySaveResult
     data class Failed(val message: String) : GatewaySaveResult

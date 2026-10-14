@@ -14,14 +14,25 @@ class AppStringsTest {
             AppLanguage.current = language
             for (method in copy) {
                 val arguments = Array<Any>(method.parameterCount) {
-                    if (method.parameterTypes[it] == Int::class.javaPrimitiveType) 7 else "argument-$it-{0}-\\-$"
+                    when (method.parameterTypes[it]) {
+                        Int::class.javaPrimitiveType -> 7
+                        Long::class.javaPrimitiveType -> 7L * 1_048_576
+                        else -> "argument-$it-{0}-\\-$"
+                    }
                 }
                 val result = method.invoke(AppStrings, *arguments) as String
                 assertTrue(method.name, result.isNotBlank())
                 if (language == AppLanguage.ENGLISH) assertFalse(method.name, Regex("[\\p{IsHan}]").containsMatchIn(result))
-                arguments.forEach { assertTrue(method.name, result.contains(it.toString())) }
+                arguments.filterNot { it is Long }.forEach { assertTrue(method.name, result.contains(it.toString())) }
             }
         }
+    }
+
+    @Test fun `download progress renders byte counts as megabytes in both languages`() {
+        AppLanguage.current = AppLanguage.CHINESE
+        assertEquals("正在下载更新：7/19 MB", AppStrings.downloadingUpdate(7L * 1_048_576, 19L * 1_048_576))
+        AppLanguage.current = AppLanguage.ENGLISH
+        assertEquals("Downloading update: 7/19 MB", AppStrings.downloadingUpdate(7L * 1_048_576, 19L * 1_048_576))
     }
 
     @Test fun `unsupported or missing saved language falls back to Chinese`() {

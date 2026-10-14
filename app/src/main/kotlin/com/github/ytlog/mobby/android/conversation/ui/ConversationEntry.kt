@@ -76,6 +76,9 @@ import kotlin.math.roundToInt
 
 class ConversationHostActions(
     val share: (String) -> Unit, val appearance: (Boolean) -> Unit, val pet: (Boolean) -> Unit = {},
+    val gatewaySignIn: suspend () -> com.github.ytlog.mobby.android.conversation.domain.gateway.GatewaySignInResult = {
+        com.github.ytlog.mobby.android.conversation.domain.gateway.GatewaySignInResult.Failed(AppStrings.gatewaySignInUnavailable)
+    },
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -229,7 +232,7 @@ class ConversationHostActions(
                             if (page == AppPage.GATEWAY) { gatewayStartAdding = false; gatewayFromIntro = false }
                             navigate(page)
                         }, { navigation = navigation.open(AppPage.CONVERSATION) }, vm, petEnabled, petPermitted, hostActions.pet)
-                        AppPage.GATEWAY -> GatewayPage(vm, startAdding = gatewayStartAdding) { navigation = navigation.open(if (gatewayFromIntro) AppPage.CONVERSATION else AppPage.SETTINGS) }
+                        AppPage.GATEWAY -> GatewayPage(vm, startAdding = gatewayStartAdding, signIn = hostActions.gatewaySignIn) { navigation = navigation.open(if (gatewayFromIntro) AppPage.CONVERSATION else AppPage.SETTINGS) }
                         AppPage.HISTORY_LIMITS -> EventHistoryPage(actions::eventHistoryLimits, actions::saveEventHistoryLimits) { navigation = navigation.open(AppPage.SETTINGS) }
                         AppPage.DIAGNOSTIC -> DiagnosticPage(vm) { navigation = navigation.open(AppPage.SETTINGS) }
                         AppPage.LICENSES -> LicensePage { navigation = navigation.open(AppPage.SETTINGS) }

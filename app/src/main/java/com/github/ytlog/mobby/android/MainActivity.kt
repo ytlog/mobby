@@ -20,6 +20,13 @@ import com.github.ytlog.mobby.android.conversation.ui.ConversationHostActions
 import com.github.ytlog.mobby.android.conversation.ui.mobbySystemBarColor
 import com.github.ytlog.mobby.android.speech.SpeechEngines
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CancellationException
+import com.github.ytlog.mobby.android.conversation.domain.gateway.GatewaySignInResult
+import com.github.ytlog.mobby.android.runtime.android.gateway.OpenRouterAuthorization
+import com.github.ytlog.mobby.android.runtime.android.gateway.GatewayAuthorizationException
+import com.github.ytlog.mobby.android.runtime.android.gateway.GatewayAuthorizationFailure
 import java.util.UUID
 
 class MainActivity : ComponentActivity() {
@@ -63,6 +70,16 @@ class MainActivity : ComponentActivity() {
                 pendingPet = true
                 startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
             }
+        }, gatewaySignIn = {
+            try {
+                val credential = OpenRouterAuthorization().connect { url ->
+                    withContext(Dispatchers.Main.immediate) { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+                }
+                GatewaySignInResult.Credential(credential)
+            } catch (e: CancellationException) { throw e }
+            catch (e: GatewayAuthorizationException) {
+                GatewaySignInResult.Failed(if (e.failure == GatewayAuthorizationFailure.TIMEOUT) AppStrings.gatewaySignInTimedOut else AppStrings.gatewaySignInFailed)
+            } catch (_: Exception) { GatewaySignInResult.Failed(AppStrings.gatewaySignInFailed) }
         })
         setContent { ConversationEntry(actions, host, conversationNavigation, petEnabled, petPermitted, gatewayRefresh = gatewayRefresh, updates = app.updates) }
         if (android.os.Build.VERSION.SDK_INT >= 33) {
