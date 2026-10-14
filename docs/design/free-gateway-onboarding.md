@@ -45,7 +45,9 @@ Pi、Codex、OpenCode 继续仅走 Responses，Claude Code 仅走 Messages；不
 
 验证覆盖语言默认和分组、普通网关编辑、官方链接、Key 导入和清零、国内额度确认、免费模型过滤及手动添加限制。授权测试用隔离 loopback 回调和虚假凭据，覆盖 S256、state/路径/重复参数拒绝、重定向/错误/超大响应、取消关闭端口及在途 HTTP 连接和超时。
 
-2026-10-15 基于本次工作区的验证：JDK 17 下 `:app:assembleDebug`、`:app:testDebugUnitTest`、`:termux-core:testDebugUnitTest`、`:runtime-android:testDebugUnitTest`、`:conversation-domain:test`、`:localization:test`、`:app:lintDebug` 通过；共 382 个单元测试通过。Node 桥接测试 15 个、Python Runtime 测试 43 个通过。使用已连接手机覆盖安装，保留原有应用数据；设备锁屏，页面点击与真实授权尚未验收。
+2026-10-15 基于本次工作区的验证：JDK 17 下 `:app:assembleDebug`、`:app:testDebugUnitTest`、`:termux-core:testDebugUnitTest`、`:runtime-android:testDebugUnitTest`、`:conversation-domain:test`、`:localization:test`、`:app:lintDebug` 通过；共 382 个单元测试通过。Node 桥接测试 15 个、Python Runtime 测试 43 个通过。使用已连接手机覆盖安装，保留原有应用数据。
+
+随后在同一台 M2007J1SC（Android 13）解锁后完成真机页面验收：中文默认百炼、国内组在前；英文默认 OpenRouter、国际组在前；五个免费 Provider 均可切换且预填地址正确；普通添加网关中新增选项与 Kimi 并列。OpenRouter 登录进入等待，返回 App 可取消，中英文取消提示正确；官网 Key 入口能启动系统浏览器。未输入真实凭据、未保存新网关、未发起模型调用。验收后恢复中文并停在百炼免费体验页。第三方账号授权成功回调、剩余额度与真实推理尚未验收。
 
 模拟授权不代表真实账号注册、第三方授权页、国内网络、剩余额度或真实模型的工具/图片/多轮执行已经验收。发布前仍需分别在实际账号和手机上验证。
 
