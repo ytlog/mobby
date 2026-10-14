@@ -19,7 +19,7 @@
 
 ## 服务选择
 
-「免费体验」是独立入口，首次无网关的引导也进入此页。中文默认选择北京地域百炼，国内服务在前；英文默认 OpenRouter，国际服务在前。免费候选包括百炼、火山方舟、OpenRouter、Requesty 和 Groq；页面提供官方注册/Key 与额度说明，OpenRouter 可通过官方登录授权自动取得 Key。取得 Key 后仍需获取模型、选择默认模型并通过保存探测。普通「添加网关」和已有配置的编辑继续使用原有表单。额度条件、模型过滤与授权安全边界见[免费体验设计与实现](design/free-gateway-onboarding.md)。
+所有 Provider 统一在「添加网关 / 编辑网关」中配置。中文新建默认北京地域百炼并优先显示国内服务，英文默认 OpenRouter 并优先显示国际服务。有国内/国际平台的服务按语言推荐对应站点，并同时匹配官网 Key 入口与 API 地址；已有网关保留原站点，可手动切换。每个预设提供官网注册/Key 入口及使用说明，OpenRouter 可通过官方授权自动取得 Key；自定义地址继续可用。获取模型、完整模型列表、手动添加、选择默认模型及保存探测沿用原有功能。没有单独免费模式或模型白名单，赠送额度和计费条件在各服务引导中说明。详见[网关 Provider 配置引导](design/gateway-provider-onboarding.md)。
 
 服务预设列在一个表单中，提供内部候选地址，不预先宣称 Agent 支持情况。界面仅显示一个 Base 地址，不替换模型或已保存密钥。再次打开时，地址与预设一致就选中该服务；其余地址保持自定义。
 
@@ -32,10 +32,13 @@
 | Anthropic | Responses、Messages | `https://api.anthropic.com/v1` |
 | DeepSeek | Responses、Messages | `https://api.deepseek.com`；`https://api.deepseek.com/anthropic/v1` |
 | 小米 MiMo | Responses、Messages | `https://api.xiaomimimo.com/v1`；`https://api.xiaomimimo.com/anthropic/v1` |
-| Kimi | Responses、Messages | `https://api.moonshot.ai/v1`；`https://api.moonshot.ai/anthropic/v1` |
-| 智谱 GLM | Responses、Messages | `https://open.bigmodel.cn/api/v1`；`https://open.bigmodel.cn/api/anthropic/v1` |
-| 阿里云百炼（北京） | Responses、Messages | `https://dashscope.aliyuncs.com/compatible-mode/v1`；`https://dashscope.aliyuncs.com/apps/anthropic/v1` |
-| 火山方舟（北京） | Responses、Messages | `https://ark.cn-beijing.volces.com/api/v3`；`https://ark.cn-beijing.volces.com/api/compatible/v1` |
+| Kimi（国内 / 国际） | Responses、Messages | 国内：`https://api.moonshot.cn/v1`、`https://api.moonshot.cn/anthropic/v1`；国际：`https://api.moonshot.ai/v1`、`https://api.moonshot.ai/anthropic/v1` |
+| 智谱 GLM（国内） | Responses、Messages | `https://open.bigmodel.cn/api/v1`；`https://open.bigmodel.cn/api/anthropic/v1` |
+| 阿里云百炼（国内北京） | Responses、Messages | `https://dashscope.aliyuncs.com/compatible-mode/v1`；`https://dashscope.aliyuncs.com/apps/anthropic/v1` |
+| 火山方舟（国内北京） | Responses、Messages | `https://ark.cn-beijing.volces.com/api/v3`；`https://ark.cn-beijing.volces.com/api/compatible/v1` |
+| Z.ai（国际） | Messages | `https://api.z.ai/api/anthropic/v1` |
+| Model Studio（国际新加坡） | Responses、Messages | `https://dashscope-intl.aliyuncs.com/compatible-mode/v1`；`https://dashscope-intl.aliyuncs.com/apps/anthropic/v1` |
+| BytePlus ModelArk（国际新加坡） | Responses、Messages | `https://ark.ap-southeast.bytepluses.com/api/v3`；`https://ark.ap-southeast.bytepluses.com/api/compatible/v1` |
 | Requesty | Responses、Messages | `https://router.requesty.ai/v1`；`https://router.requesty.ai/anthropic/v1` |
 
 Google Gemini 目前提供的是 Chat Completions 和 Interactions，没有 Responses 或 Messages，因此不列入可执行选项。需要 Gemini 时，使用 OpenRouter 上的对应模型，或在自定义中填写已经提供上述原生接口的网关。Messages 基址必须包含服务要求的 `/v1`，桥接会在其后追加 `/messages`。

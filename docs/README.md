@@ -34,7 +34,7 @@
 | [跨 Agent 技能目录](design/portable-skills.md) | App 自带 Skill Creator、Skill Installer 的展示、安装路径与跨 Agent 边界 |
 | [界面语言](localization.md) | 中英文切换、文案维护与测试边界 |
 | [网关接入](gateway.md) | 协议路径、限制和联调范围 |
-| [免费网关体验入口](design/free-gateway-onboarding.md) | 国内/国际免费选项、语言推荐、官方取 Key 与 OpenRouter 授权、计费条件和验证边界 |
+| [网关 Provider 配置引导](design/gateway-provider-onboarding.md) | 统一配置入口、语言与站点推荐、各服务注册/Key 引导、OpenRouter 授权与验证边界 |
 | [演示素材](media/) | 真机演示素材与剪辑脚本 |
 | [英文真机演示](media/en/README.md) | 英文界面的四项录屏、实际验证结果及商店语言限制 |
 | [英文旅行清单源码](examples/travel-checklist-en/) | 手机 Codex 生成的英文网页与 Node 服务 |

@@ -20,12 +20,17 @@ import org.robolectric.annotation.Config
 class GatewayFormTest {
     @get:Rule val compose = createComposeRule()
     private val discovered = GatewayCatalogResult(listOf(GatewayModel("chat", "Chat"), GatewayModel("other", "Other")), null)
+    private fun custom() {
+        compose.onNodeWithText("服务：阿里云百炼").performScrollTo().performClick()
+        compose.onNodeWithText("自定义").performScrollTo().performClick()
+    }
     private fun field(label: String) = compose.onNode(hasSetTextAction() and hasText(label))
 
     @Test fun `new gateway reveals model controls only after fetching catalog`() {
         compose.setContent { MaterialTheme { GatewayForm(emptyList(), { runBlocking { it() } },
             { GatewaySaveResult.Failed("unused") }, { DataResult.Loaded(discovered) }, {}, {},
             { DataResult.Failed("unused") }, editingId = "") } }
+        custom()
         compose.onNodeWithText("获取模型").assertExists()
         compose.onNodeWithText("模型：请选择").assertDoesNotExist()
         compose.onNodeWithText("保存网关").assertDoesNotExist()
@@ -43,6 +48,7 @@ class GatewayFormTest {
                 { GatewaySaveResult.Failed("unused") }, { pending.await() }, {}, {},
                 { DataResult.Failed("unused") }, editingId = "")
         } }
+        custom()
         field("Base 地址").performScrollTo().performTextReplacement("https://gateway.invalid/v1")
         compose.onNodeWithText("获取模型").performScrollTo().performClick()
         compose.onNodeWithTag("gateway-fetch-loading").assertExists()
@@ -56,6 +62,7 @@ class GatewayFormTest {
         compose.setContent { MaterialTheme { GatewayForm(emptyList(), { runBlocking { it() } },
             { GatewaySaveResult.Failed("unused") }, { DataResult.Loaded(discovered) }, {}, {},
             { DataResult.Failed("unused") }, editingId = "") } }
+        custom()
         field("Base 地址").performScrollTo().performTextReplacement("https://first.invalid/v1")
         compose.onNodeWithText("获取模型").performScrollTo().performClick()
         compose.onNodeWithText("模型：请选择").assertExists()
@@ -73,6 +80,7 @@ class GatewayFormTest {
                 { pending.await() }, { DataResult.Loaded(discovered) }, {}, {},
                 { DataResult.Failed("unused") }, editingId = "", onSaved = { savedNotice = it })
         } }
+        custom()
         field("Base 地址").performScrollTo().performTextReplacement("https://gateway.invalid/v1")
         compose.onNodeWithText("获取模型").performScrollTo().performClick()
         compose.waitUntil(5_000) { compose.onAllNodesWithText("模型：请选择").fetchSemanticsNodes().isNotEmpty() }
@@ -90,6 +98,7 @@ class GatewayFormTest {
         compose.setContent { MaterialTheme { GatewayForm(emptyList(), { runBlocking { it() } },
             { GatewaySaveResult.Failed("unused") }, { DataResult.Failed("unused") }, {}, {},
             { DataResult.Failed("unused") }, editingId = "") } }
+        custom()
         compose.onNodeWithText("服务：自定义").performClick()
         compose.onNodeWithText("本地模型服务").assertDoesNotExist()
     }
@@ -99,6 +108,7 @@ class GatewayFormTest {
         compose.setContent { MaterialTheme { GatewayForm(emptyList(), { runBlocking { it() } },
             { GatewaySaveResult.Failed("unused") }, { inspected = it; DataResult.Loaded(discovered) },
             {}, {}, { DataResult.Failed("unused") }, editingId = "") } }
+        custom()
         field("Base 地址").performScrollTo().performTextReplacement("https://gateway.invalid/")
         field("Base 地址").performTextInput("v1")
         compose.onNodeWithText("获取模型").performScrollTo().performClick()
@@ -111,6 +121,7 @@ class GatewayFormTest {
         compose.setContent { MaterialTheme { GatewayForm(emptyList(), { runBlocking { it() } },
             { saved = it; GatewaySaveResult.Saved(discovered.models, null, setOf(AgentId.CODEX, AgentId.OPEN_CODE)) },
             { fetched = it; DataResult.Loaded(discovered) }, {}, {}, { DataResult.Failed("unused") }, editingId = "") } }
+        custom()
         field("Base 地址").performScrollTo().performTextReplacement("https://gateway.invalid/v1/responses")
         compose.onNodeWithText("获取模型").performScrollTo().performClick()
         assertEquals("https://gateway.invalid/v1", fetched!!.addresses.responses)
@@ -133,6 +144,7 @@ class GatewayFormTest {
         compose.setContent { MaterialTheme { GatewayForm(emptyList(), { runBlocking { it() } },
             { saved = it; GatewaySaveResult.Saved(emptyList(), null, setOf(AgentId.CODEX)) },
             { DataResult.Loaded(noCatalog) }, {}, {}, { DataResult.Failed("unused") }, editingId = "") } }
+        custom()
         field("Base 地址").performScrollTo().performTextReplacement("https://gateway.invalid/v1")
         compose.onNodeWithText("获取模型").performScrollTo().performClick()
         compose.onNodeWithText("模型：请选择").performScrollTo().performClick()
@@ -161,6 +173,7 @@ class GatewayFormTest {
         compose.setContent { MaterialTheme { GatewayForm(emptyList(), { runBlocking { it() } },
             { saveCalls++; GatewaySaveResult.Failed("未确认任何可用 Agent") },
             { DataResult.Loaded(discovered) }, {}, {}, { DataResult.Failed("unused") }, editingId = "") } }
+        custom()
         field("Base 地址").performScrollTo().performTextReplacement("https://gateway.invalid/v1")
         compose.onNodeWithText("获取模型").performScrollTo().performClick()
         compose.onNodeWithText("保存网关").assertIsNotEnabled()
@@ -178,6 +191,7 @@ class GatewayFormTest {
             { savedModel = it.model; GatewaySaveResult.Saved(discovered.models, null, setOf(AgentId.CODEX)) },
             { fetches++; DataResult.Loaded(discovered) },
             {}, {}, { DataResult.Failed("unused") }, editingId = "") } }
+        custom()
         field("Base 地址").performScrollTo().performTextReplacement("https://gateway.invalid/v1")
         compose.onNodeWithText("获取模型").performScrollTo().performClick()
         compose.onNodeWithText("模型：请选择").performScrollTo().performClick()
@@ -191,6 +205,7 @@ class GatewayFormTest {
         compose.setContent { MaterialTheme { GatewayForm(emptyList(), { runBlocking { it() } },
             { GatewaySaveResult.Failed("unused") }, { DataResult.Loaded(discovered) },
             {}, {}, { DataResult.Failed("unused") }, editingId = "") } }
+        custom()
         compose.onNodeWithText("服务：自定义").assertExists()
         compose.onNodeWithText("OpenRouter").assertDoesNotExist()
         compose.onNodeWithText("服务：自定义").performClick()
@@ -204,11 +219,27 @@ class GatewayFormTest {
         compose.setContent { MaterialTheme { GatewayForm(emptyList(), { runBlocking { it() } },
             { GatewaySaveResult.Failed("unused") }, { DataResult.Loaded(largeCatalog) },
             {}, {}, { DataResult.Failed("unused") }, editingId = "") } }
+        custom()
         field("Base 地址").performScrollTo().performTextReplacement("https://gateway.invalid/v1")
         compose.onNodeWithText("获取模型").performScrollTo().performClick()
         compose.onNodeWithText("模型：请选择").performScrollTo().performClick()
         field("搜索模型").performTextReplacement("model-446")
         compose.onNodeWithText("Model 446").assertExists()
+    }
+
+    @Test fun `switching provider in an existing editor never reuses its saved key`() {
+        val profile = GatewayProfile(AgentId.CODEX, "saved", 2, "https://openrouter.ai/api/v1", "kept-model", "RESPONSES", true)
+        var fetched: GatewayEdit? = null
+        compose.setContent { MaterialTheme { GatewayForm(listOf(profile), { runBlocking { it() } },
+            { GatewaySaveResult.Failed("unused") }, { fetched = it; DataResult.Loaded(discovered) },
+            {}, {}, { DataResult.Failed("unused") }, editingId = "saved") } }
+        compose.onNodeWithText("获取模型").performScrollTo().performClick()
+        assertNull(fetched!!.credential)
+        compose.onNodeWithText("服务：OpenRouter").performScrollTo().performClick()
+        compose.onNodeWithText("Groq").performScrollTo().performClick()
+        compose.onNodeWithText("获取模型").performScrollTo().performClick()
+        assertNotNull(fetched!!.credential)
+        assertEquals(0, fetched!!.credential!!.size)
     }
 
     @Test fun `editing existing gateway shows saved agents and fetches models before saving`() {

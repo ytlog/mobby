@@ -9,6 +9,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -265,7 +266,7 @@ internal fun Modifier.lightInputShadow(corner: Dp): Modifier = drawBehind {
     val color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.38f)
     Row(
         modifier.fillMaxWidth().heightIn(min = 52.dp)
-            .clickable(enabled = enabled, role = Role.RadioButton, onClick = onClick)
+            .selectable(selected = selected, enabled = enabled, role = Role.RadioButton, onClick = onClick)
             .semantics(mergeDescendants = true) {}
             .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,

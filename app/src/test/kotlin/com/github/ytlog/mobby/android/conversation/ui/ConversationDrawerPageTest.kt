@@ -65,7 +65,8 @@ class ConversationDrawerPageTest {
         compose.setContent { ConversationEntry(actions, ConversationHostActions({}, {})) }
         compose.onNodeWithText("先配置网关").assertExists()
         compose.onNodeWithText("去配置网关").performClick()
-        compose.onNodeWithText("免费体验").assertExists()
+        compose.onNodeWithText("添加网关").assertExists()
+        compose.onNodeWithText("免费体验").assertDoesNotExist()
         compose.onNodeWithText("服务：阿里云百炼").assertExists()
         compose.onNodeWithContentDescription("返回").performClick()
         compose.onNodeWithContentDescription("返回").performClick()
