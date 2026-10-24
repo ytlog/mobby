@@ -75,3 +75,9 @@ interface CapabilityHandler {
     fun availability(): Availability
     suspend fun invoke(call: CapabilityCall): CapabilityOutcome
 }
+
+/** Event capabilities also own the shape of their subscription filters. */
+interface EventCapability {
+    /** Problems with [filter]; it may not reach beyond what the program requested for this capability. */
+    fun validateFilter(filter: JsonObject, requested: com.github.ytlog.mobby.android.programs.permission.Scope): List<String>
+}
