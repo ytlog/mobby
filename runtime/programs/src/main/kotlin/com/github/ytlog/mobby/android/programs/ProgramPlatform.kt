@@ -93,6 +93,14 @@ class ProgramPlatform internal constructor(
 
     val apiPort: Int get() = server.port
 
+    internal fun now() = clock()
+
+    /** Closes cached database connections under [dir] before it is deleted. */
+    internal fun releaseStorage(dir: File) { sql?.close(dir) }
+
+    /** Development commands for the chat plugin; the app installs it as the device-side port. */
+    val development: com.github.ytlog.mobby.android.device.ProgramDevelopmentPort by lazy { com.github.ytlog.mobby.android.programs.dev.DevelopmentService(this) }
+
     /** Program pages; the app's activity attaches WebViews here. */
     val ui = ProgramUiHost(this, { context.assets.open("program-ui-sdk/sdk.js").use { it.readBytes() } }, scope)
 

@@ -2,8 +2,11 @@ package com.github.ytlog.mobby.android.programs.call
 
 import com.github.ytlog.mobby.android.programs.capability.Surface
 
-/** Limits of a dry run: the read-only capabilities the chat run already allowed. Everything with side effects is simulated. */
-data class DryRunScope(val allowedQueries: Set<String>)
+/**
+ * Limits of a dry run: the device queries the chat run already allowed, and the permissions the
+ * package requests, which stand in for grants. Everything with side effects is simulated.
+ */
+data class DryRunScope(val allowedQueries: Set<String>, val requested: Map<String, com.github.ytlog.mobby.android.programs.permission.Scope> = emptyMap())
 
 /** Who is calling. Built from a run credential or a UI session, never from request bodies. */
 data class CallContext(

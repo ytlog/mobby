@@ -23,6 +23,13 @@ internal class ConversationManager(private val db: ConversationDatabase, private
         dao.save(created.row()); dao.select(SelectionRow(conversationId = created.id.value)); created.id
     }
 
+    suspend fun createProgram(source: ConversationId, programId: String, programName: String): ConversationId = db.withTransaction {
+        val old = requireNotNull(dao.conversation(source.value)).domain()
+        val created = ConversationRules.createProgramConversation(old, ConversationId(newId()), programId, programName)
+            .copy(title = programName, updatedAt = now())
+        dao.save(created.row()); dao.select(SelectionRow(conversationId = created.id.value)); created.id
+    }
+
     suspend fun select(id: ConversationId): Boolean {
         val c = dao.conversation(id.value)?.domain() ?: return false
         if (c.deleted) return false

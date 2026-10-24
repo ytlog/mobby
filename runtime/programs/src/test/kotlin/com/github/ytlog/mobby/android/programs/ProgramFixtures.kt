@@ -11,7 +11,8 @@ internal open class FakeHandler(id: String, kind: CapabilityKind = CapabilityKin
     override val descriptor = CapabilityDescriptor(id, 1, kind, JsonObject(emptyMap()), JsonObject(emptyMap()), scope, emptySet(), emptyList(),
         setOf(Surface.BACKGROUND, Surface.UI), 1_000, true, CapabilityLimits(1024, 60))
     override fun availability(): Availability = Availability.Available
-    override suspend fun invoke(call: CapabilityCall) = CapabilityOutcome(Effect.NONE, JsonPrimitive("ok"))
+    val calls = mutableListOf<CapabilityCall>()
+    override suspend fun invoke(call: CapabilityCall): CapabilityOutcome { calls += call; return CapabilityOutcome(Effect.NONE, JsonPrimitive("ok")) }
 }
 
 internal class FakeSchedule : FakeHandler("time.schedule", CapabilityKind.EVENT), EventCapability {

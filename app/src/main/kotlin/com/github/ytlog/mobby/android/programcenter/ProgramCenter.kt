@@ -39,7 +39,7 @@ private const val PERMISSIONS = "permissions"
 private const val DETAIL = "detail:"
 
 /** Program center: install, enable, grant, configure, stop and inspect programs; plus app-level permission management. */
-@Composable fun ProgramCenterPage(platform: ProgramPlatform, back: () -> Unit) {
+@Composable fun ProgramCenterPage(platform: ProgramPlatform, back: () -> Unit, modifyWithAi: (ProgramView) -> Unit = {}) {
     var route by rememberSaveable { mutableStateOf(LIST) }
     val programs by platform.programs.collectAsState(initial = emptyList())
     BackHandler(route != LIST) { route = LIST }
@@ -47,7 +47,7 @@ private const val DETAIL = "detail:"
         route == INSTALL -> InstallPage(platform) { installed -> route = installed?.let { DETAIL + it } ?: LIST }
         route == PERMISSIONS -> PermissionManagementPage(platform, programs) { route = LIST }
         route.startsWith(DETAIL) -> programs.firstOrNull { it.id == route.removePrefix(DETAIL) }
-            ?.let { ProgramDetailPage(platform, it) { route = LIST } } ?: LaunchedEffect(route) { route = LIST }
+            ?.let { ProgramDetailPage(platform, it, modifyWithAi) { route = LIST } } ?: LaunchedEffect(route) { route = LIST }
         else -> ProgramListPage(platform, programs, back, { route = DETAIL + it }, { route = INSTALL }, { route = PERMISSIONS })
     }
 }
@@ -149,7 +149,7 @@ private const val DETAIL = "detail:"
     }
 }
 
-@Composable private fun ProgramDetailPage(platform: ProgramPlatform, program: ProgramView, back: () -> Unit) {
+@Composable private fun ProgramDetailPage(platform: ProgramPlatform, program: ProgramView, modifyWithAi: (ProgramView) -> Unit, back: () -> Unit) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     var confirmDelete by remember { mutableStateOf(false) }
@@ -163,6 +163,8 @@ private const val DETAIL = "detail:"
             SettingsToggle(AppStrings.programEnabled, program.userState == UserState.ENABLED) { scope.launch { platform.setEnabled(program.id, it) } }
             if (program.hasUi) { GroupDivider(); SettingsAction(AppStrings.openProgramUi) { context.startActivity(ProgramUiActivity.intent(context, program.id)) } }
             if (program.hasBackground) { GroupDivider(); SettingsAction(AppStrings.stopRun) { scope.launch { platform.stop(program.id) } } }
+            GroupDivider()
+            SettingsAction(AppStrings.modifyWithAi) { modifyWithAi(program) }
             GroupDivider()
             SettingsAction(AppStrings.deleteProgram) { confirmDelete = true }
         }

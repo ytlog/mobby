@@ -48,6 +48,7 @@ object DeviceHost {
             "screen" -> screenPermissionEnabled(context) && screenNotificationsEnabled(context)
             "media" -> mediaGranted(context)
             "storage" -> DeviceStorage.tree(context) != null
+            "programs" -> ProgramDevelopment.port != null
             "location" -> allowed(context, Manifest.permission.ACCESS_COARSE_LOCATION) || allowed(context, Manifest.permission.ACCESS_FINE_LOCATION)
             else -> spec.permissions.all { allowed(context, it) }
         }
@@ -93,12 +94,12 @@ object DeviceHost {
     private fun allowed(context: Context, permission: String) =
         context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
 
-    fun start(context: Context, root: File, inbox: File, workspace: File, node: String, refs: Set<String>, operations: DeviceOperationPort, registerResource: (File, String) -> String, registerCachedResource: (File, String) -> String, exportResource: (String) -> String, isCancelled: () -> Boolean = { false }): DeviceSession =
+    fun start(context: Context, root: File, inbox: File, workspace: File, node: String, refs: Set<String>, operations: DeviceOperationPort, registerResource: (File, String) -> String, registerCachedResource: (File, String) -> String, exportResource: (String) -> String, isCancelled: () -> Boolean = { false }, attachedPrograms: Set<String> = emptySet()): DeviceSession =
         openDeviceSession(refs, ScreenAccessService::stay) {
             val token = DeviceCommands.token()
             val allow = DeviceCatalog.allow(refs)
             val gate = DeviceActionGate(isCancelled)
-            val actions = DeviceActions(context, inbox, workspace, gate, DeviceResourceRegistrar(registerResource), DeviceResourceRegistrar(registerCachedResource))
+            val actions = DeviceActions(context, inbox, workspace, gate, DeviceResourceRegistrar(registerResource), DeviceResourceRegistrar(registerCachedResource), allow, attachedPrograms)
             val workflow = DeviceWorkflowManager(context) { query, input ->
                 gate.checkActive()
                 (ScreenAccessService.instance ?: deviceFailure(DeviceErrorCode.UNAVAILABLE)).inspect(query, input)

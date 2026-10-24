@@ -32,7 +32,11 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
-internal class DeviceActions(private val context: Context, private val inbox: File, private val workspace: File, private val gate: DeviceActionGate, private val resources: DeviceResourceRegistrar, private val cachedResources: DeviceResourceRegistrar) {
+internal class DeviceActions(private val context: Context, private val inbox: File, private val workspace: File, private val gate: DeviceActionGate, private val resources: DeviceResourceRegistrar, private val cachedResources: DeviceResourceRegistrar,
+    /** Device actions this chat run allows; dry runs may only query within them. */
+    private val allow: Map<String, Set<String>> = emptyMap(),
+    /** Programs the user attached to this chat; records are readable only for these. */
+    private val attachedPrograms: Set<String> = emptySet()) {
     fun perform(plugin: String, action: String, args: Map<String, String>, execution: DeviceExecution): DeviceResult {
         gate.checkActive()
         val spec = DeviceCatalog.all.first { it.id == plugin }
@@ -51,6 +55,7 @@ internal class DeviceActions(private val context: Context, private val inbox: Fi
             "sensors" -> sensors()
             "clipboard" -> clipboard(action, args)
             "office" -> office(action, args)
+            "programs" -> programs(action, args)
             else -> error(AppStrings.unsupportedPlugin)
         }
     }
@@ -372,6 +377,24 @@ internal class DeviceActions(private val context: Context, private val inbox: Fi
                 OfficePackage.write(file, text)
                 val ref = resources.register(file, "application/octet-stream")
                 deviceResult("record_change", fields("action" to "write", "after" to fields("name" to file.name, "sizeBytes" to file.length()), "previewText" to OfficePackage.read(file).take(4000)), EffectState.CONFIRMED, listOf(ref))
+            }
+            else -> error(AppStrings.unsupportedOperation)
+        }
+    }
+
+    private fun programs(action: String, args: Map<String, String>): DeviceResult {
+        val port = ProgramDevelopment.port ?: deviceFailure(DeviceErrorCode.UNAVAILABLE, "Program platform is not running")
+        return when (action) {
+            "catalog" -> deviceText(port.catalog())
+            "validate" -> deviceResult("basic", port.validate(args.getValue("path")))
+            "dry-run" -> {
+                val timeout = args["timeoutMs"]?.toLongOrNull()?.coerceIn(1_000, 60_000) ?: 20_000
+                deviceResult("basic", port.dryRun(args.getValue("path"), args["events"] ?: "[]", timeout, allow))
+            }
+            "records" -> {
+                val id = args.getValue("programId")
+                if (id !in attachedPrograms) deviceFailure(DeviceErrorCode.UNAUTHORIZED, "Attach the program to this chat first")
+                deviceResult("basic", port.records(id, args["limit"]?.toIntOrNull()?.coerceIn(1, 200) ?: 50))
             }
             else -> error(AppStrings.unsupportedOperation)
         }

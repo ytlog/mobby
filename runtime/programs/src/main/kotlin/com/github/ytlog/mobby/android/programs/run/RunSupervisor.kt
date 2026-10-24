@@ -90,7 +90,7 @@ class RunSupervisor(
 ) : CallerResolver {
     private enum class State { STARTING, RUNNING, STOPPING }
 
-    private inner class Live(val runId: String, val target: RunTarget, val context: CallContext, val credential: String) {
+    private inner class Live(val runId: String, val key: String, val target: RunTarget, val context: CallContext, val credential: String) {
         var state = State.STARTING
         var process: ProgramProcess? = null
         // One slot beyond the event limit is reserved so run.stopping always gets through.
@@ -105,18 +105,25 @@ class RunSupervisor(
         var dropped = 0
     }
 
-    private data class Pending(val runId: String, val target: RunTarget, val first: ProgramEvent?, val dryRun: DryRunScope?, val queuedAt: Long)
+    private data class Pending(val runId: String, val target: RunTarget, val first: List<ProgramEvent>, val dryRun: DryRunScope?, val queuedAt: Long) {
+        /** Dry runs never share a slot with the program's real run. */
+        val key get() = if (dryRun == null) target.programId else "${target.programId}#dry:$runId"
+    }
 
     private val lock = Mutex()
-    private val live = mutableMapOf<String, Live>()            // by programId
+    private val live = mutableMapOf<String, Live>()            // by programId, or a dry-run key
     private val credentials = java.util.concurrent.ConcurrentHashMap<String, Live>()  // read by HTTP threads
     private val pending = ArrayDeque<Pending>()
     private val random = SecureRandom()
 
     /** Delivers [event] to the program's live run, or queues a new run that starts with it. Returns the run ID. */
-    suspend fun trigger(target: RunTarget, event: ProgramEvent?, trigger: String, dryRun: DryRunScope? = null): String = lock.withLock {
+    suspend fun trigger(target: RunTarget, event: ProgramEvent?, trigger: String, dryRun: DryRunScope? = null): String =
+        trigger(target, listOfNotNull(event), trigger, dryRun)
+
+    suspend fun trigger(target: RunTarget, events: List<ProgramEvent>, trigger: String, dryRun: DryRunScope?): String = lock.withLock {
+        val event = events.firstOrNull()
         live[target.programId]?.takeIf { it.state != State.STOPPING && it.target.version == target.version && dryRun == null }?.let { run ->
-            event?.let { deliver(run, it) }
+            events.forEach { deliver(run, it) }
             return@withLock run.runId
         }
         pending.firstOrNull { it.target.programId == target.programId && it.dryRun == null && dryRun == null }?.let { return@withLock it.runId }
@@ -126,7 +133,7 @@ class RunSupervisor(
             finishRow(runId, RunOutcome.DROPPED, null, "queue_full")
             return@withLock runId
         }
-        pending.addLast(Pending(runId, target, event, dryRun, clock()))
+        pending.addLast(Pending(runId, target, events, dryRun, clock()))
         startPending()
         runId
     }
@@ -157,6 +164,12 @@ class RunSupervisor(
 
     suspend fun stop(programId: String, reason: String) = lock.withLock { live[programId]?.let { requestStop(it, reason) } }
 
+    /** Stops one run by ID, including dry runs that never share the program's slot. */
+    suspend fun stopRun(runId: String, reason: String) = lock.withLock {
+        live.values.firstOrNull { it.runId == runId }?.let { requestStop(it, reason) }
+        pending.firstOrNull { it.runId == runId }?.let { pending.remove(it); finishRow(it.runId, RunOutcome.DROPPED, null, reason) }
+    }
+
     suspend fun stopAll(reason: String) = lock.withLock {
         pending.toList().forEach { finishRow(it.runId, RunOutcome.DROPPED, null, reason) }
         pending.clear()
@@ -180,7 +193,7 @@ class RunSupervisor(
         while (live.size < limits.maxConcurrent && pending.isNotEmpty()) {
             val next = pending.removeFirst()
             if (clock() - next.queuedAt > limits.queueExpiryMillis) { finishRow(next.runId, RunOutcome.DROPPED, null, "queue_expired"); continue }
-            if (live.containsKey(next.target.programId)) { pending.addLast(next); break }
+            if (live.containsKey(next.key)) { pending.addLast(next); break }
             start(next)
         }
     }
@@ -188,18 +201,18 @@ class RunSupervisor(
     private suspend fun start(next: Pending) {
         val credential = Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(32).also(random::nextBytes))
         val context = CallContext(next.target.programId, next.target.version, Surface.BACKGROUND, runId = next.runId, dryRun = next.dryRun)
-        val run = Live(next.runId, next.target, context, credential)
+        val run = Live(next.runId, next.key, next.target, context, credential)
+        // Registered before launch: a child may call the API before launch() returns.
+        live[next.key] = run
+        credentials[credential] = run
+        next.first.forEach { deliver(run, it) }
         val process = try {
             launcher.launch(ProcessSpec(next.runId, next.target.packageDir, next.target.entry, next.target.workDir, sdkDir, apiPort(), credential))
-        } catch (error: LaunchUnavailable) {
-            finishRow(next.runId, RunOutcome.FAILED, null, error.reason); return
         } catch (error: RuntimeException) {
-            finishRow(next.runId, RunOutcome.FAILED, null, "launch_failed"); return
+            live.remove(next.key); credentials.remove(credential); run.messages.close(); run.idle?.cancel()
+            finishRow(next.runId, RunOutcome.FAILED, null, (error as? LaunchUnavailable)?.reason ?: "launch_failed"); return
         }
         run.process = process
-        live[next.target.programId] = run
-        credentials[credential] = run
-        next.first?.let { deliver(run, it) }
         run.startTimer = scope.launch { delay(limits.startTimeoutMillis); lock.withLock { if (run.state == State.STARTING) requestStop(run, "start_timeout") } }
         run.deadline = scope.launch { delay(limits.maxRunMillis); lock.withLock { requestStop(run, "run_deadline") } }
         scope.launch { val exit = process.awaitExit(); lock.withLock { ended(run, exit) } }
@@ -229,8 +242,8 @@ class RunSupervisor(
     }
 
     private suspend fun ended(run: Live, exit: Int?) {
-        if (live[run.target.programId] !== run) return
-        live.remove(run.target.programId)
+        if (live[run.key] !== run) return
+        live.remove(run.key)
         credentials.remove(run.credential)
         listOf(run.startTimer, run.deadline, run.idle).forEach { it?.cancel() }
         run.messages.close()

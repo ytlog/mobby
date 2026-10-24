@@ -128,11 +128,11 @@ class CallPipelineTest {
 
     @Test fun `dry runs simulate effects, gate device queries and isolate program storage`() {
         allow("notes.write", "sms.list", "storage.kv")
-        val dry = run.copy(runId = "dry-1", dryRun = DryRunScope(allowedQueries = emptySet()))
+        val dry = run.copy(runId = "dry-1", dryRun = DryRunScope(allowedQueries = emptySet(), requested = listOf("notes.write", "sms.list", "storage.kv").associateWith { Scope.NONE }))
         assertEquals(CallStatus.SIMULATED, call("notes.write", context = dry).status)
         assertEquals(CallStatus.SIMULATED, call("sms.list", id = "r-2", context = dry).status)
         assertTrue(write.calls.isEmpty() && sms.calls.isEmpty())
-        assertEquals(CallStatus.SUCCEEDED, call("sms.list", id = "r-3", context = dry.copy(dryRun = DryRunScope(setOf("sms.list")))).status)
+        assertEquals(CallStatus.SUCCEEDED, call("sms.list", id = "r-3", context = dry.copy(dryRun = DryRunScope(setOf("sms.list"), mapOf("sms.list" to Scope.NONE)))).status)
         assertEquals(CallStatus.SUCCEEDED, call("storage.kv", id = "r-4", context = dry).status)
         assertTrue(local.calls.single().space.files.path.contains("dry-run/dry-1"))
         call("storage.kv", id = "r-5")

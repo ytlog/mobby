@@ -114,7 +114,7 @@ object ConversationRules {
 
     fun afterQueue(current: Draft, queuedRevision: Long): Draft =
         if (current.revision == queuedRevision)
-            Draft(revision = current.revision + 1, capabilities = current.capabilities.filter { it.startsWith("plugin:device:") || it.startsWith("plugin:appfunction:") }.toSet())
+            Draft(revision = current.revision + 1, capabilities = current.capabilities.filter { it.startsWith("plugin:device:") || it.startsWith("plugin:appfunction:") || it.startsWith("plugin:program:") }.toSet())
         else current
 
     /** Record one engine's CLI session. The active session changes only when that engine is currently selected. */
@@ -128,7 +128,7 @@ object ConversationRules {
         require(config.workspace == current.config.workspace || current.draft.attachments.isEmpty() && current.draft.pendingAttachment == null) { "Remove draft attachments before changing workspace" }
         require(!current.hasTurns || config.workspace == current.config.workspace) { "Existing workspace must be preserved" }
         val sameAgent = current.config.agent == config.agent
-        val kept = if (sameAgent) current.draft.capabilities else current.draft.capabilities.filter { it.startsWith("plugin:device:") || it.startsWith("plugin:appfunction:") }.toSet()
+        val kept = if (sameAgent) current.draft.capabilities else current.draft.capabilities.filter { it.startsWith("plugin:device:") || it.startsWith("plugin:appfunction:") || it.startsWith("plugin:program:") }.toSet()
         val sessions = if (current.session == null) current.sessions else current.sessions + (current.config.agent to current.session)
         return current.copy(config = config,
             draft = if (kept != current.draft.capabilities)
@@ -136,6 +136,15 @@ object ConversationRules {
             session = if (sameAgent) current.session else sessions[config.agent],
             sessions = sessions,
             creator = if (sameAgent) current.creator else null)
+    }
+
+    /** A new conversation with program development selected and the program attached, so the AI can read its records. */
+    fun createProgramConversation(current: Conversation, newId: ConversationId, programId: String, programName: String): Conversation {
+        require(newId != current.id)
+        return Conversation(newId, current.config, Draft(
+            text = AppStrings.modifyProgramPrompt(programName, programId),
+            capabilities = setOf("plugin:device:programs", "plugin:program:$programId"),
+        ), project = current.project)
     }
 
     fun createSkillConversation(current: Conversation, newId: ConversationId, creator: String?): Conversation? {

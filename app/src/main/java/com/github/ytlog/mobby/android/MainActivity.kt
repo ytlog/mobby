@@ -21,6 +21,7 @@ import com.github.ytlog.mobby.android.conversation.ui.mobbySystemBarColor
 import com.github.ytlog.mobby.android.programcenter.ProgramCenterPage
 import com.github.ytlog.mobby.android.speech.SpeechEngines
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.CancellationException
@@ -81,7 +82,15 @@ class MainActivity : ComponentActivity() {
             catch (e: GatewayAuthorizationException) {
                 GatewaySignInResult.Failed(if (e.failure == GatewayAuthorizationFailure.TIMEOUT) AppStrings.gatewaySignInTimedOut else AppStrings.gatewaySignInFailed)
             } catch (_: Exception) { GatewaySignInResult.Failed(AppStrings.gatewaySignInFailed) }
-        }, programCenter = { back -> ProgramCenterPage(app.programs, back) })
+        }, programCenter = { back -> ProgramCenterPage(app.programs, back) { program ->
+            lifecycleScope.launch {
+                // The new chat starts from the selected conversation's agent and workspace.
+                val source = actions.state.first().let { state -> state.selected?.conversation?.id ?: state.conversations.firstOrNull()?.conversation?.id }
+                if (source == null) { android.widget.Toast.makeText(this@MainActivity, AppStrings.noConversationToStartFrom, android.widget.Toast.LENGTH_SHORT).show(); return@launch }
+                actions.createProgramConversation(source, program.id, program.name)
+                conversationNavigation = UUID.randomUUID().toString()
+            }
+        } })
         setContent { ConversationEntry(actions, host, conversationNavigation, petEnabled, petPermitted, gatewayRefresh = gatewayRefresh, updates = app.updates) }
         if (android.os.Build.VERSION.SDK_INT >= 33) {
             val notice = getPreferences(MODE_PRIVATE)

@@ -170,6 +170,7 @@ interface ConversationStore : ConversationRepository {
     val state: Flow<ConversationState>
     suspend fun setSkill(id: ConversationId, ref: String, enabled: Boolean)
     suspend fun createSkillConversation(id: ConversationId, creator: String): ConversationId
+    suspend fun createProgramConversation(id: ConversationId, programId: String, programName: String): ConversationId
     suspend fun select(id: ConversationId)
     suspend fun create(config: NextTurnConfig): ConversationId
     suspend fun editDraft(id: ConversationId, text: String, selectionStart: Int, selectionEnd: Int): Draft
@@ -334,6 +335,8 @@ class ConversationUseCases(
             ?: return DataResult.Failed(AppStrings.thisAgentHasNoAvailableSkillCreatorReturnTo)
         return DataResult.Loaded(repository.createSkillConversation(id, creator.ref))
     }
+    suspend fun createProgramConversation(id: ConversationId, programId: String, programName: String): ConversationId =
+        repository.createProgramConversation(id, programId, programName)
     suspend fun beginCapture(conversation: ConversationId, workspace: String): DataResult<CameraCapture> {
         repository.awaitAttachmentRecovery()
         val current = repository.conversation(conversation)

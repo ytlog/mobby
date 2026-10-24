@@ -44,6 +44,17 @@ object DeviceCatalog {
             ),
         ),
         DevicePluginSpec(
+            "programs", AppStrings.programDevelopment, AppStrings.programDevelopmentSummary, CatalogIds.PHONE,
+            "Use this skill to write programs that run inside mobby after this chat. Start with catalog: it lists the capabilities that exist on this phone, the SDK and the package rules. Write the program under ~/workspace/programs/<program-id>/, then run validate until it passes and dry-run to check the background logic with simulated events. You cannot install, enable or grant a program; tell the user what it does, which permissions, config and events it needs, and that they install it in Settings > Programs. records reads runs and logs only for programs the user attached to this chat.",
+            DeviceAccess.NONE,
+            commands = listOf(
+                DeviceCommand("catalog", "catalog", "Read before writing a program."),
+                DeviceCommand("validate", """validate {"path":"~/workspace/programs/my-program"}"""),
+                DeviceCommand("dry-run", """dry-run {"path":"~/workspace/programs/my-program","events":"[{\"handler\":\"onSchedule\",\"type\":\"time.schedule\",\"payload\":{}}]","timeoutMs":"20000"}""", "Commands and network requests are simulated; storage uses throwaway data."),
+                DeviceCommand("records", """records {"programId":"my-program","limit":"50"}""", "Only programs attached to this chat."),
+            ),
+        ),
+        DevicePluginSpec(
             "sms", AppStrings.sms, AppStrings.readMessagesEnableSendingSeparately, CatalogIds.COMMUNICATION,
             "Read recent SMS, or send one when the send grant is enabled. Only result.data.sent=succeeded confirms sending; submission does not confirm sending or delivery.",
             DeviceAccess.RUNTIME, listOf(android.Manifest.permission.READ_SMS),

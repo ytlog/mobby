@@ -24,5 +24,8 @@ class AppGraph(context: Context, notification: () -> PendingIntent) {
         File(context.applicationContext.filesDir, "libtermux/home/workspace/programs"),
         { logDir -> TermuxProgramLauncher(context.applicationContext, programScope, logDir) },
         { programId -> ProgramUiActivity.pendingIntent(context.applicationContext, programId) },
-    ).also { platform -> programScope.launch { platform.start() } }
+    ).also { platform ->
+        com.github.ytlog.mobby.android.device.ProgramDevelopment.port = platform.development
+        programScope.launch { platform.start() }
+    }
 }

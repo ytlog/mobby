@@ -156,6 +156,18 @@ class RunSupervisorTest {
         assertEquals(2, run(id).droppedEvents)
     }
 
+    @Test fun `a child can authenticate before launch returns`() = runTest {
+        lateinit var runs: RunSupervisor
+        var resolved: String? = null
+        val early = object : ProgramProcessLauncher {
+            override fun launch(spec: ProcessSpec): ProgramProcess { resolved = runs.resolve(spec.credential)?.programId; return launcher.launch(spec) }
+        }
+        val scope = CoroutineScope(StandardTestDispatcher(testScheduler) + SupervisorJob()).also { scopes += it }
+        runs = RunSupervisor(scope, dao, early, File("/sdk"), { 1 }, RunLimits(), { testScheduler.currentTime }) { "run-${++ids}" }
+        runs.trigger(target(), null, "ui")
+        assertEquals("a", resolved)
+    }
+
     @Test fun `an unavailable runtime fails the run with its reason`() = runTest {
         launcher.unavailable = "runtime_not_ready"
         val runs = supervisor()

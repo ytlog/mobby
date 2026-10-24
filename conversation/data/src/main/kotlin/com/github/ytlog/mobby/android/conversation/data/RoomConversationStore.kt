@@ -180,6 +180,8 @@ internal class RoomConversationStore(
     override suspend fun setAttachment(id: ConversationId, ref: String, enabled: Boolean) = drafts.setAttachment(id, ref, enabled)
     override suspend fun setSkill(id: ConversationId, ref: String, enabled: Boolean) = drafts.setSkill(id, ref, enabled)
     override suspend fun createSkillConversation(id: ConversationId, creator: String) = conversations.createSkill(id, creator)
+    override suspend fun createProgramConversation(id: ConversationId, programId: String, programName: String) =
+        conversations.createProgram(id, programId, programName)
     override suspend fun select(id: ConversationId) {
         if (conversations.select(id)) scope.launch { try { outputCache.reconcile(id.value) } catch (e: CancellationException) { throw e }
             catch (_: Exception) { startupError.value = AppStrings.historicalOutputVerificationIsIncompleteCachePreservedPleaseRetry } }

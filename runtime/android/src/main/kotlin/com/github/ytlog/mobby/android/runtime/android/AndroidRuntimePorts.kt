@@ -79,7 +79,11 @@ internal class AndroidRuntimePorts(
         val pluginRefs = request.capabilityRefs.map { it.value }.filter { it.startsWith("plugin:") }.toSet()
         val deviceRefs = pluginRefs.filter { it.startsWith("plugin:device:") }.toSet()
         val appFunctionRefs = pluginRefs.filter { it.startsWith(AppFunctionRefs.PREFIX) }.toSet()
-        if (pluginRefs.size != deviceRefs.size + appFunctionRefs.size || deviceRefs.any { !DeviceCatalog.isKnown(it) } ||
+        // Attached programs only make sense with the program development plugin, which reads their records.
+        val programRefs = pluginRefs.filter { it.startsWith(PROGRAM_REF) }.toSet()
+        if (programRefs.any { !it.removePrefix(PROGRAM_REF).matches(PROGRAM_ID) } || (programRefs.isNotEmpty() && "plugin:device:programs" !in deviceRefs))
+            return@withContext RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY)
+        if (pluginRefs.size != deviceRefs.size + appFunctionRefs.size + programRefs.size || deviceRefs.any { !DeviceCatalog.isKnown(it) } ||
             appFunctionRefs.any { AppFunctionRefs.decode(it) == null } || DeviceCatalog.missingParent(deviceRefs) ||
             request.capabilityRefs.any { !it.value.startsWith("plugin:") && skills.resolve(it, request.agentId) == null })
             return@withContext RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY)
@@ -214,7 +218,8 @@ internal class AndroidRuntimePorts(
                         val file = File(inbox, "${java.util.UUID.randomUUID()}-${com.github.ytlog.mobby.android.device.DevicePaths.safeName(summary.name)}")
                         file.writeBytes(store.contentBytes(resource, request.workspaceRef))
                         file.absolutePath
-                    }) { deviceStop.get()?.let { it.value != null } ?: true }
+                    }, isCancelled = { deviceStop.get()?.let { it.value != null } ?: true },
+                    attachedPrograms = request.capabilityRefs.map { it.value }.filter { it.startsWith(PROGRAM_REF) }.map { it.removePrefix(PROGRAM_REF) }.toSet())
                 if (appFunctionRefs.isNotEmpty()) appFunctionSession = AppFunctionHost.start(context, bridgeDir!!, node,
                     appFunctionRefs, devices) { if (deviceStop.get()?.value != null) throw CancellationException() }
                 for (skill in session?.skills.orEmpty() + appFunctionSession?.skills.orEmpty()) {
@@ -281,6 +286,9 @@ internal class AndroidRuntimePorts(
         return value.replace(Regex("(?i)(Bearer\\s+)[A-Za-z0-9._~+/-]+=*"), "$1[redacted]")
     }
 }
+
+private const val PROGRAM_REF = "plugin:program:"
+private val PROGRAM_ID = Regex("[a-z0-9][a-z0-9-]{0,62}")
 
 private class PreparedTurn(val turn: AgentTurn, val files: AgentInputFiles?)
 

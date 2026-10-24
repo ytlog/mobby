@@ -38,11 +38,19 @@ internal class DeviceActionDefinition(val plugin: String, val action: String) {
         "clipboard.write" -> mapOf("text" to 4000)
         "office.inspect", "office.read" -> mapOf("path" to 4000)
         "office.write" -> mapOf("path" to 4000, "text" to 4000)
+        "programs.validate" -> mapOf("path" to 4000)
+        "programs.dry-run" -> mapOf("path" to 4000, "events" to 64_000, "timeoutMs" to 6)
+        "programs.records" -> mapOf("programId" to 63, "limit" to 3)
         else -> emptyMap()
     }
     /** Argument names with their maximum lengths, and those that may be omitted. */
     val arguments: Map<String, Int> get() = fields
-    val optionalArguments: Set<String> get() = if (plugin == "contacts" && action == "create") setOf("phone") else emptySet()
+    val optionalArguments: Set<String> get() = when ("$plugin.$action") {
+        "contacts.create" -> setOf("phone")
+        "programs.dry-run" -> setOf("events", "timeoutMs")
+        "programs.records" -> setOf("limit")
+        else -> emptySet()
+    }
     fun validate(args: JsonObject): Map<String, String> {
         if (args.keys.any { it !in fields }) deviceFailure(DeviceErrorCode.INVALID_ARGUMENT, "Unknown action argument")
         val result = args.mapValues { (key, value) ->

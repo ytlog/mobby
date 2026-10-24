@@ -81,7 +81,7 @@ class PermissionTest {
         assertEquals(denied(Layer.CONTEXT, DenyReason.SURFACE_NOT_ALLOWED), check("files.pick"))
         val ui = CallContext("p", "1", Surface.UI, uiSessionId = "u")
         assertTrue(check("files.pick", context = ui) is GateDecision.Allowed)
-        assertEquals(denied(Layer.CONTEXT, DenyReason.NOT_ALLOWED_IN_DRY_RUN), check("files.pick", context = ui.copy(dryRun = DryRunScope(emptySet()))))
+        assertEquals(denied(Layer.CONTEXT, DenyReason.NOT_ALLOWED_IN_DRY_RUN), check("files.pick", context = ui.copy(dryRun = DryRunScope(emptySet(), mapOf("files.pick" to Scope.NONE)))))
     }
 
     @Test fun `user changes only narrow grants and always bump the revision`() = runBlocking {
