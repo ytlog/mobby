@@ -29,6 +29,7 @@
 | [设备交互卡片实施](device-operation-implementation.md) | 独立协议与 Compose 模块、真实动作卡、取消恢复、资源归属与验收边界 |
 | [设备插件方案](design/device-plugins.md) | 设备能力插件：模块、引用、技能通道与权限隔离。旧的「使用当前手机」已替换 |
 | [Android 能力底座与用户程序平台](design/android-capability-platform.md) | 能力注册表、本地 API 与 SDK、事件订阅、程序运行时、四层权限管理与程序中心；用户基于底座自行编写程序，设计提案 |
+| [用户程序平台技术架构](design/program-platform-architecture.md) | 模块与依赖、进程线程、能力注册、权限闸门、事件路由、运行管理、本地 API 与 SDK、数据模型、时序、安全、测试与实施拆分；尚未实现 |
 | [手机操作历史与多步执行协议](design/device-workflow-memory.md) | 任务、步骤、前后观察、设备回执、验收、案例检索与逐步执行的设计提案 |
 | [应用功能方案](design/app-functions.md) | Android App Functions 的独立入口、发现、调用确认与验证边界 |
 | [Pi Agent](design/pi-agent.md) | 默认 Agent、固定运行依赖、RPC 会话、Responses 网关与验收 |
