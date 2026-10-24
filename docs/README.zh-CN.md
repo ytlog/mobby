@@ -1,58 +1,96 @@
 <p align="center">
-  <img src="../app/icon/mobby-blue-flat.svg" width="88" alt="mobby 图标">
+  <img src="../app/icon/mobby-blue-flat.svg" width="96" alt="mobby 图标">
 </p>
 
 <h1 align="center">mobby</h1>
 
-<p align="center">在 Android 设备上看页面、处理文件、操作应用、写程序。</p>
+<p align="center"><b>跑在 Android 上的个人 AI 助手。</b><br>看页面、处理文件、操作应用、写程序，直接在手机和平板上完成。</p>
 
-<p align="center"><a href="../README.md">English</a> · 简体中文</p>
+<p align="center">
+  <a href="https://github.com/ytlog/mobby/releases"><img src="https://img.shields.io/github/v/release/ytlog/mobby?style=flat-square&color=2563eb" alt="最新版本"></a>
+  <img src="https://img.shields.io/badge/Android-8.0%2B-34a853?style=flat-square&logo=android&logoColor=white" alt="Android 8.0+">
+  <img src="https://img.shields.io/badge/arch-ARM64-64748b?style=flat-square" alt="ARM64">
+  <a href="../LICENSE"><img src="https://img.shields.io/github/license/ytlog/mobby?style=flat-square&color=64748b" alt="MIT 许可证"></a>
+</p>
+
+<p align="center"><a href="../README.md">English</a> · <b>简体中文</b></p>
+
+<p align="center"><img src="media/showcase/phone-tablet-poster-zh.png" width="900" alt="Android 平板与手机上的 mobby"></p>
+
+<p align="center">
+  在设备上直接运行 <b>Pi</b> · <b>Claude Code</b> · <b>Codex</b> · <b>OpenCode</b>，并接入屏幕、相册和文件。
+</p>
 
 <p align="center">
   <a href="#看着页面直接问">页面问答</a> ·
   <a href="#处理照片和文件">照片与文件</a> ·
   <a href="#让它帮你操作-app">操作 App</a> ·
-  <a href="#在-android-设备上写个能用的小程序">设备上编程</a> ·
+  <a href="#在设备上写个能用的小程序">设备上编程</a> ·
   <a href="#开始使用">开始使用</a>
 </p>
 
-mobby 让 Pi、Claude Code、Codex、OpenCode 这些 Code Agent 直接在 Android 设备上运行，接入屏幕、相册、文件等设备能力，成为你的个人 AI 助手。你可以让它看懂当前页面、处理照片和文件、操作 App，也可以直接在设备上写代码、运行程序。
+## 能做什么
 
-<p align="center"><img src="media/showcase/phone-tablet-poster-zh.png" width="900" alt="Android 平板与手机上的 mobby"></p>
+<table>
+<tr>
+<td width="55%" valign="middle">
 
-## 看着页面，直接问
+### 看着页面，直接问
 
 浏览网页时遇到一段没看懂的英文，点开悬浮球，进入悬浮对话，再点“识别屏幕”。mobby 会读取当前页面，你可以让它翻译、解释，或者接着追问。
 
-> 这个页面在讲什么？Python 有哪些特点，初学者应该从哪里开始？
+> 💬 *这个页面在讲什么？Python 有哪些特点，初学者应该从哪里开始？*
 
-<p><img src="media/cn/framed/screen-qa.gif" width="360" alt="手机演示：在 Python 网页上打开悬浮对话，用中文解释当前页面"></p>
+</td>
+<td width="45%" align="center">
+<img src="media/cn/framed/screen-qa.gif" width="280" alt="手机演示：在 Python 网页上打开悬浮对话，用中文解释当前页面">
+</td>
+</tr>
+<tr>
+<td width="45%" align="center">
+<img src="media/cn/framed/media-files.gif" width="280" alt="手机演示：照片识别和文件导出完成后的对话">
+</td>
+<td width="55%" valign="middle">
 
-## 处理照片和文件
+### 处理照片和文件
 
 给当前任务加入“查看照片”或“访问文件”，选好要开放的照片和目录，就可以让它识别图片、复制文件、整理清单，再把结果保存回设备。
 
-> 看一下最近的照片，把最新一张复制到指定文件夹，再写一份图片说明和文件清单。
+> 💬 *看一下最近的照片，把最新一张复制到指定文件夹，再写一份图片说明和文件清单。*
 
-<p><img src="media/cn/framed/media-files.gif" width="360" alt="手机演示：照片识别和文件导出完成后的对话"></p>
+</td>
+</tr>
+<tr>
+<td width="55%" valign="middle">
 
-## 让它帮你操作 App
+### 让它帮你操作 App
 
 把“使用手机”或“使用平板”加入任务，告诉它要去哪、做什么。它会读取屏幕，点击按钮、输入文字、切换页面，按步骤操作设备。
 
-> 去应用商店下载番茄ToDo，打开添加待办的功能。
+> 💬 *去应用商店下载番茄ToDo，打开添加待办的功能。*
 
-<p><img src="media/cn/framed/app-feature.gif" width="360" alt="手机演示：番茄ToDo 的自定义时长页面"></p>
+</td>
+<td width="45%" align="center">
+<img src="media/cn/framed/app-feature.gif" width="280" alt="手机演示：番茄ToDo 的自定义时长页面">
+</td>
+</tr>
+<tr>
+<td width="45%" align="center">
+<img src="media/cn/framed/travel-checklist.gif" width="280" alt="手机演示：浏览器中的旅行打包清单">
+</td>
+<td width="55%" valign="middle">
 
-## 在 Android 设备上写个能用的小程序
+### 在设备上写个能用的小程序
 
 说清楚想做什么，让 Agent 在设备工作区写代码、启动服务，再用设备上的浏览器打开。
 
-> 做一个旅行打包清单，按证件、衣物、电子和洗漱用品分类。可以勾选、添加、删除，刷新后还能保留。
+> 💬 *做一个旅行打包清单，按证件、衣物、电子和洗漱用品分类。可以勾选、添加、删除，刷新后还能保留。*
 
-<p><img src="media/cn/framed/travel-checklist.gif" width="360" alt="手机演示：浏览器中的旅行打包清单"></p>
+[查看示例源码 →](examples/travel-checklist/)
 
-[查看示例源码](examples/travel-checklist/)
+</td>
+</tr>
+</table>
 
 ## 开始使用
 
@@ -62,4 +100,11 @@ mobby 让 Pi、Claude Code、Codex、OpenCode 这些 Code Agent 直接在 Androi
 2. **配置网关。** 打开「设置 → 网关设置」，选择服务或填写 Base 地址和 API Key，点「获取模型」，选择默认模型，再保存网关。
 3. **开始对话。** 选好网关后发送任务。使用页面问答时，开启桌面悬浮球、悬浮窗权限和「屏幕」无障碍服务；使用照片或文件功能时再授权。
 
-[构建与使用](getting-started.md) · [网关设置](gateway.md) · [项目文档](README.md) · [MIT 许可证](../LICENSE)
+## 了解更多
+
+<p align="center">
+  📖 <a href="getting-started.md">构建与使用</a> ·
+  🔌 <a href="gateway.md">网关设置</a> ·
+  🗂️ <a href="README.md">项目文档</a> ·
+  ⚖️ <a href="../LICENSE">MIT 许可证</a>
+</p>
