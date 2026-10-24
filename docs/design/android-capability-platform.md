@@ -123,7 +123,7 @@ async function refresh() {
 }
 
 mobby.on("onSchedule", refresh);
-mobby.on("ui.message", async (message) => {
+mobby.on("ui.message", async ({ message }) => {
   if (message.type === "refresh") await refresh();
 });
 ```

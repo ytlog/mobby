@@ -30,6 +30,7 @@
 | [设备插件方案](design/device-plugins.md) | 设备能力插件：模块、引用、技能通道与权限隔离。旧的「使用当前手机」已替换 |
 | [Android 能力底座与用户程序平台](design/android-capability-platform.md) | 用户让手机 AI 编写程序：WebView 界面与后台 Node 逻辑、平台基础能力与手机能力、事件、四层权限、开发插件与分阶段验收；设计提案 |
 | [用户程序平台技术架构](design/program-platform-architecture.md) | 模块与依赖、进程线程、调用管线、权限、程序包、运行管理、WebView 界面宿主、事件、基础能力实现、协议与 SDK、数据模型、时序、安全、测试与实施拆分；尚未实现 |
+| [用户程序平台实施记录](program-platform-implementation.md) | 第一阶段实际实现、验证证据、修复的缺陷与尚未验证的范围 |
 | [手机操作历史与多步执行协议](design/device-workflow-memory.md) | 任务、步骤、前后观察、设备回执、验收、案例检索与逐步执行的设计提案 |
 | [应用功能方案](design/app-functions.md) | Android App Functions 的独立入口、发现、调用确认与验证边界 |
 | [Pi Agent](design/pi-agent.md) | 默认 Agent、固定运行依赖、RPC 会话、Responses 网关与验收 |
