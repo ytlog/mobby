@@ -82,6 +82,7 @@ dependencies {
     implementation(project(":conversation-data"))
     implementation(project(":runtime-api"))
     implementation(project(":device-plugins"))
+    implementation(project(":program-platform"))
     androidTestImplementation(project(":runtime-engine"))
     androidTestImplementation("androidx.appfunctions:appfunctions:1.0.0-alpha08")
     implementation(project(":runtime-android"))

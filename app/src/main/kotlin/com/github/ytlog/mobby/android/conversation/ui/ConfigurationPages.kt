@@ -165,7 +165,7 @@ import kotlinx.coroutines.*
 }
 @Composable internal fun SettingsPage(
     system: SystemStatus, appearance: Appearance, setAppearance: (Appearance) -> Unit, navigate: (String) -> Unit, back: () -> Unit, vm: ConversationViewModel,
-    petEnabled: Boolean = false, petPermitted: Boolean = false, setPet: (Boolean) -> Unit = {},
+    petEnabled: Boolean = false, petPermitted: Boolean = false, setPet: (Boolean) -> Unit = {}, programs: Boolean = false,
 ) {
     val languageContext = LocalContext.current
     var languageError by remember { mutableStateOf(false) }
@@ -178,6 +178,10 @@ import kotlinx.coroutines.*
                 SettingsItem(AppStrings.storageRetention, { navigate("history-limits") }, AppStrings.conversationAndAttachmentRetention)
                 GroupDivider()
                 SettingsItem(AppStrings.appUpdates, { navigate("updates") }, AppStrings.updateSettingSummary)
+                if (programs) {
+                    GroupDivider()
+                    SettingsItem(AppStrings.programCenter, { navigate("programs") }, AppStrings.programCenterSummary)
+                }
             }
             SettingsGroup(AppStrings.runtime) {
                 SettingsItem(AppStrings.shellDiagnostics, { navigate("diagnostic") })

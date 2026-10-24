@@ -23,6 +23,7 @@ class MobbyApplication : Application() {
     private lateinit var graph: AppGraph
     val runtime get() = graph.runtime
     val conversations get() = graph.conversations
+    val programs get() = graph.programs
     private val petScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private lateinit var pet: DesktopPet
     private lateinit var floatingConversation: FloatingConversationWindow

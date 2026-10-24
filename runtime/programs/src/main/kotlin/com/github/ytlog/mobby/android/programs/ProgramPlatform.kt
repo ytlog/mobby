@@ -53,6 +53,9 @@ data class ProgramView(
 
 data class ProgramCandidate(val directory: File, val name: String)
 
+/** A capability as the permission management page shows it. */
+data class CapabilityInfo(val id: String, val kind: CapabilityKind, val implicit: Boolean, val availability: Availability, val sideEffects: Set<SideEffect>)
+
 /**
  * The program platform: registry, permissions, storage, runs, events and the loopback API, behind
  * one facade for the app and the development plugin. Every mutation ends with [refresh], which
@@ -114,6 +117,10 @@ class ProgramPlatform internal constructor(
     ) { _ -> Unit }.mapLatest { views() }.flowOn(Dispatchers.IO)
 
     val switches: Flow<Map<String, Boolean>> = dao.switchesFlow().map { rows -> rows.associate { it.capability to it.enabled } }
+
+    fun capabilities(): List<CapabilityInfo> = registry.descriptors.map { d ->
+        CapabilityInfo(d.id, d.kind, d.implicit, registry[d.id]!!.availability(), d.sideEffects)
+    }
 
     fun runs(limit: Int = 200): Flow<List<RunRow>> = dao.recentRunsFlow(limit)
 

@@ -18,6 +18,7 @@ import com.github.ytlog.mobby.android.conversation.domain.ConversationId
 import com.github.ytlog.mobby.android.conversation.ui.ConversationEntry
 import com.github.ytlog.mobby.android.conversation.ui.ConversationHostActions
 import com.github.ytlog.mobby.android.conversation.ui.mobbySystemBarColor
+import com.github.ytlog.mobby.android.programcenter.ProgramCenterPage
 import com.github.ytlog.mobby.android.speech.SpeechEngines
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
@@ -80,7 +81,7 @@ class MainActivity : ComponentActivity() {
             catch (e: GatewayAuthorizationException) {
                 GatewaySignInResult.Failed(if (e.failure == GatewayAuthorizationFailure.TIMEOUT) AppStrings.gatewaySignInTimedOut else AppStrings.gatewaySignInFailed)
             } catch (_: Exception) { GatewaySignInResult.Failed(AppStrings.gatewaySignInFailed) }
-        })
+        }, programCenter = { back -> ProgramCenterPage(app.programs, back) })
         setContent { ConversationEntry(actions, host, conversationNavigation, petEnabled, petPermitted, gatewayRefresh = gatewayRefresh, updates = app.updates) }
         if (android.os.Build.VERSION.SDK_INT >= 33) {
             val notice = getPreferences(MODE_PRIVATE)
