@@ -1,178 +1,98 @@
 # Android 能力底座与用户程序平台设计
 
-状态：设计提案。日期：2026-10-24。
+状态：设计提案，尚未实现。日期：2026-10-24。
 
-mobby 只提供基础能力：把手机能力登记成可调用的接口，提供事件订阅、程序运行环境、权限管理和程序管理。具体做什么由用户自己写程序决定，可以自己写代码，也可以借助手机上的 Agent 编写。mobby 不内置“跳过开屏广告”这类业务程序；这类需求是验证底座是否够用的样例，由用户基于底座编写。
+mobby 只提供基础能力：把手机能力和编写程序所需的通用能力登记成可调用的接口，提供程序运行环境、界面容器、事件订阅、权限管理和程序管理。具体做什么由用户决定：用户在 mobby 的对话里让手机上的 AI 编写程序，也可以自己写。mobby 不内置“跳过开屏广告”这类业务程序；这类需求只用来验证底座是否够用。
 
 技术实现见 [用户程序平台技术架构](program-platform-architecture.md)。本方案不改变 [AGENTS.md](../../AGENTS.md) 的现有边界。能力目录中的候选项不是交付承诺；每项能力按 Android 版本、硬件、系统授权和真机验收结果如实报告可用性。
 
-## 目标与范围
+## 1. 目标与范围
 
-### 用户使用方式
+### 1.1 用户使用方式
 
-1. 用户让手机上的 AI（Pi、Claude Code、Codex、OpenCode）编写程序，也可以自己写；流程见 [手机 AI 编写程序](#手机-ai-编写程序)。
-2. 程序通过 SDK 查询可用能力、调用能力、订阅事件、读写自己的数据。
-3. 用户在程序中心安装程序，查看它申请的权限和注册的事件，逐项授予或拒绝。
-4. 用户启用程序后，事件或定时条件满足时由 mobby 拉起程序处理，不依赖聊天会话持续运行。
-5. 用户随时查看运行记录、调整或撤销权限、暂停单条事件、停止当前运行、暂停或删除程序。
+1. 用户在 mobby 对话中描述需求，手机上的 AI（Pi、Claude Code、Codex、OpenCode）按底座公开的能力目录和 SDK 编写程序，并完成校验和试运行。用户也可以自己写。
+2. 用户在程序中心查看程序申请的权限、注册的事件和需要的配置，确认后安装。
+3. 用户逐项授权、填写配置、启用程序。
+4. 程序的后台逻辑在事件、定时或界面操作时由 mobby 拉起运行；程序界面在用户打开时显示。两者都不依赖聊天会话持续运行。
+5. 用户随时查看运行记录，调整或撤销权限，暂停单条事件，停止当前运行，暂停或删除程序。
 
-“程序已启用”和“当前可以工作”分开显示。权限被撤销、系统授权缺失、事件来源断开时，程序不能显示为正常工作。
-
-### 底座提供什么
+### 1.2 底座的组成
 
 | 组成 | 作用 |
 | --- | --- |
-| 能力注册表 | 统一登记手机能力和平台基础能力的 ID、参数和结果 Schema、前置条件、副作用和当前可用性 |
-| 平台基础能力 | 数据库、文件与键值存储、网络、凭据、配置、模型调用、程序界面与入口，见 [平台基础能力](#平台基础能力) |
-| 本地 API 与 SDK | 程序调用能力、订阅事件、查询自身权限的唯一入口 |
-| 事件系统 | 在 Android 端接收、过滤、持久登记订阅，并把事件交给对应程序 |
-| 程序运行时 | 安装、版本、启停、按事件拉起后台进程、超时与取消 |
-| 程序界面 | 在 mobby 的 WebView 中运行程序自带的网页界面，与后台逻辑共用 SDK 和权限 |
+| 能力注册表 | 登记手机能力和平台基础能力的 ID、参数和结果 Schema、前置条件、副作用、授权范围和当前可用性 |
+| 程序运行时 | 程序安装、版本、启停；按需拉起后台 Node 进程，期限、取消与恢复 |
+| 程序界面容器 | 在 WebView 中运行程序自带的网页界面 |
+| SDK 与本地接口 | 后台和界面调用能力、订阅事件、查询自身权限的唯一入口 |
+| 事件系统 | 在 Android 端接收、过滤、持久登记订阅，并交给对应程序 |
 | 权限管理 | mobby 自己的程序级权限层，叠加在 Android 系统权限之上 |
-| 程序中心 | 用户管理程序、权限、事件订阅和运行记录的界面 |
-| 记录与诊断 | 每次触发、每次能力调用的回执和结果，供用户和程序作者排查 |
+| 程序中心 | 管理程序、权限、配置、事件订阅和运行记录 |
+| 开发插件 | 让对话中的 AI 查询能力目录、校验和试运行程序 |
+| 记录与诊断 | 每次触发、每次能力调用的回执和结果 |
 
-### 不做什么
+### 1.3 不做什么
 
 - 不内置具体业务程序或专用规则格式；样例程序只用于验收，不随应用发布为功能。
 - 不提供通用反射、任意 Intent 发送器或任意原生插件加载。
 - 不获取 root、Shizuku、ADB 特权，不修改系统权限、系统设置或 SELinux 边界。
 - 不读取其他应用私有数据，不绕过锁屏、系统同意、保护窗口和平台访问控制。
-- 不运行不可信的第三方程序；当前只支持用户信任的程序，见 [执行边界](#执行边界)。
+- 不运行不可信的第三方程序；当前只支持用户信任的程序，见 [执行边界](#7-执行边界)。
 
-## 当前代码基础
+## 2. 当前代码基础
 
 | 基础 | 代码 | 本方案的处理 |
 | --- | --- | --- |
-| 设备能力目录与执行 | [DeviceCatalog](../../runtime/device-plugins/src/main/kotlin/com/github/ytlog/mobby/android/device/DeviceCatalog.kt)、[DeviceActions](../../runtime/device-plugins/src/main/kotlin/com/github/ytlog/mobby/android/device/DeviceActions.kt) | 已有屏幕、短信、联系人、日历、媒体、存储、相机、麦克风、位置、传感器、剪贴板、Office 动作；作为首批能力的执行器复用，不另写一套 |
-| 聊天设备桥接 | [DeviceHost](../../runtime/device-plugins/src/main/kotlin/com/github/ytlog/mobby/android/device/DeviceHost.kt)、[DeviceCommands](../../runtime/device-plugins/src/main/kotlin/com/github/ytlog/mobby/android/device/DeviceCommands.kt) | 每轮聊天的令牌、allow 表和 `mobby.device/1` 保持不变；程序平台另设入口和身份，不延长聊天令牌 |
+| 设备能力目录与执行 | [DeviceCatalog](../../runtime/device-plugins/src/main/kotlin/com/github/ytlog/mobby/android/device/DeviceCatalog.kt)、[DeviceActions](../../runtime/device-plugins/src/main/kotlin/com/github/ytlog/mobby/android/device/DeviceActions.kt) | 已有屏幕、短信、联系人、日历、媒体、存储、相机、麦克风、位置、传感器、剪贴板、Office 动作；作为手机能力的执行器复用，不另写一套 |
+| 聊天设备桥接 | [DeviceHost](../../runtime/device-plugins/src/main/kotlin/com/github/ytlog/mobby/android/device/DeviceHost.kt)、[DeviceCommands](../../runtime/device-plugins/src/main/kotlin/com/github/ytlog/mobby/android/device/DeviceCommands.kt) | 每轮聊天的令牌、allow 表和 `mobby.device/1` 不变；开发插件经它接入；程序平台另设身份，不延长聊天令牌 |
 | 无障碍服务 | [ScreenAccessService](../../runtime/device-plugins/src/main/kotlin/com/github/ytlog/mobby/android/device/ScreenAccessService.kt)、[配置](../../runtime/device-plugins/src/main/res/xml/screen_accessibility_service.xml) | 当前只声明窗口状态类事件，`onAccessibilityEvent` 为空；屏幕事件来源需要新增 |
-| 屏幕操作 | `ScreenOperation`、`operate` | 每次动作在主线程执行、动作后截图；点击只按文字匹配。程序路径需要不截图的读取和按节点点击入口 |
-| 运行环境 | libtermux-android、runtime | 已有 Node 与 Shell；程序进程以应用 UID 运行在其中 |
+| 屏幕操作 | `ScreenOperation`、`operate` | 每次动作在主线程执行、动作后截图；点击只按文字匹配。程序需要不截图的读取和按节点点击入口 |
+| 运行环境 | libtermux-android、runtime | 已有 Node 24 与 Shell；程序后台进程以应用 UID 运行其中 |
 | 本地模型服务 | [本地模型设计](local-model-runtime.md) | 独立进程与鉴权 HTTP 契约不变，不依赖程序平台 |
 
 “已有基础”只表示存在代码路径。程序路径的调用、事件来源和机型兼容必须分别验收。
 
-## 能力模型
+## 3. 程序
 
-### 五类能力
-
-| 类型 | 含义 | 示例 |
-| --- | --- | --- |
-| query | 读取当前状态或数据 | 当前窗口、电量、日历列表 |
-| command | 一次可能有副作用的操作 | 点击、发送短信、写文件 |
-| event | 状态或数据变化 | 窗口变化、充电状态变化、定时到期 |
-| session | 开始、持续、关闭一组资源 | 录音、持续定位 |
-| handoff | 交给系统或用户继续完成 | 文件选择器、打开拨号界面 |
-
-能力使用稳定的领域 ID，例如 `screen.read`、`screen.click`、`screen.window`、`sms.send`。它与聊天草稿引用 `plugin:device:` 是两套身份，不互相替换含义。
-
-### 能力描述
-
-每个已实现的能力由宿主登记以下信息，并据此生成 SDK 类型、能力目录、校验和界面摘要：
-
-| 字段 | 用途 |
-| --- | --- |
-| id、version、kind | 稳定身份、契约版本和能力类型 |
-| inputSchema、outputSchema | 参数和结果结构，包括资源引用 |
-| prerequisites | 最低系统版本、硬件、系统权限或系统服务 |
-| scope | 可以限制的范围，如目标应用、联系人集合、目录 |
-| sideEffects | 是否读取、写入、发送、删除或控制其他应用 |
-| interaction | 是否需要用户交接或现有专项确认 |
-| cancellation、timeout | 能否中止已派发操作，期限与结果不明的处理 |
-| limits | 大小、频率、并发和持续时间限制 |
-| availability | 当前是否可用及原因 |
-
-可用性至少区分：未实现、设备不支持、缺少系统权限、被全局开关关闭、程序未获授权、事件来源断开、需要用户交接、当前条件不满足、可用。未实现的能力不出现在目录里，也不提供空处理器。
-
-### 首批能力
-
-首批只把已有执行器接入程序路径，再补齐屏幕事件需要的入口：
-
-| 能力 | 类型 | 来源 |
-| --- | --- | --- |
-| `screen.read` | query | 新增：返回当前窗口的包名、窗口类名和节点（viewId、类名、文字、描述、可点击、可见、按显示比例的边界），不截图 |
-| `screen.click` | command | 新增：在一次新鲜读取中按节点描述点击唯一目标；多个目标时拒绝 |
-| `screen.tap`、`screen.type`、`screen.back`、`screen.home` | command | 复用现有动作 |
-| `screen.window` | event | 新增：窗口状态和内容变化，见 [屏幕事件](#屏幕事件) |
-| `sms.list`、`sms.send` | query、command | 复用；发送分别报告提交和发送结果 |
-| `contacts.*`、`calendar.*` | query、command | 复用现有读写 |
-| `clipboard.read`、`clipboard.write` | query、command | 复用，仅前台可用的限制如实报告 |
-| `location.current`、`sensors.sample` | query | 复用单次采样 |
-| `notify.show` | command | 新增：以 mobby 的通知发布程序结果，带程序身份 |
-| `time.schedule` | event | 新增：单次或周期定时，见 [定时](#定时) |
-| `storage.*`、`office.*` | query、command | 复用授权目录与工作区内的读写 |
-
-相机、麦克风继续保留现有可见采集与确认流程，作为 handoff 接入。通知读取、蓝牙、后台定位等列入后续候选，需单独设计授权和真机验收。
-
-### 平台基础能力
-
-除手机能力外，底座还提供编写一般程序需要的基础能力。它们和手机能力一样登记在能力注册表中，走同一套权限、记录和配额：
-
-| 能力 | 类型 | 说明 | 授权范围 |
-| --- | --- | --- | --- |
-| `storage.kv` | query、command | 程序私有的键值存储 | 无范围，受配额限制 |
-| `storage.files` | query、command | 程序私有目录中的文件读写、列表、删除 | 仅本程序目录，受配额限制 |
-| `storage.sql` | query、command | 每个程序一个独立 SQLite 数据库，参数化查询与事务 | 仅本程序数据库，受配额限制 |
-| `net.http` | command | HTTP/HTTPS 请求，支持流式下载上传和取消 | 允许的域名与方法；记录域名、方法、状态码和流量 |
-| `net.websocket` | session | WebSocket 连接 | 允许的域名；连接作为会话管理 |
-| `secrets` | command | 加密保存程序凭据；程序可以写入和按名称引用，不能读回明文 | 凭据名称及其允许发往的域名 |
-| `config` | query | 读取用户在程序中心填写的配置 | 无范围 |
-| `ai.call` | command | 经 mobby 现有网关调用模型 | 允许的模型；次数和费用上限 |
-| `ui` | command、event | 打开程序界面；界面与后台逻辑互发消息 | 无范围 |
-| `entry` | event | 分享、桌面快捷方式、通知按钮触发程序 | 用户为程序启用的入口 |
-| `log` | command | 写入运行记录 | 长度与频率限制 |
-
-- 数据库、文件和键值数据属于程序自己，与程序包分开存放；删除程序时由用户选择是否一并删除。
-- 网络请求由 mobby 经 Android 网络栈发出：只允许授权域名，重定向后的域名重新检查；请求体和响应大小、超时都有上限；大文件以资源引用交给程序，不整体放进内存。
-- 程序要在请求中使用凭据时，只写凭据名称，由 mobby 在发出请求时填入；凭据只会发往绑定的域名，不出现在运行记录和日志中。
-- 配置在清单中声明字段、类型、默认值和是否必填；敏感配置字段保存为凭据。必填配置缺失时程序显示为“需要配置”。
-- `ai.call` 使用用户已经配置的网关，网关密钥不对程序开放；请求遵循现有网关的协议和桥接规则，每个程序有次数和费用上限，调用记录写入运行记录。
-- `ui` 的界面由程序自带的网页实现，在 mobby 的 WebView 中运行，见 [程序界面](#程序界面)。
-- `entry` 只使用 mobby 随 APK 声明的固定入口组件，按程序 ID 分发；安装程序不能动态增加 Manifest 组件或权限。
-
-## 程序
-
-### 程序包
+### 3.1 程序包
 
 ```text
-<workspace>/programs/<program-id>/
+~/workspace/programs/<program-id>/
   manifest.json
-  main.js          后台逻辑（Node）
-  ui/
-    index.html     界面（WebView）
+  main.js            后台逻辑（Node），可选
+  ui/                界面（WebView），可选
+    index.html
     app.js、样式与图片
   其他模块、资源与 README.md
 ```
 
 一个程序由两部分组成，至少有其中一部分：
 
-- 后台逻辑：普通 JavaScript（Node）代码，处理事件、定时和耗时任务，由 mobby 按需拉起。
+- 后台逻辑：普通 JavaScript（Node）代码，处理事件、定时、界面发来的请求和耗时任务，由 mobby 按需拉起。
 - 界面：普通网页（HTML、CSS、JavaScript），用户打开程序时在 mobby 的 WebView 中显示。
 
 依赖须随包提供，安装和启用不执行任何安装钩子。TypeScript、前端框架等需要构建的代码在打包前构建好。
 
-### 清单
+### 3.2 清单
 
 ```json
 {
   "schema": "mobby.program/1",
-  "id": "my-program",
+  "id": "price-watch",
   "version": "1.0.0",
-  "name": "我的程序",
+  "name": "价格提醒",
   "background": "main.js",
   "ui": {"entry": "ui/index.html"},
   "permissions": [
-    {"capability": "screen.read", "required": true, "scope": {"packages": ["com.example.app"]}},
-    {"capability": "screen.click", "required": false, "scope": {"packages": ["com.example.app"]}},
-    {"capability": "net.http", "required": false, "scope": {"domains": ["api.example.com"], "methods": ["GET"]}}
+    {"capability": "net.http", "required": true, "scope": {"domains": ["api.example.com"], "methods": ["GET"]}},
+    {"capability": "storage.sql", "required": true},
+    {"capability": "notify.show", "required": false}
   ],
   "config": [
     {"key": "threshold", "type": "number", "required": true, "label": "提醒阈值"},
-    {"key": "apiToken", "type": "secret", "required": false, "label": "接口令牌", "domains": ["api.example.com"]}
+    {"key": "apiToken", "type": "secret", "required": true, "label": "接口令牌", "domains": ["api.example.com"]}
   ],
   "subscriptions": [
-    {"id": "app-window", "event": "screen.window", "filter": {"packages": ["com.example.app"]}, "handler": "onWindow"}
+    {"id": "hourly", "event": "time.schedule", "filter": {"every": "PT1H"}, "handler": "onSchedule"}
   ]
 }
 ```
@@ -180,143 +100,173 @@ mobby 只提供基础能力：把手机能力登记成可调用的接口，提�
 - `background` 和 `ui` 至少声明一个；只有界面的程序不会在后台运行。
 - `permissions` 是申请，不是授予；`required` 表示缺少时程序不能工作。
 - `config` 声明用户在程序中心填写的配置；`secret` 类型的值作为凭据保存，程序只能按名称引用。
-- `subscriptions` 声明持久订阅；程序运行时也可以通过 API 增删订阅，但不能超出已授予的范围。
+- `subscriptions` 声明持久订阅；程序运行时也可以增删订阅，但不能超出已授予的范围。
 - 未知字段、未知能力、越界范围在安装时拒绝，不静默忽略。
 
-### SDK 示例
+### 3.3 SDK 示例
 
-以下是拟议用法。用户想跳过开屏广告时，可以自己写类似的程序：
+后台逻辑：
 
 ```javascript
 const mobby = require("mobby");
 
-mobby.on("onWindow", async (event, ctx) => {
-  const window = await mobby.screen.read();
-  if (window.packageName !== "com.example.app") return;
-  const skip = window.nodes.filter(n => n.visible && /^跳过\s*\d*$/.test(n.text ?? "") && n.bounds.top < 0.2);
-  if (skip.length !== 1) return;
-  const result = await mobby.screen.click({ viewId: skip[0].viewId, text: skip[0].text });
-  await ctx.log({ clicked: result.accepted });
-});
+async function refresh() {
+  const { threshold } = await mobby.config.get();
+  await mobby.sql.execute("CREATE TABLE IF NOT EXISTS price(at INTEGER, value REAL)");
+  const response = await mobby.net.fetch("https://api.example.com/price", {
+    headers: { Authorization: "Bearer {{secret:apiToken}}" },
+  });
+  const { price } = await response.json();
+  await mobby.sql.execute("INSERT INTO price(at, value) VALUES (?, ?)", [Date.now(), price]);
+  if (price < threshold) await mobby.notify.show({ title: "价格低于阈值", body: String(price), openUi: true });
+  await mobby.ui.post({ type: "updated" });
+}
 
-const permissions = await mobby.permissions.list();
-await mobby.notify.show({ title: "已启动", body: JSON.stringify(permissions.map(p => p.state)) });
+mobby.on("onSchedule", refresh);
+mobby.on("ui.message", async (message) => {
+  if (message.type === "refresh") await refresh();
+});
 ```
 
-界面一侧使用同名 SDK，由 mobby 注入页面：
+界面（`ui/index.html` 引用 `<script type="module" src="app.js">`，SDK 由 mobby 提供）：
 
-```html
-<script src="/_mobby/sdk.js"></script>
-<script>
-  const rows = await mobby.sql.query("SELECT * FROM item ORDER BY price");
-  render(rows);
-  document.querySelector("#refresh").onclick = () => mobby.ui.send({ type: "refresh" });
-  mobby.ui.onMessage(message => { if (message.type === "updated") location.reload(); });
-</script>
+```javascript
+import mobby from "/_mobby/sdk.js";
+
+const rows = await mobby.sql.query("SELECT at, value FROM price ORDER BY at DESC LIMIT 50");
+render(rows);
+document.querySelector("#refresh").onclick = () => mobby.ui.send({ type: "refresh" });
+mobby.ui.onMessage((message) => { if (message.type === "updated") location.reload(); });
 ```
 
 SDK 不隐藏失败：缺权限、目标不唯一、超时、取消、效果不明都以明确错误返回。
 
-### 程序界面
+### 3.4 程序界面
 
-- 用户从程序中心、通知按钮或快捷方式打开程序时，mobby 在全屏页面的 WebView 中加载程序的 `ui.entry`。
-- 页面只能加载程序自己的文件，每个程序有独立的页面地址；不能直接访问 `file://`、其他程序的文件或任意网站。
+- 用户从程序中心或程序发出的通知打开界面，mobby 在全屏页面中用 WebView 加载程序的 `ui.entry`。顶部固定显示 mobby 的标题栏（程序名称、返回、停止），程序不能隐藏。
+- 页面只能加载程序自己的文件，每个程序有独立的页面地址；不能访问 `file://`、其他程序的文件或任意网站。脚本必须是程序包内的文件，不执行内联脚本。
 - 页面联网只能经 `mobby.net.fetch`，因此同样按域名授权、受凭据规则约束并写入运行记录；页面直接发出的外部请求会被拒绝。
-- 页面调用能力与后台逻辑使用同一套权限，身份是该程序；界面独有的交接类能力（选择文件、拍照）需要用户在页面中操作才能发起。
-- 界面与后台通过 `mobby.ui.send` 和 `ui.message` 事件互发消息：界面发出的消息会在需要时拉起后台运行；后台可以向已打开的界面推送消息。消息大小有上限。
-- 关闭页面即结束界面；界面打开不会让后台运行一直存活。页面不能弹出新窗口，外部链接需要用户确认后在浏览器中打开。
+- 页面调用能力与后台逻辑使用同一套权限，身份是该程序。选择文件、拍照这类交接能力需要用户在页面中操作才能发起。
+- 界面与后台互发消息：界面的 `mobby.ui.send` 会在需要时拉起后台运行；后台的 `mobby.ui.post` 推送给已打开的界面。消息大小有上限。
+- 关闭页面即结束界面；界面打开不会让后台运行一直存活。页面不能弹出新窗口，外部链接经用户确认后在浏览器中打开。
 - 网页代码运行在系统 WebView 的隔离渲染进程中，不能直接读写文件或调用系统接口，比后台 Node 代码受到更严格的约束。
 
-### 生命周期
+### 3.5 生命周期与状态
 
-- 安装：校验包结构、清单、路径（不允许路径穿越和符号链接）与大小，复制到应用私有目录并记录校验和。新程序默认暂停。
+- 安装：校验包结构、清单、路径（不允许路径穿越和符号链接）与大小，复制到应用私有目录并记录校验和。程序从安装副本运行，工作区的后续修改需要重新安装才生效。新程序默认暂停。
 - 启用与暂停：暂停后不再接收新事件；运行中的进程按用户选择继续到结束或立即停止。
 - 停止当前运行：结束该程序正在运行的进程和尚未派发的调用；已交给系统的操作保留实际回执。
 - 停止全部：暂停所有程序并结束所有运行。
 - 更新：新版本单独校验；新增或扩大的权限需要用户另行授予，不自动继承。
 - 删除：注销订阅、结束运行、撤销授权；程序私有数据由用户选择是否一并删除，工作区原始文件保留。
 
-### 运行模型
+程序的用户状态（已启用、已暂停）与当前可用性分开显示。可用性取值：可工作、已暂停、需要配置、缺少系统权限、被全局开关关闭、缺少程序权限、事件来源断开。
+
+### 3.6 运行模型
 
 - 事件、定时或界面消息触发时，mobby 拉起程序的后台进程并调用对应 handler；进程有运行期限，期满或空闲后结束。
-- 同一订阅在进程存活期间的后续事件直接送达该进程，不重复拉起；这让屏幕这类连续事件可以在一次运行内处理。
-- 并发、队列和期限有上限，具体数值经真机测定后写入配置。
+- 每个运行中的程序是一个独立的 Node 进程，多个程序可以同时运行。同一程序同一时间最多一个运行，期间的后续事件直接送达该进程。
+- 同时运行的程序数、运行期限、排队长度都有上限；超出时新触发排队，过期的触发记为丢弃并写明原因。
+- Android 12 起系统会限制应用派生的子进程，数量过多或后台持续占用 CPU 时可能被系统结束。并发上限要低于这个限制；被系统结束的运行如实记为“被系统结束”。
 - 进程退出不等于业务成功；运行记录分别保存触发、每次能力调用的受理、派发、回执和最终状态。
 - 应用进程重启后不重放旧事件，也不重复派发结果不明的操作。
 
-## 手机 AI 编写程序
+## 4. 能力
 
-目标是让用户在 mobby 的对话里说出需求，由手机上的 AI 写出能在 mobby 里运行的程序。AI 负责编写、校验和试运行；安装、授权和启用始终由用户在程序中心完成。
+### 4.1 能力模型
 
-### 开发插件
+| 类型 | 含义 | 示例 |
+| --- | --- | --- |
+| query | 读取当前状态或数据 | 当前窗口、数据库查询、日历列表 |
+| command | 一次可能有副作用的操作 | 点击、发送短信、发起网络请求 |
+| event | 状态或数据变化 | 窗口变化、定时到期、界面消息 |
+| session | 开始、持续、关闭一组资源 | WebSocket、录音、持续定位 |
+| handoff | 交给系统或用户继续完成 | 文件选择器、拍照 |
 
-对话草稿中新增“程序开发”插件 `plugin:device:programs`。选中后，本轮 Agent 获得一个技能和以下命令，经现有的每轮设备桥接调用，随本轮结束失效：
+能力使用稳定的领域 ID，例如 `storage.sql`、`net.http`、`screen.click`。它与聊天草稿引用 `plugin:device:` 是两套身份，不互相替换含义。
 
-| 命令 | 作用 |
-| --- | --- |
-| `catalog` | 返回当前已实现能力的 ID、Schema、副作用、范围和本机可用性，以及 SDK 用法和程序包格式 |
-| `validate` | 校验工作区中的程序包：清单、权限申请、订阅、入口和文件；返回逐项问题 |
-| `dry-run` | 试运行程序，见下文 |
-| `records` | 读取用户在本轮对话中附加的程序的运行记录与错误 |
+每个已实现的能力登记：ID、版本、类型、参数与结果 Schema、前置条件、授权范围类型、副作用、是否需要用户交接、取消与超时、限额和当前可用性。SDK 类型、能力目录和开发技能都由这份登记生成；未实现的能力不出现在目录中，也不提供空处理器。
 
-技能内容由能力注册表生成，与实际实现保持一致；未实现的候选能力不写进技能，AI 不能凭空调用。
+能力的可用性至少区分：未实现、设备不支持、缺少系统权限、被全局开关关闭、程序未获授权、事件来源断开、需要用户交接、当前条件不满足、可用。
 
-### 编写与自测
+### 4.2 平台基础能力
 
-1. AI 用 `catalog` 了解可用能力，需要屏幕信息时在本轮已选中屏幕插件的前提下读取真实页面。
-2. AI 把程序写到 `~/workspace/programs/<program-id>/`。
-3. AI 调用 `validate`，根据问题修改，直到通过。
-4. AI 调用 `dry-run` 检查逻辑：
-   - 事件来自 AI 提供的模拟事件，结果中明确标注为模拟。
-   - 查询类能力只能读取本轮对话已选中插件允许的数据。
-   - 命令类能力不派发，只记录“将要调用”的能力和参数，返回 `SIMULATED`。
-   - 试运行有期限，结束后清理进程和临时数据。
-5. AI 向用户说明程序的用途、申请的权限、注册的事件和试运行结果，并提示到程序中心安装。
+| 能力 | 类型 | 说明 | 授权范围 | 阶段 |
+| --- | --- | --- | --- | --- |
+| `storage.kv` | query、command | 程序私有的键值存储 | 配额 | 1 |
+| `storage.files` | query、command | 程序私有目录中的文件读写、列表、删除 | 仅本程序目录，配额 | 1 |
+| `storage.sql` | query、command | 每个程序一个独立 SQLite 数据库，参数化查询与事务 | 仅本程序数据库，配额 | 1 |
+| `net.http` | command | HTTP/HTTPS 请求，支持流式上传下载和取消 | 域名与方法 | 1 |
+| `secrets` | command | 加密保存程序凭据；可写入、按名称引用，不能读回明文 | 凭据名称及允许发往的域名 | 1 |
+| `config` | query | 读取用户在程序中心填写的配置 | 无 | 1 |
+| `notify.show` | command | 以 mobby 的通知发布程序消息，可带“打开界面”按钮 | 无 | 1 |
+| `time.schedule` | event | 单次或周期定时 | 无 | 1 |
+| `ui` | command、event | 界面与后台互发消息 | 无 | 1 |
+| `log` | command | 写入运行记录 | 长度与频率 | 1 |
+| `net.websocket` | session | WebSocket 连接 | 域名 | 2 |
+| `ai.call` | command | 经 mobby 已配置的网关调用模型 | 模型；次数与费用上限 | 2 |
+| `entry` | event | 分享、桌面快捷方式触发程序 | 用户为程序启用的入口 | 2 |
 
-试运行通过不等于真机可用；程序在真实事件下的表现以安装后的运行记录为准。
+- 数据库、文件和键值数据属于程序自己，与程序包分开存放，各有配额；删除程序时由用户选择是否一并删除。
+- 网络请求由 mobby 经 Android 网络栈发出：只允许授权域名，重定向后的域名重新检查；拒绝访问本机和局域网地址；请求体、响应大小和超时有上限；大文件以文件引用交给程序。
+- 程序要在请求中使用凭据时只写凭据名称，由 mobby 在发出请求时填入；凭据只发往绑定的域名，不出现在运行记录和日志中。
+- 必填配置缺失时程序显示为“需要配置”，不接收事件。
+- `ai.call` 使用用户已经配置的网关，网关密钥不对程序开放；请求遵循现有网关的协议与桥接规则，每个程序有次数和费用上限。
+- `entry` 只使用 mobby 随 APK 声明的固定入口组件，按程序 ID 分发；安装程序不能动态增加 Manifest 组件或权限。
 
-### 用户确认
+### 4.3 手机能力
 
-- AI 不能安装、启用程序，也不能授予、扩大权限或恢复订阅；这些只能在程序中心由用户操作。
-- 程序中心安装前展示程序来源目录、申请的权限与范围、订阅的事件和文件清单；用户确认后才复制安装，新程序默认暂停。
-- 本轮对话中选中的设备插件权限不会转给程序；程序只拥有用户在程序中心授予的权限。
+| 能力 | 类型 | 来源 | 阶段 |
+| --- | --- | --- | --- |
+| `sms.list`、`sms.send` | query、command | 复用现有动作；发送分别报告提交和发送结果 | 1 |
+| `contacts.*`、`calendar.*` | query、command | 复用现有读写 | 1 |
+| `clipboard.read`、`clipboard.write` | query、command | 复用；仅前台可用的限制如实报告 | 1 |
+| `location.current`、`sensors.sample` | query | 复用单次采样 | 1 |
+| `device.storage.*`、`office.*` | query、command | 复用授权目录与工作区内的读写 | 1 |
+| `screen.read` | query | 新增：当前窗口的包名、窗口类名和节点（viewId、类名、文字、描述、可点击、可见、按显示比例的边界），不截图 | 2 |
+| `screen.click` | command | 新增：在一次新鲜读取中按节点描述点击唯一目标；多个目标时拒绝 | 2 |
+| `screen.tap`、`screen.type`、`screen.back`、`screen.home` | command | 复用现有动作 | 2 |
+| `screen.window` | event | 新增：窗口状态和内容变化，见 [屏幕事件](#52-屏幕事件) | 2 |
 
-### 修改程序
+相机、麦克风保留现有可见采集与确认流程，作为界面中的交接能力接入。通知读取、蓝牙、后台定位等列入后续候选，需单独设计授权和真机验收。
 
-- 用户把某个已安装程序附加到对话（草稿引用 `plugin:program:<id>`）后，AI 可以用 `records` 读取它的运行记录和错误，在用户要求时修改工作区中的程序。
-- 修改后的程序要重新校验，并由用户在程序中心更新；新版本申请更大的权限时，新增部分需要用户另行授予。
-- AI 不会在失败后自动扩大权限或自行发布新版本。
+## 5. 事件
 
-## 事件系统
+### 5.1 订阅
 
-### 订阅
-
-- 宿主持久保存订阅：订阅 ID、程序、版本、事件类型、过滤范围、handler、用户暂停状态、最近触发时间和次数。
+- mobby 持久保存订阅：订阅 ID、程序、版本、事件类型、过滤范围、handler、用户暂停状态、最近触发时间和次数。
 - 事件在 Android 端先按类型和范围过滤，再交付；程序只收到授权范围内的事件。
 - 同一事件来源的系统监听范围取所有有效订阅的并集；没有消费者时释放可释放的监听。
 
-### 屏幕事件
+### 5.2 屏幕事件
 
-- 来源是现有无障碍服务。静态配置保持窗口状态类事件；有 `screen.window` 订阅时通过 `setServiceInfo` 动态增加内容变化事件，没有时恢复。
+- 来源是现有无障碍服务。静态配置保持窗口状态类事件；有 `screen.window` 订阅时动态增加内容变化事件，没有时恢复。
 - 无障碍回调只提取包名、类名、时间等元数据并投递到后台，不在回调中遍历节点或执行动作。
-- 服务由聊天和程序共用：不设置 `packageNames`，按包过滤在宿主内完成，避免影响聊天读取任意窗口。
-- 屏幕事件是瞬时观察，可以合并；程序读取和点击时必须重新读取当前窗口，不使用事件里的旧节点。
+- 服务由聊天和程序共用：不按包名限制服务，按包过滤在 mobby 内完成，避免影响聊天读取任意窗口。
+- 屏幕事件是瞬时观察，可以合并；程序读取和点击时必须重新读取当前窗口。
+- 屏幕派发由共用协调器管理：聊天中选中屏幕插件的会话优先，期间程序只能读取不能派发；同一时间只有一个程序派发屏幕动作。程序的屏幕调用不保持亮屏、不持有唤醒锁、不解锁。
 
-### 定时
+### 5.3 定时
 
-- 可延期任务使用 WorkManager，周期最短 15 分钟且受系统优化影响；精确定时仅在满足 AlarmManager 条件时使用。
-- 登记时说明精度、时区、错过策略（跳过或合并补一次）；不承诺进程停止期间的准时性。
+- 可延期任务使用 WorkManager，周期最短 15 分钟且受系统省电策略影响；精确定时仅在满足 AlarmManager 条件时使用。
+- 登记时说明精度、时区和错过策略（跳过或合并补一次）；不承诺应用被系统停止期间的准时性。
 
-## 权限管理
+### 5.4 平台事件
 
-### 四层控制
+- `ui.message`：界面发来的消息。
+- `config.changed`、`permission.changed`、`subscription.changed`：配置、权限或订阅变化。
+- `run.stopping`：运行将被结束（期限到、用户停止、撤权、删除）。
+
+## 6. 权限管理
+
+### 6.1 四层控制
 
 | 层 | 授予对象 | 管理入口 | 示例 |
 | --- | --- | --- | --- |
 | 系统权限 | mobby 应用 | Android 运行时授权与系统设置 | 无障碍服务、短信 |
-| 全局开关 | 所有程序的某项能力 | mobby 权限管理页 | 禁止任何程序发送短信 |
-| 程序权限 | 单个程序的单项能力及范围 | 程序详情的权限页 | 某程序只能读取和点击指定应用 |
-| 事件订阅 | 单个程序的单条订阅 | 程序详情的事件页 | 暂停某程序对某应用窗口变化的订阅 |
+| 全局开关 | 所有程序的某项能力 | mobby 权限管理页 | 禁止任何程序联网 |
+| 程序权限 | 单个程序的单项能力及范围 | 程序详情的权限页 | 某程序只能访问 `api.example.com` |
+| 事件订阅 | 单个程序的单条订阅 | 程序详情的事件页 | 暂停某程序的每小时定时 |
 
 一次调用要四层都允许才执行。每条程序权限记录能力、范围、开启或关闭、必需或可选、来源、授予时间、到期时间和修订号；每次调用在派发前核对最新修订号。
 
@@ -326,74 +276,81 @@ SDK 不隐藏失败：缺权限、目标不唯一、超时、取消、效果不�
 - 关闭全局开关时各程序的设置保留，重新打开后恢复。
 - 缺少系统权限时，权限管理页列出受影响的程序和能力，并提供跳转系统设置的入口；不在事件回调中弹窗。
 
-### 用户能看到什么
+### 6.2 用户能看到什么
 
 - 权限管理页按能力、按程序、按事件来源三个角度呈现：每项能力的系统状态、全局开关和持有它的程序；每个程序的权限、订阅和最近调用；每个事件来源的连接状态、订阅列表和实际监听范围。
-- 程序详情页列出程序申请和实际获得的权限、注册的每条事件订阅及其触发情况、运行记录。
+- 程序详情页列出申请和实际获得的权限、配置、注册的每条事件订阅及其触发情况、运行记录，并说明程序界面与后台逻辑的执行边界。
 
-### 程序能看到什么
+### 6.3 程序能看到什么
 
 - 程序只能查询自己的权限和订阅：状态、范围、必需与否、到期时间和不可用原因，不能查看或修改其他程序。
 - 程序不能自行开启或扩大权限；需要时提交申请，由用户在程序中心处理。
-- 权限或订阅变化时，宿主向该程序交付 `permission.changed`、`subscription.changed` 事件。
+- 权限、配置或订阅变化时，mobby 向该程序交付对应的平台事件。
 
-## 本地 API
+## 7. 执行边界
 
-- 程序入口为绑定 `127.0.0.1` 的鉴权 HTTP API，事件流使用 SSE。不监听局域网或互联网。
-- 每个运行实例获得范围受限、可撤销的临时凭据，由宿主在拉起进程时注入；程序身份由凭据确定，不相信请求中自报的 programId。凭据不进入 URL、日志或程序包。
-- 请求包含 schema、requestId、能力 ID、参数和期限；未知版本、未知参数和越权字段一律拒绝。宿主按 requestId 去重并在派发前持久化，重连时查询原操作，不用新 requestId 重发结果不明的操作。
-- 错误至少区分 `UNSUPPORTED`、`PERMISSION_DENIED`、`SCOPE_DENIED`、`SOURCE_DISCONNECTED`、`CONDITION_UNMET`、`USER_INTERACTION_REQUIRED`、`TARGET_NOT_UNIQUE`、`STALE_OBSERVATION`、`CANCELLED`、`TIMEOUT`、`EFFECT_UNKNOWN`。
+- 后台 Node 进程与 mobby、各 Agent 共享应用 UID，以应用沙箱为边界。mobby 的权限只约束经过 SDK 的调用：程序可以直接使用 Node 自带的 `fetch`、`node:sqlite`、`fs`，这些用法不受权限开关和域名范围控制，不进入运行记录，也不计入配额。开发技能要求 AI 使用 SDK；校验时对直接使用这些模块的代码给出提示，但提示不是强制隔离。程序中心必须如实说明这一点。
+- 程序界面运行在 WebView 的隔离渲染进程中，网络、文件和外部资源访问由 mobby 拦截，权限对界面是强制生效的。
+- 因此当前只支持用户自己信任的程序。若以后要运行他人编写的不可信程序，需要另行设计后台逻辑的隔离执行环境，并单独验证文件、网络、进程和凭据边界。
+- 网关密钥和真实用户配置不对程序开放，不写入程序包、日志或诊断。程序凭据使用独立的 Keystore 别名加密保存，不复用网关的 `mobby.gateway` 别名。
+- 屏幕、通知、网页、文件等内容是外部数据，不能作为指令扩大权限。
 
-| 入口 | 用途 |
+## 8. 手机 AI 编写程序
+
+### 8.1 开发插件
+
+对话草稿中新增“程序开发”插件 `plugin:device:programs`。选中后，本轮 Agent 获得一个技能和以下命令，经现有每轮设备桥接调用，随本轮结束失效：
+
+| 命令 | 作用 |
 | --- | --- |
-| `/v1/capabilities` | 调用者可见的能力、Schema 和实际可用性 |
-| `/v1/operations` | 调用能力、查询原操作和回执 |
-| `/v1/subscriptions` | 本程序的订阅登记、查询和注销 |
-| `/v1/events` | 本次运行可消费的事件流 |
-| `/v1/permissions` | 本程序的权限状态与权限申请 |
-| `/v1/storage` | 本程序的键值、文件和 SQLite 数据 |
-| `/v1/net` | 受管的 HTTP 请求与 WebSocket 会话 |
-| `/v1/secrets` | 写入和列出本程序凭据名称，不返回明文 |
-| `/v1/config` | 读取本程序配置 |
-| `/v1/ai` | 经网关调用模型 |
-| `/v1/ui` | 发布程序页面与结果 |
+| `catalog` | 当前已实现能力的 ID、Schema、副作用、范围和本机可用性，以及 SDK 用法、程序包格式与界面限制 |
+| `validate` | 校验工作区中的程序包：清单、权限申请、订阅、配置、后台入口和界面文件；界面检查内联脚本、外部资源引用等不被允许的写法；返回逐项问题 |
+| `dry-run` | 试运行后台逻辑，见下文 |
+| `records` | 读取用户在本轮对话中附加的程序（草稿引用 `plugin:program:<id>`）的运行记录与错误 |
 
-聊天桥接的 `mobby.device/1` 协议和端口保持不变，不在同一端口混用 HTTP。
+技能内容由能力注册表生成，与实际实现保持一致；AI 不能凭空调用未实现的能力。
 
-## 执行边界
+### 8.2 编写与自测
 
-- 程序进程与 mobby、各 Agent 共享应用 UID，以应用沙箱为边界。mobby 的权限层只约束经过本地 API 的调用，不能阻止同 UID 代码绕过 SDK 读取可访问文件或另开网络连接。程序中心必须如实说明这一点。
-- 具体来说，程序可以直接使用 Node 自带的 `fetch`、`node:sqlite` 和 `fs`。这些用法不经过 mobby：不受权限开关和域名范围控制，不出现在运行记录中，也不计入配额。开发技能要求 AI 使用 SDK 提供的对应能力；校验时对直接使用 Node 网络、文件和数据库模块的代码给出提示，但提示不是强制隔离。
-- 因此当前只支持用户自己信任的程序。若以后要运行他人编写的不可信程序，需要另行设计隔离执行环境，并单独验证文件、网络、进程和凭据边界。
-- 网关密钥和真实用户配置不对程序开放，不写入程序包、日志或诊断。
-- 屏幕、通知、文件等内容是外部数据，不能作为指令扩大权限。
+1. AI 用 `catalog` 了解可用能力。
+2. AI 把程序写到 `~/workspace/programs/<program-id>/`。
+3. AI 调用 `validate`，根据问题修改，直到通过。
+4. AI 调用 `dry-run` 检查后台逻辑：
+   - 事件来自 AI 提供的模拟事件，结果明确标注为模拟。
+   - 查询类手机能力只能读取本轮对话已选中插件允许的数据；存储能力使用试运行专用的临时数据，结束后删除。
+   - 命令类能力和网络请求不真正发出，只记录“将要调用”的能力和参数，返回 `SIMULATED`。
+   - 试运行有期限，结束后清理进程和临时数据。
+5. AI 向用户说明程序的用途、申请的权限、需要的配置、注册的事件和试运行结果，并提示到程序中心安装。
 
-## 并发与协调
+试运行不覆盖界面的实际显示；界面在安装后由用户打开验证。试运行通过不等于真机可用，程序在真实事件下的表现以运行记录为准。
 
-- 屏幕派发由共用协调器管理：聊天中选中屏幕插件的 run 优先，期间程序只能读取不能派发；同一时间只有一个程序派发屏幕动作。
-- 程序的屏幕调用不保持亮屏、不持有唤醒锁、不解锁。
-- 相机、麦克风、持续定位等使用可关闭的资源租约，绑定程序和运行实例；取消、撤权、删除时统一释放。
+### 8.3 用户确认与修改
 
-## 数据
+- AI 不能安装、启用程序，不能授予或扩大权限，不能填写凭据，也不能恢复订阅；这些只能在程序中心由用户操作。
+- 程序中心安装前展示程序来源目录、文件清单、申请的权限与范围、配置字段和订阅；用户确认后才复制安装。
+- 本轮对话中选中的设备插件权限不会转给程序；程序只拥有用户在程序中心授予的权限。
+- 用户附加程序后，AI 可以读取它的运行记录，在用户要求时修改工作区中的程序；修改后需重新校验，由用户在程序中心更新。
 
-- 新建独立开发数据库 `programs.db`，保存程序、版本、权限、订阅、全局开关、运行和调用记录；开发阶段结构变化直接重建，不写迁移。
-- 程序业务数据（键值、文件、SQLite）与程序包分开存放，由 `/v1/storage` 访问；每个程序有独立配额。
-- 程序凭据使用独立的 Keystore 别名加密保存，不复用网关的 `mobby.gateway` 别名。
-- 记录默认保存身份、来源、状态、错误和耗时，不长期保存整页文字、短信正文或截图；保留条数和期限设上限。
+## 9. 数据
 
-## 实施顺序
+- 新建独立开发数据库 `programs.db`，保存程序、版本、权限、配置、订阅、全局开关、运行和调用记录；开发阶段结构变化直接重建，不写迁移。
+- 程序业务数据（键值、文件、SQLite）与程序包分开存放，每个程序有独立配额。
+- 记录默认保存身份、来源、状态、错误和耗时，不长期保存网络请求与响应正文、整页文字、短信正文或截图；保留条数和期限设上限。
+
+## 10. 实施阶段
 
 | 阶段 | 交付 | 验收 |
 | --- | --- | --- |
-| 1. 底座 | 能力注册表；本地 API、SDK 与运行实例凭据；程序包安装、启停、删除；程序进程运行时；权限四层与程序自查；订阅持久化；程序中心与权限管理页；运行记录；程序开发插件（`catalog`、`validate`、`dry-run`、`records`）；平台基础能力 `storage.kv`、`storage.files`、`storage.sql`、`net.http`、`secrets`、`config`、`log`；`time.schedule` 与 `notify.show`；WebView 程序界面与 `ui` 消息 | 用户在 mobby 对话中让手机 AI 写一个带界面、使用数据库、网络和凭据的程序（例如后台定期拉取接口数据存入数据库并按条件通知，界面展示数据并可手动刷新），AI 完成校验与试运行，用户配置、安装、授权、运行、撤权与删除 |
-| 2. 屏幕与交互 | `screen.window` 与 `screen.read`、`screen.click`；屏幕协调器；`entry`、`net.websocket`、`ai.call` | 手机 AI 按用户需求写出的跳过开屏程序在真机上命中、点击并验证；撤权、暂停订阅、聊天并发和熄屏时不派发 |
-| 3. 扩展 | 按需求逐项增加通知读取、更多事件来源与能力 | 每项独立授权、接口与真机验收 |
+| 1. 底座 | 能力注册表；程序包安装、启停、更新、删除；后台运行时与 SDK；WebView 程序界面；本地接口；四层权限与程序自查；配置；订阅与事件路由；平台基础能力中标为阶段 1 的各项；复用的手机查询与命令能力；程序中心与权限管理页；运行记录；开发插件 | 用户在 mobby 对话中让手机 AI 写一个带界面的程序：后台每小时用凭据拉取接口数据存入数据库，低于阈值时通知；界面展示历史数据并可手动刷新。AI 完成校验与试运行，用户填写配置、安装、授权、运行、撤权与删除 |
+| 2. 屏幕与扩展交互 | `screen.window`、`screen.read`、`screen.click` 及复用的屏幕动作；屏幕协调器；`net.websocket`、`ai.call`、`entry` | 手机 AI 按用户需求写出的跳过开屏程序在真机上命中、点击并验证；撤权、暂停订阅、聊天并发和熄屏时不派发 |
+| 3. 后续能力 | 按需求逐项增加通知读取、更多事件来源与能力 | 每项独立授权、接口与真机验收 |
 
 每个阶段先为可复现缺陷写失败的回归测试，再修复；运行 [AGENTS.md](../../AGENTS.md) 中的检查，并分别记录真机验收结果。模拟事件和单元测试不能替代真机验收。
 
-## 需要实测确定的参数
+## 11. 需要实测确定的参数
 
-- 程序进程的启动耗时、运行期限、空闲退出时间和并发上限。
+- 后台进程的启动耗时、运行期限、空闲退出时间、同时运行上限，以及系统子进程限制的实际阈值。
+- 应用在后台时由定时或事件拉起子进程在各厂商系统上的稳定性，以及是否需要为程序运行增加前台服务。
 - 屏幕事件的合并间隔、读取节点数和深度上限。
-- 记录与程序数据的保留条数、期限和配额。
-- 各系统版本与厂商环境下，无障碍服务、定时和后台运行的实际行为。
+- 网络、存储、日志的大小与频率上限，记录的保留条数和期限。
+- 两台已连接手机的系统 WebView 版本对所需接口的支持情况。
