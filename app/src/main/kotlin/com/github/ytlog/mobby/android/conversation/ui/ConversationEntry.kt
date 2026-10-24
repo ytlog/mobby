@@ -990,6 +990,7 @@ internal fun capabilityLabel(ref: String): String {
         val identity = String(java.util.Base64.getUrlDecoder().decode(ref.removePrefix("plugin:appfunction:")), Charsets.UTF_8)
         AppStrings.appFunctions + " · " + identity.substringAfter('\n').substringAfterLast('#').substringAfterLast('.')
     }.getOrDefault(AppStrings.appFunctions)
+    if (ref.startsWith("plugin:program:")) return AppStrings.programChip + " · " + ref.removePrefix("plugin:program:")
     return when (ref.removePrefix("plugin:device:")) {
     "screen" -> AppStrings.screen
     "sms" -> AppStrings.sms
@@ -1007,6 +1008,7 @@ internal fun capabilityLabel(ref: String): String {
     "clipboard" -> AppStrings.clipboard
     "clipboard:write" -> AppStrings.writeToClipboard
     "office" -> AppStrings.officeDocuments
+    "programs" -> AppStrings.programDevelopment
     else -> ref.split(':').getOrNull(3) ?: AppStrings.skills
 }
 }

@@ -1022,6 +1022,7 @@ open class StringCatalog(private val fixedLanguage: AppLanguage? = null) {
     val reopen get() = text("重新打开", "Reopen")
     val stopProgram get() = text("停止", "Stop")
     val programDevelopment get() = text("程序开发", "Program development")
+    val programChip get() = text("程序", "Program")
     val programDevelopmentSummary get() = text("让 AI 编写、校验和试运行在 mobby 里运行的程序", "Let the AI write, validate and dry-run programs that run in mobby")
     fun modifyProgramPrompt(name: Any?, id: Any?) = text("请帮我修改程序「{0}」（{1}）。先用 records 查看它的运行记录和错误，再修改 ~/workspace/programs 下的程序文件，完成 validate 和 dry-run 后告诉我改了什么。需求：",
         "Please help me change the program \"{0}\" ({1}). Read its runs and errors with records first, then edit its files under ~/workspace/programs, run validate and dry-run, and tell me what changed. What I want:", name, id)
