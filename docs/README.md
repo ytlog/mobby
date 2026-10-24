@@ -28,6 +28,7 @@
 | [模型匹配与多源下载](design/local-model-downloads.md) | 按引擎选择 Hugging Face 模型、官方备用源与镜像、版本和文件校验、断点续传与下载 API |
 | [设备交互卡片实施](device-operation-implementation.md) | 独立协议与 Compose 模块、真实动作卡、取消恢复、资源归属与验收边界 |
 | [设备插件方案](design/device-plugins.md) | 设备能力插件：模块、引用、技能通道与权限隔离。旧的「使用当前手机」已替换 |
+| [Android 能力基座与自动化程序平台](design/android-capability-platform.md) | 面向 AI 编程的设备能力目录、持久事件、程序包、授权、运行协议与跳过开屏广告的分阶段设计 |
 | [手机操作历史与多步执行协议](design/device-workflow-memory.md) | 任务、步骤、前后观察、设备回执、验收、案例检索与逐步执行的设计提案 |
 | [应用功能方案](design/app-functions.md) | Android App Functions 的独立入口、发现、调用确认与验证边界 |
 | [Pi Agent](design/pi-agent.md) | 默认 Agent、固定运行依赖、RPC 会话、Responses 网关与验收 |
