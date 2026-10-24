@@ -131,6 +131,12 @@ class RunSupervisor(
         runId
     }
 
+    /** Delivers to a live run only; platform events never start a process. */
+    suspend fun deliverIfLive(programId: String, event: ProgramEvent): Boolean = lock.withLock {
+        val run = live[programId]?.takeIf { it.state != State.STOPPING && it.context.dryRun == null } ?: return@withLock false
+        deliver(run, event); true
+    }
+
     override fun resolve(credential: String): CallContext? = credentials[credential]?.let { run ->
         if (run.state == State.STOPPING) null else { touch(run); run.context }
     }
