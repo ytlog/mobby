@@ -70,9 +70,17 @@ class CapabilityCall(
 
 data class CapabilityOutcome(val effect: Effect, val result: JsonElement)
 
+/** What one call touches, so the grant's scope can be checked before dispatch. */
+data class CallScope(val packageName: String? = null, val host: String? = null, val method: String? = null,
+    val insecureHttp: Boolean = false, val model: String? = null) {
+    companion object { val NONE = CallScope() }
+}
+
 interface CapabilityHandler {
     val descriptor: CapabilityDescriptor
     fun availability(): Availability
+    /** Extracts the scope a call needs; throws [CapabilityException] for arguments that cannot be scoped. */
+    fun callScope(args: JsonObject): CallScope = CallScope.NONE
     suspend fun invoke(call: CapabilityCall): CapabilityOutcome
 }
 
