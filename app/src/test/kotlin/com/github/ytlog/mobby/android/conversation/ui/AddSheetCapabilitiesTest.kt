@@ -19,12 +19,18 @@ import org.robolectric.annotation.Config
 class AddSheetCapabilitiesTest {
     @get:Rule val compose = createComposeRule()
 
-    @Test fun `the add sheet offers device plugins and skills but not app functions`() {
+    @Test fun `the add sheet offers device plugins, program development and skills but not app functions`() {
         val opened = mutableListOf<AppPage>()
-        compose.setContent { Column { AddSheetCapabilities { opened += it } } }
+        compose.setContent { Column { AddSheetCapabilities(programs = true) { opened += it } } }
         compose.onAllNodesWithText(AppStrings.appFunctions).assertCountEquals(0)
         compose.onNodeWithText(AppStrings.devicePlugins).performClick()
+        compose.onNodeWithText(AppStrings.programDevelopment).performClick()
         compose.onNodeWithText(AppStrings.skills).performClick()
-        assertEquals(listOf(AppPage.PLUGINS, AppPage.SKILLS), opened)
+        assertEquals(listOf(AppPage.PLUGINS, AppPage.PROGRAMS, AppPage.SKILLS), opened)
+    }
+
+    @Test fun `program development is absent when the host has no program platform`() {
+        compose.setContent { Column { AddSheetCapabilities(programs = false) {} } }
+        compose.onAllNodesWithText(AppStrings.programDevelopment).assertCountEquals(0)
     }
 }

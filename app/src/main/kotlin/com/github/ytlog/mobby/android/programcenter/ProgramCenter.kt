@@ -38,8 +38,11 @@ private const val INSTALL = "install"
 private const val PERMISSIONS = "permissions"
 private const val DETAIL = "detail:"
 
-/** Program center: install, enable, grant, configure, stop and inspect programs; plus app-level permission management. */
-@Composable fun ProgramCenterPage(platform: ProgramPlatform, back: () -> Unit, modifyWithAi: (ProgramView) -> Unit = {}) {
+/**
+ * Program development, the single entry for programs: have the AI write one, install, enable, grant, configure,
+ * stop and inspect programs, plus app-level permission management.
+ */
+@Composable fun ProgramCenterPage(platform: ProgramPlatform, back: () -> Unit, writeNew: () -> Unit, modifyWithAi: (ProgramView) -> Unit = {}) {
     var route by rememberSaveable { mutableStateOf(LIST) }
     val programs by platform.programs.collectAsState(initial = emptyList())
     BackHandler(route != LIST) { route = LIST }
@@ -48,7 +51,7 @@ private const val DETAIL = "detail:"
         route == PERMISSIONS -> PermissionManagementPage(platform, programs) { route = LIST }
         route.startsWith(DETAIL) -> programs.firstOrNull { it.id == route.removePrefix(DETAIL) }
             ?.let { ProgramDetailPage(platform, it, modifyWithAi) { route = LIST } } ?: LaunchedEffect(route) { route = LIST }
-        else -> ProgramListPage(platform, programs, back, { route = DETAIL + it }, { route = INSTALL }, { route = PERMISSIONS })
+        else -> ProgramListPage(platform, programs, back, writeNew, { route = DETAIL + it }, { route = INSTALL }, { route = PERMISSIONS })
     }
 }
 
@@ -69,10 +72,12 @@ private const val DETAIL = "detail:"
 }
 
 @Composable private fun ProgramListPage(platform: ProgramPlatform, programs: List<ProgramView>, back: () -> Unit,
-    open: (String) -> Unit, install: () -> Unit, permissions: () -> Unit) {
+    writeNew: () -> Unit, open: (String) -> Unit, install: () -> Unit, permissions: () -> Unit) {
     val scope = rememberCoroutineScope()
-    Page(AppStrings.programCenter, back) {
+    Page(AppStrings.programDevelopment, back) {
         SettingsGroup {
+            SettingsItem(AppStrings.writeNewProgram, writeNew, AppStrings.writeNewProgramSummary)
+            GroupDivider()
             SettingsItem(AppStrings.installProgram, install)
             GroupDivider()
             SettingsItem(AppStrings.permissionManagement, permissions)

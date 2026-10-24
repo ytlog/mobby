@@ -915,8 +915,9 @@ open class StringCatalog(private val fixedLanguage: AppLanguage? = null) {
     val programNotifications get() = text("程序通知", "Program notifications")
 
     // Program platform: program center, permission management and program pages.
-    val programCenter get() = text("程序中心", "Programs")
-    val programCenterSummary get() = text("手机 AI 编写的程序、它们的权限、事件和运行记录", "Programs written by the phone AI, with their permissions, events and runs")
+    val programDevelopmentEntrySummary get() = text("让 AI 写程序，管理已安装的程序、权限和事件", "Have the AI write programs; manage installed programs, permissions and events")
+    val writeNewProgram get() = text("让 AI 写新程序", "Have the AI write a new program")
+    val writeNewProgramSummary get() = text("把程序开发加到当前对话，然后描述你要的程序", "Adds program development to this conversation; then describe the program you want")
     val programBoundary get() = text("程序界面在受限的网页环境中运行，权限对它强制生效。后台逻辑与 mobby 共享应用身份：权限只约束经过 mobby 接口的调用，请只安装你信任的程序。",
         "Program pages run in a restricted web view where permissions are enforced. Background logic shares mobby's app identity: permissions only govern calls made through mobby, so install only programs you trust.")
     val installProgram get() = text("安装程序", "Install program")

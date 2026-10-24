@@ -28,5 +28,11 @@ class AppNavigationStateTest {
     @Test fun settingsRouteBoundaryRejectsUnknownDestination() {
         assertEquals(AppPage.DIAGNOSTIC, AppPage.fromSettingsRoute("diagnostic"))
         org.junit.Assert.assertThrows(IllegalStateException::class.java) { AppPage.fromSettingsRoute("typo") }
+        org.junit.Assert.assertThrows(IllegalStateException::class.java) { AppPage.fromSettingsRoute("programs") }
+    }
+
+    @Test fun programDevelopmentOpensFromTheAddSheetAndReturnsToIt() {
+        val sheet = AppNavigationState().openAddSheet()
+        assertEquals(sheet, sheet.open(AppPage.PROGRAMS).back(gatewayFromIntro = false))
     }
 }

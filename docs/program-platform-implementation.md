@@ -18,7 +18,7 @@
 | 事件 | 订阅索引、平台事件、WorkManager 定时（每条订阅一个唯一任务） | `event/` |
 | 程序界面 | 每程序独立页面源、只读安装副本、内容安全策略、拒绝权限请求与弹窗、来源绑定的消息桥、固定标题栏 | `ui/`、`app/.../ProgramUiActivity.kt` |
 | SDK | 后台 `mobby` 与 `runner.cjs`、页面 `/_mobby/sdk.js` | `src/main/assets/program-sdk`、`program-ui-sdk` |
-| 程序中心 | 设置中的程序列表、安装预览、详情（权限、申请、配置、事件、运行与日志）、权限管理、让 AI 修改 | `app/.../programcenter/` |
+| 程序开发页 | 输入框“+”菜单中的“程序开发”是唯一入口：让 AI 写新程序、程序列表、安装预览、详情（权限、申请、配置、事件、运行与日志）、权限管理、让 AI 修改 | `app/.../programcenter/` |
 | 开发插件 | `plugin:device:programs` 的 `catalog`、`validate`、`dry-run`、`records`；`plugin:program:<id>` 附加程序 | `dev/`、`device/ProgramDevelopment.kt` |
 
 ## 验证
@@ -32,7 +32,7 @@
 
 用一个计数程序（后台 `main.js` 收到界面消息后写 `storage.sql`、`storage.kv`，请求 `https://api.github.com/zen`，记日志并回发界面）验证：
 
-- 经程序中心安装：预览列出申请的权限并提示需安装后授予；安装后为“已暂停”，授予三项权限并启用后变为“可工作”。
+- 经程序开发页安装：预览列出申请的权限并提示需安装后授予；安装后为“已暂停”，授予三项权限并启用后变为“可工作”。
 - 打开程序界面：页面 SDK 直接查询 `storage.sql`，表不存在时如实返回 `INVALID_ARGUMENT`。
 - 点按“加一”：每次界面消息拉起一个 Node 进程，计数 1→4 持续累加，覆盖安装后数据保留；`net.http` 返回 200 与正文；空闲后进程以退出码 0 结束，运行记录与日志一致。
 - 运行期间撤销 `net.http`：下一次网络调用返回 `PERMISSION_DENIED: program_off`，其他能力不受影响。

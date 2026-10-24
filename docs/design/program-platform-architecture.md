@@ -18,7 +18,7 @@
 ```mermaid
 flowchart TB
     subgraph App["app（主进程）"]
-        Center["程序中心 / 权限管理"]
+        Center["程序开发页 / 权限管理"]
         UiAct["ProgramUiActivity\nWebView"]
         Graph["AppGraph 组装"]
     end
@@ -63,7 +63,7 @@ flowchart TB
 
 1. 能力调用：后台经本地 HTTP、界面经 WebView 消息桥，进入同一条调用管线：认证调用方 → 校验参数 → 权限闸门 → 写操作记录 → 派发处理器 → 回执。
 2. 事件：事件来源 → 事件路由（订阅匹配、权限投影）→ 交给进行中的运行，或请求运行管理拉起后台进程。
-3. 开发：对话中的 Agent 经现有聊天设备桥接调用开发服务；安装、授权、配置只在程序中心进行。
+3. 开发：对话中的 Agent 经现有聊天设备桥接调用开发服务；安装、授权、配置只在程序开发页进行。
 
 ## 3. 模块
 
@@ -74,11 +74,11 @@ flowchart TB
 | `:program-platform`（新增） | `runtime/programs` | 注册表、调用管线、权限、程序存储与安装、运行管理、事件路由、平台基础能力、WebView 宿主逻辑、本地 HTTP、开发服务 | `device-plugins`、`runtime-api`、`localization` |
 | `:device-plugins`（扩展） | `runtime/device-plugins` | 公开执行入口、开发插件目录项与端口；阶段 2 的屏幕读取与点击、屏幕事件、屏幕协调器 | 不变：`runtime-api`、`localization` |
 | `:runtime-android`（扩展） | `runtime/android` | 后台进程启动器、SDK 安装；阶段 2 的模型网关端口 | 增加 `program-platform` |
-| `app`（扩展） | `app` | 组装；程序中心、权限管理、`ProgramUiActivity` | 增加 `program-platform` |
+| `app`（扩展） | `app` | 组装；程序开发页、权限管理、`ProgramUiActivity` | 增加 `program-platform` |
 
 依赖方向：`app → runtime-android → program-platform → device-plugins → runtime-api`。`device-plugins` 不依赖 `program-platform`；开发插件通过端口由 `app` 注入实现。
 
-源码包：`program-platform` 为 `com.github.ytlog.mobby.android.programs`；`app` 中的界面为 `com.github.ytlog.mobby.android.programcenter`。界面包可以复用 `conversation.ui` 的设置组件；`conversation.ui` 不引用程序平台，程序中心经 `ConversationHostActions` 注入的页面插槽进入设置导航。
+源码包：`program-platform` 为 `com.github.ytlog.mobby.android.programs`；`app` 中的界面为 `com.github.ytlog.mobby.android.programcenter`。界面包可以复用 `conversation.ui` 的设置组件；`conversation.ui` 不引用程序平台，程序开发页经 `ConversationHostActions` 注入的页面插槽进入导航，入口是输入框“+”菜单中的“程序开发”，返回时回到该菜单。
 
 ### 3.2 `:program-platform` 内部包
 
@@ -277,7 +277,7 @@ stateDiagram-v2
 ### 9.1 宿主
 
 - `ProgramUiActivity` 全屏显示 WebView，顶部固定 mobby 的标题栏（程序名称、返回、停止），程序不能隐藏。
-- 打开入口：程序中心，以及 `notify.show` 带“打开界面”动作的通知。阶段 2 增加分享与快捷方式。
+- 打开入口：程序开发页，以及 `notify.show` 带“打开界面”动作的通知。阶段 2 增加分享与快捷方式。
 - 每次打开生成界面会话 `uiSessionId`，关闭页面即结束。界面会话不延长后台运行。
 - 运行时检查 `WebViewFeature.WEB_MESSAGE_LISTENER`；不支持时不打开界面并提示更新系统 WebView。
 
@@ -355,7 +355,7 @@ data class ProgramEvent(
 ### 11.3 凭据
 
 - 使用独立 Keystore 别名 `mobby.programs` 的 AES-GCM 密钥加密，密文存入 `program_secret`；不复用 `mobby.gateway`。
-- 程序可以写入、列出名称、删除，不能读回明文；用户可以在程序中心填写。每个凭据绑定允许发往的域名，范围在该程序 `net.http` 授权之内。
+- 程序可以写入、列出名称、删除，不能读回明文；用户可以在程序开发页填写。每个凭据绑定允许发往的域名，范围在该程序 `net.http` 授权之内。
 - 请求头或查询参数中的 `{{secret:<name>}}` 在发出前替换；目标主机不在绑定域名内返回 `SCOPE_DENIED`。替换后的值不进入操作记录、日志和错误信息。远端在响应中回显凭据无法阻止，写入开发说明。
 
 ### 11.4 配置
@@ -388,11 +388,13 @@ data class ProgramEvent(
 
 - 路径必须位于默认工作区的 `programs/` 下，使用现有 `DevicePaths` 的包含检查。
 - 开发插件没有安装、启用、授权、填写凭据和恢复订阅的命令。
-- `plugin:program:<id>` 只能与开发插件一起出现在草稿中，运行时校验后把程序 ID 交给设备会话。程序中心的“让 AI 修改此程序”新建一个对话，预先选中开发插件并附加该程序，草稿中填好修改说明。
+- `plugin:program:<id>` 只能与开发插件一起出现在草稿中，运行时校验后把程序 ID 交给设备会话。程序开发页的“让 AI 修改此程序”新建一个对话，预先选中开发插件并附加该程序，草稿中填好修改说明。
 - 试运行把程序包复制到临时目录，用清单申请的权限运行一次后台逻辑；试运行使用独立的运行槽位，不影响该程序的正式运行；结束后删除复制的包、试运行存储与临时键值。
 
-## 13. 程序中心
+## 13. 程序开发页
 
+- 唯一入口：对话输入框“+”菜单（“添加内容与能力”）中的“程序开发”。设置页和设备插件列表都不再出现程序相关入口；开发插件 `plugin:device:programs` 仍是运行时的设备插件，只是不在插件列表中单独展示。
+- 页面顶部依次为“让 AI 写新程序”（把开发插件加到当前对话并回到对话）、“安装程序”和“权限管理”，下方是已安装程序列表；程序详情中有启用、打开程序界面、停止、让 AI 修改、删除，以及权限、配置、事件、运行记录和日志。
 - `ProgramCenterViewModel` 订阅平台的 `Flow`：程序与可用性、权限、配置、订阅、全局开关、系统权限状态、运行与调用记录。
 - 安装确认页展示来源目录、文件清单、权限申请与范围、配置字段、订阅，以及后台与界面的执行边界说明；确认后调用平台安装。
 - 配置表单按字段类型生成；凭据字段只能填写或替换，不显示已有值。
@@ -453,7 +455,7 @@ SDK 连接事件流即表示运行进入 `Running`；收到 `run.stopping` 后�
 | --- | --- |
 | `GET /v1/capabilities` | 本程序可见的能力、Schema 与可用性 |
 | `GET /v1/permissions` | 本程序的权限状态与原因 |
-| `POST /v1/permissions/requests` | 提交权限申请，等待用户在程序中心处理 |
+| `POST /v1/permissions/requests` | 提交权限申请，等待用户在程序开发页处理 |
 | `GET/POST/DELETE /v1/subscriptions` | 本程序订阅的查询、登记与注销 |
 | `GET/PUT/DELETE /v1/storage/files/{path}` | 私有文件流式读写；其余存储能力经 `/v1/operations` |
 | `POST /v1/ui/messages` | 后台向已打开的界面推送消息 |
@@ -540,7 +542,7 @@ sequenceDiagram
     participant A as 手机 AI
     participant B as 聊天设备桥接
     participant D as 开发服务
-    participant C as 程序中心
+    participant C as 程序开发页
     participant P as 平台
     U->>A: 描述需求，选中“程序开发”插件
     A->>B: catalog
@@ -610,7 +612,7 @@ sequenceDiagram
 | 局域网或网页访问本地 HTTP | 只绑定回环；拒绝带 `Origin` 头和非回环 `Host` 的请求；不开启 CORS |
 | 程序冒充其他程序 | 后台身份只来自运行凭据；界面身份只来自页面源与界面会话 |
 | 程序自行扩大权限或填写凭据 | 接口不提供授权与凭据读取；申请进入待处理列表；更新不自动扩大 |
-| 后台代码绕过 SDK | 无法阻止；程序中心说明；校验时提示；只支持用户信任的程序 |
+| 后台代码绕过 SDK | 无法阻止；程序开发页说明；校验时提示；只支持用户信任的程序 |
 | 界面访问网络、文件或其他程序 | 独立页面源；拦截非本源请求；内容安全策略；关闭文件与内容访问 |
 | 页面伪装成 mobby 或系统界面 | 固定标题栏显示程序名称和退出入口 |
 | 经受管网络访问本机或局域网 | 拒绝回环、链路本地、私有和组播地址；重定向逐跳检查 |
@@ -679,7 +681,7 @@ sequenceDiagram
 | 8 | 网络与凭据：`net.http`、`secrets`；`notify.show`、`log` | 5、7 |
 | 9 | 订阅、事件路由、`time.schedule`、平台事件 | 4、6 |
 | 10 | 程序界面：`ProgramUiHost`、`ProgramUiActivity`、界面 SDK、`ui` 消息 | 5、9 |
-| 11 | 程序中心、安装确认、配置表单、权限管理页 | 3、4、9、10 |
+| 11 | 程序开发页、安装确认、配置表单、权限管理页 | 3、4、9、10 |
 | 12 | 开发服务与聊天开发插件 | 3、6 |
 | 13 | 真机验收：方案文档第 10 节第一阶段的完整流程 | 全部 |
 

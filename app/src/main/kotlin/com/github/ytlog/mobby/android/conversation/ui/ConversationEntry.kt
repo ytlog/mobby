@@ -79,8 +79,8 @@ class ConversationHostActions(
     val gatewaySignIn: suspend () -> com.github.ytlog.mobby.android.conversation.domain.gateway.GatewaySignInResult = {
         com.github.ytlog.mobby.android.conversation.domain.gateway.GatewaySignInResult.Failed(AppStrings.gatewaySignInUnavailable)
     },
-    /** Hosted program center; hosts without one hide the entry. */
-    val programCenter: (@Composable (back: () -> Unit) -> Unit)? = null,
+    /** Hosted program development page; hosts without one hide the entry. `writeNew` attaches the plugin to the open conversation. */
+    val programCenter: (@Composable (back: () -> Unit, writeNew: () -> Unit) -> Unit)? = null,
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -233,14 +233,16 @@ class ConversationHostActions(
                             val page = AppPage.fromSettingsRoute(next)
                             if (page == AppPage.GATEWAY) { gatewayStartAdding = false; gatewayFromIntro = false }
                             navigate(page)
-                        }, { navigation = navigation.open(AppPage.CONVERSATION) }, vm, petEnabled, petPermitted, hostActions.pet,
-                            programs = hostActions.programCenter != null)
+                        }, { navigation = navigation.open(AppPage.CONVERSATION) }, vm, petEnabled, petPermitted, hostActions.pet)
                         AppPage.GATEWAY -> GatewayPage(vm, startAdding = gatewayStartAdding, signIn = hostActions.gatewaySignIn) { navigation = navigation.open(if (gatewayFromIntro) AppPage.CONVERSATION else AppPage.SETTINGS) }
                         AppPage.HISTORY_LIMITS -> EventHistoryPage(actions::eventHistoryLimits, actions::saveEventHistoryLimits) { navigation = navigation.open(AppPage.SETTINGS) }
                         AppPage.DIAGNOSTIC -> DiagnosticPage(vm) { navigation = navigation.open(AppPage.SETTINGS) }
                         AppPage.LICENSES -> LicensePage { navigation = navigation.open(AppPage.SETTINGS) }
                         AppPage.UPDATES -> updates?.let { AppUpdatePage(it) { navigation = navigation.open(AppPage.SETTINGS) } }
-                        AppPage.PROGRAMS -> hostActions.programCenter?.invoke { navigation = navigation.open(AppPage.SETTINGS) }
+                        AppPage.PROGRAMS -> hostActions.programCenter?.invoke({ navigation = navigation.openAddSheet() }) {
+                            selectPlugin(PROGRAM_DEVELOPMENT)
+                            navigation = navigation.open(AppPage.CONVERSATION)
+                        }
                         AppPage.ARCHIVED -> ArchivedPage(state, vm) { navigation = navigation.open(AppPage.SETTINGS) }
                         AppPage.SKILLS -> SkillsPage(vm, onBack = { navigation = navigation.openAddSheet() }, onConversation = { navigation = navigation.open(AppPage.CONVERSATION) })
                         AppPage.PLUGINS -> PluginPage(vm) { navigation = navigation.openAddSheet() }
@@ -284,7 +286,7 @@ class ConversationHostActions(
                                 if (target != null) { fileTarget = target.id.value; fileWorkspace = target.config.workspace; navigation = navigation.open(AppPage.CONVERSATION); filePicker.launch(arrayOf("*/*")) }
                             }
                         }
-                        AddSheetCapabilities { page -> navigation = navigation.open(page) }
+                        AddSheetCapabilities(programs = hostActions.programCenter != null) { page -> navigation = navigation.open(page) }
                         Spacer(Modifier.height(16.dp))
                     }
                 }
@@ -983,9 +985,15 @@ private fun Modifier.conversationEdgeFade(color: Color, topFade: Dp, bottomFade:
     )
 }
 
-/** App functions are hidden from the add sheet for now; their page and runtime support are kept. */
-@Composable internal fun AddSheetCapabilities(open: (AppPage) -> Unit) {
+internal const val PROGRAM_DEVELOPMENT = "plugin:device:programs"
+
+/**
+ * App functions are hidden from the add sheet for now; their page and runtime support are kept.
+ * Program development is the single entry for writing, installing, running and granting programs.
+ */
+@Composable internal fun AddSheetCapabilities(programs: Boolean, open: (AppPage) -> Unit) {
     CapabilityRow(AppStrings.devicePlugins, AppStrings.connectDeviceCapabilitiesToExpandYourTasks, AppIcons.Plugin) { open(AppPage.PLUGINS) }
+    if (programs) CapabilityRow(AppStrings.programDevelopment, AppStrings.programDevelopmentEntrySummary, AppIcons.Terminal) { open(AppPage.PROGRAMS) }
     CapabilityRow(AppStrings.skills, AppStrings.reuseExpertiseForSpecificTasks, AppIcons.Skill) { open(AppPage.SKILLS) }
 }
 

@@ -95,4 +95,22 @@ class PluginPageTest {
         compose.waitUntil(5_000) { compose.onAllNodesWithText("屏幕").fetchSemanticsNodes().isNotEmpty() }
     }
 
+    @Test fun `program development is not listed among device plugins`() {
+        val conversation = Conversation(ConversationId("c"), NextTurnConfig(AgentId.CODEX, "model", null, "default", "CODEX"))
+        val conversations = MutableStateFlow(ConversationState(loading = false, selected = ConversationDetail(conversation, emptyList())))
+        val programs = Plugin("plugin:device:programs", "程序开发", "让 AI 编写、校验和试运行在 mobby 里运行的程序", true, null, "phone", PluginAccess.NONE)
+        val system = stub<SystemPort> { name, _ -> when (name) {
+            "getStatus" -> flowOf(SystemStatus(true, true))
+            "getDiagnostic" -> flowOf(DiagnosticOutput(null, emptyList()))
+            "agents" -> emptyList<AgentOption>()
+            "gateways" -> emptyList<GatewayProfile>()
+            "plugins" -> DataResult.Loaded(listOf(plugin.copy(available = true, unavailableReason = null), programs))
+            else -> error(name)
+        } }
+        val repository = stub<ConversationStore> { name, _ -> if (name == "getState") conversations else error(name) }
+        val vm = ConversationViewModel(ConversationUseCases(repository, stub { name, _ -> error(name) }, system, { "id" }, CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate), stub { name, _ -> error(name) }))
+        compose.setContent { MaterialTheme { PluginPage(vm) {} } }
+        compose.waitUntil(5_000) { compose.onAllNodesWithText("屏幕").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("程序开发").assertDoesNotExist()
+    }
 }

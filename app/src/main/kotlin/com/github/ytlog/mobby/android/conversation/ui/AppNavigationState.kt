@@ -15,7 +15,6 @@ internal enum class AppPage {
             "archived" -> ARCHIVED
             "licenses" -> LICENSES
             "updates" -> UPDATES
-            "programs" -> PROGRAMS
             else -> error("Unknown settings destination: $route")
         }
     }
@@ -37,8 +36,8 @@ internal data class AppNavigationState(
     fun back(gatewayFromIntro: Boolean): AppNavigationState = when {
         addSheetOpen -> closeAddSheet()
         page == AppPage.GATEWAY -> open(if (gatewayFromIntro) AppPage.CONVERSATION else AppPage.SETTINGS)
-        page in setOf(AppPage.HISTORY_LIMITS, AppPage.DIAGNOSTIC, AppPage.ARCHIVED, AppPage.LICENSES, AppPage.UPDATES, AppPage.PROGRAMS) -> open(AppPage.SETTINGS)
-        page in setOf(AppPage.SKILLS, AppPage.PLUGINS, AppPage.APP_FUNCTIONS) -> openAddSheet()
+        page in setOf(AppPage.HISTORY_LIMITS, AppPage.DIAGNOSTIC, AppPage.ARCHIVED, AppPage.LICENSES, AppPage.UPDATES) -> open(AppPage.SETTINGS)
+        page in setOf(AppPage.SKILLS, AppPage.PLUGINS, AppPage.APP_FUNCTIONS, AppPage.PROGRAMS) -> openAddSheet()
         page == AppPage.PROJECTS -> open(projectsBackPage)
         else -> open(AppPage.CONVERSATION)
     }

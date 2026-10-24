@@ -82,7 +82,7 @@ class MainActivity : ComponentActivity() {
             catch (e: GatewayAuthorizationException) {
                 GatewaySignInResult.Failed(if (e.failure == GatewayAuthorizationFailure.TIMEOUT) AppStrings.gatewaySignInTimedOut else AppStrings.gatewaySignInFailed)
             } catch (_: Exception) { GatewaySignInResult.Failed(AppStrings.gatewaySignInFailed) }
-        }, programCenter = { back -> ProgramCenterPage(app.programs, back) { program ->
+        }, programCenter = { back, writeNew -> ProgramCenterPage(app.programs, back, writeNew) { program ->
             lifecycleScope.launch {
                 // The new chat starts from the selected conversation's agent and workspace.
                 val source = actions.state.first().let { state -> state.selected?.conversation?.id ?: state.conversations.firstOrNull()?.conversation?.id }
