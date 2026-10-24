@@ -418,7 +418,7 @@ Content-Type: application/json
 ```
 
 - `GET /v1/operations/{requestId}` 查询原操作，用于超时或断线后确认结果。
-- `status`：`succeeded`、`failed`、`cancelled`、`timeout`、`unknown`、`simulated`；`effect`：`none`、`confirmed`、`unknown`。
+- `status`：`succeeded`、`failed`、`cancelled`、`timeout`、`unknown`、`simulated`；`effect`：`none`、`submitted`、`partial`、`confirmed`、`unknown`。`submitted` 与 `partial` 保留设备执行器的原始事实，例如短信已交给系统但未确认发出。
 - 错误码至少包括 `UNSUPPORTED`、`PERMISSION_DENIED`、`SCOPE_DENIED`、`SOURCE_DISCONNECTED`、`CONDITION_UNMET`、`USER_INTERACTION_REQUIRED`、`TARGET_NOT_UNIQUE`、`STALE_OBSERVATION`、`REQUEST_CONFLICT`、`RESOURCE_MISSING`、`QUOTA_EXCEEDED`、`CANCELLED`、`TIMEOUT`、`EFFECT_UNKNOWN`。
 
 ### 14.2 后台事件流

@@ -40,6 +40,9 @@ internal class DeviceActionDefinition(val plugin: String, val action: String) {
         "office.write" -> mapOf("path" to 4000, "text" to 4000)
         else -> emptyMap()
     }
+    /** Argument names with their maximum lengths, and those that may be omitted. */
+    val arguments: Map<String, Int> get() = fields
+    val optionalArguments: Set<String> get() = if (plugin == "contacts" && action == "create") setOf("phone") else emptySet()
     fun validate(args: JsonObject): Map<String, String> {
         if (args.keys.any { it !in fields }) deviceFailure(DeviceErrorCode.INVALID_ARGUMENT, "Unknown action argument")
         val result = args.mapValues { (key, value) ->
@@ -48,7 +51,7 @@ internal class DeviceActionDefinition(val plugin: String, val action: String) {
                 deviceFailure(DeviceErrorCode.INVALID_ARGUMENT, "Invalid argument type")
             primitive.content.also { if (it.length > fields.getValue(key) || '\u0000' in it) deviceFailure(DeviceErrorCode.INVALID_ARGUMENT) }
         }
-        val optional = if (plugin == "contacts" && action == "create") setOf("phone") else emptySet()
+        val optional = optionalArguments
         if ((fields.keys - optional).any { it !in result || (result[it].isNullOrBlank() && !(plugin == "office" && it == "text")) })
             deviceFailure(DeviceErrorCode.INVALID_ARGUMENT, "Missing action argument")
         if ("id" in result && (result["id"]?.toLongOrNull()?.let { it >= 0 } != true)) deviceFailure(DeviceErrorCode.INVALID_ARGUMENT)
