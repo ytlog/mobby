@@ -284,9 +284,7 @@ class ConversationHostActions(
                                 if (target != null) { fileTarget = target.id.value; fileWorkspace = target.config.workspace; navigation = navigation.open(AppPage.CONVERSATION); filePicker.launch(arrayOf("*/*")) }
                             }
                         }
-                        CapabilityRow(AppStrings.devicePlugins, AppStrings.connectDeviceCapabilitiesToExpandYourTasks, AppIcons.Plugin) { navigation = navigation.open(AppPage.PLUGINS) }
-                        CapabilityRow(AppStrings.appFunctions, AppStrings.appFunctionsDescription, AppIcons.Plugin) { navigation = navigation.open(AppPage.APP_FUNCTIONS) }
-                        CapabilityRow(AppStrings.skills, AppStrings.reuseExpertiseForSpecificTasks, AppIcons.Skill) { navigation = navigation.open(AppPage.SKILLS) }
+                        AddSheetCapabilities { page -> navigation = navigation.open(page) }
                         Spacer(Modifier.height(16.dp))
                     }
                 }
@@ -983,6 +981,12 @@ private fun Modifier.conversationEdgeFade(color: Color, topFade: Dp, bottomFade:
         topLeft = Offset(0f, top),
         size = Size(size.width, bottomHeight),
     )
+}
+
+/** App functions are hidden from the add sheet for now; their page and runtime support are kept. */
+@Composable internal fun AddSheetCapabilities(open: (AppPage) -> Unit) {
+    CapabilityRow(AppStrings.devicePlugins, AppStrings.connectDeviceCapabilitiesToExpandYourTasks, AppIcons.Plugin) { open(AppPage.PLUGINS) }
+    CapabilityRow(AppStrings.skills, AppStrings.reuseExpertiseForSpecificTasks, AppIcons.Skill) { open(AppPage.SKILLS) }
 }
 
 internal fun capabilityLabel(ref: String): String {
