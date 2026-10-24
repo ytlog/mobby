@@ -37,6 +37,8 @@ data class CapabilityDescriptor(
     val timeoutMillis: Long,
     val cancellable: Boolean,
     val limits: CapabilityLimits,
+    /** Held by every program without a manifest request, e.g. reading its own config or writing its log. */
+    val implicit: Boolean = false,
 )
 
 enum class AvailabilityReason { DEVICE_UNSUPPORTED, SYSTEM_PERMISSION_MISSING, SOURCE_DISCONNECTED, CONDITION_UNMET }
@@ -70,6 +72,8 @@ class CapabilityCall(
     val context: CallContext,
     val args: JsonObject,
     val space: ProgramSpace,
+    /** Checks a further scope against the same grant, e.g. each redirect of a request. */
+    val allows: (CallScope) -> Boolean = { true },
     val isCancelled: () -> Boolean,
 )
 

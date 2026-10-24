@@ -20,5 +20,5 @@ class CapabilityRegistry(handlers: List<CapabilityHandler>) {
 
     val descriptors: List<CapabilityDescriptor> get() = byId.values.map { it.descriptor }.sortedBy { it.id }
 
-    companion object { val ID = Regex("[a-z]+(\\.[a-z][a-z0-9]*)+") }
+    companion object { val ID = Regex("[a-z][a-z0-9]*(\\.[a-z][a-z0-9]*)*") }
 }

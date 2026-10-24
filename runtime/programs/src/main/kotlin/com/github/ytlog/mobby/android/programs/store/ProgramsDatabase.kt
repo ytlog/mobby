@@ -128,6 +128,16 @@ data class OperationRow(
 @Entity(tableName = "program_kv", primaryKeys = ["programId", "key"])
 data class KvRow(val programId: String, val key: String, val value: String, val updatedAt: Long)
 
+@Entity(tableName = "program_log", indices = [Index("programId"), Index("at")])
+data class LogRow(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val programId: String,
+    val caller: String,
+    val at: Long,
+    val message: String,
+    val dataJson: String?,
+)
+
 @Dao
 interface ProgramsDao {
     @Query("SELECT * FROM program ORDER BY name") fun programsFlow(): Flow<List<ProgramRow>>
@@ -205,16 +215,22 @@ interface ProgramsDao {
     @Query("DELETE FROM operation WHERE programId = :id") suspend fun deleteOperations(id: String)
     @Query("DELETE FROM program_kv WHERE programId = :id") suspend fun deleteKvs(id: String)
 
+    @Insert suspend fun insertLog(row: LogRow)
+    @Query("SELECT * FROM program_log WHERE programId = :id ORDER BY at DESC, id DESC LIMIT :limit") suspend fun logs(id: String, limit: Int): List<LogRow>
+    @Query("DELETE FROM program_log WHERE id NOT IN (SELECT id FROM program_log WHERE programId = :id ORDER BY at DESC, id DESC LIMIT :keep) AND programId = :id")
+    suspend fun pruneLogs(id: String, keep: Int)
+    @Query("DELETE FROM program_log WHERE programId = :id") suspend fun deleteLogs(id: String)
+
     /** Removes everything mobby holds for a program; private data rows only when [withData]. */
     @Transaction suspend fun deleteProgram(id: String, withData: Boolean) {
         deleteSubscriptions(id); deleteRequests(id); deleteGrants(id); deleteConfigs(id); deleteSecrets(id)
-        deleteRuns(id); deleteOperations(id); deleteVersions(id); deleteProgramRow(id)
+        deleteRuns(id); deleteOperations(id); deleteLogs(id); deleteVersions(id); deleteProgramRow(id)
         if (withData) deleteKvs(id)
     }
 }
 
 @Database(entities = [ProgramRow::class, ProgramVersionRow::class, GrantRow::class, PermissionRequestRow::class, ConfigRow::class,
-    SecretRow::class, SubscriptionRow::class, SwitchRow::class, RunRow::class, OperationRow::class, KvRow::class],
+    SecretRow::class, SubscriptionRow::class, SwitchRow::class, RunRow::class, OperationRow::class, KvRow::class, LogRow::class],
     version = 1, exportSchema = false)
 abstract class ProgramsDatabase : RoomDatabase() {
     abstract fun dao(): ProgramsDao

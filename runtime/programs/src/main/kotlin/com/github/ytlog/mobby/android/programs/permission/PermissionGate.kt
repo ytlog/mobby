@@ -71,6 +71,8 @@ class PermissionGate(private val registry: CapabilityRegistry, private val clock
             Availability.Available -> Unit
         }
         if (!current.switchOn(descriptor.id)) return GateDecision.Denied(Layer.GLOBAL, DenyReason.GLOBAL_OFF)
+        if (descriptor.implicit) return if (context.surface in descriptor.surfaces) GateDecision.Allowed(0)
+            else GateDecision.Denied(Layer.CONTEXT, DenyReason.SURFACE_NOT_ALLOWED)
         val grant = current.grant(context.programId, descriptor.id) ?: return GateDecision.Denied(Layer.PROGRAM, DenyReason.NOT_REQUESTED)
         if (!grant.enabled) return GateDecision.Denied(Layer.PROGRAM, DenyReason.PROGRAM_OFF)
         if (grant.expiresAt != null && clock() >= grant.expiresAt) return GateDecision.Denied(Layer.PROGRAM, DenyReason.EXPIRED)
@@ -82,7 +84,8 @@ class PermissionGate(private val registry: CapabilityRegistry, private val clock
     }
 
     /** True when [revision] is still the current revision of this grant; checked again right before dispatch. */
-    fun stillCurrent(programId: String, capability: String, revision: Long): Boolean = snapshot.grant(programId, capability)?.revision == revision
+    fun stillCurrent(programId: String, capability: String, revision: Long): Boolean =
+        registry[capability]?.descriptor?.implicit == true || snapshot.grant(programId, capability)?.revision == revision
 
     fun state(grant: Grant): PermissionState {
         val handler = registry[grant.capability] ?: return PermissionState.UNAVAILABLE

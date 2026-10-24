@@ -912,6 +912,7 @@ open class StringCatalog(private val fixedLanguage: AppLanguage? = null) {
     val claudeSkillsPrompt get() = text("请使用 Skill 工具调用下列已选择的技能，遵守 Agent 权限检查：", "Use the Skill tool to invoke these selected skills and follow Agent permission checks:")
     val openCodeSkillsPrompt get() = text("请使用 skill 工具加载下列已选择的技能，遵守 Agent 权限检查：", "Use the skill tool to load these selected skills and follow Agent permission checks:")
     val codexSkillsPrompt get() = text("请使用下列已选择的技能，读取对应 SKILL.md 并遵守 Agent 权限检查：", "Use these selected skills, read their SKILL.md files and follow Agent permission checks:")
+    val programNotifications get() = text("程序通知", "Program notifications")
     private companion object { val PLACEHOLDER = Regex("\\{(\\d+)\\}") }
 }
 

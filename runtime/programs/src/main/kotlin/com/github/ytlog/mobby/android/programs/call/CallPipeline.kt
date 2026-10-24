@@ -67,6 +67,7 @@ class CallPipeline(
         if (request.args.toString().length > descriptor.limits.maxArgumentBytes) return reject(request, ProgramErrorCode.INVALID_ARGUMENT, "arguments_too_large")
         SchemaCheck.problems(descriptor.inputSchema, request.args).firstOrNull()?.let { return reject(request, ProgramErrorCode.INVALID_ARGUMENT, it) }
         val scope = try { handler.callScope(request.args) } catch (error: CapabilityException) { return reject(request, error.code, error.reason) }
+        if (!rate.admit(context.caller, descriptor.id, descriptor.limits.callsPerMinute, clock())) return reject(request, ProgramErrorCode.QUOTA_EXCEEDED, "rate_limited")
         val accepted = OperationRow(newId(), context.programId, context.caller, request.requestId, fingerprint, descriptor.id, 0, clock(),
             status = CallStatus.ACCEPTED.wire, effect = "none")
         val decision = gate.check(context, descriptor, scope)
@@ -85,7 +86,8 @@ class CallPipeline(
         dao.updateOperation(dispatched)
         val deadline = minOf(descriptor.timeoutMillis, request.deadlineMs ?: Long.MAX_VALUE).coerceAtLeast(1)
         return try {
-            val outcome = withTimeout(deadline) { handler.invoke(CapabilityCall(context, request.args, space(context), isCancelled)) }
+            val allows = { more: CallScope -> gate.check(context, descriptor, more) is GateDecision.Allowed }
+            val outcome = withTimeout(deadline) { handler.invoke(CapabilityCall(context, request.args, space(context), allows = allows, isCancelled = isCancelled)) }
             finish(dispatched, CallStatus.SUCCEEDED, outcome.effect, outcome.result, null, audit = outcome.audit)
         } catch (error: CapabilityException) {
             val status = when (error.code) { ProgramErrorCode.CANCELLED -> CallStatus.CANCELLED; ProgramErrorCode.TIMEOUT -> CallStatus.TIMEOUT
@@ -101,6 +103,8 @@ class CallPipeline(
             throw cancelled
         }
     }
+
+    private val rate = RateWindow()
 
     /** The recorded facts of an earlier call by the same caller. */
     suspend fun find(context: CallContext, requestId: String): CallResponse? = dao.operation(context.caller, requestId)?.let(::replay)
