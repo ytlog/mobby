@@ -34,28 +34,7 @@ class RuntimeEnvironment(private val context: Context) {
     suspend fun initialize(output: (String) -> Unit) = withContext(Dispatchers.IO) {
         check(Build.SUPPORTED_ABIS.contains("arm64-v8a")) { AppStrings.thisBuildOnlySupportsArmDevices }
         val nativeDir = context.applicationInfo.nativeLibraryDir
-        val prefix = File(context.filesDir, "libtermux/usr").absolutePath
-        val home = File(context.filesDir, "libtermux/home").absolutePath
-        sdk = LibTermux.init(context, TermuxConfig(
-            bootstrapProvider = NativeLibBootstrapProvider.from(context),
-            maxCommandTimeoutMs = 600_000,
-            logLevel = LogLevel.NONE,
-            enableLogging = false,
-            environmentVariables = mapOf(
-                "NO_COLOR" to "1", "TERM" to "dumb",
-                "GIT_EXEC_PATH" to "$prefix/libexec/git-core",
-                "GIT_TEMPLATE_DIR" to "$prefix/share/git-core/templates",
-                "GIT_CONFIG_NOSYSTEM" to "1",
-                "GIT_SSL_CAINFO" to "$prefix/etc/tls/cert.pem",
-                "SSL_CERT_FILE" to "$prefix/etc/tls/cert.pem",
-                "SSL_CERT_DIR" to "$prefix/etc/tls/certs",
-                "NODE_EXTRA_CA_CERTS" to "$prefix/etc/tls/cert.pem",
-                "npm_config_prefix" to prefix,
-                "npm_config_cache" to "$home/.npm",
-                "USE_BUILTIN_RIPGREP" to "0",
-                "DISABLE_AUTOUPDATER" to "1"
-            )
-        ))
+        sdk = LibTermux.init(context, termuxConfig(context))
         check(sdk.isInstalled) { AppStrings.apkIsMissingAnExecutableBashResource }
         output(AppStrings.preparingBundledRuntimeFiles)
         prepareFiles(nativeDir, output)
@@ -184,4 +163,32 @@ class RuntimeEnvironment(private val context: Context) {
     fun runShell(input: String, onStarted: (Int) -> Unit = {}, onTerminated: (Int?) -> Unit = {}): kotlinx.coroutines.flow.Flow<OutputLine> =
         sdk.executor.executeArgsStreaming(listOf(executable(AgentMode.SHELL), "-c", input), workspace,
             onStarted = onStarted, onTerminated = onTerminated)
+
+    companion object {
+        /** The one runtime configuration; program processes attach to the same singleton with it. */
+        fun termuxConfig(context: Context): TermuxConfig {
+            val prefix = File(context.filesDir, "libtermux/usr").absolutePath
+            val home = File(context.filesDir, "libtermux/home").absolutePath
+            return TermuxConfig(
+                bootstrapProvider = NativeLibBootstrapProvider.from(context),
+                maxCommandTimeoutMs = 600_000,
+                logLevel = LogLevel.NONE,
+                enableLogging = false,
+                environmentVariables = mapOf(
+                    "NO_COLOR" to "1", "TERM" to "dumb",
+                    "GIT_EXEC_PATH" to "$prefix/libexec/git-core",
+                    "GIT_TEMPLATE_DIR" to "$prefix/share/git-core/templates",
+                    "GIT_CONFIG_NOSYSTEM" to "1",
+                    "GIT_SSL_CAINFO" to "$prefix/etc/tls/cert.pem",
+                    "SSL_CERT_FILE" to "$prefix/etc/tls/cert.pem",
+                    "SSL_CERT_DIR" to "$prefix/etc/tls/certs",
+                    "NODE_EXTRA_CA_CERTS" to "$prefix/etc/tls/cert.pem",
+                    "npm_config_prefix" to prefix,
+                    "npm_config_cache" to "$home/.npm",
+                    "USE_BUILTIN_RIPGREP" to "0",
+                    "DISABLE_AUTOUPDATER" to "1"
+                )
+            )
+        }
+    }
 }

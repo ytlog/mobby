@@ -97,6 +97,8 @@ data class RunRow(
     val exitCode: Int? = null,
     val signal: Int? = null,
     val reason: String? = null,
+    /** Events that arrived while the run's queue was full. */
+    val droppedEvents: Int = 0,
 )
 
 @Entity(tableName = "operation", indices = [Index(value = ["caller", "requestId"], unique = true), Index("programId"), Index("acceptedAt")])

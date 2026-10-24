@@ -117,8 +117,9 @@ flowchart TB
 
 ### 3.4 `:runtime-android` 的扩展
 
-- `TermuxProgramLauncher` 实现 `ProgramProcessLauncher`：用现有 termux 执行器启动 `node`，独立进程组；登记 PID 与启动时间，沿用 `ProcessRegistry` 的身份校验防止 PID 复用误杀。程序进程与 Agent 进程分开登记。
-- 运行时初始化时把 SDK（`mobby` 模块与 `runner.js`）写入前缀目录下的固定位置，随应用版本更新；后台进程通过 `NODE_PATH` 引用。
+- `TermuxProgramLauncher` 实现 `ProgramProcessLauncher`：以 `RuntimeEnvironment.termuxConfig` 取得与 Agent 运行相同的 termux 单例，用现有执行器启动 `node runner.cjs`，独立进程组；登记 PID 与启动时间，沿用 `ProcessRegistry` 的身份校验防止 PID 复用误杀。程序进程与 Agent 进程分开登记。运行环境尚未安装或 Node 不可用时启动失败，原因为 `runtime_not_installed` 或 `runtime_not_ready`。
+- 程序的标准输出和标准错误写入每次运行的日志文件，单个上限 256 KB。
+- SDK（`mobby` 模块与 `runner.cjs`）随 `program-platform` 的 assets 打包，平台启动时写入程序目录下的 `sdk/`，随应用版本更新；后台进程通过 `NODE_PATH` 引用。
 - 阶段 2：实现 `ModelGatewayPort`，供 `ai.call` 使用现有网关配置与本地 Node 桥接。
 
 ### 3.5 `app` 的扩展
@@ -237,13 +238,13 @@ interface ProgramProcessLauncher {
 
 data class ProcessSpec(
     val runId: String, val packageDir: File, val entry: String,
-    val dataDir: File, val sdkDir: File, val apiPort: Int, val credential: String,
+    val workDir: File, val sdkDir: File, val apiPort: Int, val credential: String,
 )
 
 interface ProgramProcess {
     val pid: Int
-    suspend fun awaitExit(): ProcessExit      // 退出码或被信号结束
-    fun terminate()                           // SIGTERM 进程组，宽限期后 SIGKILL
+    suspend fun awaitExit(): Int?             // 退出码，被信号结束时为 128 + 信号号
+    fun terminate()                           // SIGTERM 进程组，随后 SIGKILL
 }
 ```
 
@@ -265,7 +266,8 @@ stateDiagram-v2
 - 不在一个共享 Node 进程里用 `worker_threads` 或 `vm` 运行多个程序：一个程序的崩溃、死循环或内存耗尽会影响其他程序，也无法单独结束。
 - 全局并发、运行期限、空闲退出时间、排队长度和过期时间有上限，实测后写入配置。并发上限低于 Android 12 起的子进程限制。
 - 每次运行生成随机凭据，绑定 programId、版本、runId 与试运行范围；凭据只在内存中，运行结束作废，经子进程标准输入的第一行传入，不放在参数、环境变量或文件里。
-- 进程被信号结束且不是平台发起时，运行记为“被系统结束”。
+- 原生层把被信号结束的进程报告为 `128 + 信号号`，与进程自己以同样数值退出无法区分。退出码为 137（SIGKILL）且不是平台发起的结束时，运行记为“被系统结束”；其余大于 128 的退出只记录信号号。
+- 运行中的事件队列有上限，超出的事件丢弃并计入运行记录的 `droppedEvents`；队列为 `run.stopping` 预留一个位置，停止通知总能送达。
 - 运行结束时：未派发的调用标记为取消；已派发的等待执行器回执，拿不到可靠结果的记为 `unknown`。
 - 应用进程重启时：按 PID 与启动时间结束遗留的后台进程；未结束的运行记为中断；已派发未回执的调用记为 `unknown`，不重发。
 
@@ -486,7 +488,7 @@ SDK 连接事件流即表示运行进入 `Running`；收到 `run.stopping` 后�
 | `mobby.ui.post(message)` | 是 | 否 |
 | `mobby.ui.send(message)`、`mobby.ui.onMessage(fn)` | 否 | 是 |
 
-- 后台 `runner.js` 读取标准输入中的凭据，加载 `background` 入口，连接事件流，把事件分发给 `mobby.on` 注册的处理函数；处理函数的异常写入运行记录，不吞掉。
+- 后台 `runner.cjs` 读取标准输入中的凭据，加载 `background` 入口，连接事件流，把事件分发给 `mobby.on` 注册的处理函数；处理函数的异常写入运行记录，不吞掉。
 - 每个后台调用自动生成 `requestId`；超时后先查询原操作，不用新 ID 重发。
 - 错误抛出带 `code`、`layer`、`reason` 的 `MobbyError`。
 
@@ -566,7 +568,7 @@ sequenceDiagram
     participant V as 程序界面
     W->>R: time.schedule 到期
     R->>M: 无进行中运行，请求启动
-    M->>N: 启动 node runner.js（标准输入传凭据）
+    M->>N: 启动 node runner.cjs（标准输入传凭据）
     N->>H: GET /v1/events
     H-->>N: program.event（hourly）
     N->>H: POST /v1/operations net.http

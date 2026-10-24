@@ -17,6 +17,7 @@ dependencies {
     implementation("androidx.startup:startup-runtime:1.1.1")
     implementation(project(":runtime-api"))
     implementation(project(":device-plugins"))
+    implementation(project(":program-platform"))
     implementation(project(":runtime-engine"))
     implementation(project(":termux-core"))
     implementation(project(":bootstrap-arm64"))

@@ -33,6 +33,7 @@
 - 不得自行下载新的 Android 系统镜像；设备验证优先使用已连接手机和已有环境，避免额外占用带宽与磁盘。
 
 - `node --test runtime/gateway-tests/bridge.test.cjs`
+- `node --test runtime/programs/sdk-tests/sdk.test.cjs`
 - `python3 -m unittest discover -s runtime -p 'test_*.py'`
 - 使用 JDK 17 执行 `./gradlew :app:assembleDebug :app:testDebugUnitTest :termux-core:testDebugUnitTest :app:lintDebug`
 - 真 CLI 的模拟网关联调使用 `runtime/gateway-tests/cli-smoke.cjs`；使用隔离的 HOME 和虚假测试密钥。
