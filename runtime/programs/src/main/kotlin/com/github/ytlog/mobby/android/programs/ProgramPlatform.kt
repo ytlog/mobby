@@ -5,6 +5,8 @@ import android.content.Context
 import com.github.ytlog.mobby.android.programs.api.EventStreamRoute
 import com.github.ytlog.mobby.android.programs.api.ProgramApiServer
 import com.github.ytlog.mobby.android.programs.api.SubscriptionsRoute
+import com.github.ytlog.mobby.android.programs.api.UiMessagesRoute
+import com.github.ytlog.mobby.android.programs.ui.ProgramUiHost
 import com.github.ytlog.mobby.android.programs.base.config.ConfigCapability
 import com.github.ytlog.mobby.android.programs.base.config.ConfigStore
 import com.github.ytlog.mobby.android.programs.base.log.LogCapability
@@ -88,12 +90,16 @@ class ProgramPlatform internal constructor(
 
     val apiPort: Int get() = server.port
 
+    /** Program pages; the app's activity attaches WebViews here. */
+    val ui = ProgramUiHost(this, { context.assets.open("program-ui-sdk/sdk.js").use { it.readBytes() } }, scope)
+
     suspend fun start() {
         installSdk()
         runs.recover()
         permissions.reload()
         server = ProgramApiServer(pipeline, registry, gate, permissions, runs,
-            listOf(EventStreamRoute(runs), SubscriptionsRoute(dao, registry, gate) { programId -> refresh("subscription_changed", programId) }) + extensions)
+            listOf(EventStreamRoute(runs), SubscriptionsRoute(dao, registry, gate) { programId -> refresh("subscription_changed", programId) },
+                UiMessagesRoute(ui::post)))
         withContext(Dispatchers.IO) { server.start() }
         router.rebuild()
         ScheduleTarget.publish(router)
@@ -102,9 +108,6 @@ class ProgramPlatform internal constructor(
 
     internal fun stopServer() { if (::server.isInitialized) server.stop() }
 
-    /** Endpoints added by later components (UI messages) before [start]. */
-    private val extensions = mutableListOf<com.github.ytlog.mobby.android.programs.api.ApiExtension>()
-    internal fun extend(extension: com.github.ytlog.mobby.android.programs.api.ApiExtension) { extensions += extension }
 
     val programs: Flow<List<ProgramView>> = combine(
         dao.programsFlow(), dao.grantsFlow(), dao.subscriptionsFlow(), dao.switchesFlow(), dao.configFlow(), dao.pendingRequestsFlow(), revision,
