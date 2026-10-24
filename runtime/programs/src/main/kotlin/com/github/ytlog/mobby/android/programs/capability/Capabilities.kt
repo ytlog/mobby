@@ -15,7 +15,12 @@ enum class SideEffect { READ, WRITE, SEND, DELETE, CONTROL, NETWORK }
 /** Where a call may come from; handoffs need a person looking at the program UI. */
 enum class Surface { BACKGROUND, UI }
 
-data class Prerequisite(val kind: String, val value: String)
+data class Prerequisite(val kind: String, val value: String) {
+    companion object {
+        /** Works only inside the program's own space; a dry run gives it a throwaway space. */
+        val PROGRAM_SPACE = Prerequisite("program-space", "own")
+    }
+}
 
 data class CapabilityLimits(val maxArgumentBytes: Int, val callsPerMinute: Int)
 
@@ -68,7 +73,11 @@ class CapabilityCall(
     val isCancelled: () -> Boolean,
 )
 
-data class CapabilityOutcome(val effect: Effect, val result: JsonElement)
+/** Facts kept in the operation record; never request or response bodies. */
+data class OperationAudit(val host: String? = null, val method: String? = null, val status: Int? = null,
+    val bytesOut: Long? = null, val bytesIn: Long? = null)
+
+data class CapabilityOutcome(val effect: Effect, val result: JsonElement, val audit: OperationAudit? = null)
 
 /** What one call touches, so the grant's scope can be checked before dispatch. */
 data class CallScope(val packageName: String? = null, val host: String? = null, val method: String? = null,

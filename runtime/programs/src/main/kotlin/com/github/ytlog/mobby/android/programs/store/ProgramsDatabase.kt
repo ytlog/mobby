@@ -116,7 +116,6 @@ data class OperationRow(
     val effect: String,
     val errorCode: String? = null,
     val errorReason: String? = null,
-    val resultJson: String? = null,
     val netHost: String? = null,
     val netMethod: String? = null,
     val netStatus: Int? = null,

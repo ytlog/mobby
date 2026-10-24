@@ -192,14 +192,14 @@ data class CallContext(
 ### 5.3 调用管线
 
 1. 解析请求：`schema`、`requestId`、能力 ID、参数、期限；未知字段拒绝。
-2. 去重：同一调用方同一 `requestId` 且参数指纹相同时返回原操作；参数不同返回 `REQUEST_CONFLICT`。
+2. 去重：同一调用方同一 `requestId` 且参数指纹相同时返回原操作的状态与效果（正在执行时为 `accepted`），不重放结果；参数不同返回 `REQUEST_CONFLICT`。
 3. 参数校验：按能力的 `inputSchema` 校验，并检查调用面（交接类能力只允许界面）。
 4. 权限闸门：见第 6 节，得到授权修订号。
 5. 写操作记录：状态为“已受理”，在派发前持久化。
 6. 派发：调用处理器；派发前再次比较授权修订号，变化则重新检查。
-7. 回执：更新操作记录的状态、效果和结果摘要，返回调用方。
+7. 回执：更新操作记录的状态、效果与审计字段，结果只返回调用方一次，不写入记录。
 
-试运行时，第 6 步对命令类能力与网络请求不调用处理器，记录参数并返回 `simulated`；存储能力指向试运行专用的临时数据目录。
+试运行时，第 6 步只派发两类调用：作用于程序自身空间的能力（存储），改用试运行专用的临时目录；聊天已允许的手机查询能力（试运行范围以能力 ID 列出）。其余调用不派发，记录后返回 `simulated`。
 
 ## 6. 权限
 
@@ -418,7 +418,7 @@ Content-Type: application/json
 ```
 
 - `GET /v1/operations/{requestId}` 查询原操作，用于超时或断线后确认结果。
-- `status`：`succeeded`、`failed`、`cancelled`、`timeout`、`unknown`、`simulated`；`effect`：`none`、`submitted`、`partial`、`confirmed`、`unknown`。`submitted` 与 `partial` 保留设备执行器的原始事实，例如短信已交给系统但未确认发出。
+- `status`：`accepted`（仅出现在重复请求的回复中）、`succeeded`、`failed`、`cancelled`、`timeout`、`unknown`、`simulated`；`effect`：`none`、`submitted`、`partial`、`confirmed`、`unknown`。`submitted` 与 `partial` 保留设备执行器的原始事实，例如短信已交给系统但未确认发出。
 - 错误码至少包括 `UNSUPPORTED`、`PERMISSION_DENIED`、`SCOPE_DENIED`、`SOURCE_DISCONNECTED`、`CONDITION_UNMET`、`USER_INTERACTION_REQUIRED`、`TARGET_NOT_UNIQUE`、`STALE_OBSERVATION`、`REQUEST_CONFLICT`、`RESOURCE_MISSING`、`QUOTA_EXCEEDED`、`CANCELLED`、`TIMEOUT`、`EFFECT_UNKNOWN`。
 
 ### 14.2 后台事件流

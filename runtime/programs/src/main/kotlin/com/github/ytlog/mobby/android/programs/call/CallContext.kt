@@ -2,8 +2,8 @@ package com.github.ytlog.mobby.android.programs.call
 
 import com.github.ytlog.mobby.android.programs.capability.Surface
 
-/** Limits of a dry run: which device plugins the chat run allowed, and where storage goes instead. */
-data class DryRunScope(val allowedDeviceActions: Map<String, Set<String>>)
+/** Limits of a dry run: the read-only capabilities the chat run already allowed. Everything with side effects is simulated. */
+data class DryRunScope(val allowedQueries: Set<String>)
 
 /** Who is calling. Built from a run credential or a UI session, never from request bodies. */
 data class CallContext(
