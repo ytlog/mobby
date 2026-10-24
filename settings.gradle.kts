@@ -16,7 +16,7 @@ project(":bootstrap-arm64").buildFileName = "mobby.gradle.kts"
 
 include(":runtime-api", ":conversation-domain")
 include(":runtime-engine", ":runtime-android")
-include(":conversation-data", ":speech", ":device-plugins")
+include(":conversation-data", ":speech", ":device-plugins", ":program-platform")
 
 include(":localization")
 
@@ -27,6 +27,7 @@ project(":runtime-api").projectDir = file("runtime/api")
 project(":runtime-engine").projectDir = file("runtime/engine")
 project(":runtime-android").projectDir = file("runtime/android")
 project(":device-plugins").projectDir = file("runtime/device-plugins")
+project(":program-platform").projectDir = file("runtime/programs")
 project(":conversation-domain").projectDir = file("conversation/domain")
 project(":conversation-data").projectDir = file("conversation/data")
 project(":local-model").projectDir = file("model/service")

@@ -6,11 +6,12 @@ import unittest
 ROOT = Path(__file__).resolve().parent.parent
 BASE = "com.github.ytlog.mobby.android."
 ALLOWED = {
-    "app": {"conversation-domain", "conversation-data", "runtime-api", "runtime-android", "device-plugins", "local-model", "speech", "localization"},
+    "app": {"conversation-domain", "conversation-data", "runtime-api", "runtime-android", "device-plugins", "program-platform", "local-model", "speech", "localization"},
     "runtime-api": set(),
     "runtime-engine": {"runtime-api", "localization"},
-    "runtime-android": {"runtime-api", "runtime-engine", "termux-core", "bootstrap-arm64", "device-plugins", "localization"},
+    "runtime-android": {"runtime-api", "runtime-engine", "termux-core", "bootstrap-arm64", "device-plugins", "program-platform", "localization"},
     "device-plugins": {"runtime-api", "localization"},
+    "program-platform": {"device-plugins", "runtime-api", "localization"},
     "conversation-domain": {"runtime-api", "localization"},
     "conversation-data": {"conversation-domain", "runtime-api", "localization"},
     "speech": {"localization"},
@@ -24,6 +25,7 @@ MODULE_DIRS = {
     "runtime-engine": "runtime/engine",
     "runtime-android": "runtime/android",
     "device-plugins": "runtime/device-plugins",
+    "program-platform": "runtime/programs",
     "conversation-domain": "conversation/domain",
     "conversation-data": "conversation/data",
     "local-model": "model/service",
@@ -91,6 +93,12 @@ class ModuleBoundaryTests(unittest.TestCase):
                         "conversation.ui.", "conversation.domain.", "deviceoperation.",
                         "runtime.api.device.", "speech.", "localization.", "R.",
                     )), str(source))
+
+    def test_program_platform_stays_below_runtime_and_app(self):
+        for source in (ROOT / MODULE_DIRS["device-plugins"] / "src/main").rglob("*.kt"):
+            self.assertFalse(any(ref.startswith(BASE + "programs.") for ref in project_references(source.read_text())), str(source))
+        for source in (ROOT / MODULE_DIRS["program-platform"] / "src/main").rglob("*.kt"):
+            self.assertFalse(forbidden_references(source.read_text(), ("programs.", "device.", "runtime.api.", "localization.")), str(source))
 
     def test_checker_rejects_current_namespace_and_inline_implementation_access(self):
         for text in (
