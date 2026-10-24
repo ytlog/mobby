@@ -27,6 +27,7 @@ flowchart TB
         Router["EventRouter"]
         Runs["RunSupervisor"]
         Dev["DevelopmentService\ncatalog · validate · dry-run · records"]
+        Base["平台基础能力\nstorage · net · secrets · config · ai · ui · entry"]
         Store[("programs.db")]
     end
     subgraph Device[":device-plugins"]
@@ -46,6 +47,7 @@ flowchart TB
     Graph --> Platform
     Node -- "HTTP / SSE" --> API
     API --> Gate --> Registry --> Exec
+    Registry --> Base
     Exec --> Coord
     A11y --> Events --> Router --> Runs
     Runs --> Launcher --> Node
@@ -85,6 +87,13 @@ flowchart TB
 | `run` | `RunSupervisor`、运行状态机、运行凭据、`ProgramProcessLauncher` 端口 |
 | `api` | ktor 服务、路由、请求与错误协议、SSE |
 | `dev` | 能力目录生成、校验、试运行、记录读取 |
+| `base.storage` | 键值、私有文件、每个程序一个 SQLite 数据库，配额 |
+| `base.net` | 受管 HTTP 与 WebSocket 客户端、域名检查、流量记录 |
+| `base.secrets` | 程序凭据加密存储与请求时替换 |
+| `base.config` | 清单配置字段、用户填写的值与校验 |
+| `base.ai` | 经网关端口调用模型、次数与费用计量 |
+| `base.ui` | 声明式页面模型与用户操作事件 |
+| `base.entry` | 分享、快捷方式、通知动作入口的分发 |
 | `store` | Room 数据库 `programs.db`、DAO、保留与清理 |
 | 根包 | `ProgramPlatform` 门面，供 `app` 与 `runtime-android` 使用 |
 
@@ -257,7 +266,65 @@ stateDiagram-v2
 - 工作区路径必须位于默认工作区的 `programs/` 下，使用现有 `DevicePaths` 的包含检查。
 - 开发插件不提供安装、启用、授权和恢复订阅的命令。
 
-### 5.8 程序中心
+### 5.8 平台基础能力
+
+平台基础能力实现为普通的 `CapabilityHandler`，与手机能力共用注册、权限闸门、操作记录和配额。
+
+#### 存储
+
+| 能力 | 实现 |
+| --- | --- |
+| `storage.kv` | `programs.db` 的 `program_kv` 表；键长、值大小和总量有上限 |
+| `storage.files` | `files/programs/data/<programId>/files/` 下的相对路径；规范化后必须仍在该目录内，拒绝符号链接；大文件以流式读写 |
+| `storage.sql` | 每个程序一个 SQLite 文件 `files/programs/data/<programId>/sql/main.db`，用 Android `SQLiteDatabase` 打开 |
+
+`storage.sql` 的接口与限制：
+
+- `execute(sql, params)`、`query(sql, params)` 和 `transaction(statements)`；参数只能按位置绑定，结果行数和单次结果大小有上限。
+- 每次调用只接受一条语句。词法检查在字符串和注释之外拒绝 `ATTACH`、`DETACH`、`VACUUM INTO`、`load_extension` 以及白名单外的 `PRAGMA`，避免受管路径打开程序目录以外的数据库文件。
+- 打开时设置 `max_page_count` 实现配额，并关闭 `trusted_schema`。
+- 每个程序一个连接，按程序串行执行；运行结束时回滚未提交的事务。
+- 程序删除时由用户选择是否删除数据目录。
+
+#### 网络
+
+- 使用 Android 平台的 `HttpURLConnection`，经 Android 网络栈发出，不新增网络库。关闭自动重定向，每一跳重新检查域名与方法。
+- 授权范围是域名列表（精确主机名或 `*.` 后缀）与方法；默认只允许 HTTPS，HTTP 需要单独授权。
+- 解析出的地址属于回环、链路本地、局域网私有段或组播时拒绝，防止程序经受管网络访问本机的程序 API、本地模型服务或局域网设备。DNS 解析与实际连接之间仍可能变化，这一限制如实记录。
+- 请求体、响应体、超时、并发连接数有上限。超过内联上限的响应写入程序目录的临时文件，以文件引用返回。
+- 每次请求在操作记录中保存域名、方法、状态码、上下行字节数和耗时，不保存请求体和响应体。
+- `net.websocket` 作为会话实现：连接属于一次运行，消息经事件流送达程序，运行结束时关闭。
+
+#### 凭据
+
+- 使用独立 Keystore 别名 `mobby.programs` 的 AES-GCM 密钥加密，密文存入 `program_secret`；不复用网关的 `mobby.gateway` 别名。
+- 程序可以写入凭据、列出名称、删除凭据，不能读回明文。用户也可以在程序中心填写。
+- 每个凭据绑定允许发往的域名，绑定范围必须在该程序的 `net.http` 授权之内。
+- 程序在 `net.http` 请求的请求头或查询参数中写 `{{secret:<name>}}`，平台在发出前替换；目标主机不在绑定域名内时返回 `SCOPE_DENIED`。替换后的值不进入操作记录、日志和错误信息。
+- 平台无法阻止远端服务在响应中回显凭据；这一点在开发说明中写明。
+
+#### 配置
+
+- 清单 `config` 声明字段：键、类型（字符串、数字、布尔、枚举、应用包名、凭据）、是否必填、默认值、显示名称。
+- 值保存在 `program_config`；凭据类型的字段保存在 `program_secret`，配置中只保存名称。
+- 必填字段缺失时程序可用性为“需要配置”，不接收事件。配置变化向运行投递 `config.changed`。
+
+#### 模型调用（第二阶段）
+
+- `runtime-android` 实现 `ModelGatewayPort`，使用用户已配置的网关和现有本地 Node 桥接，按现有网关协议规则发出请求；网关地址和密钥不对程序开放。
+- 授权范围是允许的模型；每个程序有每日次数和费用上限，超出返回 `CONDITION_UNMET`。
+- 调用记录保存模型、输入输出 token 数和耗时，不保存提示词正文。接入前需对照 [网关接入](../gateway.md) 确认协议与计费字段。
+
+#### 界面与入口（第二阶段）
+
+- `ui`：程序提交声明式页面（文本、列表、图片资源引用、表单字段、按钮），程序中心用 Compose 渲染；用户点击按钮或提交表单时，平台向程序投递 `ui.action` 事件，必要时拉起运行。不渲染程序提供的 HTML 或原生代码。
+- `entry`：APK 静态声明一个分享接收 Activity、动态快捷方式的分发 Activity 和通知动作接收器，按 programId 分发为 `entry.share`、`entry.shortcut`、`entry.notification` 事件。分享内容以资源引用交给程序；外部 Intent 的自报身份不被信任。
+
+#### 日志
+
+- `log` 写入运行记录，单条长度和每分钟条数有上限；超出部分截断并标注。
+
+### 5.9 程序中心
 
 - `ProgramCenterViewModel` 订阅平台暴露的 `Flow`：程序列表、权限、订阅、全局开关、系统权限状态、运行与调用记录。
 - 页面：程序列表、安装确认、程序详情（概览、权限、事件、运行记录）、权限管理（按能力、按程序、按事件来源）。
@@ -322,7 +389,12 @@ SDK 连接事件流即表示运行进入 `Running`；收到 `run.stopping` 后 S
 | `GET /v1/permissions` | 本程序的权限状态与原因 |
 | `POST /v1/permissions/requests` | 提交权限申请，等待用户在程序中心处理 |
 | `GET/POST/DELETE /v1/subscriptions` | 本程序订阅的查询、登记与注销，范围不超出授权 |
-| `GET/PUT/DELETE /v1/data/kv/{key}`、`/v1/data/files/{path}` | 本程序私有数据，有配额 |
+| `GET/PUT/DELETE /v1/storage/kv/{key}` | 键值存储 |
+| `GET/PUT/DELETE /v1/storage/files/{path}`、`GET /v1/storage/files?dir=` | 私有文件读写与列表，流式传输 |
+| `POST /v1/storage/sql` | `{"op":"query"|"execute"|"transaction", ...}` |
+| `POST /v1/net/http` | 受管 HTTP 请求，响应内联或以文件引用返回 |
+| `GET/PUT/DELETE /v1/secrets/{name}` | `GET` 只返回名称、绑定域名和更新时间，不返回明文 |
+| `GET /v1/config` | 本程序配置，凭据字段只给名称 |
 | `POST /v1/log` | 写入运行记录，有长度与频率限制 |
 
 ### 6.4 SDK
@@ -337,7 +409,16 @@ await mobby.screen.read();
 await mobby.screen.click({ viewId, text });
 await mobby.permissions.list();
 await mobby.permissions.request("screen.click", { packages: ["com.example.app"] });
-await mobby.data.set("key", value);
+await mobby.kv.set("key", value);
+await mobby.files.write("reports/today.json", JSON.stringify(data));
+await mobby.sql.execute("CREATE TABLE IF NOT EXISTS item(id TEXT PRIMARY KEY, price REAL)");
+const rows = await mobby.sql.query("SELECT * FROM item WHERE price < ?", [100]);
+const config = await mobby.config.get();
+await mobby.secrets.put("api-token", token, { domains: ["api.example.com"] });
+const response = await mobby.net.fetch("https://api.example.com/items", {
+  headers: { Authorization: "Bearer {{secret:api-token}}" },
+});
+await mobby.log("fetched", { status: response.status });
 ```
 
 - `runner.js` 读取标准输入中的凭据，加载程序入口，连接事件流，把事件分发给 `mobby.on` 注册的处理函数；处理函数异常写入运行记录，不吞掉。
@@ -368,12 +449,15 @@ records  {"programId":"my-program","limit":50}
 | `subscription` | 订阅 ID、programId、版本、事件类型、过滤范围、handler、来源（清单或运行时）、用户暂停、最近触发时间、触发次数 |
 | `capability_switch` | 能力、全局开关、修改时间 |
 | `run` | runId、programId、版本、触发来源与订阅、是否试运行、开始结束时间、终态、退出码、原因 |
-| `operation` | operationId、runId、requestId、参数指纹、能力、授权修订号、受理派发完成时间、状态、效果、错误 |
+| `operation` | operationId、runId、requestId、参数指纹、能力、授权修订号、受理派发完成时间、状态、效果、错误；网络调用另存域名、方法、状态码、字节数 |
 | `program_kv` | programId、键、值、更新时间 |
+| `program_config` | programId、键、值 JSON、更新时间 |
+| `program_secret` | programId、名称、密文、IV、绑定域名、创建时间、更新时间 |
+| `model_usage` | programId、日期、次数、输入输出 token、估算费用（第二阶段） |
 
 - `operation` 在派发前写入，回执后更新，用于去重和重启后的结果核对。
 - 记录默认不保存整页节点、短信正文和截图；调用参数中的正文类字段只保存长度与摘要。`run` 和 `operation` 按条数和天数清理。
-- 程序私有文件保存在 `files/programs/data/<programId>/`，与安装包目录分开。
+- 程序私有数据保存在 `files/programs/data/<programId>/`：`files/` 为私有文件，`sql/main.db` 为程序数据库，`tmp/` 为大响应等临时文件，与安装包目录分开。
 
 ## 8. 关键时序
 
@@ -456,6 +540,10 @@ sequenceDiagram
 | 读取网关密钥和用户配置 | 不提供相关能力；凭据与配置不进入程序目录、环境变量和日志 |
 | 恶意或损坏的程序包 | 严格校验路径、大小、文件类型和清单；从安装副本运行 |
 | 资源耗尽 | 运行期限、并发、事件队列、请求速率、数据配额都有上限 |
+| 经受管网络访问本机或局域网 | 拒绝回环、链路本地、私有和组播地址；重定向逐跳检查 |
+| 凭据泄露 | 加密存储、不可读回、只在请求发出时替换、只发往绑定域名、不进入记录 |
+| 受管数据库访问其他文件 | 单语句、拒绝 `ATTACH` 等语句、配额页数限制 |
+| 程序直接使用 Node 网络、文件、数据库 | 无法阻止；程序中心说明；校验时提示 |
 | 外部内容诱导 | 屏幕文字、通知内容等作为数据返回，不影响授权判断 |
 
 ## 10. 可靠性与结果语义
@@ -482,6 +570,7 @@ sequenceDiagram
 | 运行管理 | 启动超时、空闲退出、强制结束、重启恢复，使用假启动器 | JUnit + 协程测试 |
 | 本地 API | 认证、Origin/Host 拒绝、去重、冲突、错误格式、SSE | ktor `testApplication` |
 | 存储 | DAO、清理、重建 | Robolectric + 内存 Room |
+| 平台基础能力 | 文件路径越界、SQL 禁止语句与配额、域名与私有地址拒绝、重定向检查、凭据替换与不落日志、配置必填 | JUnit + Robolectric；网络用本机测试服务器 |
 | 设备扩展 | 窗口快照、事件转发、协调器、聊天路径回归 | Robolectric |
 | SDK | runner 的凭据读取、事件分发、错误、超时查询 | `node --test` |
 | 模块边界 | 新模块依赖白名单与包引用 | `runtime/test_module_boundaries.py` |
@@ -497,16 +586,18 @@ sequenceDiagram
 | --- | --- | --- |
 | 1 | 新建 `:program-platform` 模块与边界测试更新；`programs.db` 与 DAO | — |
 | 2 | 能力注册表与描述；`DeviceExecutors` 公开入口；现有查询与命令能力的适配器 | 1 |
-| 3 | 程序包读取、安装、版本、删除 | 1 |
+| 3 | 程序包读取、安装、版本、删除；清单配置字段 | 1 |
 | 4 | 权限模型、闸门、全局开关、到期 | 1、2 |
 | 5 | 本地 API 服务、认证、操作去重与记录 | 2、4 |
 | 6 | 运行管理与 `TermuxProgramLauncher`；SDK 与 runner | 5 |
-| 7 | 订阅持久化与事件路由（先接平台事件与手动触发） | 4、6 |
-| 8 | 开发服务与聊天开发插件 | 3、6 |
-| 9 | 程序中心、安装确认与权限管理页 | 3、4、7 |
-| 10 | 真机验收：手机 AI 编写只用现有能力的程序，完成安装、授权、运行、撤权、删除 | 全部 |
+| 7 | 存储：`storage.kv`、`storage.files`、`storage.sql` 与配额 | 5 |
+| 8 | 网络与凭据：`net.http`、`secrets`、`config`、`log` | 5、7 |
+| 9 | 订阅持久化与事件路由；`time.schedule`；`notify.show` | 4、6 |
+| 10 | 开发服务与聊天开发插件 | 3、6 |
+| 11 | 程序中心、安装确认、配置表单与权限管理页 | 3、4、8、9 |
+| 12 | 真机验收：手机 AI 编写一个定时拉取接口数据、写入数据库并按条件通知的程序，完成配置、安装、授权、运行、撤权、删除 | 全部 |
 
-第二阶段在此之上增加 `screen.window`、`screen.read`、`screen.click`、`ScreenEvents`、`ScreenCoordinator`、`time.schedule` 与 `notify.show`。
+第二阶段在此之上增加 `screen.window`、`screen.read`、`screen.click`、`ScreenEvents`、`ScreenCoordinator`，以及 `ui`、`entry`、`net.websocket` 与 `ai.call`。
 
 ## 14. 待验证问题
 
@@ -514,3 +605,4 @@ sequenceDiagram
 - Node 冷启动耗时是否满足屏幕事件场景；若不满足，是否允许运行在空闲期限内保持进程。
 - 定时任务在省电策略下的实际延迟。
 - 高频内容变化事件对耗电和主线程的影响。
+- 受管网络在系统代理、VPN 和省电模式下的行为，以及大文件下载对存储配额的影响。
