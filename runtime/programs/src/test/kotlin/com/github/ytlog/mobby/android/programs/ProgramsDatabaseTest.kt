@@ -4,7 +4,9 @@ import android.database.sqlite.SQLiteConstraintException
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.github.ytlog.mobby.android.programs.store.*
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Test
@@ -54,5 +56,13 @@ class ProgramsDatabaseTest {
         assertEquals(listOf("o5", "o4", "o3"), dao.operations("p", 10).map { it.operationId })
         dao.pruneOperations(keep = 10, before = 5)
         assertEquals(listOf("o5"), dao.operations("p", 10).map { it.operationId })
+    }
+
+    @Test fun `the log view follows logs written after it opened`() = runBlocking {
+        val logs = dao.logsFlow("p", 10)
+        dao.insertLog(LogRow(programId = "p", caller = "run:1", at = 1, message = "first", dataJson = null))
+        assertEquals(listOf("first"), withTimeout(5_000) { logs.first { it.isNotEmpty() } }.map { it.message })
+        dao.insertLog(LogRow(programId = "p", caller = "run:2", at = 2, message = "second", dataJson = null))
+        assertEquals(listOf("second", "first"), withTimeout(5_000) { logs.first { it.size == 2 } }.map { it.message })
     }
 }

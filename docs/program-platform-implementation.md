@@ -28,11 +28,22 @@
 - `node --test runtime/programs/sdk-tests/sdk.test.cjs runtime/programs/sdk-tests/ui-sdk.test.mjs`：后台 SDK 调用与恢复、runner 凭据与事件分发、页面 SDK。
 - AGENTS.md 中的 Node、Python 与 Gradle 检查（构建、单元测试、lint）。本机 python.org 版 Python 缺少证书，`generateLicenseNotices` 联网补取 POM 时需要设置 `SSL_CERT_FILE=/etc/ssl/cert.pem`。
 
+### 真机验收（2026-10-24，小米平板 Android 16）
+
+用一个计数程序（后台 `main.js` 收到界面消息后写 `storage.sql`、`storage.kv`，请求 `https://api.github.com/zen`，记日志并回发界面）验证：
+
+- 经程序中心安装：预览列出申请的权限并提示需安装后授予；安装后为“已暂停”，授予三项权限并启用后变为“可工作”。
+- 打开程序界面：页面 SDK 直接查询 `storage.sql`，表不存在时如实返回 `INVALID_ARGUMENT`。
+- 点按“加一”：每次界面消息拉起一个 Node 进程，计数 1→4 持续累加，覆盖安装后数据保留；`net.http` 返回 200 与正文；空闲后进程以退出码 0 结束，运行记录与日志一致。
+- 运行期间撤销 `net.http`：下一次网络调用返回 `PERMISSION_DENIED: program_off`，其他能力不受影响。
+
+真机发现并修复：详情页的程序日志只在运行记录数量变化（运行入队）时读取一次，晚于入队写入的日志不显示，现改为监听日志表；运行记录的结果、触发来源和结束原因原先显示内部取值，现按界面语言显示。
+
 开发中由测试发现并修复的缺陷：目录占用统计跟随符号链接；URL 中的凭据占位符导致解析失败；运行在进程启动后才登记凭据，快速子进程会被拒；事件队列满时停止通知无法送达；试运行只清理了程序包副本而遗留试运行存储。
 
 ## 尚未验证
 
-- 真机：安装、授权、配置、定时触发、后台 Node 进程拉起、网络与凭据、程序界面、开发插件与让 AI 修改的完整流程。
+- 真机：配置项与凭据（`{{secret:name}}`）、定时触发、通知、开发插件（`validate`、`dry-run`）与让 AI 修改的完整流程；第二台已连接手机。
 - 应用在后台时由 WorkManager 拉起 Node 子进程的稳定性，以及 Android 12 起子进程限制的实际阈值。
-- 两台已连接手机的系统 WebView 对 `WEB_MESSAGE_LISTENER`、内容安全策略和 Service Worker 拦截的实际行为。
+- 系统 WebView 的内容安全策略与 Service Worker 拦截（小米平板上 `WEB_MESSAGE_LISTENER` 消息桥已实际工作，拦截行为未单独测试）。
 - 第二阶段能力（屏幕事件与操作、`net.websocket`、`ai.call`、`entry`）尚未实现。

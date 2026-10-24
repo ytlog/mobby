@@ -133,7 +133,7 @@ class ProgramPlatform internal constructor(
     fun runs(limit: Int = 200): Flow<List<RunRow>> = dao.recentRunsFlow(limit)
 
     suspend fun operations(programId: String, limit: Int = 100) = dao.operations(programId, limit)
-    suspend fun logs(programId: String, limit: Int = 100) = dao.logs(programId, limit)
+    fun logs(programId: String, limit: Int = 100): Flow<List<LogRow>> = dao.logsFlow(programId, limit)
     fun runLog(runId: String): String? = File(layout.root, "logs/$runId.log").takeIf { it.isFile }?.readText()
 
     /** Program directories in the default workspace, newest first. */

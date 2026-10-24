@@ -27,6 +27,39 @@ internal fun permissionLabel(value: PermissionState) = when (value) {
     PermissionState.EXPIRED -> AppStrings.permissionExpired
 }
 
+/** Run outcomes, triggers and stop reasons are wire values; unknown ones are shown as written. */
+internal fun runOutcomeLabel(outcome: String?) = when (outcome) {
+    null -> AppStrings.runRunning
+    "exited" -> AppStrings.runExited
+    "failed" -> AppStrings.runFailed
+    "killed" -> AppStrings.runKilled
+    "killed_by_system" -> AppStrings.runKilledBySystem
+    "dropped" -> AppStrings.runDropped
+    "interrupted" -> AppStrings.runInterrupted
+    else -> outcome
+}
+
+internal fun runTriggerLabel(trigger: String) = when (trigger) {
+    "ui" -> AppStrings.triggerUi
+    "schedule" -> AppStrings.triggerSchedule
+    "dry_run" -> AppStrings.triggerDryRun
+    else -> trigger
+}
+
+internal fun runReasonLabel(reason: String) = when (reason) {
+    "idle" -> AppStrings.reasonIdle
+    "paused" -> AppStrings.reasonPaused
+    "stopped_by_user" -> AppStrings.reasonStoppedByUser
+    "program_updated" -> AppStrings.reasonProgramUpdated
+    "program_deleted" -> AppStrings.reasonProgramDeleted
+    "start_timeout" -> AppStrings.reasonStartTimeout
+    "launch_failed" -> AppStrings.reasonLaunchFailed
+    "exited_before_connecting" -> AppStrings.reasonExitedBeforeConnecting
+    "process_restarted" -> AppStrings.reasonProcessRestarted
+    "dry_run_timeout" -> AppStrings.reasonDryRunTimeout
+    else -> reason
+}
+
 /** Scope entries for display: package labels when visible, domains and methods as written. */
 internal fun scopeSummary(context: Context, scope: Scope): String = listOfNotNull(
     scope.packages?.joinToString { appLabel(context, it) },

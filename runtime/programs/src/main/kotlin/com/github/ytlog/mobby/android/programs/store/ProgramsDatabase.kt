@@ -217,6 +217,7 @@ interface ProgramsDao {
 
     @Insert suspend fun insertLog(row: LogRow)
     @Query("SELECT * FROM program_log WHERE programId = :id ORDER BY at DESC, id DESC LIMIT :limit") suspend fun logs(id: String, limit: Int): List<LogRow>
+    @Query("SELECT * FROM program_log WHERE programId = :id ORDER BY at DESC, id DESC LIMIT :limit") fun logsFlow(id: String, limit: Int): Flow<List<LogRow>>
     @Query("DELETE FROM program_log WHERE id NOT IN (SELECT id FROM program_log WHERE programId = :id ORDER BY at DESC, id DESC LIMIT :keep) AND programId = :id")
     suspend fun pruneLogs(id: String, keep: Int)
     @Query("DELETE FROM program_log WHERE programId = :id") suspend fun deleteLogs(id: String)

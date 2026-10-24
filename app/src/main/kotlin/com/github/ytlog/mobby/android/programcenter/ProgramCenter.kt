@@ -154,8 +154,7 @@ private const val DETAIL = "detail:"
     val context = LocalContext.current
     var confirmDelete by remember { mutableStateOf(false) }
     val runs by remember(platform) { platform.runs() }.collectAsState(initial = emptyList())
-    var logs by remember { mutableStateOf(emptyList<String>()) }
-    LaunchedEffect(program.id, runs.size) { logs = platform.logs(program.id, 20).map { "${formatTime(it.at)} ${it.message}${it.dataJson?.let { d -> " $d" } ?: ""}" } }
+    val logs by remember(platform, program.id) { platform.logs(program.id, 20) }.collectAsState(initial = emptyList())
     Page(program.name, back) {
         SettingsGroup {
             Line(AppStrings.versionLabel(program.version), availabilityLabel(program.availability))
@@ -209,11 +208,14 @@ private const val DETAIL = "detail:"
             if (own.isEmpty()) Line(AppStrings.noRuns)
             own.forEachIndexed { index, run ->
                 if (index > 0) GroupDivider()
-                Line("${formatTime(run.queuedAt)} · ${run.outcome ?: "running"}", listOfNotNull(run.trigger, run.reason,
-                    run.exitCode?.let { "exit $it" }, run.signal?.let { "signal $it" }, run.droppedEvents.takeIf { it > 0 }?.let { "dropped $it" }).joinToString(" · "))
+                Line("${formatTime(run.queuedAt)} · ${runOutcomeLabel(run.outcome)}", listOfNotNull(runTriggerLabel(run.trigger), run.reason?.let(::runReasonLabel),
+                    run.exitCode?.let(AppStrings::exitCode), run.signal?.let(AppStrings::exitSignal),
+                    run.droppedEvents.takeIf { it > 0 }?.let(AppStrings::droppedEvents)).joinToString(" · "))
             }
         }
-        if (logs.isNotEmpty()) SettingsGroup(AppStrings.programLog) { logs.forEach { Line(it) } }
+        if (logs.isNotEmpty()) SettingsGroup(AppStrings.programLog) {
+            logs.forEach { Line("${formatTime(it.at)} ${it.message}${it.dataJson?.let { data -> " $data" } ?: ""}") }
+        }
     }
     if (confirmDelete) AlertDialog(onDismissRequest = { confirmDelete = false }, containerColor = raisedColor(), shape = RoundedCornerShape(24.dp),
         title = { Text(AppStrings.deleteProgram) }, text = { Text(AppStrings.deleteConfirm(program.name)) },
