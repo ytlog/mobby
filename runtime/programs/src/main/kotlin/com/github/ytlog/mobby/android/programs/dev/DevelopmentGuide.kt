@@ -76,6 +76,8 @@ mobby.on('ui.message', async (payload) => { if (payload.message.type === 'refres
 SDK: `call(capability, args)`, `kv.get/set/delete`, `sql.query/execute/transaction`, `files.read/write/list/delete`,
 `net.fetch(url, {method, headers, body})`, `secrets.put/list/delete`, `config.get()`, `notify.show({title, body, openUi})`,
 `log(message, data)`, `permissions.list/request`, `capabilities.list()`, `on(handler, fn)`, `ui.post(message)`.
+`sql.query` returns `{columns, rows}`: `columns` lists the column names and each row is an array in that order
+(`rows[0][0]`, not `rows[0].name`). `sql.execute` returns `{changes}`, plus `lastInsertRowId` for INSERT.
 Failures throw `MobbyError` with `code`, `layer`, `reason`, `effect`; never treat an error or `EFFECT_UNKNOWN` as success.
 Secrets are written with `secrets.put` or by the user, and used only as `{{secret:name}}` in headers or query strings.
 Use the SDK instead of Node's own fetch, fs, sqlite or child_process: direct use is not governed, recorded or counted.
@@ -99,6 +101,9 @@ no direct network access (use `mobby.net.fetch`). External links open in the bro
 
 - `validate` checks the folder; fix every problem it lists.
 - `dry-run` runs the background logic once with your simulated events; commands and network requests are simulated,
-  storage uses throwaway data. A dry run passing does not prove the program works on real events.
+  storage uses throwaway data. A simulated command returns `{simulated: true}`; a simulated `net.fetch` returns a
+  response with `response.simulated` true, `status` null and no body, and `text()`/`json()` throw `MobbyError` code
+  `SIMULATED`. Check `response.simulated` instead of guessing at a body. A dry run passing does not prove the program
+  works on real events.
 """.trimStart()
 }

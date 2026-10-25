@@ -49,6 +49,18 @@ test('calls return results and throw program errors without pretending success',
   } finally { api.instance.close(); }
 });
 
+test('a simulated fetch says so and has no body to read', async () => {
+  const api = await server((req, res) => json(res, { requestId: req.body.requestId, status: 'simulated', effect: 'none' }));
+  mobby[Symbol.for('mobby.runner')].start(api.port, 'c');
+  try {
+    const response = await mobby.net.fetch('https://api.example.com/x');
+    assert.equal(response.simulated, true);
+    assert.equal(response.status, null);
+    await assert.rejects(response.json(), (error) => error.name === 'MobbyError' && error.code === 'SIMULATED' && error.reason === 'dry_run_has_no_response_body');
+    await assert.rejects(response.text(), (error) => error.code === 'SIMULATED');
+  } finally { api.instance.close(); }
+});
+
 test('a lost connection looks up the original request instead of resending it', async () => {
   const api = await server((req, res, raw) => {
     if (req.method === 'POST') return raw.socket.destroy();

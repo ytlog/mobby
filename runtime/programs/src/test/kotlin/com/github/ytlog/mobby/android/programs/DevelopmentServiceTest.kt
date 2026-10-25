@@ -123,4 +123,11 @@ class DevelopmentServiceTest {
         assertTrue(catalog.contains("### notes.write") && catalog.contains("### time.schedule"))
         assertFalse(catalog.contains("### screen.click"))
     }
+
+    @Test fun `the guide states result shapes the AI cannot infer`() {
+        platform = platform()
+        val catalog = DevelopmentService(platform).catalog()
+        assertTrue("SQL rows are arrays", catalog.contains("`{columns, rows}`") && catalog.contains("each row is an array"))
+        assertTrue("simulated fetch", catalog.contains("`response.simulated`") && catalog.contains("`SIMULATED`"))
+    }
 }

@@ -249,6 +249,9 @@ private fun screenScreenshotReason(status: String): String = when (status) {
     if (operation.result?.kind == "text") {
         val text = operation.result!!.data.text("text")
         Text(text, style = MaterialTheme.typography.bodySmall, maxLines = if (expanded) Int.MAX_VALUE else 4)
+    } else if (operation.result?.kind == "program_report") {
+        val lines = programReportLines(operation.result!!.data)
+        (if (expanded) lines else lines.take(6)).forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
     } else if (operation.result?.kind == "app_function") {
         val value = operation.result!!.data["value"]?.toString().orEmpty()
         Text(value, style = MaterialTheme.typography.bodySmall, maxLines = if (expanded) Int.MAX_VALUE else 6)

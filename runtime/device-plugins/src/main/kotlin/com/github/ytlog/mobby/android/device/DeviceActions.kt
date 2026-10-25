@@ -386,15 +386,15 @@ internal class DeviceActions(private val context: Context, private val inbox: Fi
         val port = ProgramDevelopment.port ?: deviceFailure(DeviceErrorCode.UNAVAILABLE, "Program platform is not running")
         return when (action) {
             "catalog" -> deviceText(port.catalog())
-            "validate" -> deviceResult("basic", port.validate(args.getValue("path")))
+            "validate" -> deviceResult("program_report", port.validate(args.getValue("path")))
             "dry-run" -> {
                 val timeout = args["timeoutMs"]?.toLongOrNull()?.coerceIn(1_000, 60_000) ?: 20_000
-                deviceResult("basic", port.dryRun(args.getValue("path"), args["events"] ?: "[]", timeout, allow))
+                deviceResult("program_report", port.dryRun(args.getValue("path"), args["events"] ?: "[]", timeout, allow))
             }
             "records" -> {
                 val id = args.getValue("programId")
                 if (id !in attachedPrograms) deviceFailure(DeviceErrorCode.UNAUTHORIZED, "Attach the program to this chat first")
-                deviceResult("basic", port.records(id, args["limit"]?.toIntOrNull()?.coerceIn(1, 200) ?: 50))
+                deviceResult("program_report", port.records(id, args["limit"]?.toIntOrNull()?.coerceIn(1, 200) ?: 50))
             }
             else -> error(AppStrings.unsupportedOperation)
         }

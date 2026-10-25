@@ -43,8 +43,8 @@ class ProgramDevelopmentTest {
         ProgramDevelopment.port = port
         val actions = actions(setOf("price-watch"))
         assertEquals("catalog", run(actions, "catalog").data["text"]!!.jsonPrimitive.content)
-        run(actions, "validate", mapOf("path" to "price-watch"))
-        run(actions, "dry-run", mapOf("path" to "price-watch", "timeoutMs" to "999999"))
+        assertEquals("program_report", run(actions, "validate", mapOf("path" to "price-watch")).kind)
+        assertEquals("program_report", run(actions, "dry-run", mapOf("path" to "price-watch", "timeoutMs" to "999999")).kind)
         run(actions, "records", mapOf("programId" to "price-watch"))
         val denied = runCatching { run(actions, "records", mapOf("programId" to "other")) }.exceptionOrNull() as DeviceFailure
         assertEquals(DeviceErrorCode.UNAUTHORIZED, denied.error.code)
