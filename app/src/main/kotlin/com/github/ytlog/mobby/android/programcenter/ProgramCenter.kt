@@ -18,6 +18,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.github.ytlog.mobby.android.conversation.ui.*
@@ -268,6 +270,13 @@ private const val DETAIL = "detail:"
     }
 }
 
+/** Secrets ask for password input so composing or learning input methods leave the typed value alone. */
+internal fun configKeyboard(type: ConfigType?) = when (type) {
+    ConfigType.SECRET -> KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false)
+    ConfigType.NUMBER -> KeyboardOptions(keyboardType = KeyboardType.Number)
+    else -> KeyboardOptions(keyboardType = KeyboardType.Text)
+}
+
 @Composable private fun ConfigEditor(item: ConfigView, save: (JsonElement?) -> Unit, saveSecret: (String) -> Unit) {
     val field = item.field
     val type = ConfigType.of(field.type)
@@ -282,7 +291,7 @@ private const val DETAIL = "detail:"
             var text by remember(item.value) { mutableStateOf(if (type == ConfigType.SECRET) "" else (item.value as? JsonPrimitive)?.contentOrNull.orEmpty()) }
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(text, { text = it }, Modifier.weight(1f), singleLine = true,
-                    placeholder = { if (type == ConfigType.SECRET) Text(AppStrings.replaceSecret) },
+                    placeholder = { if (type == ConfigType.SECRET) Text(AppStrings.replaceSecret) }, keyboardOptions = configKeyboard(type),
                     visualTransformation = if (type == ConfigType.SECRET) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None)
                 TextButton(onClick = {
                     when (type) {
