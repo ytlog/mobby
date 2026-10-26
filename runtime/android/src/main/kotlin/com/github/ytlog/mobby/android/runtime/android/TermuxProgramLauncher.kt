@@ -29,6 +29,7 @@ class TermuxProgramLauncher(
         val sdk = LibTermux.init(context, RuntimeEnvironment.termuxConfig(context))
         if (!sdk.isInstalled) throw LaunchUnavailable("runtime_not_installed")
         val node = File(sdk.vfs.binDir, "node")
+        if (!node.canExecute() && !RuntimeEnvironment.repairNativeLinks(context, sdk)) throw LaunchUnavailable("runtime_update_pending")
         if (!node.canExecute()) throw LaunchUnavailable("runtime_not_ready")
         val runner = File(spec.sdkDir, "runner.cjs")
         if (!runner.isFile) throw LaunchUnavailable("sdk_missing")

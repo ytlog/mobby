@@ -57,6 +57,9 @@ internal fun runReasonLabel(reason: String) = when (reason) {
     "exited_before_connecting" -> AppStrings.reasonExitedBeforeConnecting
     "process_restarted" -> AppStrings.reasonProcessRestarted
     "dry_run_timeout" -> AppStrings.reasonDryRunTimeout
+    "runtime_update_pending" -> AppStrings.reasonRuntimeUpdatePending
+    "runtime_not_ready" -> AppStrings.reasonRuntimeNotReady
+    "runtime_not_installed" -> AppStrings.reasonRuntimeNotInstalled
     else -> reason
 }
 

@@ -125,15 +125,8 @@ class RuntimeEnvironment(private val context: Context) {
                 }
             }
         }
-        val mapping = context.assets.open("bootstrap/binaries.json").bufferedReader().use { Json.parseToJsonElement(it.readText()).jsonObject }
         // Recreate links after an APK update, whose nativeLibraryDir can change.
-        for ((relative, value) in mapping) {
-            val target = File(prefix, relative)
-            check(!relative.startsWith('/') && relative.split('/').none { it == ".." })
-            target.parentFile?.mkdirs()
-            target.delete()
-            Os.symlink(File(nativeDir, value.jsonPrimitive.content).absolutePath, target.absolutePath)
-        }
+        NativeLinks.link(prefix, nativeDir, nativeBinaries(context))
         File(prefix, "SYMLINKS.txt").takeIf { it.exists() }?.forEachLine { line ->
             val parts = line.split('←', limit = 2)
             if (parts.size == 2) {
@@ -165,6 +158,15 @@ class RuntimeEnvironment(private val context: Context) {
             onStarted = onStarted, onTerminated = onTerminated)
 
     companion object {
+        private fun nativeBinaries(context: Context): Map<String, String> =
+            context.assets.open("bootstrap/binaries.json").bufferedReader().use { Json.parseToJsonElement(it.readText()).jsonObject }
+                .mapValues { it.value.jsonPrimitive.content }
+
+        /** For launches outside runtime preparation (a scheduled program after an app update): relink if the files are current. */
+        fun repairNativeLinks(context: Context, sdk: LibTermux): Boolean = NativeLinks.repair(sdk.vfs.root, sdk.vfs.prefixDir,
+            context.applicationInfo.nativeLibraryDir, context.assets.open("bootstrap/version.txt").bufferedReader().use { it.readText() },
+            nativeBinaries(context))
+
         /** The one runtime configuration; program processes attach to the same singleton with it. */
         fun termuxConfig(context: Context): TermuxConfig {
             val prefix = File(context.filesDir, "libtermux/usr").absolutePath
