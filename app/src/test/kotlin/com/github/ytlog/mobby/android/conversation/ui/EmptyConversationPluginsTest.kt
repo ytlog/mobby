@@ -36,6 +36,26 @@ class EmptyConversationPluginsTest {
         assertTrue(bounds[2].top > bounds[0].bottom)
     }
 
+    @Test fun `with programs the entries share one row and up to three programs open from below`() {
+        val actions = mutableListOf<String>()
+        val programs = EmptyPagePrograms(listOf(
+            ProgramShortcut("header-watch", "Header Watch", opensPage = true),
+            ProgramShortcut("price", "价格提醒", opensPage = false, note = "需要填写配置"),
+            ProgramShortcut("notes", "记账本", opensPage = true),
+            ProgramShortcut("fourth", "第四个", opensPage = true),
+        ), openPage = { actions += "page:$it" }, openDetails = { actions += "details:$it" }, openAll = { actions += "all" })
+        compose.setContent { MaterialTheme { EmptyConversationPlugins(emptySet(), programs) { actions += it } } }
+        val refs = listOf("plugin:device:screen", "plugin:device:programs", "plugin:device:storage", "plugin:device:camera")
+        val tops = refs.map { compose.onNodeWithTag(it).getBoundsInRoot().top }
+        assertTrue(tops.all { it == tops.first() })
+        compose.onNodeWithText("第四个").assertDoesNotExist()
+        compose.onNodeWithText("Header Watch").performClick()
+        compose.onNodeWithText("价格提醒").performClick()
+        compose.onNodeWithText(UiStrings.allProgramsShort).performClick()
+        compose.onNodeWithTag("plugin:device:camera").performClick()
+        assertEquals(listOf("page:header-watch", "details:price", "all", "plugin:device:camera"), actions)
+    }
+
     @Test @Config(sdk = [34], qualifiers = "sw700dp-w1000dp-h800dp-mdpi")
     fun `tablet screen entry names the tablet`() {
         compose.setContent { MaterialTheme { EmptyConversationPlugins(emptySet()) {} } }

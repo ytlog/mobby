@@ -64,7 +64,7 @@ class DirectPluginSelectorTest {
         val (vm, conversation) = viewModel({ Plugin(ref, "文件", "选择目录", available, null, access = PluginAccess.DOCUMENT_TREE) }, written) {
             saved = it; available = true; OperationResult.Done
         }
-        compose.setContent { MaterialTheme { EmptyConversationPlugins(emptySet(), rememberDirectPluginSelector(vm, conversation)) } }
+        compose.setContent { MaterialTheme { EmptyConversationPlugins(emptySet(), onSelect = rememberDirectPluginSelector(vm, conversation)) } }
         compose.onNodeWithText("访问文件").performClick()
         val shadow = Shadows.shadowOf(compose.activity)
         compose.waitUntil(5_000) { shadow.peekNextStartedActivityForResult() != null }
@@ -81,7 +81,7 @@ class DirectPluginSelectorTest {
         val (vm, conversation) = viewModel({ Plugin("plugin:device:storage", "文件", "选择目录", false, null, access = PluginAccess.DOCUMENT_TREE) }, written) {
             OperationResult.Failed("fixture directory permission denied")
         }
-        compose.setContent { MaterialTheme { EmptyConversationPlugins(emptySet(), rememberDirectPluginSelector(vm, conversation)) } }
+        compose.setContent { MaterialTheme { EmptyConversationPlugins(emptySet(), onSelect = rememberDirectPluginSelector(vm, conversation)) } }
         compose.onNodeWithText("访问文件").performClick()
         val shadow = Shadows.shadowOf(compose.activity)
         compose.waitUntil(5_000) { shadow.peekNextStartedActivityForResult() != null }
@@ -101,7 +101,7 @@ class DirectPluginSelectorTest {
         compose.setContent {
             MaterialTheme {
                 val select = rememberDirectPluginSelector(vm, conversation)
-                EmptyConversationPlugins(emptySet(), select)
+                EmptyConversationPlugins(emptySet(), onSelect = select)
             }
         }
         compose.onNodeWithText("使用手机").performClick()
@@ -116,7 +116,7 @@ class DirectPluginSelectorTest {
         compose.setContent {
             MaterialTheme {
                 val select = rememberDirectPluginSelector(vm, conversation)
-                EmptyConversationPlugins(emptySet(), select)
+                EmptyConversationPlugins(emptySet(), onSelect = select)
             }
         }
         compose.onNodeWithText("使用相机").performClick()
@@ -131,7 +131,7 @@ class DirectPluginSelectorTest {
         compose.setContent {
             MaterialTheme {
                 val select = rememberDirectPluginSelector(vm, conversation)
-                EmptyConversationPlugins(emptySet(), select)
+                EmptyConversationPlugins(emptySet(), onSelect = select)
             }
         }
         compose.onNodeWithText("使用手机").performClick()
@@ -150,7 +150,7 @@ class DirectPluginSelectorTest {
         compose.setContent {
             MaterialTheme {
                 val select = rememberDirectPluginSelector(vm, conversation)
-                EmptyConversationPlugins(emptySet(), select)
+                EmptyConversationPlugins(emptySet(), onSelect = select)
             }
         }
         compose.onNodeWithText("使用手机").performClick()
@@ -170,7 +170,7 @@ class DirectPluginSelectorTest {
         compose.setContent {
             MaterialTheme {
                 val select = rememberDirectPluginSelector(vm, conversation)
-                EmptyConversationPlugins(emptySet(), select)
+                EmptyConversationPlugins(emptySet(), onSelect = select)
             }
         }
         compose.onNodeWithText("使用相机").performClick()

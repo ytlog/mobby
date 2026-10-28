@@ -256,6 +256,9 @@ class ConversationHostActions(
                         AppPage.APP_FUNCTIONS -> AppFunctionPage(vm) { navigation = navigation.openAddSheet() }
                         AppPage.CONVERSATION -> ConversationPane(
                             state, system, vm, hostActions, selectPlugin, Modifier.fillMaxSize().then(swipe),
+                            programs = EmptyPagePrograms(programShortcuts, hostActions.openProgram,
+                                openDetails = { id -> navigation = navigation.openPrograms(program = id, fromSheet = false) },
+                                openAll = { navigation = navigation.openPrograms(fromSheet = false) }),
                             showMenu = !showSidebar,
                             menuLabel = if (wide) AppStrings.expandConversationSidebar else AppStrings.openConversationDrawer,
                             onMenu = { keyboard?.hide(); focus.clearFocus(); if (wide) sidebarExpanded = true else drawer = true },
@@ -358,7 +361,7 @@ class ConversationHostActions(
 
 @Composable private fun ConversationPane(
     state: ConversationState, system: SystemStatus, vm: ConversationViewModel,
-    hostActions: ConversationHostActions, onSelectPlugin: (String) -> Unit, modifier: Modifier,
+    hostActions: ConversationHostActions, onSelectPlugin: (String) -> Unit, modifier: Modifier, programs: EmptyPagePrograms?,
     showMenu: Boolean, menuLabel: String, onMenu: () -> Unit, onNew: () -> Unit, onMore: (String) -> Unit,
     onAnchor: (IntRect) -> Unit, onAdd: () -> Unit, onRead: (String, String) -> Unit,
 ) {
@@ -387,7 +390,7 @@ class ConversationHostActions(
                             val detail = state.selected!!
                             key(detail.conversation.id) {
                                 Timeline(detail, vm, Modifier.fillMaxSize(), read = onRead,
-                                    hostActions = hostActions, proposal = vm::openSkillProposal, onSelectPlugin = onSelectPlugin)
+                                    hostActions = hostActions, proposal = vm::openSkillProposal, onSelectPlugin = onSelectPlugin, programs = programs)
                             }
                         }
                     }
@@ -798,7 +801,7 @@ internal fun Turn.showsSeparateActivity(): Boolean = occupied || pending
     }
 }
 
-@Composable internal fun Timeline(detail: ConversationDetail, vm: ConversationViewModel, modifier: Modifier, followPadding: PaddingValues? = null, read: (String, String) -> Unit, hostActions: ConversationHostActions, proposal: (SkillProposal) -> Unit, onSelectPlugin: (String) -> Unit, initialFollow: Boolean? = null, onFollowChanged: (Boolean) -> Unit = {}) {
+@Composable internal fun Timeline(detail: ConversationDetail, vm: ConversationViewModel, modifier: Modifier, followPadding: PaddingValues? = null, read: (String, String) -> Unit, hostActions: ConversationHostActions, proposal: (SkillProposal) -> Unit, onSelectPlugin: (String) -> Unit, initialFollow: Boolean? = null, onFollowChanged: (Boolean) -> Unit = {}, programs: EmptyPagePrograms? = null) {
     val topFade = if (darkChrome()) ConversationEdgeFade else LightConversationTopFade
     val bottomFade = if (darkChrome()) ConversationEdgeFade else LightConversationBottomFade
     val contentPadding = PaddingValues(start = 16.dp, top = topFade, end = 16.dp, bottom = bottomFade)
@@ -867,7 +870,7 @@ internal fun Turn.showsSeparateActivity(): Boolean = occupied || pending
                     Text(AppStrings.whatWouldYouLikeToDoToday, style = MaterialTheme.typography.headlineMedium, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                     Text(AppStrings.startASpecificTaskWith(detail.conversation.config.agent.label()), Modifier.padding(top = 12.dp).fillMaxWidth(), color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                     Spacer(Modifier.height(24.dp))
-                    EmptyConversationPlugins(detail.conversation.draft.capabilities, onSelectPlugin)
+                    EmptyConversationPlugins(detail.conversation.draft.capabilities, programs, onSelectPlugin)
                 }
             }
             detail.turns.forEach { turn ->
