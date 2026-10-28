@@ -597,7 +597,6 @@ open class StringCatalog(private val fixedLanguage: AppLanguage? = null) {
     val whatWouldYouLikeToDoToday get() = text("今天，做点什么？", "What would you like to do today?")
     val usePhonePlugin get() = text("使用手机", "Use phone")
     val useTabletPlugin get() = text("使用平板", "Use tablet")
-    val viewPhotosPlugin get() = text("查看照片", "View photos")
     val browseFilesPlugin get() = text("访问文件", "Browse files")
     val useCameraPlugin get() = text("使用相机", "Use camera")
     fun startASpecificTaskWith(arg0: Any?) = text("使用 {0}，从一个具体任务开始。", "Start a specific task with {0}.", arg0)

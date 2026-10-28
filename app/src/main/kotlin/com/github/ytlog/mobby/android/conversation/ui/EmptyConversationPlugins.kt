@@ -23,7 +23,7 @@ private data class PluginOption(val ref: String, val label: String, val icon: Ap
 
 private fun pluginOptions(tablet: Boolean) = listOf(
     PluginOption("plugin:device:screen", if (tablet) AppStrings.useTabletPlugin else AppStrings.usePhonePlugin, if (tablet) AppIcons.Tablet else AppIcons.Phone),
-    PluginOption("plugin:device:media", AppStrings.viewPhotosPlugin, AppIcons.Photo),
+    PluginOption(PROGRAM_DEVELOPMENT, AppStrings.programDevelopment, AppIcons.Terminal),
     PluginOption("plugin:device:storage", AppStrings.browseFilesPlugin, AppIcons.Folder),
     PluginOption("plugin:device:camera", AppStrings.useCameraPlugin, AppIcons.Camera),
 )

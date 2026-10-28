@@ -24,10 +24,10 @@ class EmptyConversationPluginsTest {
         val selected = mutableListOf<String>()
         compose.setContent { MaterialTheme { EmptyConversationPlugins(emptySet()) { selected += it } } }
         compose.onNodeWithText("使用手机").assertIsDisplayed().performClick()
-        compose.onNodeWithText("查看照片").assertIsDisplayed().performClick()
+        compose.onNodeWithText("程序开发").assertIsDisplayed().performClick()
         compose.onNodeWithText("访问文件").assertIsDisplayed().performClick()
         compose.onNodeWithText("使用相机").assertIsDisplayed().performClick()
-        val refs = listOf("plugin:device:screen", "plugin:device:media", "plugin:device:storage", "plugin:device:camera")
+        val refs = listOf("plugin:device:screen", "plugin:device:programs", "plugin:device:storage", "plugin:device:camera")
         assertEquals(refs, selected)
         val bounds = refs.map { compose.onNodeWithTag(it).getBoundsInRoot() }
         assertTrue(bounds.all { it.right - it.left == bounds.first().right - bounds.first().left })
