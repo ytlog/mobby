@@ -46,15 +46,36 @@ private const val DETAIL = "detail:"
  */
 @Composable fun ProgramCenterPage(platform: ProgramPlatform, back: () -> Unit, writeNew: () -> Unit, modifyWithAi: (ProgramView) -> Unit = {}) {
     var route by rememberSaveable { mutableStateOf(LIST) }
-    val programs by platform.programs.collectAsState(initial = emptyList())
+    // The program just installed, until the list includes it.
+    var awaiting by rememberSaveable { mutableStateOf<String?>(null) }
+    val loaded by platform.programs.collectAsState(initial = null)
+    val programs = loaded.orEmpty()
     BackHandler(route != LIST) { route = LIST }
     when {
-        route == INSTALL -> InstallPage(platform) { installed -> route = installed?.let { DETAIL + it } ?: LIST }
+        route == INSTALL -> InstallPage(platform) { installed -> awaiting = installed; route = installed?.let { DETAIL + it } ?: LIST }
         route == PERMISSIONS -> PermissionManagementPage(platform, programs) { route = LIST }
-        route.startsWith(DETAIL) -> programs.firstOrNull { it.id == route.removePrefix(DETAIL) }
-            ?.let { ProgramDetailPage(platform, it, modifyWithAi) { route = LIST } } ?: LaunchedEffect(route) { route = LIST }
+        route.startsWith(DETAIL) -> {
+            val id = route.removePrefix(DETAIL)
+            when (detailTarget(id, loaded?.map { it.id }?.toSet(), awaiting)) {
+                DetailTarget.SHOW -> {
+                    LaunchedEffect(id) { if (awaiting == id) awaiting = null }
+                    ProgramDetailPage(platform, programs.first { it.id == id }, modifyWithAi) { route = LIST }
+                }
+                DetailTarget.WAIT -> Unit
+                DetailTarget.GONE -> LaunchedEffect(route) { route = LIST }
+            }
+        }
         else -> ProgramListPage(platform, programs, back, writeNew, { route = DETAIL + it }, { route = INSTALL }, { route = PERMISSIONS })
     }
+}
+
+internal enum class DetailTarget { SHOW, WAIT, GONE }
+
+/** A details route shows its program; waits while the list loads or a just installed program arrives; otherwise the program is gone. */
+internal fun detailTarget(id: String, loaded: Set<String>?, awaiting: String?) = when {
+    loaded != null && id in loaded -> DetailTarget.SHOW
+    loaded == null || awaiting == id -> DetailTarget.WAIT
+    else -> DetailTarget.GONE
 }
 
 @Composable private fun Page(title: String, back: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
