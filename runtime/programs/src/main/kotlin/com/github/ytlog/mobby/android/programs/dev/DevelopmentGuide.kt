@@ -73,9 +73,15 @@ mobby.on('onSchedule', refresh);
 mobby.on('ui.message', async (payload) => { if (payload.message.type === 'refresh') await refresh(); });
 ```
 
-SDK: `call(capability, args)`, `kv.get/set/delete`, `sql.query/execute/transaction`, `files.read/write/list/delete`,
-`net.fetch(url, {method, headers, body})`, `secrets.put/list/delete`, `config.get()`, `notify.show({title, body, openUi})`,
-`log(message, data)`, `permissions.list/request`, `capabilities.list()`, `on(handler, fn)`, `ui.post(message)`.
+SDK (arguments are positional; only the ones shown in braces take an object):
+- `call(capability, args)`, `config.get()` (an object keyed by config key), `log(message, data)`
+- `kv.get(key)`, `kv.set(key, value)`, `kv.delete(key)`
+- `sql.query(sql, params)`, `sql.execute(sql, params)`, `sql.transaction([{sql, params}])`
+- `files.read(path)`, `files.write(path, text)`, `files.list(dir)`, `files.delete(path)`; paths are relative to the program's own files
+- `net.fetch(url, {method, headers, body})`, `notify.show({title, body, openUi})`
+- `secrets.put(name, value, {domains})`, `secrets.list()`, `secrets.delete(name)`
+- `permissions.list()`, `permissions.request(capability, scope)`, `capabilities.list()`
+- background only: `on(handler, fn)`, `ui.post(message)`; page only: `ui.send(message)`, `ui.onMessage(fn)`.
 `sql.query` returns `{columns, rows}`: `columns` lists the column names and each row is an array in that order
 (`rows[0][0]`, not `rows[0].name`). `sql.execute` returns `{changes}`, plus `lastInsertRowId` for INSERT.
 Failures throw `MobbyError` with `code`, `layer`, `reason`, `effect`; never treat an error or `EFFECT_UNKNOWN` as success.
@@ -94,6 +100,7 @@ document.querySelector('#refresh').onclick = () => mobby.ui.send({ type: 'refres
 mobby.ui.onMessage((message) => { if (message.type === 'updated') location.reload(); });
 ```
 
+A dry run covers background logic only, never the page: catch page failures and show them instead of failing silently.
 Pages may load only their own files: no inline scripts or `on…=` handlers, no external scripts, styles or images,
 no direct network access (use `mobby.net.fetch`). External links open in the browser after the user confirms.
 

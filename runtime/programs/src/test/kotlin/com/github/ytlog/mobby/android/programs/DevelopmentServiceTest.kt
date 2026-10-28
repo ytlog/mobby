@@ -129,5 +129,7 @@ class DevelopmentServiceTest {
         val catalog = DevelopmentService(platform).catalog()
         assertTrue("SQL rows are arrays", catalog.contains("`{columns, rows}`") && catalog.contains("each row is an array"))
         assertTrue("simulated fetch", catalog.contains("`response.simulated`") && catalog.contains("`SIMULATED`"))
+        // The phone AI called files.write({path, text}); arguments are positional.
+        assertTrue("positional signatures", catalog.contains("`files.write(path, text)`") && catalog.contains("positional"))
     }
 }
