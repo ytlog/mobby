@@ -18,7 +18,7 @@
 | 事件 | 订阅索引、平台事件、WorkManager 定时（每条订阅一个唯一任务） | `event/` |
 | 程序界面 | 每程序独立页面源、只读安装副本、内容安全策略、拒绝权限请求与弹窗、来源绑定的消息桥、固定标题栏 | `ui/`、`app/.../ProgramUiActivity.kt` |
 | SDK | 后台 `mobby` 与 `runner.cjs`、页面 `/_mobby/sdk.js` | `src/main/assets/program-sdk`、`program-ui-sdk` |
-| 程序开发页 | 输入框“+”菜单中的“程序开发”是唯一入口：让 AI 写新程序、程序列表、安装预览、详情（权限、申请、配置、事件、运行与日志）、权限管理、让 AI 修改 | `app/.../programcenter/` |
+| 程序开发页 | 输入框“+”菜单中的“程序开发”是管理入口，左侧栏“程序”分组按最近打开列出已启用程序并直接打开页面，空对话快捷卡片“程序开发”附加开发插件：让 AI 写新程序、程序列表、安装预览、详情（权限、申请、配置、事件、运行与日志）、权限管理、让 AI 修改 | `app/.../programcenter/` |
 | 开发插件 | `plugin:device:programs` 的 `catalog`、`validate`、`dry-run`、`records`；`plugin:program:<id>` 附加程序 | `dev/`、`device/ProgramDevelopment.kt` |
 
 ## 验证

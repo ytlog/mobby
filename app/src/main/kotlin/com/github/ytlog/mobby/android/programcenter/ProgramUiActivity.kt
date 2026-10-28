@@ -42,6 +42,7 @@ class ProgramUiActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val programId = intent.getStringExtra(EXTRA_PROGRAM) ?: return finish()
         val platform = (application as MobbyApplication).programs
+        if (savedInstanceState == null) ProgramOpenHistory(this).record(programId)
         setContent {
             var title by remember { mutableStateOf(programId) }
             var failure by remember { mutableStateOf<String?>(null) }

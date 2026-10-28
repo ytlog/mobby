@@ -78,7 +78,7 @@ flowchart TB
 
 依赖方向：`app → runtime-android → program-platform → device-plugins → runtime-api`。`device-plugins` 不依赖 `program-platform`；开发插件通过端口由 `app` 注入实现。
 
-源码包：`program-platform` 为 `com.github.ytlog.mobby.android.programs`；`app` 中的界面为 `com.github.ytlog.mobby.android.programcenter`。界面包可以复用 `conversation.ui` 的设置组件；`conversation.ui` 不引用程序平台，程序开发页经 `ConversationHostActions` 注入的页面插槽进入导航，入口是输入框“+”菜单中的“程序开发”，返回时回到该菜单。
+源码包：`program-platform` 为 `com.github.ytlog.mobby.android.programs`；`app` 中的界面为 `com.github.ytlog.mobby.android.programcenter`。界面包可以复用 `conversation.ui` 的设置组件；`conversation.ui` 不引用程序平台，程序开发页经 `ConversationHostActions` 注入的页面插槽进入导航，入口是输入框“+”菜单中的“程序开发”，返回时回到该菜单；从左侧栏进入时返回对话。左侧栏的程序快捷入口由宿主以 `ProgramShortcut` 列表注入，`conversation.ui` 只负责展示和导航。
 
 ### 3.2 `:program-platform` 内部包
 
@@ -393,7 +393,8 @@ data class ProgramEvent(
 
 ## 13. 程序开发页
 
-- 唯一入口：对话输入框“+”菜单（“添加内容与能力”）中的“程序开发”。设置页和设备插件列表都不再出现程序相关入口；开发插件 `plugin:device:programs` 仍是运行时的设备插件，只是不在插件列表中单独展示。
+- 管理入口：对话输入框“+”菜单（“添加内容与能力”）中的“程序开发”。设置页和设备插件列表都不再出现程序相关入口；开发插件 `plugin:device:programs` 仍是运行时的设备插件，只是不在插件列表中单独展示。空对话的快捷卡片“程序开发”同样只把开发插件加到当前对话。
+- 打开入口：左侧栏“程序”分组列出已启用的程序（不含暂停的），按本机最近打开时间排序，最多 5 个，搜索时按名称过滤。可工作且有页面的程序点按直接打开页面；需要配置、缺少权限等状态的程序以一行状态说明显示，点按进入其详情；只有后台逻辑的程序进入详情。末尾“全部程序”进入程序开发页。没有已启用程序时不显示该分组。最近打开时间只存在本机偏好设置中，用于排序。
 - 页面顶部依次为“让 AI 写新程序”（把开发插件加到当前对话并回到对话）、“安装程序”和“权限管理”，下方是已安装程序列表；程序详情中有启用、打开程序界面、停止、让 AI 修改、删除，以及权限、配置、事件、运行记录和日志。
 - `ProgramCenterViewModel` 订阅平台的 `Flow`：程序与可用性、权限、配置、订阅、全局开关、系统权限状态、运行与调用记录。
 - 安装确认页展示来源目录、文件清单、权限申请与范围、配置字段、订阅，以及后台与界面的执行边界说明；确认后调用平台安装。

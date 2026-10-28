@@ -33,6 +33,17 @@ class AppNavigationStateTest {
 
     @Test fun programDevelopmentOpensFromTheAddSheetAndReturnsToIt() {
         val sheet = AppNavigationState().openAddSheet()
-        assertEquals(sheet, sheet.open(AppPage.PROGRAMS).back(gatewayFromIntro = false))
+        val programs = sheet.openPrograms(fromSheet = true)
+        assertEquals(AppPage.PROGRAMS, programs.page)
+        assertTrue(programs.back(gatewayFromIntro = false).addSheetOpen)
+    }
+
+    @Test fun programsOpenedFromTheDrawerReturnToTheConversation() {
+        val details = AppNavigationState().openPrograms(program = "header-watch", fromSheet = false)
+        assertEquals(AppPage.PROGRAMS, details.page)
+        assertEquals("header-watch", details.program)
+        val back = details.back(gatewayFromIntro = false)
+        assertEquals(AppPage.CONVERSATION, back.page)
+        assertFalse(back.addSheetOpen)
     }
 }

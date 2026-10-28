@@ -26,26 +26,32 @@ internal data class AppNavigationState(
     val projectsBackPage: AppPage = AppPage.CONVERSATION,
     val projectName: String? = null,
     val addSheetOpen: Boolean = false,
+    /** The program whose details the program development page opens on, if any. */
+    val program: String? = null,
+    val programsBackToSheet: Boolean = false,
 ) {
     fun open(next: AppPage): AppNavigationState = copy(page = next, addSheetOpen = false)
     fun openAddSheet(): AppNavigationState = copy(page = AppPage.CONVERSATION, addSheetOpen = true)
     fun closeAddSheet(): AppNavigationState = copy(addSheetOpen = false)
     fun openProjects(from: AppPage): AppNavigationState = copy(page = AppPage.PROJECTS, projectsBackPage = from, addSheetOpen = false)
     fun openProject(name: String): AppNavigationState = copy(page = AppPage.PROJECT_DETAIL, projectName = name, addSheetOpen = false)
+    fun openPrograms(program: String? = null, fromSheet: Boolean): AppNavigationState =
+        copy(page = AppPage.PROGRAMS, program = program, programsBackToSheet = fromSheet, addSheetOpen = false)
 
     fun back(gatewayFromIntro: Boolean): AppNavigationState = when {
         addSheetOpen -> closeAddSheet()
         page == AppPage.GATEWAY -> open(if (gatewayFromIntro) AppPage.CONVERSATION else AppPage.SETTINGS)
         page in setOf(AppPage.HISTORY_LIMITS, AppPage.DIAGNOSTIC, AppPage.ARCHIVED, AppPage.LICENSES, AppPage.UPDATES) -> open(AppPage.SETTINGS)
-        page in setOf(AppPage.SKILLS, AppPage.PLUGINS, AppPage.APP_FUNCTIONS, AppPage.PROGRAMS) -> openAddSheet()
+        page in setOf(AppPage.SKILLS, AppPage.PLUGINS, AppPage.APP_FUNCTIONS) -> openAddSheet()
+        page == AppPage.PROGRAMS -> if (programsBackToSheet) openAddSheet() else open(AppPage.CONVERSATION)
         page == AppPage.PROJECTS -> open(projectsBackPage)
         else -> open(AppPage.CONVERSATION)
     }
 
     companion object {
         val Saver: Saver<AppNavigationState, Any> = listSaver(
-            save = { listOf(it.page.name, it.projectsBackPage.name, it.projectName.orEmpty(), it.addSheetOpen.toString()) },
-            restore = { AppNavigationState(AppPage.valueOf(it[0]), AppPage.valueOf(it[1]), it[2].ifEmpty { null }, it[3].toBoolean()) },
+            save = { listOf(it.page.name, it.projectsBackPage.name, it.projectName.orEmpty(), it.addSheetOpen.toString(), it.program.orEmpty(), it.programsBackToSheet.toString()) },
+            restore = { AppNavigationState(AppPage.valueOf(it[0]), AppPage.valueOf(it[1]), it[2].ifEmpty { null }, it[3].toBoolean(), it[4].ifEmpty { null }, it[5].toBoolean()) },
         )
     }
 }

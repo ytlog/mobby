@@ -44,8 +44,9 @@ private const val DETAIL = "detail:"
  * Program development, the single entry for programs: have the AI write one, install, enable, grant, configure,
  * stop and inspect programs, plus app-level permission management.
  */
-@Composable fun ProgramCenterPage(platform: ProgramPlatform, back: () -> Unit, writeNew: () -> Unit, modifyWithAi: (ProgramView) -> Unit = {}) {
-    var route by rememberSaveable { mutableStateOf(LIST) }
+@Composable fun ProgramCenterPage(platform: ProgramPlatform, back: () -> Unit, writeNew: () -> Unit, program: String? = null,
+    modifyWithAi: (ProgramView) -> Unit = {}) {
+    var route by rememberSaveable(program) { mutableStateOf(program?.let { DETAIL + it } ?: LIST) }
     // The program just installed, until the list includes it.
     var awaiting by rememberSaveable { mutableStateOf<String?>(null) }
     val loaded by platform.programs.collectAsState(initial = null)

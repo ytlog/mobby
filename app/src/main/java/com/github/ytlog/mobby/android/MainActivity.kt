@@ -19,6 +19,10 @@ import com.github.ytlog.mobby.android.conversation.ui.ConversationEntry
 import com.github.ytlog.mobby.android.conversation.ui.ConversationHostActions
 import com.github.ytlog.mobby.android.conversation.ui.mobbySystemBarColor
 import com.github.ytlog.mobby.android.programcenter.ProgramCenterPage
+import com.github.ytlog.mobby.android.programcenter.ProgramOpenHistory
+import com.github.ytlog.mobby.android.programcenter.ProgramUiActivity
+import com.github.ytlog.mobby.android.programcenter.programShortcuts
+import kotlinx.coroutines.flow.combine
 import com.github.ytlog.mobby.android.speech.SpeechEngines
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
@@ -82,7 +86,9 @@ class MainActivity : ComponentActivity() {
             catch (e: GatewayAuthorizationException) {
                 GatewaySignInResult.Failed(if (e.failure == GatewayAuthorizationFailure.TIMEOUT) AppStrings.gatewaySignInTimedOut else AppStrings.gatewaySignInFailed)
             } catch (_: Exception) { GatewaySignInResult.Failed(AppStrings.gatewaySignInFailed) }
-        }, programCenter = { back, writeNew -> ProgramCenterPage(app.programs, back, writeNew) { program ->
+        }, programShortcuts = combine(app.programs.programs, ProgramOpenHistory(this).changes()) { programs, opened -> programShortcuts(programs, opened) },
+            openProgram = { id -> startActivity(ProgramUiActivity.intent(this, id)) },
+            programCenter = { back, writeNew, opened -> ProgramCenterPage(app.programs, back, writeNew, opened) { program ->
             lifecycleScope.launch {
                 // The new chat starts from the selected conversation's agent and workspace.
                 val source = actions.state.first().let { state -> state.selected?.conversation?.id ?: state.conversations.firstOrNull()?.conversation?.id }

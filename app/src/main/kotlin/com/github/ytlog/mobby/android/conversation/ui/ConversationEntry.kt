@@ -79,8 +79,14 @@ class ConversationHostActions(
     val gatewaySignIn: suspend () -> com.github.ytlog.mobby.android.conversation.domain.gateway.GatewaySignInResult = {
         com.github.ytlog.mobby.android.conversation.domain.gateway.GatewaySignInResult.Failed(AppStrings.gatewaySignInUnavailable)
     },
-    /** Hosted program development page; hosts without one hide the entry. `writeNew` attaches the plugin to the open conversation. */
-    val programCenter: (@Composable (back: () -> Unit, writeNew: () -> Unit) -> Unit)? = null,
+    /**
+     * Hosted program development page; hosts without one hide the entry. `writeNew` attaches the plugin to the open
+     * conversation; `program` opens that program's details.
+     */
+    val programCenter: (@Composable (back: () -> Unit, writeNew: () -> Unit, program: String?) -> Unit)? = null,
+    /** Installed programs the drawer offers, and how the host opens a program's page. */
+    val programShortcuts: Flow<List<ProgramShortcut>> = flowOf(emptyList()),
+    val openProgram: (String) -> Unit = {},
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -96,6 +102,7 @@ class ConversationHostActions(
     LaunchedEffect(gatewayRefresh) { if (gatewayRefresh > 0) vm.enqueue { vm.refresh() } }
     val state by vm.state.collectAsStateWithLifecycle()
     val system by vm.status.collectAsStateWithLifecycle()
+    val programShortcuts by remember(hostActions) { hostActions.programShortcuts }.collectAsStateWithLifecycle(emptyList())
     val agentOptions by vm.agents.collectAsStateWithLifecycle()
     val gateways by vm.gateways.collectAsStateWithLifecycle()
     val gatewaysLoaded by vm.gatewaysLoaded.collectAsStateWithLifecycle()
@@ -239,10 +246,10 @@ class ConversationHostActions(
                         AppPage.DIAGNOSTIC -> DiagnosticPage(vm) { navigation = navigation.open(AppPage.SETTINGS) }
                         AppPage.LICENSES -> LicensePage { navigation = navigation.open(AppPage.SETTINGS) }
                         AppPage.UPDATES -> updates?.let { AppUpdatePage(it) { navigation = navigation.open(AppPage.SETTINGS) } }
-                        AppPage.PROGRAMS -> hostActions.programCenter?.invoke({ navigation = navigation.openAddSheet() }) {
+                        AppPage.PROGRAMS -> hostActions.programCenter?.invoke({ navigation = navigation.back(gatewayFromIntro) }, {
                             selectPlugin(PROGRAM_DEVELOPMENT)
                             navigation = navigation.open(AppPage.CONVERSATION)
-                        }
+                        }, navigation.program)
                         AppPage.ARCHIVED -> ArchivedPage(state, vm) { navigation = navigation.open(AppPage.SETTINGS) }
                         AppPage.SKILLS -> SkillsPage(vm, onBack = { navigation = navigation.openAddSheet() }, onConversation = { navigation = navigation.open(AppPage.CONVERSATION) })
                         AppPage.PLUGINS -> PluginPage(vm) { navigation = navigation.openAddSheet() }
@@ -263,6 +270,9 @@ class ConversationHostActions(
                     onSelect = { c -> vm.enqueue { actions.select(c.id) }; drawer = false; navigation = navigation.open(AppPage.CONVERSATION) },
                     onNew = { drawer = false; dialog = "new" }, onSettings = { navigate(AppPage.SETTINGS) }, onProjects = { navigateProjects(AppPage.CONVERSATION) },
                     onProject = { name -> drawer = false; navigation = navigation.openProject(name) },
+                    programs = programShortcuts, onProgramPage = { id -> drawer = false; hostActions.openProgram(id) },
+                    onProgramDetails = { id -> drawer = false; navigation = navigation.openPrograms(program = id, fromSheet = false) },
+                    onAllPrograms = { drawer = false; navigation = navigation.openPrograms(fromSheet = false) },
                     onCollapse = if (wide) ({ sidebarExpanded = false }) else null,
                     modifier = if (layout is ConversationLayout.Dual) Modifier.width(layout.listWidth).height(layout.height).offset {
                         IntOffset(with(density) { layout.listLeft.roundToPx() }, with(density) { layout.top.roundToPx() })
@@ -286,7 +296,9 @@ class ConversationHostActions(
                                 if (target != null) { fileTarget = target.id.value; fileWorkspace = target.config.workspace; navigation = navigation.open(AppPage.CONVERSATION); filePicker.launch(arrayOf("*/*")) }
                             }
                         }
-                        AddSheetCapabilities(programs = hostActions.programCenter != null) { page -> navigation = navigation.open(page) }
+                        AddSheetCapabilities(programs = hostActions.programCenter != null) { page ->
+                            navigation = if (page == AppPage.PROGRAMS) navigation.openPrograms(fromSheet = true) else navigation.open(page)
+                        }
                         Spacer(Modifier.height(16.dp))
                     }
                 }
@@ -390,7 +402,9 @@ class ConversationHostActions(
     }
 }
 
-@Composable private fun ConversationListPane(state: ConversationState, query: String, onQuery: (String) -> Unit, listScroll: LazyListState, onSelect: (Conversation) -> Unit, onNew: () -> Unit, onSettings: () -> Unit, onProjects: () -> Unit, onProject: (String) -> Unit, onCollapse: (() -> Unit)?, modifier: Modifier) {
+@Composable private fun ConversationListPane(state: ConversationState, query: String, onQuery: (String) -> Unit, listScroll: LazyListState, onSelect: (Conversation) -> Unit, onNew: () -> Unit, onSettings: () -> Unit, onProjects: () -> Unit, onProject: (String) -> Unit,
+    programs: List<ProgramShortcut>, onProgramPage: (String) -> Unit, onProgramDetails: (String) -> Unit, onAllPrograms: () -> Unit,
+    onCollapse: (() -> Unit)?, modifier: Modifier) {
     val control = drawerControlColor()
     Surface(modifier, color = drawerColor(), contentColor = conversationInk()) {
         Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = if (onCollapse != null) 10.dp else 12.dp)) {
@@ -424,6 +438,7 @@ class ConversationHostActions(
                     }
                     if (query.isBlank()) item(key = "more-projects") { DrawerEntry(AppStrings.moreProjects, onClick = onProjects) }
                 }
+                programSection(programs, query, onProgramPage, onProgramDetails, onAllPrograms)
                 if (history.isNotEmpty() || visible.isEmpty()) {
                     item(key = "section:history") { DrawerSection(AppStrings.history) }
                     items(history, key = { it.conversation.id.value }) { DrawerConversation(it, state, onSelect) }
@@ -468,6 +483,25 @@ class ConversationHostActions(
 }
 
 private val DrawerRowHeight = 40.dp
+
+/** A program the drawer offers: a working program with a page opens it; anything else opens its details. */
+data class ProgramShortcut(val id: String, val name: String, val opensPage: Boolean, val note: String? = null)
+
+/** The drawer's programs, filtered by the search; hidden when none are installed or none match. */
+internal fun LazyListScope.programSection(shortcuts: List<ProgramShortcut>, query: String, openPage: (String) -> Unit,
+    openDetails: (String) -> Unit, openAll: () -> Unit) {
+    val visible = shortcuts.filter { it.name.contains(query, true) }
+    if (visible.isEmpty()) return
+    item(key = "section:programs") { DrawerSection(AppStrings.programs) }
+    visible.forEach { shortcut ->
+        item(key = "program:${shortcut.id}") {
+            DrawerEntry(listOfNotNull(shortcut.name, shortcut.note).joinToString(" · "), mark = AppIcons.Terminal) {
+                if (shortcut.opensPage) openPage(shortcut.id) else openDetails(shortcut.id)
+            }
+        }
+    }
+    if (query.isBlank()) item(key = "all-programs") { DrawerEntry(AppStrings.allPrograms, onClick = openAll) }
+}
 
 @Composable private fun DrawerPill(onClick: () -> Unit, color: Color, modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
     Row(
