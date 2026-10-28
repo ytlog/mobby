@@ -917,6 +917,10 @@ open class StringCatalog(private val fixedLanguage: AppLanguage? = null) {
     // Program platform: program center, permission management and program pages.
     val programDevelopmentEntrySummary get() = text("让 AI 写程序，管理已安装的程序、权限和事件", "Have the AI write programs; manage installed programs, permissions and events")
     val writeNewProgram get() = text("让 AI 写新程序", "Have the AI write a new program")
+    val backgroundRunning get() = text("后台运行", "Background running")
+    val backgroundAllowed get() = text("已允许后台运行，定时会按时触发", "Background running allowed; schedules fire on time")
+    val backgroundRestricted get() = text("mobby 受系统省电限制，定时可能被延迟数小时或停止", "mobby is limited by battery optimization; schedules may be delayed for hours or stop")
+    val allowBackground get() = text("允许后台运行", "Allow background running")
     val writeNewProgramSummary get() = text("把程序开发加到当前对话，然后描述你要的程序", "Adds program development to this conversation; then describe the program you want")
     val programBoundary get() = text("程序界面在受限的网页环境中运行，权限对它强制生效。后台逻辑与 mobby 共享应用身份：权限只约束经过 mobby 接口的调用，请只安装你信任的程序。",
         "Program pages run in a restricted web view where permissions are enforced. Background logic shares mobby's app identity: permissions only govern calls made through mobby, so install only programs you trust.")

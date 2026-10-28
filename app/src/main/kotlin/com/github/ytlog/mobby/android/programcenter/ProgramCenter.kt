@@ -97,6 +97,17 @@ internal fun detailTarget(id: String, loaded: Set<String>?, awaiting: String?) =
 @Composable private fun ProgramListPage(platform: ProgramPlatform, programs: List<ProgramView>, back: () -> Unit,
     writeNew: () -> Unit, open: (String) -> Unit, install: () -> Unit, permissions: () -> Unit) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val power = remember(context) { context.getSystemService(android.os.PowerManager::class.java) }
+    var backgroundAllowed by remember { mutableStateOf(power.isIgnoringBatteryOptimizations(context.packageName)) }
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) backgroundAllowed = power.isIgnoringBatteryOptimizations(context.packageName)
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
     Page(AppStrings.programDevelopment, back) {
         SettingsGroup {
             SettingsItem(AppStrings.writeNewProgram, writeNew, AppStrings.writeNewProgramSummary)
@@ -114,7 +125,22 @@ internal fun detailTarget(id: String, loaded: Set<String>?, awaiting: String?) =
             GroupDivider()
             SettingsAction(AppStrings.stopAllPrograms) { scope.launch { platform.stopAll() } }
         }
+        BackgroundStatus(backgroundAllowed) {
+            // The system asks the user; mobby never changes the setting itself.
+            context.startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, android.net.Uri.parse("package:${context.packageName}")))
+        }
         SettingsCaption(AppStrings.programBoundary)
+    }
+}
+
+/** Scheduled programs need the app exempt from battery optimization; some systems otherwise defer or drop its jobs. */
+@Composable internal fun BackgroundStatus(allowed: Boolean, request: () -> Unit) {
+    SettingsGroup(AppStrings.backgroundRunning) {
+        Line(if (allowed) AppStrings.backgroundAllowed else AppStrings.backgroundRestricted, error = !allowed)
+        if (!allowed) {
+            GroupDivider()
+            SettingsAction(AppStrings.allowBackground, onClick = request)
+        }
     }
 }
 
