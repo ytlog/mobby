@@ -125,7 +125,7 @@ flowchart TB
 ### 3.5 `app` 的扩展
 
 - `AppGraph` 创建 `ProgramPlatform`，注入 `TermuxProgramLauncher` 与开发端口，应用启动时启动平台。
-- `programcenter` 包：程序列表、安装确认、程序详情（概览、权限、配置、事件、运行记录）、权限管理（按能力、按程序、按事件来源）。
+- `programcenter` 包：程序列表（“待处理”为工作区中与已安装版本校验和不同或无法通过校验的程序，“已安装”为程序及其用文字描述的状态和启停开关）、一步安装确认、程序详情（概览、权限、配置、事件、运行记录）、权限总览（按能力、按程序、按事件来源）。平台以 `pendingInstalls()` 列出待处理程序，以 `install(directory, InstallChoice)` 在同一次变更中安装、授权、保存配置并启用；`InstallChoice.checksum` 不符时抛出 `PackageChanged`，不做任何改动。
 - `ProgramUiActivity`：承载 WebView 与固定标题栏，具体的加载、拦截与消息桥由 `ProgramUiHost` 提供。
 
 ## 4. 进程与线程

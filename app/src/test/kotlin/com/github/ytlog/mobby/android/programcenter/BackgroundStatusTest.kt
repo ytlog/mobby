@@ -22,14 +22,14 @@ class BackgroundStatusTest {
     @Test fun `a restricted app explains the delay and offers the system request`() {
         var requests = 0
         compose.setContent { MaterialTheme { Column { BackgroundStatus(allowed = false) { requests++ } } } }
-        compose.onNodeWithText(AppStrings.backgroundRestricted).assertExists()
-        compose.onNodeWithText(AppStrings.allowBackground).performClick()
+        compose.onNodeWithText(AppStrings.backgroundRestrictedShort).assertExists()
+        compose.onNodeWithText(AppStrings.allowShort).performClick()
         assertEquals(1, requests)
     }
 
-    @Test fun `an exempt app shows no request`() {
+    @Test fun `an exempt app takes no space on the page`() {
         compose.setContent { MaterialTheme { Column { BackgroundStatus(allowed = true) {} } } }
-        compose.onNodeWithText(AppStrings.backgroundAllowed).assertExists()
-        compose.onNodeWithText(AppStrings.allowBackground).assertDoesNotExist()
+        compose.onNodeWithText(AppStrings.backgroundRestrictedShort).assertDoesNotExist()
+        compose.onNodeWithText(AppStrings.allowShort).assertDoesNotExist()
     }
 }

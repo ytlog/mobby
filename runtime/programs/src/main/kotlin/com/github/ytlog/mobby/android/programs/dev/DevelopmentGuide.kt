@@ -23,8 +23,9 @@ internal object DevelopmentGuide {
 # Writing mobby programs
 
 A program is a folder under `~/workspace/programs/<program-id>/` with a `manifest.json`, optional background
-logic (Node, `main.js`) and an optional page (`ui/index.html`). You write it; the user installs, configures,
-grants and enables it under "程序开发" (Program development) in the conversation's + menu. You cannot do those steps and must not claim the program is running.
+logic (Node, `main.js`) and an optional page (`ui/index.html`). You write it; it then shows up as waiting to install under
+"程序开发" (Program development) in the conversation's + menu, where the user installs, grants, configures and enables it in one
+confirmation. You cannot do those steps and must not claim the program is running.
 
 ## manifest.json (mobby.program/1, unknown fields are rejected)
 

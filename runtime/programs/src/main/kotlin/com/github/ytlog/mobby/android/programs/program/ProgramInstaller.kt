@@ -26,7 +26,14 @@ data class InstallPreview(
     val installedVersion: String?,
     /** Capabilities not currently granted in full: never enabled, or requesting more than the current grant. */
     val needsNewGrant: List<String>,
+    /** Capabilities the installed version did not request at all; a turned-off grant is the user's earlier choice instead. */
+    val newlyRequested: List<String>,
+    /** The installed version is this exact package, so there is nothing to install. */
+    val upToDate: Boolean,
 )
+
+/** The package on disk is no longer the one the user confirmed. */
+class PackageChanged : IllegalStateException("The program changed after it was reviewed")
 
 data class InstallResult(val programId: String, val version: String, val updated: Boolean)
 
@@ -46,12 +53,18 @@ class ProgramInstaller(
             val old = grants[request.capability] ?: return@filter true
             !request.scope.within(Scope.fromJson(old.grantedScope)) || !old.enabled
         }.map { it.capability }
-        return InstallPreview(pkg, installed?.currentVersion, needsNew)
+        val newlyRequested = pkg.permissions.map { it.capability }.filter { it !in grants }
+        val upToDate = installed != null && dao.version(installed.programId, installed.currentVersion)?.checksum == pkg.checksum
+        return InstallPreview(pkg, installed?.currentVersion, needsNew, newlyRequested, upToDate)
     }
 
-    /** Copies the validated package and records it. A new program starts paused with nothing granted. */
-    suspend fun install(directory: File): InstallResult {
+    /**
+     * Copies the validated package and records it. A new program starts paused with nothing granted.
+     * With [expectedChecksum], a package that changed since the user reviewed it is refused.
+     */
+    suspend fun install(directory: File, expectedChecksum: String? = null): InstallResult {
         val pkg = reader.read(directory)
+        if (expectedChecksum != null && pkg.checksum != expectedChecksum) throw PackageChanged()
         val manifest = pkg.manifest
         val now = clock()
         val target = layout.packageDir(manifest.id, manifest.version, pkg.checksum)

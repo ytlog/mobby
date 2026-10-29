@@ -11,6 +11,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -22,6 +26,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.github.ytlog.mobby.android.conversation.ui.*
 import com.github.ytlog.mobby.android.localization.AppStrings
@@ -29,60 +34,73 @@ import com.github.ytlog.mobby.android.programs.*
 import com.github.ytlog.mobby.android.programs.capability.Availability
 import com.github.ytlog.mobby.android.programs.permission.Scope
 import com.github.ytlog.mobby.android.programs.program.ConfigType
-import com.github.ytlog.mobby.android.programs.program.InstallPreview
-import com.github.ytlog.mobby.android.programs.program.PackageRejected
+import com.github.ytlog.mobby.android.programs.program.PackageChanged
 import com.github.ytlog.mobby.android.programs.program.UserState
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.*
-import java.io.File
 
 private const val LIST = "list"
-private const val INSTALL = "install"
+private const val INSTALL = "install:"
 private const val PERMISSIONS = "permissions"
 private const val DETAIL = "detail:"
 
 /**
- * Program development, the single entry for programs: have the AI write one, install, enable, grant, configure,
- * stop and inspect programs, plus app-level permission management.
+ * Programs, the single entry for them: workspace programs waiting to be installed, installed programs with their state,
+ * one-step install, and each program's details. Program development itself happens in a conversation.
  */
 @Composable fun ProgramCenterPage(platform: ProgramPlatform, back: () -> Unit, writeNew: () -> Unit, program: String? = null,
     modifyWithAi: (ProgramView) -> Unit = {}) {
     var route by rememberSaveable(program) { mutableStateOf(program?.let { DETAIL + it } ?: LIST) }
-    // The program just installed, until the list includes it.
-    var awaiting by rememberSaveable { mutableStateOf<String?>(null) }
     val loaded by platform.programs.collectAsState(initial = null)
     val programs = loaded.orEmpty()
+    // The AI writes into the workspace while this page is in the background, so look again whenever it comes back.
+    var pending by remember { mutableStateOf<List<PendingInstall>?>(null) }
+    var checks by remember { mutableIntStateOf(0) }
+    LaunchedEffect(checks) { pending = platform.pendingInstalls() }
+    OnResume { checks++ }
     BackHandler(route != LIST) { route = LIST }
     when {
-        route == INSTALL -> InstallPage(platform) { installed -> awaiting = installed; route = installed?.let { DETAIL + it } ?: LIST }
+        route.startsWith(INSTALL) -> {
+            val name = route.removePrefix(INSTALL)
+            val item = pending?.firstOrNull { it.candidate.name == name }
+            if (item != null) InstallPage(platform, item, programs, reload = { checks++ }) { route = LIST; checks++ }
+            else if (pending != null) LaunchedEffect(route) { route = LIST }
+        }
         route == PERMISSIONS -> PermissionManagementPage(platform, programs) { route = LIST }
         route.startsWith(DETAIL) -> {
             val id = route.removePrefix(DETAIL)
-            when (detailTarget(id, loaded?.map { it.id }?.toSet(), awaiting)) {
-                DetailTarget.SHOW -> {
-                    LaunchedEffect(id) { if (awaiting == id) awaiting = null }
-                    ProgramDetailPage(platform, programs.first { it.id == id }, modifyWithAi) { route = LIST }
-                }
+            when (detailTarget(id, loaded?.map { it.id }?.toSet())) {
+                DetailTarget.SHOW -> ProgramDetailPage(platform, programs.first { it.id == id }, modifyWithAi) { route = LIST }
                 DetailTarget.WAIT -> Unit
                 DetailTarget.GONE -> LaunchedEffect(route) { route = LIST }
             }
         }
-        else -> ProgramListPage(platform, programs, back, writeNew, { route = DETAIL + it }, { route = INSTALL }, { route = PERMISSIONS })
+        else -> ProgramListPage(platform, programs, pending.orEmpty(), back, writeNew, { route = DETAIL + it }, { route = INSTALL + it }, { route = PERMISSIONS })
     }
 }
 
 internal enum class DetailTarget { SHOW, WAIT, GONE }
 
-/** A details route shows its program; waits while the list loads or a just installed program arrives; otherwise the program is gone. */
-internal fun detailTarget(id: String, loaded: Set<String>?, awaiting: String?) = when {
-    loaded != null && id in loaded -> DetailTarget.SHOW
-    loaded == null || awaiting == id -> DetailTarget.WAIT
+/** A details route shows its program, waits while the list loads, and otherwise the program is gone. */
+internal fun detailTarget(id: String, loaded: Set<String>?) = when {
+    loaded == null -> DetailTarget.WAIT
+    id in loaded -> DetailTarget.SHOW
     else -> DetailTarget.GONE
 }
 
-@Composable private fun Page(title: String, back: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+@Composable private fun OnResume(action: () -> Unit) {
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    val current by rememberUpdatedState(action)
+    DisposableEffect(lifecycle) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event -> if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) current() }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
+}
+
+@Composable private fun Page(title: String, back: () -> Unit, trailing: @Composable () -> Unit = {}, content: @Composable ColumnScope.() -> Unit) {
     Column(Modifier.fillMaxSize()) {
-        PageHeader(title, back)
+        PageHeader(title, back, trailing)
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp), content = content)
     }
@@ -96,111 +114,194 @@ internal fun detailTarget(id: String, loaded: Set<String>?, awaiting: String?) =
     }
 }
 
-@Composable private fun ProgramListPage(platform: ProgramPlatform, programs: List<ProgramView>, back: () -> Unit,
-    writeNew: () -> Unit, open: (String) -> Unit, install: () -> Unit, permissions: () -> Unit) {
+/** Today's runs show the time only; older ones add the date. */
+private fun shortTime(millis: Long): String {
+    val zone = java.time.ZoneId.systemDefault()
+    val at = java.time.Instant.ofEpochMilli(millis).atZone(zone)
+    val pattern = if (at.toLocalDate() == java.time.LocalDate.now(zone)) "HH:mm" else "MM-dd HH:mm"
+    return at.format(java.time.format.DateTimeFormatter.ofPattern(pattern))
+}
+
+@Composable private fun ProgramListPage(platform: ProgramPlatform, programs: List<ProgramView>, pending: List<PendingInstall>, back: () -> Unit,
+    writeNew: () -> Unit, open: (String) -> Unit, install: (String) -> Unit, permissions: () -> Unit) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val power = remember(context) { context.getSystemService(android.os.PowerManager::class.java) }
     var backgroundAllowed by remember { mutableStateOf(power.isIgnoringBatteryOptimizations(context.packageName)) }
-    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
-    DisposableEffect(lifecycle) {
-        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) backgroundAllowed = power.isIgnoringBatteryOptimizations(context.packageName)
-        }
-        lifecycle.addObserver(observer)
-        onDispose { lifecycle.removeObserver(observer) }
-    }
-    Page(AppStrings.programDevelopment, back) {
-        SettingsGroup {
-            SettingsItem(AppStrings.writeNewProgram, writeNew, AppStrings.writeNewProgramSummary)
-            GroupDivider()
-            SettingsItem(AppStrings.installProgram, install)
-            GroupDivider()
-            SettingsItem(AppStrings.permissionManagement, permissions)
-        }
-        if (programs.isEmpty()) SettingsCaption(AppStrings.noPrograms)
-        else SettingsGroup {
-            programs.forEachIndexed { index, program ->
-                if (index > 0) GroupDivider()
-                SettingsItem(program.name, { open(program.id) }, "${AppStrings.versionLabel(program.version)} · ${availabilityLabel(program.availability)}")
+    OnResume { backgroundAllowed = power.isIgnoringBatteryOptimizations(context.packageName) }
+    val runs by remember(platform) { platform.runs() }.collectAsState(initial = emptyList())
+    val lastRuns = remember(runs) { runs.filter { !it.dryRun }.groupBy { it.programId }.mapValues { it.value.maxBy { run -> run.queuedAt } } }
+    var menu by remember { mutableStateOf(false) }
+    Page(AppStrings.myPrograms, back, trailing = {
+        Box {
+            ActionIcon(AppStrings.moreActions, { menu = true }, AppIcons.More)
+            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                DropdownMenuItem(text = { Text(AppStrings.permissionOverview) }, onClick = { menu = false; permissions() })
+                DropdownMenuItem(text = { Text(AppStrings.pauseAllPrograms) }, onClick = { menu = false; scope.launch { platform.stopAll() } })
             }
-            GroupDivider()
-            SettingsAction(AppStrings.stopAllPrograms) { scope.launch { platform.stopAll() } }
         }
+    }) {
         BackgroundStatus(backgroundAllowed) {
             // The system asks the user; mobby never changes the setting itself.
             context.startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, android.net.Uri.parse("package:${context.packageName}")))
         }
-        SettingsCaption(AppStrings.programBoundary)
+        SettingsGroup { SettingsItem(AppStrings.writeNewProgram, writeNew, AppStrings.writeNewProgramSummary, icon = AppIcons.Terminal) }
+        if (pending.isNotEmpty()) SettingsGroup(AppStrings.pendingPrograms(pending.size)) {
+            pending.forEachIndexed { index, item ->
+                if (index > 0) GroupDivider()
+                val name = (item as? PendingInstall.Ready)?.preview?.pkg?.manifest?.name ?: item.candidate.name
+                val action = when { item is PendingInstall.Rejected -> AppStrings.review; (item as PendingInstall.Ready).preview.installedVersion == null -> AppStrings.install; else -> AppStrings.update }
+                ProgramRow(name, pendingStatus(item), { install(item.candidate.name) }) {
+                    TextButton(onClick = { install(item.candidate.name) }) { Text(action) }
+                }
+            }
+        }
+        if (programs.isNotEmpty()) SettingsGroup(AppStrings.installedPrograms(programs.size)) {
+            programs.forEachIndexed { index, program ->
+                if (index > 0) GroupDivider()
+                ProgramRow(program.name, programStatus(program, lastRuns[program.id], ::shortTime), { open(program.id) }) {
+                    Switch(program.userState == UserState.ENABLED, { enabled -> scope.launch { platform.setEnabled(program.id, enabled) } })
+                }
+            }
+        }
+        if (pending.isEmpty() && programs.isEmpty()) SettingsCaption(AppStrings.emptyProgramsBody)
     }
 }
 
-/** Scheduled programs need the app exempt from battery optimization; some systems otherwise defer or drop its jobs. */
+/** A program as a row: its initial, name and state in words, and one control at the end. */
+@Composable private fun ProgramRow(name: String, status: StatusLine, onClick: () -> Unit, trailing: @Composable () -> Unit) {
+    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(start = 16.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Surface(Modifier.size(40.dp), shape = RoundedCornerShape(10.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)) {
+            Box(contentAlignment = Alignment.Center) { Text(name.take(1).uppercase(), color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleMedium) }
+        }
+        Column(Modifier.weight(1f)) {
+            Text(name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(status.text, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                color = if (status.problem) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        trailing()
+    }
+}
+
+/** Shown only while scheduled programs may be held back; mobby is exempt otherwise and there is nothing to say. */
 @Composable internal fun BackgroundStatus(allowed: Boolean, request: () -> Unit) {
-    SettingsGroup(AppStrings.backgroundRunning) {
-        Line(if (allowed) AppStrings.backgroundAllowed else AppStrings.backgroundRestricted, error = !allowed)
-        if (!allowed) {
-            GroupDivider()
-            SettingsAction(AppStrings.allowBackground, onClick = request)
+    if (allowed) return
+    Surface(onClick = request, shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.errorContainer,
+        contentColor = MaterialTheme.colorScheme.onErrorContainer) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(AppStrings.backgroundRestrictedShort, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+            Text(AppStrings.allowShort, style = MaterialTheme.typography.labelLarge)
         }
     }
 }
 
-@Composable private fun InstallPage(platform: ProgramPlatform, done: (String?) -> Unit) {
+/**
+ * Installing in one step: what the program will do in plain words, the settings it cannot work without, and one
+ * button that installs, grants and (for a new program) enables it. Scopes and events stay one tap away.
+ */
+@Composable private fun InstallPage(platform: ProgramPlatform, item: PendingInstall, programs: List<ProgramView>, reload: () -> Unit, done: () -> Unit) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    var candidates by remember { mutableStateOf(emptyList<ProgramCandidate>()) }
-    var preview by remember { mutableStateOf<InstallPreview?>(null) }
-    var chosen by remember { mutableStateOf<File?>(null) }
-    var problems by remember { mutableStateOf(emptyList<String>()) }
-    LaunchedEffect(Unit) { candidates = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { platform.candidates() } }
-    Page(AppStrings.installProgram, { done(null) }) {
-        SettingsCaption(AppStrings.installHint("~/workspace/programs"))
-        if (candidates.isEmpty()) SettingsCaption(AppStrings.noCandidates)
-        else SettingsGroup {
-            candidates.forEachIndexed { index, candidate ->
-                if (index > 0) GroupDivider()
-                SettingsItem(candidate.name, {
-                    scope.launch {
-                        chosen = candidate.directory
-                        try { preview = platform.preview(candidate.directory); problems = emptyList() }
-                        catch (error: PackageRejected) { preview = null; problems = error.problems.map { "${it.path}: ${it.message}" } }
-                    }
-                })
-            }
+    when (item) {
+        is PendingInstall.Rejected -> Page(item.candidate.name, done) {
+            SettingsCaption(AppStrings.rejectedHint)
+            SettingsGroup { item.problems.forEachIndexed { index, problem -> if (index > 0) GroupDivider(); Line(problem.message, problem.path, error = true) } }
         }
-        if (problems.isNotEmpty()) {
-            SettingsCaption(AppStrings.packageRejected, error = true)
-            problems.forEach { SettingsCaption("• $it", error = true) }
-        }
-        preview?.let { p ->
-            val manifest = p.pkg.manifest
-            SettingsGroup(manifest.name) {
-                Line(AppStrings.versionLabel(manifest.version), listOfNotNull(p.installedVersion?.let(AppStrings::updatingFrom), AppStrings.fileCount(p.pkg.files.size)).joinToString(" · "))
-            }
-            SettingsGroup(AppStrings.requestedPermissions) {
-                p.pkg.permissions.forEachIndexed { index, request ->
-                    if (index > 0) GroupDivider()
-                    Line("${request.capability} · ${if (request.required) AppStrings.required else AppStrings.optional}",
-                        listOfNotNull(scopeSummary(context, request.scope).ifEmpty { null },
-                            AppStrings.needsYourGrant.takeIf { request.capability in p.needsNewGrant }).joinToString(" · "))
-                }
-            }
-            if (manifest.config.isNotEmpty()) SettingsGroup(AppStrings.configFields) {
-                manifest.config.forEach { Line(it.label, "${it.key} · ${it.type}${if (it.required) " · ${AppStrings.required}" else ""}") }
-            }
-            if (manifest.subscriptions.isNotEmpty()) SettingsGroup(AppStrings.subscribedEvents) {
-                manifest.subscriptions.forEach { Line(it.event, "${it.filter} → ${it.handler}") }
-            }
-            SettingsCaption(AppStrings.programBoundary)
-            SettingsGroup {
-                SettingsAction(if (p.installedVersion == null) AppStrings.install else AppStrings.update) {
-                    scope.launch {
-                        try { done(platform.install(chosen!!).programId) }
-                        catch (error: PackageRejected) { preview = null; problems = error.problems.map { "${it.path}: ${it.message}" } }
+        is PendingInstall.Ready -> {
+            val preview = item.preview
+            val manifest = preview.pkg.manifest
+            val installed = programs.firstOrNull { it.id == manifest.id }
+            val isNew = preview.installedVersion == null
+            val choices = remember(preview) { GrantChoices(preview) }
+            var ticked by remember(preview) { mutableStateOf(choices.initiallyTicked) }
+            val fields = remember(preview, installed) { fieldsToFill(manifest.config, installed) }
+            val inputs = remember(preview) { mutableStateMapOf<String, String>() }
+            var error by remember(preview) { mutableStateOf<String?>(null) }
+            var details by remember { mutableStateOf(false) }
+            var busy by remember { mutableStateOf(false) }
+            val schedules = manifest.subscriptions.filter { it.event == "time.schedule" }.map { it.filter }
+            Page(if (isNew) AppStrings.installTitle(manifest.name) else AppStrings.updateTitle(manifest.name), done) {
+                SettingsGroup(AppStrings.whatItDoes) {
+                    preview.pkg.permissions.forEachIndexed { index, request ->
+                        if (index > 0) GroupDivider()
+                        val label = purposeLabel(request.capability, request.scope, schedules) +
+                            (if (!isNew && request.capability in preview.newlyRequested) " · ${AppStrings.newlyAsked}" else "") +
+                            (if (!request.required) " · ${AppStrings.optional}" else "")
+                        if (request.capability in choices.tickable) CheckRow(label, request.capability in ticked) {
+                            ticked = if (request.capability in ticked) ticked - request.capability else ticked + request.capability
+                        } else Line(label)
                     }
                 }
+                if (fields.isNotEmpty()) SettingsGroup(AppStrings.needsYourInput) {
+                    fields.forEachIndexed { index, field ->
+                        if (index > 0) GroupDivider()
+                        FieldInput(field, inputs[field.key].orEmpty()) { inputs[field.key] = it; error = null }
+                    }
+                }
+                error?.let { SettingsCaption(it, error = true) }
+                SettingsGroup {
+                    SettingsAction(if (isNew) AppStrings.installAndEnable else AppStrings.update, enabled = !busy) {
+                        val values = mutableMapOf<String, JsonElement>()
+                        val secrets = mutableMapOf<String, String>()
+                        for (field in fields) {
+                            val text = inputs[field.key].orEmpty()
+                            if (text.isBlank()) { error = AppStrings.fillFirst(field.label); return@SettingsAction }
+                            if (field.type == ConfigType.SECRET.wire) { secrets[field.key] = text; continue }
+                            val value = fieldValue(field, text)?.takeIf { com.github.ytlog.mobby.android.programs.base.config.ConfigStore.validate(field, it) == null }
+                                ?: run { error = AppStrings.invalidValue(field.label); return@SettingsAction }
+                            values[field.key] = value
+                        }
+                        busy = true
+                        scope.launch {
+                            try {
+                                platform.install(item.candidate.directory, InstallChoice(preview.pkg.checksum, choices.toApply(ticked), values, secrets, enable = isNew))
+                                Toast.makeText(context, if (isNew) AppStrings.installed else AppStrings.updated, Toast.LENGTH_SHORT).show()
+                                done()
+                            } catch (_: PackageChanged) { error = AppStrings.programChangedReview; reload() }
+                            catch (failure: IllegalArgumentException) { error = AppStrings.installFailed(failure.message) }
+                            finally { busy = false }
+                        }
+                    }
+                }
+                SettingsGroup {
+                    SettingsAction(if (details) AppStrings.hidePermissionDetails else AppStrings.permissionDetails) { details = !details }
+                }
+                if (details) {
+                    SettingsGroup(AppStrings.requestedPermissions) {
+                        preview.pkg.permissions.forEachIndexed { index, request ->
+                            if (index > 0) GroupDivider()
+                            Line("${request.capability} · ${if (request.required) AppStrings.required else AppStrings.optional}",
+                                listOfNotNull(scopeSummary(context, request.scope).ifEmpty { null },
+                                    AppStrings.needsYourGrant.takeIf { request.capability in preview.needsNewGrant }).joinToString(" · "))
+                        }
+                    }
+                    if (manifest.subscriptions.isNotEmpty()) SettingsGroup(AppStrings.subscribedEvents) {
+                        manifest.subscriptions.forEach { Line(it.event, "${it.filter} → ${it.handler}") }
+                    }
+                    SettingsCaption(listOfNotNull(AppStrings.versionLabel(manifest.version), preview.installedVersion?.let(AppStrings::updatingFrom),
+                        AppStrings.fileCount(preview.pkg.files.size)).joinToString(" · "))
+                }
+                SettingsCaption(AppStrings.programBoundary)
             }
+        }
+    }
+}
+
+/** A setting typed in before installing; nothing is saved until the install button. */
+@Composable private fun FieldInput(field: com.github.ytlog.mobby.android.programs.program.ConfigField, text: String, change: (String) -> Unit) {
+    val type = ConfigType.of(field.type)
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Text(field.label, style = MaterialTheme.typography.bodyLarge)
+        when (type) {
+            ConfigType.BOOLEAN -> Row(verticalAlignment = Alignment.CenterVertically) {
+                listOf("true" to AppStrings.yes, "false" to AppStrings.no).forEach { (value, label) -> CatalogChip(label, text == value) { change(value) } }
+            }
+            ConfigType.ENUM -> Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                field.options.orEmpty().forEach { option -> CatalogChip(option, text == option) { change(option) } }
+            }
+            else -> OutlinedTextField(text, change, Modifier.fillMaxWidth(), singleLine = true, keyboardOptions = configKeyboard(type),
+                visualTransformation = if (type == ConfigType.SECRET) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None)
         }
     }
 }
@@ -365,7 +466,7 @@ internal fun configKeyboard(type: ConfigType?) = when (type) {
     val context = LocalContext.current
     val switches by platform.switches.collectAsState(initial = emptyMap())
     val capabilities = remember(programs) { platform.capabilities() }
-    Page(AppStrings.permissionManagement, back) {
+    Page(AppStrings.permissionOverview, back) {
         SettingsGroup(AppStrings.systemCapabilities) {
             capabilities.forEachIndexed { index, capability ->
                 if (index > 0) GroupDivider()

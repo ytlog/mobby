@@ -53,6 +53,24 @@ data class ProgramView(
 
 data class ProgramCandidate(val directory: File, val name: String)
 
+/** A workspace program that is not installed as written: new, changed, or not installable. */
+sealed interface PendingInstall {
+    val candidate: ProgramCandidate
+    data class Ready(override val candidate: ProgramCandidate, val preview: InstallPreview) : PendingInstall
+    data class Rejected(override val candidate: ProgramCandidate, val problems: List<PackageProblem>) : PendingInstall
+}
+
+/** What the user confirmed on the install page. */
+data class InstallChoice(
+    /** The reviewed package; a different one on disk is refused. */
+    val checksum: String,
+    /** Capabilities to grant at the scope the package requests. */
+    val grant: Set<String>,
+    val values: Map<String, JsonElement> = emptyMap(),
+    val secrets: Map<String, String> = emptyMap(),
+    val enable: Boolean,
+)
+
 /** A capability as the permission management page shows it. */
 data class CapabilityInfo(val id: String, val kind: CapabilityKind, val implicit: Boolean, val availability: Availability, val sideEffects: Set<SideEffect>)
 
@@ -146,6 +164,41 @@ class ProgramPlatform internal constructor(
     suspend fun install(directory: File): InstallResult = mutate("program_updated") {
         val result = installer.install(directory)
         if (result.updated) runs.stop(result.programId, "program_updated")
+        result
+    }
+
+    /** Workspace programs that differ from what is installed, newest first. Unchanged ones are left out. */
+    suspend fun pendingInstalls(): List<PendingInstall> = withContext(Dispatchers.IO) {
+        candidates().mapNotNull { candidate ->
+            try { installer.preview(candidate.directory).takeUnless { it.upToDate }?.let { PendingInstall.Ready(candidate, it) } }
+            catch (error: PackageRejected) { PendingInstall.Rejected(candidate, error.problems) }
+        }
+    }
+
+    /**
+     * Installs the reviewed package and applies the user's choices in one step: grants at the requested scope,
+     * settings and secrets, and enabling. A package that changed since review installs nothing.
+     */
+    suspend fun install(directory: File, choice: InstallChoice): InstallResult = mutate("program_updated") {
+        // Choices are checked against the reviewed package before anything is installed.
+        val reviewed = installer.preview(directory)
+        if (reviewed.pkg.checksum != choice.checksum) throw PackageChanged()
+        val declared = reviewed.pkg.manifest.config.associateBy { it.key }
+        choice.values.forEach { (key, value) ->
+            val field = declared[key] ?: throw IllegalArgumentException("Unknown config field $key")
+            com.github.ytlog.mobby.android.programs.base.config.ConfigStore.validate(field, value)?.let { throw IllegalArgumentException(it) }
+        }
+        choice.secrets.keys.forEach { key -> require(declared[key]?.type == ConfigType.SECRET.wire) { "Not a secret field" } }
+        val requested = reviewed.pkg.permissions.map { it.capability }.toSet()
+        choice.grant.forEach { require(it in requested) { "$it is not requested" } }
+        val result = installer.install(directory, choice.checksum)
+        val id = result.programId
+        if (result.updated) runs.stop(id, "program_updated")
+        val grants = dao.grants(id).associateBy { it.capability }
+        choice.grant.forEach { permissions.setGrant(id, it, true, Scope.fromJson(grants.getValue(it).requestedScope), null) }
+        choice.values.forEach { (key, value) -> config.set(id, key, value) }
+        choice.secrets.forEach { (key, value) -> secretStore.put(id, key, value, declared.getValue(key).domains.orEmpty().toSet()) }
+        if (choice.enable) dao.setUserState(id, UserState.ENABLED.wire, clock())
         result
     }
 

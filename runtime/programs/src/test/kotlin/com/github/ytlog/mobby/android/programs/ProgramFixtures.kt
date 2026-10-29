@@ -29,6 +29,7 @@ internal fun fixtureRegistry() = CapabilityRegistry(listOf(
 ))
 
 internal class PackageBuilder(private val dir: File) {
+    fun directory() = dir
     var id = "price-watch"
     var version = "1.0.0"
     var background: String? = "main.js"
