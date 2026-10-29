@@ -460,7 +460,11 @@ class ConversationHostActions(
                 if (history.isNotEmpty() || visible.isEmpty()) {
                     item(key = "section:history") { DrawerSection(AppStrings.history) }
                     items(history, key = { it.conversation.id.value }) { DrawerConversation(it, state, onSelect) }
-                    if (visible.isEmpty()) item(key = "empty") { EmptyPlaceholder(AppStrings.noMatchingConversations, AppStrings.tryAnotherSearchTermOrStartANewConversation) }
+                    // Before the store first answers there is nothing to report; "no matches" is only for a search.
+                    if (visible.isEmpty() && !state.loading) item(key = "empty") {
+                        if (query.isBlank()) EmptyPlaceholder(AppStrings.noConversationsYet, AppStrings.startAConversationWithASpecificTask)
+                        else EmptyPlaceholder(AppStrings.noMatchingConversations, AppStrings.tryAnotherSearchTermOrStartANewConversation)
+                    }
                 }
             }
             val footerHeight = if (onCollapse != null) ToolbarControl + 8.dp else ToolbarControl

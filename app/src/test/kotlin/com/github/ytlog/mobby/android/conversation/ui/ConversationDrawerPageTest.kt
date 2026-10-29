@@ -9,6 +9,9 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.assertTextEquals
@@ -81,6 +84,38 @@ class ConversationDrawerPageTest {
         compose.onNodeWithContentDescription("打开会话抽屉").assertExists()
         swipeFromLeftEdge()
         compose.onNodeWithText("新对话").assertExists()
+    }
+
+    /** On the tablet the sidebar said "没有匹配的会话，换个关键词" for the few seconds before conversations loaded. */
+    @Test @Config(sdk = [34], qualifiers = "w1000dp-h800dp")
+    fun `history says no matches only for a search that found nothing`() {
+        val state = MutableStateFlow(ConversationState())
+        val repository = stub<ConversationStore> { name -> when (name) {
+            "getState" -> state
+            "awaitAttachmentRecovery" -> Unit
+            else -> error(name)
+        } }
+        val system = stub<SystemPort> { name -> when (name) {
+            "getStatus" -> flowOf(SystemStatus(true, true))
+            "getDiagnostic" -> flowOf(DiagnosticOutput(null, emptyList()))
+            "agents" -> emptyList<AgentOption>()
+            "gateways" -> emptyList<GatewayProfile>()
+            "defaultGateway" -> null
+            "capture" -> DataResult.Loaded<CameraCapture?>(null)
+            else -> error(name)
+        } }
+        val preferences = stub<PreferencePort> { name -> when (name) {
+            "getAppearance" -> MutableStateFlow(Appearance.DARK)
+            else -> error(name)
+        } }
+        val actions = ConversationUseCases(repository, stub<ExecutionPort> { error(it) }, system, { "fixture" }, scope, preferences)
+        compose.setContent { ConversationEntry(actions, ConversationHostActions({}, {})) }
+        compose.onNodeWithTag("drawer-new").assertExists()
+        compose.onNodeWithText(UiStrings.noMatchingConversations).assertDoesNotExist()
+        compose.runOnIdle { state.value = ConversationState(loading = false) }
+        compose.onNodeWithText(UiStrings.noMatchingConversations).assertDoesNotExist()
+        compose.onNode(hasAnyAncestor(hasTestTag("drawer-search")) and hasSetTextAction()).performTextInput("报表")
+        compose.onNodeWithText(UiStrings.noMatchingConversations).assertExists()
     }
 
     @Test @Config(sdk = [34], qualifiers = "w1000dp-h800dp")
