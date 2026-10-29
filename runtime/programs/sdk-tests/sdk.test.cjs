@@ -77,6 +77,26 @@ test('a lost connection looks up the original request instead of resending it', 
 });
 
 /** The phone AI wrote files.write({op, path, text}); the API only answered "$.path must be string". */
+test('ai.call sends text messages and returns the reply, and a dry run says no model ran', async () => {
+  const api = await server((req, res) => {
+    if (req.body.args.system === 'dry') return json(res, { requestId: req.body.requestId, status: 'simulated', effect: 'none' });
+    json(res, { requestId: req.body.requestId, status: 'succeeded', effect: 'confirmed', result: { text: '一句话', model: 'm1', usage: { countedTokens: 12 } } });
+  });
+  mobby[Symbol.for('mobby.runner')].start(api.port, 'c');
+  try {
+    const reply = await mobby.ai.call({ system: '简短', messages: [{ role: 'user', text: '总结' }], maxOutputTokens: 200 });
+    assert.equal(reply.text, '一句话');
+    assert.deepEqual(api.requests[0].body.args, { system: '简短', messages: [{ role: 'user', text: '总结' }], maxOutputTokens: 200 });
+    assert.equal(api.requests[0].body.capability, 'ai.call');
+    const dry = await mobby.ai.call({ system: 'dry', messages: [{ role: 'user', text: 'x' }] });
+    assert.equal(dry.simulated, true);
+    assert.throws(() => dry.text, (error) => error.code === 'SIMULATED' && error.reason === 'dry_run_has_no_model_reply');
+    await assert.rejects(mobby.ai.call('总结'), /ai\.call\(\{system, messages, maxOutputTokens\}\): request must be an object, got a string/);
+    await assert.rejects(mobby.ai.call({ messages: 'x' }), /messages must be an array/);
+    assert.equal(api.requests.length, 2);
+  } finally { api.instance.close(); }
+});
+
 test('arguments of the wrong shape fail before any request and show the right call', async () => {
   const api = await server((req, res) => json(res, { requestId: req.body.requestId, status: 'succeeded', effect: 'confirmed', result: null }));
   mobby[Symbol.for('mobby.runner')].start(api.port, 'c');

@@ -1,5 +1,6 @@
 package com.github.ytlog.mobby.android.programs
 
+import com.github.ytlog.mobby.android.programs.base.ai.*
 import android.app.PendingIntent
 import android.content.Context
 import com.github.ytlog.mobby.android.programs.api.EventStreamRoute
@@ -69,6 +70,8 @@ data class InstallChoice(
     val values: Map<String, JsonElement> = emptyMap(),
     val secrets: Map<String, String> = emptyMap(),
     val enable: Boolean,
+    /** The gateway and model for `ai.call`; required when that capability is granted. */
+    val ai: AiBinding? = null,
 )
 
 /** A capability as the permission management page shows it. */
@@ -91,6 +94,9 @@ class ProgramPlatform internal constructor(
     private val schedules: ScheduleBackend,
     private val sql: SqlCapability?,
     private val scope: CoroutineScope,
+    private val ai: AiSettings? = null,
+    /** The host's model gateways for `ai.call`; null where the host offers none. */
+    val modelGateways: ModelGatewayPort? = null,
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
     internal val dao = database.dao()
@@ -206,12 +212,14 @@ class ProgramPlatform internal constructor(
         choice.secrets.keys.forEach { key -> require(declared[key]?.type == ConfigType.SECRET.wire) { "Not a secret field" } }
         val requested = reviewed.pkg.permissions.map { it.capability }.toSet()
         choice.grant.forEach { require(it in requested) { "$it is not requested" } }
+        if (AI_CALL in choice.grant) requireChoice(requireNotNull(choice.ai) { "ai.call needs a chosen gateway and model" })
         val result = installer.install(directory, choice.checksum)
         dao.deleteDismissed(directory.name)
         val id = result.programId
         if (result.updated) runs.stop(id, "program_updated")
         val grants = dao.grants(id).associateBy { it.capability }
         choice.grant.forEach { permissions.setGrant(id, it, true, Scope.fromJson(grants.getValue(it).requestedScope), null) }
+        if (AI_CALL in choice.grant) ai?.bind(id, choice.ai!!)
         choice.values.forEach { (key, value) -> config.set(id, key, value) }
         choice.secrets.forEach { (key, value) -> secretStore.put(id, key, value, declared.getValue(key).domains.orEmpty().toSet()) }
         if (choice.enable) dao.setUserState(id, UserState.ENABLED.wire, clock())
@@ -240,6 +248,7 @@ class ProgramPlatform internal constructor(
         runs.stop(programId, "program_deleted")
         sql?.close(layout.data(programId))
         installer.delete(programId, withData)
+        ai?.forget(programId)
         candidates().filter { candidate -> runCatching { reader.read(candidate.directory).manifest.id }.getOrNull() == programId }
             .forEach { dao.upsertDismissed(DismissedCandidateRow(it.name, reader.fingerprint(it.directory), clock())) }
     }
@@ -249,6 +258,20 @@ class ProgramPlatform internal constructor(
     }
 
     suspend fun setSwitch(capability: String, enabled: Boolean) = mutate("permission_changed") { permissions.setSwitch(capability, enabled) }
+
+    fun aiBinding(programId: String): AiBinding? = ai?.binding(programId)
+    fun aiUsage(programId: String): AiUsage = ai?.usage(programId) ?: AiUsage(0, 0)
+
+    /** The user changes which gateway and model a program's `ai.call` uses, or its daily limits. */
+    suspend fun setAiBinding(programId: String, binding: AiBinding) = mutate("permission_changed", programId) {
+        requireChoice(binding)
+        checkNotNull(ai).bind(programId, binding)
+    }
+
+    private fun requireChoice(binding: AiBinding) {
+        val gateway = modelGateways?.gateways()?.firstOrNull { it.id == binding.gatewayId }
+        require(gateway != null && binding.model in gateway.models) { "Unknown gateway or model" }
+    }
 
     suspend fun resolveRequest(request: RequestView, programId: String, approved: Boolean) = mutate("permission_changed", programId) {
         permissions.resolveRequest(request.requestId, approved, programId, request.capability, request.scope)
@@ -345,12 +368,14 @@ class ProgramPlatform internal constructor(
     companion object {
         /** Log message of a page message a dry run posted; the data is `{message}`. */
         internal const val SIMULATED_UI_POST = "ui_post"
+        const val AI_CALL = "ai.call"
 
         fun create(
             context: Context,
             workspacePrograms: File,
             launcher: (logDir: File) -> ProgramProcessLauncher,
             openUi: (programId: String) -> PendingIntent?,
+            models: ModelGatewayPort,
         ): ProgramPlatform {
             val app = context.applicationContext
             val database = ProgramsDatabase.open(app)
@@ -358,13 +383,15 @@ class ProgramPlatform internal constructor(
             val clock = System::currentTimeMillis
             val secrets = SecretStore(dao, KeystoreSecretCipher(), clock)
             val sql = SqlCapability()
+            val ai = AiSettings(app)
             val registry = CapabilityRegistry(
                 PHASE_ONE_DEVICE_CAPABILITIES.map { DeviceCapabilityHandler(it, AndroidDevicePort(app)) } + listOf(
                     KvCapability(dao, clock), FilesCapability(), sql, NetHttpCapability(secrets), SecretsCapability(secrets),
                     ConfigCapability(ConfigStore(dao, clock)), LogCapability(dao, clock), NotifyCapability(app, dao, openUi), ScheduleCapability(),
+                    AiCallCapability(models, ai),
                 ))
             return ProgramPlatform(app, database, ProgramLayout(File(app.filesDir, "programs")), workspacePrograms, launcher, registry, secrets,
-                WorkManagerSchedules(app), sql, CoroutineScope(SupervisorJob() + Dispatchers.Default), clock)
+                WorkManagerSchedules(app), sql, CoroutineScope(SupervisorJob() + Dispatchers.Default), ai, models, clock)
         }
     }
 }

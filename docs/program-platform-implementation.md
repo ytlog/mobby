@@ -135,7 +135,7 @@ AI 读取新指南后改用 `response.simulated`，其后的两次试运行无�
 - 真机：在 MIUI 开启“桌面快捷方式”权限后固定到桌面的快捷方式，及其他启动器上的确认框；程序提交的权限申请、手机能力调用、`boolean`、`enum`、`package` 配置类型、经中文输入法输入的数字配置；第二台已连接手机。
 - 小米平板在允许自启动、省电策略“无限制”后的后台定时已连续运行约 6 小时；更长时间、重启后以及其他厂商系统上的表现，和 Android 12 起子进程限制的实际阈值仍未验证。
 - 系统 WebView 的内容安全策略与 Service Worker 拦截（小米平板上 `WEB_MESSAGE_LISTENER` 消息桥已实际工作，拦截行为未单独测试）。
-- 第二阶段能力（屏幕事件与操作、`net.websocket`、`ai.call`、`entry`）尚未实现。
+- 第二阶段能力中屏幕事件与操作、`net.websocket`、`entry` 尚未实现；`ai.call` 已实现，见下文。
 
 ## 移除 Office 插件
 
@@ -144,3 +144,9 @@ Office 插件（`plugin:device:office`，程序能力 `office.inspect/read/write
 ## 程序想法入口
 
 程序开发页“让 AI 写新程序”下方新增“试试这些想法”：记账本、每日提醒、网页变化监控。点一项会把程序开发插件加到当前对话，并把这条想法的完整需求填进输入框，不自动发送，用户可以改完再发，程序仍由手机上的 AI 来写。输入框已有文字时保留原文，想法接在新的一行。三条需求只用到现有能力：存储与导出、`time.schedule` 的 `daily` 和 `every`、`net.http`、`notify.show`。
+
+## 程序调用 AI（ai.call）
+
+按用户确认的方案实现：安装时由用户选网关和模型，按次数和 token 限额，第一版只支持文字。`AiCallCapability` 校验参数、检查当日用量后经 `ModelGatewayPort` 发请求；宿主的 `AppModelGateway` 用运行时的 `GatewayTextModels` 按原生协议直接请求网关，与网关连接检查同一做法，请求体、响应体和异常信息不进日志。安装确认页在允许 `ai.call` 时显示“AI 模型”选择；程序详情显示当前模型和今天的用量，可更换模型或调整三项上限。SDK 新增 `ai.call({system, messages, maxOutputTokens})`，开发指南已写明用法和限制。
+
+测试覆盖：能力层（未选模型、调用转发、三项上限、跨天清零、用量估算、可能已到达网关的失败计入用量、schema 拒绝图片和工具字段）、安装与更换（未选或选了不存在的模型时拒绝、删除程序清除绑定）、网关请求（Responses 与 Messages 的请求体和解析、4xx 与 5xx 的区分）和 SDK（参数检查、试运行）。真实网关下由手机 AI 写程序调用的端到端验证尚未进行。

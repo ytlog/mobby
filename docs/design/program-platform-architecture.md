@@ -374,7 +374,7 @@ data class ProgramEvent(
 
 ### 11.6 阶段 2 能力
 
-- `ai.call`：经 `ModelGatewayPort` 使用用户已配置的网关与现有本地 Node 桥接，遵循现有网关协议规则；网关地址与密钥不对程序开放。按程序记录模型、token 数和估算费用，超出次数或费用上限返回 `CONDITION_UNMET`。接入前对照 [网关接入](../gateway.md) 确认协议与计费字段。
+- `ai.call`（已实现）：一次纯文字、非流式的模型请求。用户在安装确认页为程序选定网关和模型（默认是对话的默认网关与模型），之后可在程序详情里更换；程序自己不能选择或更换，网关地址与密钥不对程序开放。`ModelGatewayPort` 由宿主实现：`GatewayTextModels` 按网关的原生协议（优先 Responses，否则 Messages）直接请求，做法与网关连接检查 `GatewayProbe` 相同，不经 Node 桥接；桥接是为 Agent CLI 提供本机回环地址的，`ai.call` 没有 CLI，且请求是一次性的。参数只有 `system`、`messages`（`role` 为 user/assistant、`text`）和 `maxOutputTokens`，图片、工具等其他字段由 schema 拒绝，不静默丢弃。每个程序默认每天 50 次、10 万 token、单次输出 2000 token，可在详情里调整，超出返回 `QUOTA_EXCEEDED`；网关未报告用量时按输入字数与输出上限保守估算；请求可能已到达网关的失败（超时、5xx）仍计入用量，`effect` 为 unknown。绑定与当日用量存于平台的 SharedPreferences，删除程序时一并清除。试运行不发请求，SDK 读取结果文字时抛出 `SIMULATED`。
 - `entry`：APK 静态声明分享接收 Activity 与快捷方式分发 Activity，按 programId 分发为 `entry.share`、`entry.shortcut` 事件；分享内容以资源引用交给程序，外部 Intent 的自报身份不被信任。
 - `screen.*`：见 3.3 节，处理器调用 `withWindow`；`screen.click` 在同一次读取中按节点描述匹配，恰好一个时点击，否则返回 `TARGET_NOT_UNIQUE` 或 `RESOURCE_MISSING`；派发前取得 `ScreenCoordinator` 租约。
 

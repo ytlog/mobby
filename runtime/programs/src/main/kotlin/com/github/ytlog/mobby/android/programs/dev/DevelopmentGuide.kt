@@ -80,6 +80,9 @@ SDK (arguments are positional; only the ones shown in braces take an object):
 - `sql.query(sql, params)`, `sql.execute(sql, params)`, `sql.transaction([{sql, params}])`
 - `files.read(path)`, `files.write(path, text)`, `files.list(dir)`, `files.delete(path)`; paths are relative to the program's own files
 - `net.fetch(url, {method, headers, body})`, `notify.show({title, body, openUi})`
+- `ai.call({system, messages, maxOutputTokens})` with `messages: [{role: 'user' | 'assistant', text}]`, last one from the user;
+  returns `{text, model, usage}`. Text only: images, tools and other fields are refused. The user picks the gateway and model
+  when installing, and daily calls and tokens are capped (`QUOTA_EXCEEDED`); request `ai.call` in the manifest without a scope.
 - `secrets.put(name, value, {domains})`, `secrets.list()`, `secrets.delete(name)`
 - `permissions.list()`, `permissions.request(capability, scope)`, `capabilities.list()`
 - background only: `on(handler, fn)`, `ui.post(message)`; page only: `ui.send(message)`, `ui.onMessage(fn)`.

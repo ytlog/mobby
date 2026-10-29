@@ -31,6 +31,8 @@ import androidx.compose.ui.unit.dp
 import com.github.ytlog.mobby.android.conversation.ui.*
 import com.github.ytlog.mobby.android.localization.AppStrings
 import com.github.ytlog.mobby.android.programs.*
+import com.github.ytlog.mobby.android.programs.base.ai.AiBinding
+import com.github.ytlog.mobby.android.programs.base.ai.ModelGatewayPort
 import com.github.ytlog.mobby.android.programs.capability.Availability
 import com.github.ytlog.mobby.android.programs.permission.Scope
 import com.github.ytlog.mobby.android.programs.program.ConfigType
@@ -227,6 +229,9 @@ private fun shortTime(millis: Long): String {
             var details by remember { mutableStateOf(false) }
             var busy by remember { mutableStateOf(false) }
             val schedules = manifest.subscriptions.filter { it.event == "time.schedule" }.map { it.filter }
+            val models = remember(preview) { modelOptions(platform.modelGateways) }
+            var model by remember(preview) { mutableStateOf(initialModel(models, platform.aiBinding(manifest.id), platform.modelGateways?.preferred())) }
+            val asksAi = ProgramPlatform.AI_CALL in choices.toApply(ticked)
             Page(if (isNew) AppStrings.installTitle(manifest.name) else AppStrings.updateTitle(manifest.name), done) {
                 SettingsGroup(AppStrings.whatItDoes) {
                     preview.pkg.permissions.forEachIndexed { index, request ->
@@ -239,6 +244,7 @@ private fun shortTime(millis: Long): String {
                         } else Line(label)
                     }
                 }
+                if (asksAi) ModelChoice(models, model) { model = it; error = null }
                 if (fields.isNotEmpty()) SettingsGroup(AppStrings.needsYourInput) {
                     fields.forEachIndexed { index, field ->
                         if (index > 0) GroupDivider()
@@ -258,10 +264,14 @@ private fun shortTime(millis: Long): String {
                                 ?: run { error = AppStrings.invalidValue(field.label); return@SettingsAction }
                             values[field.key] = value
                         }
+                        val ai = if (asksAi) {
+                            val chosen = model ?: run { error = AppStrings.noModelGateway; return@SettingsAction }
+                            platform.aiBinding(manifest.id)?.copy(gatewayId = chosen.gatewayId, model = chosen.model) ?: AiBinding(chosen.gatewayId, chosen.model)
+                        } else null
                         busy = true
                         scope.launch {
                             try {
-                                platform.install(item.candidate.directory, InstallChoice(preview.pkg.checksum, choices.toApply(ticked), values, secrets, enable = isNew))
+                                platform.install(item.candidate.directory, InstallChoice(preview.pkg.checksum, choices.toApply(ticked), values, secrets, enable = isNew, ai = ai))
                                 Toast.makeText(context, if (isNew) AppStrings.installed else AppStrings.updated, Toast.LENGTH_SHORT).show()
                                 done()
                             } catch (_: PackageChanged) { error = AppStrings.programChangedReview; reload() }
@@ -346,6 +356,7 @@ private fun shortTime(millis: Long): String {
                 }
             }
         }
+        if (program.permissions.any { it.capability == ProgramPlatform.AI_CALL }) AiModelSection(platform, program.id)
         if (program.requests.isNotEmpty()) SettingsGroup(AppStrings.pendingRequests) {
             program.requests.forEach { request ->
                 Line(request.capability, scopeSummary(context, request.scope))
@@ -534,4 +545,68 @@ internal fun configKeyboard(type: ConfigType?) = when (type) {
             SettingsItem(title, { pick(request) }, detail)
         }
     }
+}
+
+/** One row per gateway and model the user configured. */
+internal data class ModelOption(val gatewayId: String, val label: String, val model: String)
+
+internal fun modelOptions(port: ModelGatewayPort?): List<ModelOption> =
+    port?.gateways().orEmpty().flatMap { gateway -> gateway.models.map { ModelOption(gateway.id, gateway.label, it) } }
+
+/** The program's current model first, then the conversations' default, then whatever is configured. */
+internal fun initialModel(options: List<ModelOption>, current: AiBinding?, preferred: Pair<String, String>?): ModelOption? =
+    options.firstOrNull { current != null && it.gatewayId == current.gatewayId && it.model == current.model }
+        ?: options.firstOrNull { preferred != null && it.gatewayId == preferred.first && it.model == preferred.second }
+        ?: options.firstOrNull()
+
+@Composable private fun ModelChoice(options: List<ModelOption>, selected: ModelOption?, select: (ModelOption) -> Unit) {
+    SettingsGroup(AppStrings.aiModel) {
+        if (options.isEmpty()) Line(AppStrings.noModelGateway, error = true)
+        options.forEachIndexed { index, option ->
+            if (index > 0) GroupDivider()
+            ChoiceRow("${option.label} · ${option.model}", option == selected, { select(option) })
+        }
+    }
+    SettingsCaption(AppStrings.aiModelHint)
+}
+
+/** The model a program's `ai.call` uses, today's usage, and the user's way to change either. */
+@Composable private fun AiModelSection(platform: ProgramPlatform, programId: String) {
+    val scope = rememberCoroutineScope()
+    var revision by remember { mutableStateOf(0) }
+    val binding = remember(revision) { platform.aiBinding(programId) }
+    val usage = remember(revision) { platform.aiUsage(programId) }
+    val options = remember(revision) { modelOptions(platform.modelGateways) }
+    var editing by remember { mutableStateOf(false) }
+    OnResume { revision++ }
+    SettingsGroup(AppStrings.aiModel) {
+        val label = binding?.let { bound -> options.firstOrNull { it.gatewayId == bound.gatewayId }?.label?.let { "$it · ${bound.model}" } ?: bound.model }
+        Line(label ?: AppStrings.aiModelNotChosen, binding?.let { AppStrings.aiUsageToday(usage.calls, it.callsPerDay, usage.tokens, it.tokensPerDay) }, error = binding == null)
+        GroupDivider()
+        SettingsAction(if (editing) AppStrings.cancel else AppStrings.changeAiModel) { editing = !editing }
+    }
+    if (!editing) return
+    var model by remember(binding) { mutableStateOf(initialModel(options, binding, platform.modelGateways?.preferred())) }
+    var calls by remember(binding) { mutableStateOf((binding?.callsPerDay ?: AiBinding.DEFAULT_CALLS_PER_DAY).toString()) }
+    var tokens by remember(binding) { mutableStateOf((binding?.tokensPerDay ?: AiBinding.DEFAULT_TOKENS_PER_DAY).toString()) }
+    var output by remember(binding) { mutableStateOf((binding?.maxOutputTokens ?: AiBinding.DEFAULT_MAX_OUTPUT_TOKENS).toString()) }
+    var error by remember { mutableStateOf<String?>(null) }
+    ModelChoice(options, model) { model = it }
+    SettingsGroup {
+        for ((label, value, set) in listOf(Triple(AppStrings.aiCallsPerDay, calls) { v: String -> calls = v },
+                Triple(AppStrings.aiTokensPerDay, tokens) { v: String -> tokens = v }, Triple(AppStrings.aiMaxOutputTokens, output) { v: String -> output = v })) {
+            OutlinedTextField(value, { set(it.filter(Char::isDigit)); error = null }, Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                label = { Text(label) }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+        }
+        SettingsAction(AppStrings.save) {
+            val chosen = model ?: run { error = AppStrings.noModelGateway; return@SettingsAction }
+            val updated = runCatching { AiBinding(chosen.gatewayId, chosen.model, calls.toInt(), tokens.toLong(), output.toInt()) }.getOrNull()
+                ?: run { error = AppStrings.aiLimitsOutOfRange; return@SettingsAction }
+            scope.launch {
+                try { platform.setAiBinding(programId, updated); editing = false; revision++ }
+                catch (failure: IllegalArgumentException) { error = failure.message }
+            }
+        }
+    }
+    error?.let { SettingsCaption(it, error = true) }
 }
