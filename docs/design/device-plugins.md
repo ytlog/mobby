@@ -61,7 +61,7 @@ CLI 中的 Node 不能调用 Android API。模型阅读技能文件，用 Bash �
 1. 草稿只保留目录中的 `plugin:device:` 引用。
 2. 能力集合变化时重启 CLI，同时重建桥接、令牌和技能目录。
 3. 为每个已加入的插件生成 `skills/mobby-<id>/SKILL.md` 和同一份参数化脚本。
-4. 脚本装入当前 Agent 的技能根目录，Codex 为 `~/.agents/skills`，Claude Code 为 `~/.claude/skills`，OpenCode 为 `~/.config/opencode/skills`。目录内写入临时标记。提示只给出调用名和 `SKILL.md` 路径：Codex 使用 `$mobby-<id>`，Claude Code 与 OpenCode 使用 `/mobby-<id>`。
+4. 脚本装入当前 Agent 的技能根目录，Codex 为 `~/.agents/skills`，Claude Code 为 `~/.claude/skills`，OpenCode 为 `~/.config/opencode/skills`。目录内写入临时标记。装入时把 `SKILL.md` 中的脚本路径改为技能目录里的 `scripts/device.cjs`：桥接目录按请求 ID 生成并在本轮结束时删除，而继续的对话会照搬历史里的命令，技能目录路径则每轮相同，脚本内容（端口、令牌）每轮重写。提示只给出调用名和 `SKILL.md` 路径：Codex 使用 `$mobby-<id>`，Claude Code 与 OpenCode 使用 `/mobby-<id>`。
 5. 模型执行 Node 脚本。脚本向 `127.0.0.1` 的本轮端口发送一行 JSON，然后关闭连接。
 6. 应用进程核对令牌、插件、动作和参数，并在执行前再次检查系统权限。
 7. 文本直接返回。照片、录音和文档写入本轮收件箱，只返回 CLI 可见的路径。

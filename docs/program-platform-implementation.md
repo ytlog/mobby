@@ -114,7 +114,14 @@ AI 读取新指南后改用 `response.simulated`，其后的两次试运行无�
 - 平板验收（versionCode 32，Pi）：只要求 AI 先用一个定时事件试运行 Expense Log，结果为 `handlers: ["onSchedule","ui.message"]`、`notExercised: ["ui.message"]`、`uiMessages: []`。AI 随后按 `ui/app.js` 实际发送的消息试运行 `ui.message`：`addExpense` 返回 `uiMessages: [{"type":"updated"},{"type":"added"}]`；`exportCSV` 的 `storage.sql` 失败（`no such table: expenses`），`uiMessages` 为 `exportFailed`。这暴露了 Expense Log 的一个真实问题：后台导出前不建表，新安装后先点导出会失败；程序本身未修改。用平板上的 Node 直接调用 `files.write({op, path, text})`，得到 `TypeError: files.write(path, text): path must be a string, got an object. Arguments are positional, e.g. files.write('report.csv', text)`，没有发出请求。
 - 试运行的 `ui.post` 不送到已打开页面由单元测试覆盖，平板上该次试运行时页面未打开。
 - 随后在同一对话中请手机 AI 修复导出：它在导出处理中先 `CREATE TABLE IF NOT EXISTS` 再查询，版本改为 1.0.2，`validate` 通过；`exportCSV` 试运行的调用依次为 `storage.sql`（建表）、`storage.sql`（查询）、`storage.files`，`uiMessages` 为 `exported`，`addExpense` 仍为 `updated`、`added`。在“待处理”点“更新”一次完成；页面点“Export CSV”后 `expenses.csv` 重新写入（表头加 3 行），页面无错误，列表显示“每天 21:00 · 15:20 正常”。
-- 同时观察到：应用覆盖安装后设备桥目录 ID 改变，已有对话中技能说明里的 `device.cjs` 路径失效，AI 先报 `Cannot find module`，自行查找新路径后继续。新对话不受影响；已有对话的路径更新尚未处理。
+- 同时观察到：已有对话中技能说明里的 `device.cjs` 路径失效，AI 先报 `Cannot find module`，自行查找新路径后继续。见下一节。
+
+### 技能脚本路径跨轮不变（2026-10-29，同一平板）
+
+- 根因：设备桥目录按每轮请求 ID 生成（`files/device-bridge/<请求 ID>`），本轮结束即删除，与是否重装无关；暂存到 Agent 技能目录的 `SKILL.md` 仍写着这个目录里的脚本路径。同一个 Pi 对话的历史里已出现 5 个不同的请求目录，AI 继续对话时照搬上一轮的命令。
+- 修复：`SkillStore.stage` 复制脚本后，把 `SKILL.md` 中的源脚本目录替换为技能目录下的 `scripts/`（Pi 为 `~/.pi/agent/skills/mobby-programs/scripts/device.cjs`）。路径每轮相同，脚本内的端口与令牌仍按本轮重写。回归测试：两轮不同端口和桥接目录产生相同的 `SKILL.md`，且不含桥接目录。
+- 平板验证：新建 Pi 对话，第一轮读取 `SKILL.md` 后用技能目录路径执行 `catalog`；第二轮未重新读取说明，直接用同一路径执行 `validate`，连到第二轮的桥接并返回 expense-log 1.0.2 校验通过。
+- 修复前的旧对话历史里仍是旧的请求目录路径，下一次使用时 AI 会先失败一次再查找；历史记录不做改写。
 
 开发中由测试发现并修复的缺陷：目录占用统计跟随符号链接；URL 中的凭据占位符导致解析失败；运行在进程启动后才登记凭据，快速子进程会被拒；事件队列满时停止通知无法送达；试运行只清理了程序包副本而遗留试运行存储。
 

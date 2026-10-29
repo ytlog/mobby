@@ -133,6 +133,22 @@ class SkillStoreTest {
         assertTrue(store.prompt(AgentId.PI, emptySet(), "open settings", extras = listOf("mobby-screen" to piFile)).contains("/skill:mobby-screen"))
         store.unstage(AgentId.PI, "mobby-screen")
     }
+    /** On the tablet a continued Pi conversation reran an earlier turn's helper path, whose bridge directory was already gone. */
+    @Test fun `a staged plugin skill runs its helper from the same path every turn`() {
+        val home = temporary.newFolder(); val store = SkillStore(home)
+        val helper = File(home, ".pi/agent/skills/mobby-screen/scripts/device.cjs").absolutePath
+        val texts = listOf(9 to "first", 10 to "second").map { (port, token) ->
+            val bridge = temporary.newFolder()
+            val authored = DeviceSkillPack.write(bridge, "/bin/node", port, token, setOf("plugin:device:screen")).single()
+            val text = store.stage(AgentId.PI, "mobby-screen", authored)!!.readText()
+            assertTrue(text.contains("/bin/node $helper snapshot"))
+            assertFalse(text.contains(bridge.absolutePath))
+            assertTrue(File(helper).readText().contains("PORT=$port;"))
+            store.unstage(AgentId.PI, "mobby-screen")
+            text
+        }
+        assertEquals(texts[0], texts[1])
+    }
     @Test fun `staging does not replace a user skill of the same name`() {
         val home = temporary.newFolder(); val store = SkillStore(home)
         store.save(AgentId.CLAUDE_CODE, document("mobby-screen", "keep this user skill"))

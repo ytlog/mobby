@@ -233,13 +233,17 @@ internal class SkillStore(private val home: File) {
         if (target.exists() && !File(target, MARKER).isFile) return null
         target.deleteRecursively()
         Files.createDirectories(target.toPath())
-        skillFile.copyTo(File(target, "SKILL.md"))
+        var markdown = skillFile.readText()
         val scripts = File(source, "scripts")
         if (scripts.isDirectory) {
             val dest = File(target, "scripts")
             dest.mkdirs()
             scripts.listFiles()?.filter { it.isFile && !it.name.startsWith(".") }?.forEach { it.copyTo(File(dest, it.name), overwrite = true) }
+            // The authored copy lives in a per-run directory that is deleted after the turn; a continued conversation
+            // reruns commands from earlier turns, so the skill must name the staged scripts, whose path stays the same.
+            markdown = markdown.replace(scripts.absolutePath + "/", dest.absolutePath + "/")
         }
+        File(target, "SKILL.md").writeText(markdown)
         File(target, MARKER).writeText(name)
         return File(target, "SKILL.md").takeIf { it.isFile }
     }
