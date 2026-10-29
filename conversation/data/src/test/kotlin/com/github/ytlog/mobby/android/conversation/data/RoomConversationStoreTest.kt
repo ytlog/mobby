@@ -301,6 +301,18 @@ class RoomConversationStoreTest {
         assertEquals(ExecutionPhase.RUNNING, selected.occupied!!.phase)
         assertEquals(ExecutionId("a"), selected.occupied!!.execution)
     }
+    /** The task result notice needs to know which run ended once it no longer occupies the conversation. */
+    @Test fun `a finished run stays named in the sidebar after it releases the conversation`() = runBlocking {
+        val c = state().selected!!.conversation
+        val frozen = db.dao().conversation(c.id.value)!!.body
+        val config = RunConfigSnapshot(RuntimeAgent.CODEX, WorkspaceRef("default"), "test-model", null, GatewayProfileRef("CODEX", 0), emptySet())
+        val done = storageJson.encodeToString(RunSnapshot(RunId("a"), RunPhase.SUCCEEDED, 2, 2, config))
+        db.dao().save(TurnRow("a", c.id.value, "done", frozen, 100, runId = "a", snapshot = done, pending = false, occupied = false))
+        val row = state { s -> s.conversations.any { it.conversation.id == c.id && it.phase != null } }
+            .conversations.single { it.conversation.id == c.id }
+        assertNull(row.execution)
+        assertEquals(ExecutionId("a"), row.run)
+    }
     @Test fun `source retention follows pending imports across conversations and releases only completed or discarded ones`() = runBlocking {
         val c = state().selected!!.conversation
         repository.editDraft(c.id, "keep original", 2, 4)

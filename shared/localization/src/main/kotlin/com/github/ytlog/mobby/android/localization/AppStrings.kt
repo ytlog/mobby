@@ -834,6 +834,7 @@ open class StringCatalog(private val fixedLanguage: AppLanguage? = null) {
     val initializingRuntime get() = text("正在初始化运行环境", "Initializing runtime")
     val outputCleanupIncompleteRecheckRuntime get() = text("输出清理未完成，请重新检查运行环境", "Output cleanup incomplete. Recheck runtime")
     val taskExecution get() = text("任务运行", "Task execution")
+    val taskResults get() = text("任务结果", "Task results")
     val returnToTheAppToViewProgressOrStop get() = text("可返回应用查看进度或停止任务", "Return to the app to view progress or stop the task")
     val conversationIsStillRunningReturnToTheAppTo get() = text("会话仍在运行，返回应用可继续", "Conversation is still running. Return to the app to continue")
     val verifyingLocalRuntime get() = text("正在验证本机运行环境", "Verifying local runtime")

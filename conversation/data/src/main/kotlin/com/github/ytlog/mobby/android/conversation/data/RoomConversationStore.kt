@@ -39,7 +39,8 @@ internal class RoomConversationStore(
         rows.map { row ->
             val activity = byConversation[row.id]
             val snapshot = activity?.snapshot?.let { storageJson.decodeFromString<RunSnapshot>(it) }
-            ConversationSummary(row.domain(), snapshot?.let { RunStateRules.displayedPhase(it).domain() }, activity?.occupied == true, activity?.executionId?.let(::ExecutionId), snapshot?.deviceOperations?.maxByOrNull { it.order }?.operation)
+            ConversationSummary(row.domain(), snapshot?.let { RunStateRules.displayedPhase(it).domain() }, activity?.occupied == true, activity?.executionId?.let(::ExecutionId), snapshot?.deviceOperations?.maxByOrNull { it.order }?.operation,
+                snapshot?.runId?.let { ExecutionId(it.value) })
         }
     }.distinctUntilChanged().flowOn(Dispatchers.Default)
     private data class Window(val id: String, val count: Int, val baseline: Int)

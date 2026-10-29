@@ -17,6 +17,8 @@ import com.github.ytlog.mobby.android.conversation.domain.StopResult
 import com.github.ytlog.mobby.android.conversation.ui.DesktopPet
 import com.github.ytlog.mobby.android.conversation.ui.FloatingConversationWindow
 import com.github.ytlog.mobby.android.conversation.ui.AppUpdateManager
+import com.github.ytlog.mobby.android.conversation.ui.TaskResultNotifier
+import com.github.ytlog.mobby.android.conversation.ui.finishedRuns
 import com.github.ytlog.mobby.android.programcenter.ProgramLauncherShortcuts
 import com.github.ytlog.mobby.android.programcenter.ProgramOpenHistory
 import com.github.ytlog.mobby.android.programcenter.launcherShortcuts
@@ -85,7 +87,12 @@ class MobbyApplication : Application() {
                 catch (error: Throwable) { ball.close(); throw error }
             AutoCloseable { try { conversation.close() } finally { ball.close() } }
         }
-        petScope.launch { conversations.state.collect { latest = it; syncPet() } }
+        val results = TaskResultNotifier(this)
+        petScope.launch { conversations.state.collect { state ->
+            // Only while mobby is out of sight; inside the app the conversation already shows how the task ended.
+            if (!foreground) finishedRuns(latest, state).forEach(results::show)
+            latest = state; syncPet()
+        } }
         val launcher = ProgramLauncherShortcuts(this)
         petScope.launch {
             combine(programs.programs, ProgramOpenHistory(this@MobbyApplication).changes()) { list, opened -> launcherShortcuts(list, opened, launcher.systemLimit) }

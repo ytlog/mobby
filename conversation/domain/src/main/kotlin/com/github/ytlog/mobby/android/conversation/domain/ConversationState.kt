@@ -74,7 +74,8 @@ sealed interface TranscriptEntry {
     data class Reply(val message: Message) : TranscriptEntry
     data class ToolRun(val steps: List<Step>) : TranscriptEntry
 }
-data class ConversationSummary(val conversation: Conversation, val phase: ExecutionPhase? = null, val occupied: Boolean = false, val execution: ExecutionId? = null, val deviceOperation: com.github.ytlog.mobby.android.runtime.api.device.DeviceOperation? = null)
+/** [execution] is the run occupying the conversation, if any; [run] is the run [phase] describes, set also after it ends. */
+data class ConversationSummary(val conversation: Conversation, val phase: ExecutionPhase? = null, val occupied: Boolean = false, val execution: ExecutionId? = null, val deviceOperation: com.github.ytlog.mobby.android.runtime.api.device.DeviceOperation? = null, val run: ExecutionId? = null)
 data class ConversationDetail(val conversation: Conversation, val turns: List<Turn>, val hasEarlier: Boolean = false)
 data class Project(val name: String, val workspace: String, val skills: Set<String> = emptySet(), val rules: String = "")
 data class ConversationState(
