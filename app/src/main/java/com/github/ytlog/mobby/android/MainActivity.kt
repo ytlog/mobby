@@ -17,11 +17,15 @@ import androidx.lifecycle.lifecycleScope
 import com.github.ytlog.mobby.android.conversation.domain.ConversationId
 import com.github.ytlog.mobby.android.conversation.ui.ConversationEntry
 import com.github.ytlog.mobby.android.conversation.ui.ConversationHostActions
+import com.github.ytlog.mobby.android.conversation.ui.ProgramNavigation
 import com.github.ytlog.mobby.android.conversation.ui.mobbySystemBarColor
 import com.github.ytlog.mobby.android.programcenter.ProgramCenterPage
 import com.github.ytlog.mobby.android.programcenter.ProgramOpenHistory
 import com.github.ytlog.mobby.android.programcenter.ProgramUiActivity
 import com.github.ytlog.mobby.android.programcenter.programShortcuts
+import com.github.ytlog.mobby.android.programcenter.ProgramLaunch
+import com.github.ytlog.mobby.android.programcenter.programLaunch
+import com.github.ytlog.mobby.android.programcenter.requestedProgram
 import kotlinx.coroutines.flow.combine
 import com.github.ytlog.mobby.android.speech.SpeechEngines
 import kotlinx.coroutines.launch
@@ -37,6 +41,7 @@ import java.util.UUID
 
 class MainActivity : ComponentActivity() {
     private var conversationNavigation by mutableStateOf<String?>(null)
+    private var programNavigation by mutableStateOf<ProgramNavigation?>(null)
     private var petEnabled by mutableStateOf(false)
     private var petPermitted by mutableStateOf(false)
     private var gatewayRefresh by mutableStateOf(0)
@@ -55,7 +60,7 @@ class MainActivity : ComponentActivity() {
         app.setPetPermitted(petPermitted)
         app.noteForeground(true)
         enableEdgeToEdge()
-        if (savedInstanceState == null) openConversation(intent)
+        if (savedInstanceState == null) { openConversation(intent); openProgram(intent) }
         val host = ConversationHostActions(share = { text ->
             startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text), AppStrings.shareMessage))
         }, appearance = { dark ->
@@ -97,7 +102,7 @@ class MainActivity : ComponentActivity() {
                 conversationNavigation = UUID.randomUUID().toString()
             }
         } })
-        setContent { ConversationEntry(actions, host, conversationNavigation, petEnabled, petPermitted, gatewayRefresh = gatewayRefresh, updates = app.updates) }
+        setContent { ConversationEntry(actions, host, conversationNavigation, petEnabled, petPermitted, gatewayRefresh = gatewayRefresh, updates = app.updates, programNavigation = programNavigation) }
         if (android.os.Build.VERSION.SDK_INT >= 33) {
             val notice = getPreferences(MODE_PRIVATE)
             if (!notice.getBoolean("task-notification-requested", false) &&
@@ -131,7 +136,18 @@ class MainActivity : ComponentActivity() {
         if (!isChangingConfigurations) app.noteForeground(false)
         super.onStop()
     }
-    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); openConversation(intent) }
+    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); openConversation(intent); openProgram(intent) }
+    /** A launcher shortcut names only the program; whether its page can open is decided now, from its current state. */
+    private fun openProgram(intent: Intent) {
+        val id = requestedProgram(intent) ?: return
+        lifecycleScope.launch {
+            when (val launch = programLaunch(id, app.programs.programs.first())) {
+                is ProgramLaunch.Page -> startActivity(ProgramUiActivity.intent(this@MainActivity, launch.id))
+                is ProgramLaunch.Details -> programNavigation = ProgramNavigation(launch.id, UUID.randomUUID().toString())
+                ProgramLaunch.List -> programNavigation = ProgramNavigation(null, UUID.randomUUID().toString())
+            }
+        }
+    }
     private fun openConversation(intent: Intent) {
         intent.getStringExtra("conversationId")?.let { id -> lifecycleScope.launch {
             actions.select(ConversationId(id))

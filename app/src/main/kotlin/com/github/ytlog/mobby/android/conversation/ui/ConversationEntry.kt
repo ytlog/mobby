@@ -93,7 +93,7 @@ class ConversationHostActions(
 @Composable fun ConversationEntry(
     actions: ConversationUseCases, hostActions: ConversationHostActions, conversationNavigation: String? = null,
     petEnabled: Boolean = false, petPermitted: Boolean = false, gatewayRefresh: Int = 0,
-    updates: AppUpdateManager? = null,
+    updates: AppUpdateManager? = null, programNavigation: ProgramNavigation? = null,
 ) {
     val factory = remember(actions) { object : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST") override fun <T : ViewModel> create(modelClass: Class<T>): T = ConversationViewModel(actions) as T
@@ -148,6 +148,18 @@ class ConversationHostActions(
             reading = null
             navigation = navigation.open(AppPage.CONVERSATION)
             consumedNavigation = conversationNavigation
+        }
+    }
+    var consumedProgramNavigation by rememberSaveable { mutableStateOf<String?>(null) }
+    LaunchedEffect(programNavigation) {
+        if (programNavigation != null && programNavigation.token != consumedProgramNavigation) {
+            keyboard?.hide()
+            focus.clearFocus()
+            drawer = false
+            dialog = null
+            reading = null
+            navigation = navigation.openPrograms(program = programNavigation.program, fromSheet = false)
+            consumedProgramNavigation = programNavigation.token
         }
     }
     LaunchedEffect(navigation.page, system.ready, gatewaysLoaded, gateways.isEmpty(), dialog) {
@@ -246,10 +258,13 @@ class ConversationHostActions(
                         AppPage.DIAGNOSTIC -> DiagnosticPage(vm) { navigation = navigation.open(AppPage.SETTINGS) }
                         AppPage.LICENSES -> LicensePage { navigation = navigation.open(AppPage.SETTINGS) }
                         AppPage.UPDATES -> updates?.let { AppUpdatePage(it) { navigation = navigation.open(AppPage.SETTINGS) } }
-                        AppPage.PROGRAMS -> hostActions.programCenter?.invoke({ navigation = navigation.back(gatewayFromIntro) }, {
-                            selectPlugin(PROGRAM_DEVELOPMENT)
-                            navigation = navigation.open(AppPage.CONVERSATION)
-                        }, navigation.program)
+                        // A launcher request starts the program page afresh even when it is already showing.
+                        AppPage.PROGRAMS -> key(consumedProgramNavigation) {
+                            hostActions.programCenter?.invoke({ navigation = navigation.back(gatewayFromIntro) }, {
+                                selectPlugin(PROGRAM_DEVELOPMENT)
+                                navigation = navigation.open(AppPage.CONVERSATION)
+                            }, navigation.program)
+                        }
                         AppPage.ARCHIVED -> ArchivedPage(state, vm) { navigation = navigation.open(AppPage.SETTINGS) }
                         AppPage.SKILLS -> SkillsPage(vm, onBack = { navigation = navigation.openAddSheet() }, onConversation = { navigation = navigation.open(AppPage.CONVERSATION) })
                         AppPage.PLUGINS -> PluginPage(vm) { navigation = navigation.openAddSheet() }
@@ -489,6 +504,9 @@ private val DrawerRowHeight = 40.dp
 
 /** A program the drawer offers: a working program with a page opens it; anything else opens its details. */
 data class ProgramShortcut(val id: String, val name: String, val opensPage: Boolean, val note: String? = null)
+
+/** A request from outside, such as a launcher shortcut, to show the program page on [program]'s details or the list; [token] makes each request distinct. */
+data class ProgramNavigation(val program: String?, val token: String)
 
 /** The drawer's programs, filtered by the search; hidden when none are installed or none match. */
 internal fun LazyListScope.programSection(shortcuts: List<ProgramShortcut>, query: String, openPage: (String) -> Unit,

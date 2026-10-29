@@ -17,7 +17,12 @@ import com.github.ytlog.mobby.android.conversation.domain.StopResult
 import com.github.ytlog.mobby.android.conversation.ui.DesktopPet
 import com.github.ytlog.mobby.android.conversation.ui.FloatingConversationWindow
 import com.github.ytlog.mobby.android.conversation.ui.AppUpdateManager
+import com.github.ytlog.mobby.android.programcenter.ProgramLauncherShortcuts
+import com.github.ytlog.mobby.android.programcenter.ProgramOpenHistory
+import com.github.ytlog.mobby.android.programcenter.launcherShortcuts
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 class MobbyApplication : Application() {
     private lateinit var graph: AppGraph
@@ -81,6 +86,12 @@ class MobbyApplication : Application() {
             AutoCloseable { try { conversation.close() } finally { ball.close() } }
         }
         petScope.launch { conversations.state.collect { latest = it; syncPet() } }
+        val launcher = ProgramLauncherShortcuts(this)
+        petScope.launch {
+            combine(programs.programs, ProgramOpenHistory(this@MobbyApplication).changes()) { list, opened -> launcherShortcuts(list, opened, launcher.systemLimit) }
+                .distinctUntilChanged()
+                .collect { shortcuts -> withContext(Dispatchers.IO) { launcher.sync(shortcuts) } }
+        }
         registerComponentCallbacks(object : ComponentCallbacks2 {
             override fun onConfigurationChanged(newConfig: Configuration) = syncPet()
             override fun onTrimMemory(level: Int) = Unit

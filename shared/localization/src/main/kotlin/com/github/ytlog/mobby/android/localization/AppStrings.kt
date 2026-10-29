@@ -941,6 +941,10 @@ open class StringCatalog(private val fixedLanguage: AppLanguage? = null) {
     val installedPaused get() = text("已安装，默认暂停", "Installed, paused by default")
     val programEnabled get() = text("启用", "Enabled")
     val openProgramUi get() = text("打开程序界面", "Open program page")
+    val addToHomeScreen get() = text("添加到桌面", "Add to home screen")
+    val addToHomeScreenRequested get() = text("已请求添加。未出现请在系统应用权限中开启“桌面快捷方式”",
+        "Requested. If nothing appears, allow home screen shortcuts in system app permissions")
+    val addToHomeScreenFailed get() = text("桌面没有接受添加请求", "The launcher did not accept the request")
     val stopRun get() = text("停止当前运行", "Stop current run")
     val deleteProgram get() = text("删除程序", "Delete program")
     val deleteKeepData get() = text("删除，保留程序数据", "Delete, keep program data")

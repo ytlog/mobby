@@ -2,6 +2,7 @@ package com.github.ytlog.mobby.android.programcenter
 
 import android.content.Intent
 import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -208,6 +209,7 @@ internal fun detailTarget(id: String, loaded: Set<String>?, awaiting: String?) =
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     var confirmDelete by remember { mutableStateOf(false) }
+    val launcher = remember(context) { ProgramLauncherShortcuts(context) }
     val runs by remember(platform) { platform.runs() }.collectAsState(initial = emptyList())
     val logs by remember(platform, program.id) { platform.logs(program.id, 20) }.collectAsState(initial = emptyList())
     Page(program.name, back) {
@@ -216,6 +218,11 @@ internal fun detailTarget(id: String, loaded: Set<String>?, awaiting: String?) =
             GroupDivider()
             SettingsToggle(AppStrings.programEnabled, program.userState == UserState.ENABLED) { scope.launch { platform.setEnabled(program.id, it) } }
             if (program.hasUi) { GroupDivider(); SettingsAction(AppStrings.openProgramUi) { context.startActivity(ProgramUiActivity.intent(context, program.id)) } }
+            if (launcher.pinSupported()) { GroupDivider(); SettingsAction(AppStrings.addToHomeScreen) {
+                // Some launchers (MIUI) drop the request silently unless the system allows mobby to create shortcuts; say where that is.
+                if (launcher.requestPin(program)) Toast.makeText(context, AppStrings.addToHomeScreenRequested, Toast.LENGTH_LONG).show()
+                else Toast.makeText(context, AppStrings.addToHomeScreenFailed, Toast.LENGTH_SHORT).show()
+            } }
             if (program.hasBackground) { GroupDivider(); SettingsAction(AppStrings.stopRun) { scope.launch { platform.stop(program.id) } } }
             GroupDivider()
             SettingsAction(AppStrings.modifyWithAi) { modifyWithAi(program) }
