@@ -83,7 +83,7 @@ class ConversationHostActions(
      * Hosted program development page; hosts without one hide the entry. `writeNew` attaches the plugin to the open
      * conversation; `program` opens that program's details.
      */
-    val programCenter: (@Composable (back: () -> Unit, writeNew: () -> Unit, program: String?) -> Unit)? = null,
+    val programCenter: (@Composable (back: () -> Unit, writeNew: (idea: String?) -> Unit, program: String?) -> Unit)? = null,
     /** Installed programs the drawer offers, and how the host opens a program's page. */
     val programShortcuts: Flow<List<ProgramShortcut>> = flowOf(emptyList()),
     val openProgram: (String) -> Unit = {},
@@ -260,8 +260,9 @@ class ConversationHostActions(
                         AppPage.UPDATES -> updates?.let { AppUpdatePage(it) { navigation = navigation.open(AppPage.SETTINGS) } }
                         // A launcher request starts the program page afresh even when it is already showing.
                         AppPage.PROGRAMS -> key(consumedProgramNavigation) {
-                            hostActions.programCenter?.invoke({ navigation = navigation.back(gatewayFromIntro) }, {
+                            hostActions.programCenter?.invoke({ navigation = navigation.back(gatewayFromIntro) }, { idea ->
                                 selectPlugin(PROGRAM_DEVELOPMENT)
+                                if (idea != null) vm.prefill(idea)
                                 navigation = navigation.open(AppPage.CONVERSATION)
                             }, navigation.program)
                         }

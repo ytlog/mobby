@@ -336,6 +336,11 @@ internal class ConversationViewModel(val actions: ConversationUseCases) : ViewMo
             } finally { edits[id] = (edits[id] ?: 1) - 1; syncComposer() }
         }
     }
+    /** Puts a suggested request in the composer for the user to adjust and send. */
+    fun prefill(idea: String) {
+        val next = withIdea(composer.value.value.text, idea)
+        edit(TextFieldValue(next, TextRange(next.length)))
+    }
     fun insertVoice(original: ComposerState, text: String): Boolean {
         val updated = composer.value.insertVoice(original, text) ?: return false
         edit(updated.value)
@@ -473,3 +478,6 @@ internal fun unexpectedFailureNotice(failure: Throwable): String {
         else -> AppStrings.operationIncompleteInternalError(failure.javaClass.simpleName)
     }
 }
+
+/** Text the user already typed is kept; the idea follows it on a new line. */
+internal fun withIdea(draft: String, idea: String): String = if (draft.isBlank()) idea else draft.trimEnd() + "\n" + idea

@@ -48,7 +48,7 @@ private const val DETAIL = "detail:"
  * Programs, the single entry for them: workspace programs waiting to be installed, installed programs with their state,
  * one-step install, and each program's details. Program development itself happens in a conversation.
  */
-@Composable fun ProgramCenterPage(platform: ProgramPlatform, back: () -> Unit, writeNew: () -> Unit, program: String? = null,
+@Composable fun ProgramCenterPage(platform: ProgramPlatform, back: () -> Unit, writeNew: (idea: String?) -> Unit, program: String? = null,
     modifyWithAi: (ProgramView) -> Unit = {}) {
     var route by rememberSaveable(program) { mutableStateOf(program?.let { DETAIL + it } ?: LIST) }
     val loaded by platform.programs.collectAsState(initial = null)
@@ -123,7 +123,7 @@ private fun shortTime(millis: Long): String {
 }
 
 @Composable private fun ProgramListPage(platform: ProgramPlatform, programs: List<ProgramView>, pending: List<PendingInstall>, back: () -> Unit,
-    writeNew: () -> Unit, open: (String) -> Unit, install: (String) -> Unit, permissions: () -> Unit) {
+    writeNew: (idea: String?) -> Unit, open: (String) -> Unit, install: (String) -> Unit, permissions: () -> Unit) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val power = remember(context) { context.getSystemService(android.os.PowerManager::class.java) }
@@ -145,7 +145,8 @@ private fun shortTime(millis: Long): String {
             // The system asks the user; mobby never changes the setting itself.
             context.startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, android.net.Uri.parse("package:${context.packageName}")))
         }
-        SettingsGroup { SettingsItem(AppStrings.writeNewProgram, writeNew, AppStrings.writeNewProgramSummary, icon = AppIcons.Terminal) }
+        SettingsGroup { SettingsItem(AppStrings.writeNewProgram, { writeNew(null) }, AppStrings.writeNewProgramSummary, icon = AppIcons.Terminal) }
+        ProgramIdeas(writeNew)
         if (pending.isNotEmpty()) SettingsGroup(AppStrings.pendingPrograms(pending.size)) {
             pending.forEachIndexed { index, item ->
                 if (index > 0) GroupDivider()
@@ -516,6 +517,21 @@ internal fun configKeyboard(type: ConfigType?) = when (type) {
                     "${p.name} · ${s.id.substringAfter('/')} · ${if (s.active) AppStrings.subscriptionActive else AppStrings.subscriptionInactive}"
                 })
             }
+        }
+    }
+}
+
+/** Starting points for a first program; picking one only fills the request, which the user can change before sending. */
+@Composable internal fun ProgramIdeas(pick: (String) -> Unit) {
+    val ideas = listOf(
+        Triple(AppStrings.programIdeaExpenses, AppStrings.programIdeaExpensesDetail, AppStrings.programIdeaExpensesRequest),
+        Triple(AppStrings.programIdeaReminder, AppStrings.programIdeaReminderDetail, AppStrings.programIdeaReminderRequest),
+        Triple(AppStrings.programIdeaWatch, AppStrings.programIdeaWatchDetail, AppStrings.programIdeaWatchRequest),
+    )
+    SettingsGroup(AppStrings.programIdeas) {
+        ideas.forEachIndexed { index, (title, detail, request) ->
+            if (index > 0) GroupDivider()
+            SettingsItem(title, { pick(request) }, detail)
         }
     }
 }
