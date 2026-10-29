@@ -38,7 +38,16 @@ class DevelopmentServiceTest {
     private lateinit var platform: ProgramPlatform
 
     /** Stands in for Node: makes one command call and one storage call through the real pipeline, then exits. */
+    /** What the stand-in runtime says about script syntax; null means the runtime cannot check. */
+    private var syntax: ((List<String>) -> List<SyntaxProblem>)? = { emptyList() }
+    private val checked = mutableListOf<String>()
+
     private inner class ScriptedLauncher : ProgramProcessLauncher {
+        override fun checkSyntax(sdkDir: File, packageDir: File, scripts: List<String>): List<SyntaxProblem> {
+            checked += scripts
+            return syntax?.invoke(scripts) ?: throw LaunchUnavailable("runtime_not_installed")
+        }
+
         override fun launch(spec: ProcessSpec): ProgramProcess {
             val exit = CompletableDeferred<Int?>()
             scope.launch {
@@ -100,6 +109,27 @@ class DevelopmentServiceTest {
         assertFalse(dev.validate("price-watch")["valid"]!!.jsonPrimitive.boolean)
     }
 
+    /** On the tablet a page module with a syntax error passed validate and then never ran. */
+    @Test fun `validate parses every script and reports those that do not parse`() {
+        platform = platform()
+        val dev = DevelopmentService(platform)
+        write().also { File(it, "ui").mkdirs(); File(it, "ui/app.js").writeText("x"); File(it, "ui/style.css").writeText("") }
+        syntax = { scripts -> scripts.filter { it == "ui/app.js" }.map { SyntaxProblem(it, 3, "SyntaxError: Unexpected reserved word") } }
+        val result = dev.validate("price-watch")
+        assertEquals(listOf("main.js", "ui/app.js"), checked.sorted())
+        assertFalse(result["valid"]!!.jsonPrimitive.boolean)
+        assertEquals(listOf("ui/app.js:3: SyntaxError: Unexpected reserved word"), result["problems"]!!.jsonArray.map { it.jsonPrimitive.content })
+    }
+
+    @Test fun `validate says when scripts could not be checked instead of passing them silently`() {
+        platform = platform()
+        write()
+        syntax = null
+        val result = DevelopmentService(platform).validate("price-watch")
+        assertTrue(result["valid"]!!.jsonPrimitive.boolean)
+        assertTrue(result["warnings"]!!.jsonArray.any { "not syntax-checked" in it.jsonPrimitive.content && "runtime_not_installed" in it.jsonPrimitive.content })
+    }
+
     @Test fun `a dry run simulates effects, keeps storage throwaway and reports calls`() = runBlocking {
         platform = platform()
         platform.start()
@@ -133,5 +163,6 @@ class DevelopmentServiceTest {
         assertTrue("positional signatures", catalog.contains("`files.write(path, text)`") && catalog.contains("positional"))
         // The phone AI's page said "Exported" because ui.send resolved before the failing handler ran.
         assertTrue("ui.send delivery", catalog.contains("not when its handler finishes") && catalog.contains("exit code 1"))
+        assertTrue("page errors", catalog.contains("parses every script") && catalog.contains("`page_error`"))
     }
 }

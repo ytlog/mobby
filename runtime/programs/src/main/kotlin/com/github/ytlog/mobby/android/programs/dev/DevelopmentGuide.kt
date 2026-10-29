@@ -105,6 +105,8 @@ mobby.ui.onMessage((message) => { if (message.type === 'updated') location.reloa
 ```
 
 A dry run covers background logic only, never the page: catch page failures and show them instead of failing silently.
+`validate` parses every script (background and page) without running it and lists those that do not parse. Errors a page
+reports to its console (uncaught exceptions, syntax errors, blocked resources, `console.error`) appear in `records` logs as `page_error`.
 Pages may load only their own files: no inline scripts or `on…=` handlers, no external scripts, styles or images,
 no direct network access (use `mobby.net.fetch`). External links open in the browser after the user confirms.
 

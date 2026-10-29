@@ -102,7 +102,8 @@ class ProgramPlatform internal constructor(
     internal val pipeline = CallPipeline(registry, gate, dao, layout, clock)
     private val sdkDir = File(layout.root, "sdk")
     private lateinit var server: ProgramApiServer
-    internal val runs = RunSupervisor(scope, dao, launcher(File(layout.root, "logs")), sdkDir, { server.port }, clock = clock)
+    private val processes = launcher(File(layout.root, "logs"))
+    internal val runs = RunSupervisor(scope, dao, processes, sdkDir, { server.port }, clock = clock)
     private val status = ProgramStatus(dao, gate, config)
     internal val router = EventRouter(dao, status, runs, layout, schedules, clock)
     private val control = Mutex()
@@ -112,6 +113,9 @@ class ProgramPlatform internal constructor(
     val apiPort: Int get() = server.port
 
     internal fun now() = clock()
+
+    /** Parses a package's scripts with the program runtime; see [ProgramProcessLauncher.checkSyntax]. */
+    internal fun checkSyntax(packageDir: File, scripts: List<String>) = processes.checkSyntax(sdkDir, packageDir, scripts)
 
     /** Closes cached database connections under [dir] before it is deleted. */
     internal fun releaseStorage(dir: File) { sql?.close(dir) }

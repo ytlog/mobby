@@ -38,10 +38,18 @@ interface ProgramProcess {
     fun terminate()
 }
 
+/** A script in a package that does not parse; [line] is 1-based when the runtime reports it. */
+data class SyntaxProblem(val path: String, val line: Int?, val message: String)
+
 interface ProgramProcessLauncher {
     fun launch(spec: ProcessSpec): ProgramProcess
     /** Ends background processes left by an earlier app process. */
     fun recoverOrphans() {}
+    /**
+     * Parses [scripts] (paths relative to [packageDir]) with the program runtime without running them.
+     * Throws [LaunchUnavailable] when the runtime cannot check, so callers never mistake that for clean code.
+     */
+    fun checkSyntax(sdkDir: File, packageDir: File, scripts: List<String>): List<SyntaxProblem> = throw LaunchUnavailable("syntax_check_unsupported")
 }
 
 class LaunchUnavailable(val reason: String) : IllegalStateException(reason)

@@ -7,10 +7,12 @@ import com.github.ytlog.mobby.android.programs.run.LaunchUnavailable
 import com.github.ytlog.mobby.android.programs.run.ProcessSpec
 import com.github.ytlog.mobby.android.programs.run.ProgramProcess
 import com.github.ytlog.mobby.android.programs.run.ProgramProcessLauncher
+import com.github.ytlog.mobby.android.programs.run.SyntaxProblem
 import com.libtermux.LibTermux
 import com.libtermux.executor.OutputLine
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.flowOf
+import org.json.JSONArray
 import java.io.File
 
 /**
@@ -25,12 +27,38 @@ class TermuxProgramLauncher(
 ) : ProgramProcessLauncher {
     private val prefs = context.getSharedPreferences("program-processes", Context.MODE_PRIVATE)
 
-    override fun launch(spec: ProcessSpec): ProgramProcess {
+    /** The runtime and its Node, relinking native binaries after an app update; throws when programs cannot run yet. */
+    private fun runtime(): Pair<LibTermux, File> {
         val sdk = LibTermux.init(context, RuntimeEnvironment.termuxConfig(context))
         if (!sdk.isInstalled) throw LaunchUnavailable("runtime_not_installed")
         val node = File(sdk.vfs.binDir, "node")
         if (!node.canExecute() && !RuntimeEnvironment.repairNativeLinks(context, sdk)) throw LaunchUnavailable("runtime_update_pending")
         if (!node.canExecute()) throw LaunchUnavailable("runtime_not_ready")
+        return sdk to node
+    }
+
+    override fun checkSyntax(sdkDir: File, packageDir: File, scripts: List<String>): List<SyntaxProblem> {
+        if (scripts.isEmpty()) return emptyList()
+        val (sdk, node) = runtime()
+        val check = File(sdkDir, "check.cjs")
+        if (!check.isFile) throw LaunchUnavailable("sdk_missing")
+        val output = StringBuilder()
+        var exit: Int? = null
+        runBlocking(Dispatchers.IO) {
+            sdk.executor.executeArgsStreaming(listOf(node.absolutePath, check.absolutePath, packageDir.absolutePath) + scripts, packageDir,
+                onTerminated = { code -> exit = code }, timeoutMs = CHECK_TIMEOUT_MS,
+            ).collect { line -> if (line is OutputLine.Stdout) output.append(line.text) }
+        }
+        if (exit != 0) throw LaunchUnavailable("syntax_check_failed")
+        val problems = JSONArray(output.toString())
+        return (0 until problems.length()).map { index ->
+            val problem = problems.getJSONObject(index)
+            SyntaxProblem(problem.getString("path"), if (problem.isNull("line")) null else problem.getInt("line"), problem.getString("message"))
+        }
+    }
+
+    override fun launch(spec: ProcessSpec): ProgramProcess {
+        val (sdk, node) = runtime()
         val runner = File(spec.sdkDir, "runner.cjs")
         if (!runner.isFile) throw LaunchUnavailable("sdk_missing")
         spec.workDir.mkdirs()
@@ -87,6 +115,8 @@ class TermuxProgramLauncher(
     }
 
     private fun forget(pid: Int) = prefs.edit().remove(pid.toString()).apply()
+
+    private companion object { const val CHECK_TIMEOUT_MS = 30_000L }
 
     private fun startTime(pid: Int): String? =
         runCatching { File("/proc/$pid/stat").readText().substringAfterLast(") ").split(' ')[19] }.getOrNull()

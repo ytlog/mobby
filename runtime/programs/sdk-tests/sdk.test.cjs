@@ -130,3 +130,36 @@ test('the runner refuses to start without mobby', async () => {
   child.stdin.end();
   assert.equal(await new Promise((resolve) => child.on('exit', resolve)), 2);
 });
+
+/** Runs check.cjs as the launcher does: parse only, one result per script that does not parse. */
+function checkSyntax(files) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'check-'));
+  for (const [name, text] of Object.entries(files)) {
+    fs.mkdirSync(path.dirname(path.join(dir, name)), { recursive: true });
+    fs.writeFileSync(path.join(dir, name), text);
+  }
+  const child = require('node:child_process').spawnSync(process.execPath,
+    [path.join(SDK, 'check.cjs'), dir, ...Object.keys(files)], { encoding: 'utf8' });
+  fs.rmSync(dir, { recursive: true, force: true });
+  assert.equal(child.status, 0, child.stderr);
+  return JSON.parse(child.stdout);
+}
+
+/** On the tablet a page used await in a non-async callback; the module never ran and validate said nothing. */
+test('the syntax check reports scripts that cannot be parsed, with their line', () => {
+  const problems = checkSyntax({
+    'main.js': "const mobby = require('mobby');\nmobby.on('x', async () => {});\n",
+    'lib.mjs': "export const a = 1;\n",
+    'ui/app.js': "import mobby from '/_mobby/sdk.js';\nmobby.ui.onMessage((m) => {\n  await load();\n});\n",
+    'ui/classic.js': "with (Math) { max(1, 2); }\n",
+    'broken.cjs': "module.exports = {\n",
+  });
+  assert.deepEqual(problems.map((p) => [p.path, p.line]), [['ui/app.js', 3], ['broken.cjs', 2]]);
+  assert.match(problems[0].message, /SyntaxError/);
+});
+
+test('the syntax check never runs the code it parses', () => {
+  const marker = path.join(os.tmpdir(), `ran-${process.pid}`);
+  assert.deepEqual(checkSyntax({ 'main.js': `require('fs').writeFileSync(${JSON.stringify(marker)}, 'x');` }), []);
+  assert.equal(fs.existsSync(marker), false);
+});

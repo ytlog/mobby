@@ -7,6 +7,7 @@ import com.github.ytlog.mobby.android.programs.capability.PHASE_ONE_DEVICE_CAPAB
 import com.github.ytlog.mobby.android.programs.event.ProgramEvent
 import com.github.ytlog.mobby.android.programs.program.PackageRejected
 import com.github.ytlog.mobby.android.programs.program.ProgramPackageReader
+import com.github.ytlog.mobby.android.programs.run.LaunchUnavailable
 import com.github.ytlog.mobby.android.programs.run.RunTarget
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
@@ -28,11 +29,17 @@ class DevelopmentService(private val platform: ProgramPlatform) : ProgramDevelop
         val dir = resolve(path)
         return try {
             val pkg = reader.read(dir)
+            val scripts = pkg.files.keys.filter { it.substringAfterLast('.') in SCRIPTS }
+            // A page that does not parse never runs and shows nothing, and dry runs do not load pages, so parse every script here.
+            val syntax = try { Result.success(platform.checkSyntax(dir, scripts)) } catch (error: LaunchUnavailable) { Result.failure(error) }
+            val unparsed = syntax.getOrNull().orEmpty()
             buildJsonObject {
-                put("valid", true)
+                put("valid", unparsed.isEmpty())
                 put("id", pkg.manifest.id); put("version", pkg.manifest.version)
                 put("files", pkg.files.size)
-                put("warnings", JsonArray(warnings(dir, pkg.manifest.background).map(::JsonPrimitive)))
+                if (unparsed.isNotEmpty()) put("problems", JsonArray(unparsed.map { JsonPrimitive("${it.path}:${it.line?.let { line -> "$line:" } ?: ""} ${it.message}") }))
+                val notChecked = syntax.exceptionOrNull()?.let { "scripts were not syntax-checked: ${it.message}" }
+                put("warnings", JsonArray((warnings(dir, pkg.manifest.background) + listOfNotNull(notChecked)).map(::JsonPrimitive)))
             }
         } catch (error: PackageRejected) {
             buildJsonObject { put("valid", false); put("problems", JsonArray(error.problems.map { JsonPrimitive("${it.path}: ${it.message}") })) }
@@ -135,6 +142,7 @@ class DevelopmentService(private val platform: ProgramPlatform) : ProgramDevelop
     }
 
     private companion object {
+        val SCRIPTS = setOf("js", "mjs", "cjs")
         val BYPASS = listOf(
             Regex("""require\(\s*['"](node:)?(http|https|net|tls|dgram)['"]""") to "Node networking",
             Regex("""(?<![.\w])fetch\s*\(""") to "global fetch",

@@ -41,6 +41,12 @@ class ProgramListModelTest {
         assertEquals(StatusLine(AppStrings.statusOpenToUse), programStatus(program(subscriptions = emptyList()), null, time))
     }
 
+    /** On the tablet an app update restarted mobby mid-run; every call had succeeded, yet the list said the run failed. */
+    @Test fun `a run cut short by mobby restarting is interrupted, not failed`() {
+        assertEquals(StatusLine("${AppStrings.everyMinutes(15)} · ${AppStrings.lastRunInterrupted("t120")}"),
+            programStatus(program(), run("interrupted", reason = "process_restarted"), time))
+    }
+
     @Test fun `paused and blocked programs say so before anything else`() {
         assertEquals(StatusLine(AppStrings.availabilityPaused), programStatus(program(UserState.PAUSED, ProgramAvailability.PAUSED), run("exited", 2), time))
         assertEquals(StatusLine(AppStrings.availabilityNeedsConfig, problem = true),

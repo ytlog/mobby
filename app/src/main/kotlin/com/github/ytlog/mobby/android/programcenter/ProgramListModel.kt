@@ -74,6 +74,8 @@ internal fun programStatus(program: ProgramView, lastRun: RunRow?, time: (Long) 
         run.outcome == null -> StatusLine("$what · ${AppStrings.runRunning}")
         run.outcome == "exited" && run.exitCode == 0 -> StatusLine("$what · ${AppStrings.lastRunOk(at)}")
         run.outcome == "killed" && run.reason in USER_STOPS -> StatusLine("$what · ${AppStrings.lastRunStopped(at)}")
+        // mobby itself restarted (an update, or the system ending the app); the run's own calls may all have succeeded.
+        run.outcome == "interrupted" -> StatusLine("$what · ${AppStrings.lastRunInterrupted(at)}")
         else -> StatusLine("$what · ${AppStrings.lastRunFailed(at)}", problem = true)
     }
 }

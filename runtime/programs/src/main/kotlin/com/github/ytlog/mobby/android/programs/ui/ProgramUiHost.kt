@@ -12,6 +12,7 @@ import com.github.ytlog.mobby.android.programs.call.CallContext
 import com.github.ytlog.mobby.android.programs.call.CallRequest
 import com.github.ytlog.mobby.android.programs.capability.ProgramErrorCode
 import com.github.ytlog.mobby.android.programs.capability.Surface
+import com.github.ytlog.mobby.android.programs.store.LogRow
 import kotlinx.coroutines.*
 import kotlinx.serialization.json.*
 import java.io.ByteArrayInputStream
@@ -87,7 +88,16 @@ class ProgramUiHost(private val platform: ProgramPlatform, private val sdkScript
                 close(session); onCrash(); return true
             }
         }
+        val errors = PageErrorLog(policy.origin)
         webView.webChromeClient = object : WebChromeClient() {
+            override fun onConsoleMessage(message: ConsoleMessage): Boolean {
+                val entry = errors.entry(message.messageLevel(), message.message(), message.sourceId(), message.lineNumber()) ?: return true
+                scope.launch(Dispatchers.IO) {
+                    platform.dao.insertLog(LogRow(programId = programId, caller = "ui:${session.sessionId}", at = platform.now(),
+                        message = entry.message, dataJson = entry.data.toString()))
+                }
+                return true
+            }
             override fun onPermissionRequest(request: PermissionRequest) = request.deny()
             override fun onGeolocationPermissionsShowPrompt(origin: String?, callback: GeolocationPermissions.Callback) = callback.invoke(origin, false, false)
             override fun onCreateWindow(view: WebView?, isDialog: Boolean, isUserGesture: Boolean, resultMsg: android.os.Message?) = false

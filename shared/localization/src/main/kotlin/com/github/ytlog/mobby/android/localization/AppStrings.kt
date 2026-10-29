@@ -972,6 +972,7 @@ open class StringCatalog(private val fixedLanguage: AppLanguage? = null) {
     fun lastRunOk(time: Any?) = text("{0} 正常", "OK at {0}", time)
     fun lastRunFailed(time: Any?) = text("{0} 失败", "Failed at {0}", time)
     fun lastRunStopped(time: Any?) = text("{0} 已停止", "Stopped at {0}", time)
+    fun lastRunInterrupted(time: Any?) = text("{0} 已中断", "Interrupted at {0}", time)
     fun purposeNet(domains: Any?) = text("访问 {0}", "Connects to {0}", domains)
     val purposePlainHttp get() = text("（含不加密的 http）", " (including unencrypted http)")
     val purposeSql get() = text("在自己的数据库里存数据", "Keeps data in its own database")
