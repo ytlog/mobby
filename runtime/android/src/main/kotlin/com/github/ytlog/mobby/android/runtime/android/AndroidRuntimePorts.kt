@@ -54,6 +54,8 @@ internal class AndroidRuntimePorts(
     private val gateways = GatewayStore(context)
     private fun mode(agent: AgentId) = agent.launchMode()
     override suspend fun capabilities(): CapabilityResult = withContext(Dispatchers.IO) {
+        // Skills live in the runtime HOME, which exists only once the environment is ready; until then every agent is NOT_READY.
+        val ready = state.value.phase == EnvironmentPhase.READY
         CapabilityResult.Available(RuntimeCapabilities("mobby-local-1", AgentId.values().map { agent ->
             val configs = gateways.list().mapNotNull { record -> runCatching { record.config(mode(agent)).also { it.validateFor(mode(agent)) } }.getOrNull() }
             val models = configs.flatMap { config ->
@@ -62,13 +64,13 @@ internal class AndroidRuntimePorts(
             }.distinctBy { it.id }
             AgentCapability(agent, models,
                 unavailableReason = when {
-                    state.value.phase != EnvironmentPhase.READY -> RuntimeError(ErrorCode.NOT_READY, true)
+                    !ready -> RuntimeError(ErrorCode.NOT_READY, true)
                     agent == AgentId.CLAUDE_CODE && !runtime.claudeReady -> RuntimeError(ErrorCode.NOT_READY, true)
                     agent == AgentId.OPEN_CODE && !runtime.opencodeReady -> RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY)
                     configs.isEmpty() -> RuntimeError(ErrorCode.INVALID_CONFIG)
                     else -> null
                 },
-                supportsResume = true, supportsApproval = agent == AgentId.CLAUDE_CODE, supportsResources = true, supportsImages = true, supportsDeviceCards = true, skillCapabilities = skills.list(agent).filter { it.available }.map { it.ref }.toSet())
+                supportsResume = true, supportsApproval = agent == AgentId.CLAUDE_CODE, supportsResources = true, supportsImages = true, supportsDeviceCards = true, skillCapabilities = if (ready) skills.list(agent).filter { it.available }.map { it.ref }.toSet() else emptySet())
         }))
     }
     override suspend fun validate(request: RunRequest): RuntimeError? = withContext(Dispatchers.IO) {

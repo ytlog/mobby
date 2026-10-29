@@ -393,7 +393,9 @@ internal class DeviceActions(private val context: Context, private val inbox: Fi
             }
             "records" -> {
                 val id = args.getValue("programId")
-                if (id !in attachedPrograms) deviceFailure(DeviceErrorCode.UNAUTHORIZED, "Attach the program to this chat first")
+                if (id !in attachedPrograms) deviceFailure(DeviceErrorCode.UNAUTHORIZED,
+                    "$id is not attached to this chat, so its records are not readable here. This says nothing about whether it is installed. " +
+                    "To read them, the user opens $id in mobby and taps \"${AppStrings.modifyWithAi}\", which starts a chat with it attached.")
                 deviceResult("program_report", port.records(id, args["limit"]?.toIntOrNull()?.coerceIn(1, 200) ?: 50))
             }
             else -> error(AppStrings.unsupportedOperation)

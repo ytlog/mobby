@@ -45,7 +45,7 @@ object DeviceCatalog {
         ),
         DevicePluginSpec(
             "programs", AppStrings.programDevelopment, AppStrings.programDevelopmentSummary, CatalogIds.PHONE,
-            "Use this skill to write programs that run inside mobby after this chat. Start with catalog: it lists the capabilities that exist on this phone, the SDK and the package rules. Write the program under ~/workspace/programs/<program-id>/, then run validate until it passes and dry-run to check the background logic with simulated events. You cannot install, enable or grant a program; tell the user what it does, which permissions, config and events it needs, and that they install it in Settings > Programs. records reads runs and logs only for programs the user attached to this chat.",
+            "Use this skill to write programs that run inside mobby after this chat. Start with catalog: it lists the capabilities that exist on this phone, the SDK and the package rules. Write the program under ~/workspace/programs/<program-id>/, then run validate until it passes and dry-run to check the background logic with simulated events. You cannot install, enable or grant a program; tell the user what it does, which permissions, config and events it needs, and that they install it in Settings > Programs. records reads runs and logs only for programs the user attached to this chat; a program that is not attached is refused even when it is installed and working.",
             DeviceAccess.NONE,
             commands = listOf(
                 DeviceCommand("catalog", "catalog", "Read before writing a program."),

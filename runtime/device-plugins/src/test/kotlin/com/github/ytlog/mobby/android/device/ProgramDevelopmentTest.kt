@@ -1,5 +1,6 @@
 package com.github.ytlog.mobby.android.device
 
+import com.github.ytlog.mobby.android.localization.AppStrings
 import org.robolectric.RuntimeEnvironment
 import com.github.ytlog.mobby.android.runtime.api.device.DeviceErrorCode
 import com.github.ytlog.mobby.android.runtime.api.device.DeviceFailure
@@ -48,6 +49,9 @@ class ProgramDevelopmentTest {
         run(actions, "records", mapOf("programId" to "price-watch"))
         val denied = runCatching { run(actions, "records", mapOf("programId" to "other")) }.exceptionOrNull() as DeviceFailure
         assertEquals(DeviceErrorCode.UNAUTHORIZED, denied.error.code)
+        // On the tablet the AI read the refusal as "not installed"; it must say what is missing and how the user attaches it.
+        val message = denied.error.message
+        assertTrue(message, "other" in message && "says nothing about whether it is installed" in message && AppStrings.modifyWithAi in message)
         assertEquals(listOf("catalog", "validate price-watch", "dry-run price-watch 60000 [programs, sms]", "records price-watch 50"), seen)
     }
 }
