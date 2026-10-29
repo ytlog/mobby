@@ -90,7 +90,10 @@ object DeviceCatalog {
         ),
         DevicePluginSpec(
             "media", AppStrings.media, AppStrings.readAuthorizedPhotosVideosAndAudio, CatalogIds.FILES,
-            "List media the user has allowed, then copy one item into this run's inbox. Do not assume access to the whole library.",
+            "List media the user has allowed, then copy one item into this run's inbox. Do not assume access to the whole library. " +
+                "list is newest first, so \"my latest screenshot\" is usually the first image. To read text or details in a photo or screenshot, " +
+                "copy it, export it with the resource command, then view the exported image with your own image or file viewing tool and transcribe only what is visible. " +
+                "If you cannot see images, say so instead of guessing from the file name.",
             DeviceAccess.RUNTIME,
             commands = listOf(
                 DeviceCommand("list", "list"),

@@ -216,6 +216,14 @@ class DevicePluginTest {
         assertTrue(both.contains("send {"))
     }
 
+    /** Reading text in a photo needs the model to see the image itself; a guess from the file name must not pass for it. */
+    @Test fun `the photos skill tells the agent to look at the image and admit when it cannot`() {
+        val skill = DeviceSkillPack.write(temporary.newFolder(), "/bin/node", 9, "tok", setOf("plugin:device:media")).single().readText()
+        assertTrue(skill, skill.contains("newest first"))
+        assertTrue(skill, skill.contains("view the exported image"))
+        assertTrue(skill, skill.contains("cannot see images"))
+    }
+
     @Test fun `device paths stay inside the workspace and inbox`() {
         val workspace = temporary.newFolder("workspace")
         val inbox = temporary.newFolder("inbox")
