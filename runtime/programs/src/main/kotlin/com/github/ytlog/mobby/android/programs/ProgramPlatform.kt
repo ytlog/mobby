@@ -132,11 +132,17 @@ class ProgramPlatform internal constructor(
         permissions.reload()
         server = ProgramApiServer(pipeline, registry, gate, permissions, runs,
             listOf(EventStreamRoute(runs), SubscriptionsRoute(dao, registry, gate) { programId -> refresh("subscription_changed", programId) },
-                UiMessagesRoute(ui::post)))
+                UiMessagesRoute(ui::post, ::recordSimulatedUiPost)))
         withContext(Dispatchers.IO) { server.start() }
         router.rebuild()
         ScheduleTarget.publish(router)
         scheduleExpiry()
+    }
+
+    /** A dry run's page message is kept in its own log, where the dry-run report picks it up. */
+    private suspend fun recordSimulatedUiPost(caller: com.github.ytlog.mobby.android.programs.call.CallContext, message: JsonElement) = withContext(Dispatchers.IO) {
+        dao.insertLog(LogRow(programId = caller.programId, caller = "run:${caller.runId}", at = clock(), message = SIMULATED_UI_POST,
+            dataJson = buildJsonObject { put("message", message) }.toString()))
     }
 
     internal fun stopServer() { if (::server.isInitialized) server.stop() }
@@ -337,6 +343,9 @@ class ProgramPlatform internal constructor(
     }
 
     companion object {
+        /** Log message of a page message a dry run posted; the data is `{message}`. */
+        internal const val SIMULATED_UI_POST = "ui_post"
+
         fun create(
             context: Context,
             workspacePrograms: File,

@@ -74,6 +74,8 @@ async function stream(credential) {
   const credential = await readCredential();
   runner.start(port, credential);
   await load(entry);
+  // Read back by dry runs to name the handlers they did not exercise; the run log keeps it for real runs too.
+  process.stdout.write(`mobby:handlers ${JSON.stringify(runner.handlers())}\n`);
   await stream(credential);
   process.exit(unhandled > 0 ? 1 : 0);
 })().catch((error) => {

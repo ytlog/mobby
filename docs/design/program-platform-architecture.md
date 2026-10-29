@@ -306,6 +306,7 @@ stateDiagram-v2
 
 - 页面 `mobby.ui.send(message)`：平台向后台投递 `ui.message` 事件（处理函数收到 `{ message }`），没有进行中的运行时按需拉起；程序没有后台逻辑时返回 `UNSUPPORTED`。
 - 后台 `mobby.ui.post(message)`：平台转发给该程序已打开的界面会话，返回送达的会话数；没有打开的界面时返回 0，不排队。
+- 后台与页面 SDK 在发出请求前检查参数类型（路径与 SQL 为字符串、`params` 与 `statements` 为数组、选项为对象），不符时以 `TypeError` 拒绝，信息给出正确的调用形式，例如 `files.write(path, text): path must be a string, got an object. Arguments are positional, …`。
 - 平台把浅色或深色模式、字体缩放和安全区域边距以 CSS 媒体查询与变量提供给页面。
 
 ## 10. 事件
@@ -392,6 +393,7 @@ data class ProgramEvent(
 - 开发插件没有安装、启用、授权、填写凭据和恢复订阅的命令。
 - `plugin:program:<id>` 只能与开发插件一起出现在草稿中，运行时校验后把程序 ID 交给设备会话。程序开发页的“让 AI 修改此程序”新建一个对话，预先选中开发插件并附加该程序，草稿中填好修改说明。
 - 试运行把程序包复制到临时目录，用清单申请的权限运行一次后台逻辑；试运行使用独立的运行槽位，不影响该程序的正式运行；结束后删除复制的包、试运行存储与临时键值。
+- 试运行结果除调用、日志与输出外，还列出 `uiMessages`（后台 `ui.post` 的消息；试运行与已安装程序同 id，这些消息只记在试运行自己的日志里，不送到任何已打开的界面，接口返回 `{delivered: 0, simulated: true}`）、`handlers`（运行器加载入口后在标准输出打印的 `mobby:handlers [...]`）与 `notExercised`（已注册但本次模拟事件未覆盖的处理函数）。界面的 `ui.send` 在后台以 `ui.message` 处理函数接收，可直接作为模拟事件试运行。
 
 ## 13. 程序开发页
 

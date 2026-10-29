@@ -107,6 +107,13 @@ AI 读取新指南后改用 `response.simulated`，其后的两次试运行无�
 - 平板验收（versionCode 31）：重建后 Expense Log 与 Header Watch 均列为“AI 写好了，还没安装”。对 Header Watch 点“忽略这个版本”后从列表消失；安装 Expense Log（填写 CNY）后再“删除，保留程序数据”，列表变为空状态，工作区源目录与数据目录仍在。让手机 AI 把两个程序的补丁版本各加一（1.0.1）并校验，回到列表两者重新出现；重新安装后 Expense Log 页面仍显示原有 3 条记录、合计 23.50 CNY，Header Watch 立即运行并显示“每 15 分钟 · 14:28 正常”。
 - 尚无在 AI 未修改的情况下撤回“忽略”的入口。
 
+### 试运行覆盖界面消息与 SDK 参数检查（2026-10-29，同一平板）
+
+- 起因：Expense Log 的三处错误中，`files.write({op, path, text})` 只在真实使用时暴露，接口只回 `$.path must be string`；AI 只试运行了定时处理函数，没有试运行页面发来的导出消息。另发现试运行与已安装程序同 id，试运行中的 `ui.post` 会送到已安装程序打开的页面。
+- 现在后台与页面 SDK 在发请求前检查参数类型，不符时以 `TypeError` 拒绝并给出正确写法；试运行的 `ui.post` 不再送到页面，记入结果的 `uiMessages`；运行器加载入口后打印已注册的处理函数，试运行结果给出 `handlers` 与本次未覆盖的 `notExercised`；开发指南说明页面的 `ui.send` 以 `ui.message` 处理函数接收，并给出模拟事件写法。
+- 平板验收（versionCode 32，Pi）：只要求 AI 先用一个定时事件试运行 Expense Log，结果为 `handlers: ["onSchedule","ui.message"]`、`notExercised: ["ui.message"]`、`uiMessages: []`。AI 随后按 `ui/app.js` 实际发送的消息试运行 `ui.message`：`addExpense` 返回 `uiMessages: [{"type":"updated"},{"type":"added"}]`；`exportCSV` 的 `storage.sql` 失败（`no such table: expenses`），`uiMessages` 为 `exportFailed`。这暴露了 Expense Log 的一个真实问题：后台导出前不建表，新安装后先点导出会失败；程序本身未修改。用平板上的 Node 直接调用 `files.write({op, path, text})`，得到 `TypeError: files.write(path, text): path must be a string, got an object. Arguments are positional, e.g. files.write('report.csv', text)`，没有发出请求。
+- 试运行的 `ui.post` 不送到已打开页面由单元测试覆盖，平板上该次试运行时页面未打开。
+
 开发中由测试发现并修复的缺陷：目录占用统计跟随符号链接；URL 中的凭据占位符导致解析失败；运行在进程启动后才登记凭据，快速子进程会被拒；事件队列满时停止通知无法送达；试运行只清理了程序包副本而遗留试运行存储。
 
 ## 尚未验证

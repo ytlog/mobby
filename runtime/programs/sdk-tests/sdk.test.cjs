@@ -76,6 +76,26 @@ test('a lost connection looks up the original request instead of resending it', 
   } finally { api.instance.close(); }
 });
 
+/** The phone AI wrote files.write({op, path, text}); the API only answered "$.path must be string". */
+test('arguments of the wrong shape fail before any request and show the right call', async () => {
+  const api = await server((req, res) => json(res, { requestId: req.body.requestId, status: 'succeeded', effect: 'confirmed', result: null }));
+  mobby[Symbol.for('mobby.runner')].start(api.port, 'c');
+  try {
+    await assert.rejects(mobby.files.write({ op: 'write', path: 'a.csv', text: 'x' }),
+      (error) => error instanceof TypeError && error.message === "files.write(path, text): path must be a string, got an object. Arguments are positional, e.g. files.write('report.csv', text)");
+    await assert.rejects(mobby.files.write('a.csv'), /files\.write\(path, text\): text must be a string, got undefined/);
+    await assert.rejects(mobby.sql.query('SELECT ?', 1), /sql\.query\(sql, params\): params must be an array, got a number/);
+    await assert.rejects(mobby.sql.transaction('BEGIN'), /sql\.transaction\(\[\{sql, params\}\]\): statements must be an array/);
+    await assert.rejects(mobby.notify.show('hi'), /notify\.show\(\{title, body, openUi\}\): options must be an object, got a string/);
+    await assert.rejects(mobby.net.fetch({ url: 'https://a.example' }), /net\.fetch\(url, \{method, headers, body\}\): url must be a string/);
+    await assert.rejects(mobby.kv.set(['k'], 1), /kv\.set\(key, value\): key must be a string, got an array/);
+    assert.equal(api.requests.length, 0);
+    await mobby.files.write('a.csv', 'x');
+    await mobby.sql.query('SELECT 1');
+    assert.equal(api.requests.length, 2);
+  } finally { api.instance.close(); }
+});
+
 /** Runs the real runner against a fake API that sends [events] and then run.stopping; resolves with the exit code. */
 async function runRunner(source, events) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'program-'));
@@ -96,7 +116,9 @@ async function runRunner(source, events) {
       env: { ...process.env, NODE_PATH: path.join(SDK, 'node_modules'), MOBBY_API_PORT: String(api.port), MOBBY_ENTRY: entry },
     });
     child.stdin.end('run-credential\n');
-    return { code: await new Promise((resolve) => child.on('exit', resolve)), requests: api.requests };
+    let stdout = '';
+    child.stdout.on('data', (chunk) => (stdout += chunk));
+    return { code: await new Promise((resolve) => child.on('exit', resolve)), requests: api.requests, stdout };
   } finally { api.instance.close(); fs.rmSync(dir, { recursive: true, force: true }); }
 }
 
@@ -123,6 +145,15 @@ test('the runner reads its credential, dispatches events and exits on run.stoppi
   assert.equal(posts[0].body.args.text, 'tick');
   assert.equal(posts[1].body.args.message, 'handler_failed');
   assert.equal(posts[2].body.args.message, 'handler_missing');
+});
+
+/** Dry runs only exercised the handlers the AI thought of; the page's export handler failed on the first real use. */
+test('the runner prints the handlers the program registered', async () => {
+  const { code, stdout } = await runRunner(`const mobby = require('mobby');
+    console.log('loading');
+    mobby.on('onTick', async () => {}); mobby.on('ui.message', async () => {});`, []);
+  assert.equal(code, 0);
+  assert.match(stdout, /^mobby:handlers \["onTick","ui\.message"\]$/m);
 });
 
 test('the runner refuses to start without mobby', async () => {

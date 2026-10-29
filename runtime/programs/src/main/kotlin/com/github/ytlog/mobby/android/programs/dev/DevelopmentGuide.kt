@@ -89,6 +89,8 @@ with exit code 1 and its error is in the program log.
 `sql.query` returns `{columns, rows}`: `columns` lists the column names and each row is an array in that order
 (`rows[0][0]`, not `rows[0].name`). `sql.execute` returns `{changes}`, plus `lastInsertRowId` for INSERT.
 Failures throw `MobbyError` with `code`, `layer`, `reason`, `effect`; never treat an error or `EFFECT_UNKNOWN` as success.
+Arguments of the wrong type (an object where a path is expected, params that are not an array) reject with a `TypeError`
+that shows the call's real form, before anything is sent.
 Secrets are written with `secrets.put` or by the user, and used only as `{{secret:name}}` in headers or query strings.
 Use the SDK instead of Node's own fetch, fs, sqlite or child_process: direct use is not governed, recorded or counted.
 
@@ -118,5 +120,10 @@ no direct network access (use `mobby.net.fetch`). External links open in the bro
   response with `response.simulated` true, `status` null and no body, and `text()`/`json()` throw `MobbyError` code
   `SIMULATED`. Check `response.simulated` instead of guessing at a body. A dry run passing does not prove the program
   works on real events.
+- Each event is `{"handler": name, "type": event type, "payload": {...}}`. A page's `ui.send(message)` reaches the
+  background as the `ui.message` handler, so dry-run every action a page sends, for example
+  `{"handler": "ui.message", "payload": {"message": {"type": "export"}}}`.
+- The result lists the program's registered `handlers` and those this dry run did `notExercised`; dry-run them too.
+  Messages the background sent with `ui.post` are returned in `uiMessages` and are not shown on any open page.
 """.trimStart()
 }

@@ -41,6 +41,8 @@ class DevelopmentServiceTest {
     /** What the stand-in runtime says about script syntax; null means the runtime cannot check. */
     private var syntax: ((List<String>) -> List<SyntaxProblem>)? = { emptyList() }
     private val checked = mutableListOf<String>()
+    /** Extra steps the stand-in runtime takes after its calls, such as printing output or posting to the page. */
+    private var afterCalls: (ProcessSpec) -> Unit = {}
 
     private inner class ScriptedLauncher : ProgramProcessLauncher {
         override fun checkSyntax(sdkDir: File, packageDir: File, scripts: List<String>): List<SyntaxProblem> {
@@ -56,6 +58,7 @@ class DevelopmentServiceTest {
                 platform.pipeline.call(context, CallRequest("r1", "notes.write", JsonObject(emptyMap())))
                 platform.pipeline.call(context, CallRequest("r2", "storage.kv", buildJsonObject { put("op", "set"); put("key", "k"); put("value", 1) }))
                 platform.pipeline.call(context, CallRequest("r3", "log", buildJsonObject { put("message", "done") }))
+                afterCalls(spec)
                 exit.complete(0)
             }
             return object : ProgramProcess {
@@ -147,6 +150,33 @@ class DevelopmentServiceTest {
         assertTrue(records["runs"]!!.jsonArray.single().jsonObject["dryRun"]!!.jsonPrimitive.boolean)
     }
 
+    /**
+     * On the tablet the page's export handler was never dry-run and failed on first use; a dry run's `ui.post` also went to
+     * the installed program's open page.
+     */
+    @Test fun `a dry run keeps page messages to itself and names the handlers it did not exercise`() = runBlocking {
+        platform = platform()
+        platform.start()
+        write()
+        afterCalls = { spec ->
+            File(root, "programs/logs/${spec.runId}.log").apply { parentFile!!.mkdirs() }
+                .writeText("[out] loading\n[out] mobby:handlers [\"onSchedule\",\"ui.message\",\"onExport\"]\n")
+            val connection = java.net.URL("http://127.0.0.1:${spec.apiPort}/v1/ui/messages").openConnection() as java.net.HttpURLConnection
+            connection.requestMethod = "POST"; connection.doOutput = true
+            connection.setRequestProperty("Authorization", "Bearer ${spec.credential}")
+            connection.setRequestProperty("Content-Type", "application/json")
+            connection.outputStream.use { it.write("""{"message":{"type":"exported"}}""".toByteArray()) }
+            val reply = Json.parseToJsonElement(connection.inputStream.use { it.readBytes().decodeToString() }).jsonObject
+            check(reply["simulated"]?.jsonPrimitive?.boolean == true && reply["delivered"]!!.jsonPrimitive.int == 0) { "page message was not simulated: $reply" }
+        }
+        val report = DevelopmentService(platform).dryRun("price-watch", """[{"handler":"onSchedule","type":"time.schedule","payload":{}}]""", 10_000, emptyMap())
+        assertTrue(report.toString(), report["ran"]!!.jsonPrimitive.boolean)
+        assertEquals(listOf(buildJsonObject { put("type", "exported") }), report["uiMessages"]!!.jsonArray.toList())
+        assertEquals(listOf("done"), report["logs"]!!.jsonArray.map { it.jsonObject["message"]!!.jsonPrimitive.content })
+        assertEquals(listOf("onSchedule", "ui.message", "onExport"), report["handlers"]!!.jsonArray.map { it.jsonPrimitive.content })
+        assertEquals(listOf("ui.message", "onExport"), report["notExercised"]!!.jsonArray.map { it.jsonPrimitive.content })
+    }
+
     @Test fun `the catalog lists only registered capabilities`() {
         platform = platform()
         val catalog = DevelopmentService(platform).catalog()
@@ -164,5 +194,9 @@ class DevelopmentServiceTest {
         // The phone AI's page said "Exported" because ui.send resolved before the failing handler ran.
         assertTrue("ui.send delivery", catalog.contains("not when its handler finishes") && catalog.contains("exit code 1"))
         assertTrue("page errors", catalog.contains("parses every script") && catalog.contains("`page_error`"))
+        // The phone AI dry-ran the schedule handler only; page messages reach the background as the `ui.message` handler.
+        assertTrue("dry-run page messages", catalog.contains("""{"handler": "ui.message", "payload": {"message": {"type": "export"}}}""") &&
+            catalog.contains("`notExercised`") && catalog.contains("`uiMessages`"))
+        assertTrue("argument errors", catalog.contains("`TypeError`"))
     }
 }

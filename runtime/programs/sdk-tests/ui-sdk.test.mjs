@@ -30,3 +30,11 @@ test('page calls resolve, fail with MobbyError and receive background messages',
   mobby.ui.send({ type: 'refresh' });
   assert.deepEqual(sent.at(-1).message, { type: 'refresh' });
 });
+
+test('page calls with arguments of the wrong shape fail before reaching mobby', async () => {
+  const before = sent.length;
+  await assert.rejects(mobby.files.write({ path: 'a.csv', text: 'x' }),
+    (error) => error instanceof TypeError && error.message.startsWith('files.write(path, text): path must be a string, got an object.'));
+  await assert.rejects(mobby.sql.execute('INSERT INTO t VALUES (?)', 'x'), /sql\.execute\(sql, params\): params must be an array, got a string/);
+  assert.equal(sent.length, before);
+});

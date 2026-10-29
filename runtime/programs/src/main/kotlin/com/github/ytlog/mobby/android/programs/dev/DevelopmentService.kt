@@ -76,8 +76,10 @@ class DevelopmentService(private val platform: ProgramPlatform) : ProgramDevelop
         }
         val run = platform.dao.run(runId)
         val operations = platform.dao.operations(pkg.manifest.id, 500).filter { it.caller == "run:$runId" }.sortedBy { it.acceptedAt }
-        val logs = platform.dao.logs(pkg.manifest.id, 200).filter { it.caller == "run:$runId" }.sortedBy { it.at }
+        val (uiPosts, logs) = platform.dao.logs(pkg.manifest.id, 200).filter { it.caller == "run:$runId" }.sortedBy { it.at }
+            .partition { it.message == ProgramPlatform.SIMULATED_UI_POST }
         val output = platform.runLog(runId)
+        val handlers = output?.let(::registeredHandlers)
         // Throwaway storage lives under the run's own dry-run directory; both it and the package copy go.
         val storage = File(platform.layout.data(pkg.manifest.id), "dry-run/$runId")
         platform.releaseStorage(storage)
@@ -95,9 +97,20 @@ class DevelopmentService(private val platform: ProgramPlatform) : ProgramDevelop
                 }
             }))
             put("logs", JsonArray(logs.map { buildJsonObject { put("message", it.message); it.dataJson?.let { d -> put("data", d) } } }))
+            put("uiMessages", JsonArray(uiPosts.mapNotNull { row -> row.dataJson?.let { Json.parseToJsonElement(it).jsonObject["message"] } }))
+            handlers?.let { registered ->
+                put("handlers", JsonArray(registered.map(::JsonPrimitive)))
+                val exercised = simulated.map { it.handler }.toSet()
+                put("notExercised", JsonArray(registered.filter { it !in exercised }.map(::JsonPrimitive)))
+            }
             output?.let { put("output", it.takeLast(16_000)) }
         }
     }
+
+    /** The runner prints the handlers a program registered once its entry has loaded; the run log marks it as `[out]`. */
+    private fun registeredHandlers(output: String): List<String>? = output.lineSequence().map { it.removePrefix("[out] ") }
+        .filter { it.startsWith(HANDLERS) }.lastOrNull()
+        ?.let { line -> runCatching { Json.parseToJsonElement(line.removePrefix(HANDLERS)).jsonArray.map { it.jsonPrimitive.content } }.getOrNull() }
 
     override fun records(programId: String, limit: Int): JsonObject = runBlocking {
         buildJsonObject {
@@ -143,6 +156,8 @@ class DevelopmentService(private val platform: ProgramPlatform) : ProgramDevelop
 
     private companion object {
         val SCRIPTS = setOf("js", "mjs", "cjs")
+        /** Must match the line runner.cjs prints. */
+        const val HANDLERS = "mobby:handlers "
         val BYPASS = listOf(
             Regex("""require\(\s*['"](node:)?(http|https|net|tls|dgram)['"]""") to "Node networking",
             Regex("""(?<![.\w])fetch\s*\(""") to "global fetch",
