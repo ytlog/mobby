@@ -167,13 +167,18 @@ class ProgramPlatform internal constructor(
 
     suspend fun install(directory: File): InstallResult = mutate("program_updated") {
         val result = installer.install(directory)
+        dao.deleteDismissed(directory.name)
         if (result.updated) runs.stop(result.programId, "program_updated")
         result
     }
 
-    /** Workspace programs that differ from what is installed, newest first. Unchanged ones are left out. */
+    /**
+     * Workspace programs that differ from what is installed, newest first. Unchanged ones are left out, and so
+     * are ones the user dismissed or deleted until the AI changes their files.
+     */
     suspend fun pendingInstalls(): List<PendingInstall> = withContext(Dispatchers.IO) {
-        candidates().mapNotNull { candidate ->
+        val dismissed = dao.dismissedCandidates().associate { it.name to it.fingerprint }
+        candidates().filter { dismissed[it.name]?.equals(reader.fingerprint(it.directory)) != true }.mapNotNull { candidate ->
             try { installer.preview(candidate.directory).takeUnless { it.upToDate }?.let { PendingInstall.Ready(candidate, it) } }
             catch (error: PackageRejected) { PendingInstall.Rejected(candidate, error.problems) }
         }
@@ -196,6 +201,7 @@ class ProgramPlatform internal constructor(
         val requested = reviewed.pkg.permissions.map { it.capability }.toSet()
         choice.grant.forEach { require(it in requested) { "$it is not requested" } }
         val result = installer.install(directory, choice.checksum)
+        dao.deleteDismissed(directory.name)
         val id = result.programId
         if (result.updated) runs.stop(id, "program_updated")
         val grants = dao.grants(id).associateBy { it.capability }
@@ -218,10 +224,18 @@ class ProgramPlatform internal constructor(
         runs.stopAll("stop_all")
     }
 
+    /** Keeps this version of a workspace program off the pending list; any change to its files brings it back. */
+    suspend fun dismiss(candidate: ProgramCandidate) = withContext(Dispatchers.IO) {
+        dao.upsertDismissed(DismissedCandidateRow(candidate.name, reader.fingerprint(candidate.directory), clock()))
+    }
+
+    /** The workspace source is kept, but as written it no longer counts as waiting to be installed. */
     suspend fun delete(programId: String, withData: Boolean) = mutate("program_deleted") {
         runs.stop(programId, "program_deleted")
         sql?.close(layout.data(programId))
         installer.delete(programId, withData)
+        candidates().filter { candidate -> runCatching { reader.read(candidate.directory).manifest.id }.getOrNull() == programId }
+            .forEach { dao.upsertDismissed(DismissedCandidateRow(it.name, reader.fingerprint(it.directory), clock())) }
     }
 
     suspend fun setGrant(programId: String, capability: String, enabled: Boolean, scope: Scope?, expiresAt: Long?) = mutate("permission_changed", programId) {

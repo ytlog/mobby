@@ -75,6 +75,39 @@ class InstallFlowTest {
         assertTrue(rejected.problems.isNotEmpty())
     }
 
+    /** On the tablet a deleted program came straight back under pending, because its source stays in the workspace. */
+    @Test fun `a deleted program stays off the pending list until its source changes`() = runBlocking {
+        platform.start()
+        source.write()
+        platform.install(source.directory(), choice(ready().preview, setOf("net.http", "storage.sql", "time.schedule")))
+        platform.delete("price-watch", withData = true)
+        assertTrue(platform.pendingInstalls().isEmpty())
+        source.files["main.js"] = "module.exports = { changed: true }"
+        source.write()
+        assertNull(ready().preview.installedVersion)
+    }
+
+    @Test fun `a dismissed version is hidden until the AI changes it`() = runBlocking {
+        platform.start()
+        source.extra = "\"unknownField\":1"
+        source.write()
+        platform.dismiss(platform.pendingInstalls().single().candidate)
+        assertTrue(platform.pendingInstalls().isEmpty())
+        source.extra = ""
+        source.write()
+        val fixed = ready()
+        platform.dismiss(fixed.candidate)
+        assertTrue(platform.pendingInstalls().isEmpty())
+        // Installing a later version forgets the dismissal, so going back to the dismissed code is an update again.
+        val original = source.files.getValue("main.js")
+        source.files["main.js"] = "module.exports = { changed: true }"
+        source.write()
+        platform.install(source.directory(), choice(ready().preview, setOf("net.http", "storage.sql", "time.schedule")))
+        source.files["main.js"] = original
+        source.write()
+        assertEquals("1.0.0", ready().preview.installedVersion)
+    }
+
     @Test fun `one confirmation installs, grants the chosen capabilities, configures and enables`() = runBlocking {
         platform.start()
         source.write()

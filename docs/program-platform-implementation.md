@@ -99,7 +99,13 @@ AI 读取新指南后改用 `response.simulated`，其后的两次试运行无�
 - `validate` 用设备上的 Node 解析程序包内全部脚本而不执行：`.cjs` 按 CommonJS，`.mjs` 按模块，`.js` 后台优先 CommonJS、页面优先模块，两种方式都无法解析才报错；结果写入 `problems` 并使 `valid` 为 false。运行环境无法检查时给出“scripts were not syntax-checked”警告，不当作通过。检查脚本为 SDK 中的 `check.cjs`，模块经 `node --input-type=module --check` 从标准输入解析，代码不会执行（有测试确认）。
 - 平板验收：让手机 AI 写一个故意在非 async 回调中使用 `await` 的测试程序 `syntax-probe`，`validate` 返回 `valid: false` 与 `ui/app.js:2: SyntaxError: Unexpected reserved word`；`expense-log`、`header-watch` 校验通过且无警告（说明检查实际执行）。安装该测试程序并打开页面后，程序日志出现 `page_error`：“Uncaught SyntaxError: Unexpected reserved word”，`ui/app.js` 第 2 行。验收后删除程序及数据，并删除其工作区目录。
 - 同时发现：覆盖安装应用时正在进行的 Header Watch 运行被记为“中断（process_restarted）”，该次运行的调用均已成功，列表却显示“失败”。现在“中断”单独显示为“已中断”，不标红；平板上显示“每 15 分钟 · 12:46 已中断”。
-- 已知缺口：删除程序后，工作区里的源目录仍在，它会重新出现在“待处理”，列表没有忽略或移除入口。
+- 发现的缺口：删除程序后工作区源目录仍在，它会立刻重新出现在“待处理”，且没有忽略入口。见下一节。
+
+### 忽略与删除后的待处理列表（2026-10-29，同一平板）
+
+- 安装页（含无法通过校验的程序）底部新增“忽略这个版本”；删除程序时也会忽略工作区里同 id 的源目录。平台把目录名和内容指纹记入 `dismissed_candidate`，内容不变时不再列入“待处理”，AI 修改后重新出现；安装该目录会清除记录。工作区源文件不会被删除。删除确认框说明了这一点。新增表使开发数据库按约定重建，已安装程序需重新安装，程序数据目录保留。
+- 平板验收（versionCode 31）：重建后 Expense Log 与 Header Watch 均列为“AI 写好了，还没安装”。对 Header Watch 点“忽略这个版本”后从列表消失；安装 Expense Log（填写 CNY）后再“删除，保留程序数据”，列表变为空状态，工作区源目录与数据目录仍在。让手机 AI 把两个程序的补丁版本各加一（1.0.1）并校验，回到列表两者重新出现；重新安装后 Expense Log 页面仍显示原有 3 条记录、合计 23.50 CNY，Header Watch 立即运行并显示“每 15 分钟 · 14:28 正常”。
+- 尚无在 AI 未修改的情况下撤回“忽略”的入口。
 
 开发中由测试发现并修复的缺陷：目录占用统计跟随符号链接；URL 中的凭据占位符导致解析失败；运行在进程启动后才登记凭据，快速子进程会被拒；事件队列满时停止通知无法送达；试运行只清理了程序包副本而遗留试运行存储。
 

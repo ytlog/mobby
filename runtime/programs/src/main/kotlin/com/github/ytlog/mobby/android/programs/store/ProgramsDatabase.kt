@@ -26,6 +26,14 @@ data class ProgramVersionRow(
     val installedAt: Long,
 )
 
+/** A workspace program the user set aside; it stays off the pending list while its files still have this fingerprint. */
+@Entity(tableName = "dismissed_candidate")
+data class DismissedCandidateRow(
+    @PrimaryKey val name: String,
+    val fingerprint: String,
+    val dismissedAt: Long,
+)
+
 /** Scopes are JSON so each capability keeps its own scope shape. */
 @Entity(tableName = "program_grant", primaryKeys = ["programId", "capability"])
 data class GrantRow(
@@ -204,6 +212,10 @@ interface ProgramsDao {
     @Query("DELETE FROM run WHERE runId NOT IN (SELECT runId FROM run ORDER BY queuedAt DESC LIMIT :keep) OR queuedAt < :before") suspend fun pruneRuns(keep: Int, before: Long)
     @Query("DELETE FROM operation WHERE operationId NOT IN (SELECT operationId FROM operation ORDER BY acceptedAt DESC LIMIT :keep) OR acceptedAt < :before") suspend fun pruneOperations(keep: Int, before: Long)
 
+    @Query("SELECT * FROM dismissed_candidate") suspend fun dismissedCandidates(): List<DismissedCandidateRow>
+    @Upsert suspend fun upsertDismissed(row: DismissedCandidateRow)
+    @Query("DELETE FROM dismissed_candidate WHERE name = :name") suspend fun deleteDismissed(name: String)
+
     @Query("DELETE FROM program WHERE programId = :id") suspend fun deleteProgramRow(id: String)
     @Query("DELETE FROM program_version WHERE programId = :id") suspend fun deleteVersions(id: String)
     @Query("DELETE FROM program_grant WHERE programId = :id") suspend fun deleteGrants(id: String)
@@ -231,8 +243,9 @@ interface ProgramsDao {
 }
 
 @Database(entities = [ProgramRow::class, ProgramVersionRow::class, GrantRow::class, PermissionRequestRow::class, ConfigRow::class,
-    SecretRow::class, SubscriptionRow::class, SwitchRow::class, RunRow::class, OperationRow::class, KvRow::class, LogRow::class],
-    version = 1, exportSchema = false)
+    SecretRow::class, SubscriptionRow::class, SwitchRow::class, RunRow::class, OperationRow::class, KvRow::class, LogRow::class,
+    DismissedCandidateRow::class],
+    version = 2, exportSchema = false)
 abstract class ProgramsDatabase : RoomDatabase() {
     abstract fun dao(): ProgramsDao
 

@@ -53,13 +53,34 @@ class ProgramPackageReader(private val registry: CapabilityRegistry, private val
         val permissions = checkManifest(manifest, files, ::fail)
         checkUi(manifest, files, ::fail)
         if (problems.isNotEmpty()) throw PackageRejected(problems)
+        return ProgramPackage(manifest, manifestJson, files, permissions, digest(files))
+    }
+
+    /**
+     * Identifies a directory's contents whether or not it is a valid package; for a valid one it equals the
+     * package checksum. Links and other non-regular entries count by name only.
+     */
+    fun fingerprint(directory: File): String {
+        val root = directory.toPath()
+        if (!Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS)) return digest(emptyMap())
+        val files = sortedMapOf<String, File?>()
+        Files.walk(root).use { stream ->
+            stream.filter { it != root && !Files.isDirectory(it, LinkOption.NOFOLLOW_LINKS) }.forEach { path ->
+                files[root.relativize(path).joinToString("/")] = path.toFile().takeIf { Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS) }
+            }
+        }
+        return digest(files)
+    }
+
+    /** SHA-256 over sorted paths and contents. */
+    private fun digest(files: Map<String, File?>): String {
         val digest = MessageDigest.getInstance("SHA-256")
         files.forEach { (path, file) ->
             digest.update(path.toByteArray()); digest.update(0)
-            file.inputStream().use { input -> val buffer = ByteArray(64 * 1024); while (true) { val n = input.read(buffer); if (n < 0) break; digest.update(buffer, 0, n) } }
+            file?.inputStream()?.use { input -> val buffer = ByteArray(64 * 1024); while (true) { val n = input.read(buffer); if (n < 0) break; digest.update(buffer, 0, n) } }
             digest.update(0)
         }
-        return ProgramPackage(manifest, manifestJson, files, permissions, digest.digest().joinToString("") { "%02x".format(it) })
+        return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
     private fun collect(root: Path, fail: (String, String) -> Unit): Map<String, File> {

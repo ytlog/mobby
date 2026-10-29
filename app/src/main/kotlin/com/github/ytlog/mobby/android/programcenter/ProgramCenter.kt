@@ -203,10 +203,15 @@ private fun shortTime(millis: Long): String {
 @Composable private fun InstallPage(platform: ProgramPlatform, item: PendingInstall, programs: List<ProgramView>, reload: () -> Unit, done: () -> Unit) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    @Composable fun Dismiss() {
+        SettingsGroup { SettingsAction(AppStrings.dismissVersion) { scope.launch { platform.dismiss(item.candidate); done() } } }
+        SettingsCaption(AppStrings.dismissHint)
+    }
     when (item) {
         is PendingInstall.Rejected -> Page(item.candidate.name, done) {
             SettingsCaption(AppStrings.rejectedHint)
             SettingsGroup { item.problems.forEachIndexed { index, problem -> if (index > 0) GroupDivider(); Line(problem.message, problem.path, error = true) } }
+            Dismiss()
         }
         is PendingInstall.Ready -> {
             val preview = item.preview
@@ -283,6 +288,7 @@ private fun shortTime(millis: Long): String {
                         AppStrings.fileCount(preview.pkg.files.size)).joinToString(" · "))
                 }
                 SettingsCaption(AppStrings.programBoundary)
+                Dismiss()
             }
         }
     }
