@@ -76,19 +76,16 @@ test('a lost connection looks up the original request instead of resending it', 
   } finally { api.instance.close(); }
 });
 
-test('the runner reads its credential, dispatches events and exits on run.stopping', async () => {
+/** Runs the real runner against a fake API that sends [events] and then run.stopping; resolves with the exit code. */
+async function runRunner(source, events) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'program-'));
   const entry = path.join(dir, 'main.js');
-  fs.writeFileSync(entry, `const mobby = require('mobby');
-    mobby.on('onTick', async (payload) => { await mobby.call('notes.write', { text: payload.text }); });
-    mobby.on('broken', async () => { throw new Error('boom'); });`);
+  fs.writeFileSync(entry, source);
   const api = await server((req, res) => {
     if (req.url === '/v1/events') {
       res.writeHead(200, { 'Content-Type': 'text/event-stream' });
       const send = (name, data) => res.write(`event: ${name}\ndata: ${JSON.stringify(data)}\n\n`);
-      send('program.event', { eventId: 'e1', type: 'time.schedule', handler: 'onTick', payload: { text: 'tick' } });
-      send('program.event', { eventId: 'e2', type: 'time.schedule', handler: 'broken', payload: {} });
-      send('program.event', { eventId: 'e3', type: 'time.schedule', handler: 'missing', payload: {} });
+      events.forEach((event) => send('program.event', event));
       setTimeout(() => { send('run.stopping', { reason: 'idle' }); res.end(); }, 300);
       return;
     }
@@ -99,15 +96,33 @@ test('the runner reads its credential, dispatches events and exits on run.stoppi
       env: { ...process.env, NODE_PATH: path.join(SDK, 'node_modules'), MOBBY_API_PORT: String(api.port), MOBBY_ENTRY: entry },
     });
     child.stdin.end('run-credential\n');
-    const code = await new Promise((resolve) => child.on('exit', resolve));
-    assert.equal(code, 0);
-    const posts = api.requests.filter((r) => r.method === 'POST');
-    assert.ok(api.requests.every((r) => r.auth === 'Bearer run-credential'));
-    assert.deepEqual(posts.map((r) => r.body.capability), ['notes.write', 'log', 'log']);
-    assert.equal(posts[0].body.args.text, 'tick');
-    assert.equal(posts[1].body.args.message, 'handler_failed');
-    assert.equal(posts[2].body.args.message, 'handler_missing');
+    return { code: await new Promise((resolve) => child.on('exit', resolve)), requests: api.requests };
   } finally { api.instance.close(); fs.rmSync(dir, { recursive: true, force: true }); }
+}
+
+/** On the tablet a page action failed in its handler, yet the run ended with code 0 and the program list said it was fine. */
+test('a run whose handlers all succeed exits 0', async () => {
+  const { code } = await runRunner(`const mobby = require('mobby'); mobby.on('onTick', async () => {});`,
+    [{ eventId: 'e1', type: 'time.schedule', handler: 'onTick', payload: {} }]);
+  assert.equal(code, 0);
+});
+
+test('the runner reads its credential, dispatches events and exits on run.stopping', async () => {
+  const { code, requests } = await runRunner(`const mobby = require('mobby');
+    mobby.on('onTick', async (payload) => { await mobby.call('notes.write', { text: payload.text }); });
+    mobby.on('broken', async () => { throw new Error('boom'); });`, [
+    { eventId: 'e1', type: 'time.schedule', handler: 'onTick', payload: { text: 'tick' } },
+    { eventId: 'e2', type: 'time.schedule', handler: 'broken', payload: {} },
+    { eventId: 'e3', type: 'time.schedule', handler: 'missing', payload: {} },
+  ]);
+  // Later events still run after a failure, but the run reports that it did not handle everything.
+  assert.equal(code, 1);
+  const posts = requests.filter((r) => r.method === 'POST');
+  assert.ok(requests.every((r) => r.auth === 'Bearer run-credential'));
+  assert.deepEqual(posts.map((r) => r.body.capability), ['notes.write', 'log', 'log']);
+  assert.equal(posts[0].body.args.text, 'tick');
+  assert.equal(posts[1].body.args.message, 'handler_failed');
+  assert.equal(posts[2].body.args.message, 'handler_missing');
 });
 
 test('the runner refuses to start without mobby', async () => {

@@ -32,13 +32,17 @@ async function report(message, data) {
   try { await mobby.log(message, data); } catch (error) { process.stderr.write(`${message}: ${JSON.stringify(data)}\n`); }
 }
 
+// Events this run did not handle; any makes the run exit 1 so its record does not read as a success.
+let unhandled = 0;
+
 async function dispatch(event) {
   const handler = runner.handler(event.handler);
-  if (!handler) return report('handler_missing', { handler: event.handler, type: event.type });
+  if (!handler) { unhandled++; return report('handler_missing', { handler: event.handler, type: event.type }); }
   try {
     await handler(event.payload, { event });
   } catch (error) {
     // A failing handler is recorded; the run continues with the next event.
+    unhandled++;
     await report('handler_failed', { handler: event.handler, error: String(error && error.stack || error) });
   }
 }
@@ -71,7 +75,7 @@ async function stream(credential) {
   runner.start(port, credential);
   await load(entry);
   await stream(credential);
-  process.exit(0);
+  process.exit(unhandled > 0 ? 1 : 0);
 })().catch((error) => {
   process.stderr.write(`runner: ${error && error.stack || error}\n`);
   process.exit(2);

@@ -83,6 +83,9 @@ SDK (arguments are positional; only the ones shown in braces take an object):
 - `secrets.put(name, value, {domains})`, `secrets.list()`, `secrets.delete(name)`
 - `permissions.list()`, `permissions.request(capability, scope)`, `capabilities.list()`
 - background only: `on(handler, fn)`, `ui.post(message)`; page only: `ui.send(message)`, `ui.onMessage(fn)`.
+`ui.send` resolves once the background run has received the message, not when its handler finishes: report the outcome,
+including failures, back with `ui.post` and show it from `ui.onMessage`. A run in which any handler threw or was missing ends
+with exit code 1 and its error is in the program log.
 `sql.query` returns `{columns, rows}`: `columns` lists the column names and each row is an array in that order
 (`rows[0][0]`, not `rows[0].name`). `sql.execute` returns `{changes}`, plus `lastInsertRowId` for INSERT.
 Failures throw `MobbyError` with `code`, `layer`, `reason`, `effect`; never treat an error or `EFFECT_UNKNOWN` as success.

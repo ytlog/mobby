@@ -131,5 +131,7 @@ class DevelopmentServiceTest {
         assertTrue("simulated fetch", catalog.contains("`response.simulated`") && catalog.contains("`SIMULATED`"))
         // The phone AI called files.write({path, text}); arguments are positional.
         assertTrue("positional signatures", catalog.contains("`files.write(path, text)`") && catalog.contains("positional"))
+        // The phone AI's page said "Exported" because ui.send resolved before the failing handler ran.
+        assertTrue("ui.send delivery", catalog.contains("not when its handler finishes") && catalog.contains("exit code 1"))
     }
 }
