@@ -94,7 +94,7 @@ class QuickConversationTest {
         compose.setContent {
             FloatingConversationContent(fixture.vm, ConversationId("c"), {}, {}, { appOpened = true })
         }
-        compose.onNodeWithText("使用手机").performScrollTo().performClick()
+        compose.onNodeWithText("AI 操作手机").performScrollTo().performClick()
         compose.runOnIdle {
             assertEquals(listOf("plugin"), fixture.events)
             assertFalse(appOpened)
@@ -109,7 +109,7 @@ class QuickConversationTest {
         compose.setContent {
             FloatingConversationContent(fixture.vm, ConversationId("c"), {}, {}, { appOpened = true })
         }
-        compose.onNodeWithText("使用手机").performScrollTo().performClick()
+        compose.onNodeWithText("AI 操作手机").performScrollTo().performClick()
         compose.onNodeWithText("请开启无障碍").assertIsDisplayed()
         compose.runOnIdle {
             assertFalse(appOpened)

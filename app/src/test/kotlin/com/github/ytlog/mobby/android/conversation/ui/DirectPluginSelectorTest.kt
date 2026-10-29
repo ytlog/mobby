@@ -97,30 +97,30 @@ class DirectPluginSelectorTest {
     @Test fun `available plugin attaches to the current conversation from its card`() {
         val written = mutableListOf<String>()
         val ref = "plugin:device:screen"
-        val (vm, conversation) = viewModel({ Plugin(ref, "屏幕", "使用手机", true, null) }, written)
+        val (vm, conversation) = viewModel({ Plugin(ref, "屏幕", "AI 操作手机", true, null) }, written)
         compose.setContent {
             MaterialTheme {
                 val select = rememberDirectPluginSelector(vm, conversation)
                 EmptyConversationPlugins(emptySet(), onSelect = select)
             }
         }
-        compose.onNodeWithText("使用手机").performClick()
+        compose.onNodeWithText("AI 操作手机").performClick()
         compose.waitUntil(5_000) { written.isNotEmpty() }
         assertEquals(listOf(ref), written)
     }
 
-    @Test fun `unavailable camera requests its permission on the conversation instead of opening catalogue`() {
+    @Test fun `unavailable photos request its permission on the conversation instead of opening catalogue`() {
         val written = mutableListOf<String>()
-        val (vm, conversation) = viewModel({ Plugin("plugin:device:camera", "相机", "允许拍照", false, "需要相机权限", access = PluginAccess.RUNTIME,
-            permissions = listOf(android.Manifest.permission.CAMERA)) }, written)
+        val (vm, conversation) = viewModel({ Plugin("plugin:device:media", "照片", "允许读取照片", false, "需要照片权限", access = PluginAccess.RUNTIME,
+            permissions = listOf(android.Manifest.permission.READ_MEDIA_IMAGES)) }, written)
         compose.setContent {
             MaterialTheme {
                 val select = rememberDirectPluginSelector(vm, conversation)
                 EmptyConversationPlugins(emptySet(), onSelect = select)
             }
         }
-        compose.onNodeWithText("使用相机").performClick()
-        compose.onNodeWithText("允许拍照").assertIsDisplayed()
+        compose.onNodeWithText("查看照片").performClick()
+        compose.onNodeWithText("允许读取照片").assertIsDisplayed()
         assertTrue(written.isEmpty())
     }
 
@@ -134,7 +134,7 @@ class DirectPluginSelectorTest {
                 EmptyConversationPlugins(emptySet(), onSelect = select)
             }
         }
-        compose.onNodeWithText("使用手机").performClick()
+        compose.onNodeWithText("AI 操作手机").performClick()
         val shadow = Shadows.shadowOf(compose.activity)
         compose.waitUntil(5_000) { shadow.peekNextStartedActivityForResult() != null }
         assertEquals(Settings.ACTION_ACCESSIBILITY_SETTINGS, shadow.nextStartedActivityForResult.intent.action)
@@ -153,31 +153,31 @@ class DirectPluginSelectorTest {
                 EmptyConversationPlugins(emptySet(), onSelect = select)
             }
         }
-        compose.onNodeWithText("使用手机").performClick()
+        compose.onNodeWithText("AI 操作手机").performClick()
         val shadow = Shadows.shadowOf(compose.activity)
         compose.waitUntil(5_000) { shadow.peekNextStartedActivityForResult() != null }
         assertEquals(Settings.ACTION_APP_NOTIFICATION_SETTINGS, shadow.nextStartedActivityForResult.intent.action)
         assertTrue(written.isEmpty())
     }
 
-    @Test fun `camera joins the conversation when permission is granted`() {
+    @Test fun `photos join the conversation when permission is granted`() {
         val written = mutableListOf<String>()
         var available = false
-        val ref = "plugin:device:camera"
-        val (vm, conversation) = viewModel({ Plugin(ref, "相机", "允许拍照", available,
-            if (available) null else "需要相机权限", access = PluginAccess.RUNTIME,
-            permissions = listOf(android.Manifest.permission.CAMERA)) }, written)
+        val ref = "plugin:device:media"
+        val (vm, conversation) = viewModel({ Plugin(ref, "照片", "允许读取照片", available,
+            if (available) null else "需要照片权限", access = PluginAccess.RUNTIME,
+            permissions = listOf(android.Manifest.permission.READ_MEDIA_IMAGES)) }, written)
         compose.setContent {
             MaterialTheme {
                 val select = rememberDirectPluginSelector(vm, conversation)
                 EmptyConversationPlugins(emptySet(), onSelect = select)
             }
         }
-        compose.onNodeWithText("使用相机").performClick()
-        compose.onNodeWithText("允许拍照").assertIsDisplayed()
+        compose.onNodeWithText("查看照片").performClick()
+        compose.onNodeWithText("允许读取照片").assertIsDisplayed()
         compose.onNodeWithText("继续").performClick()
         val request = Shadows.shadowOf(compose.activity).lastRequestedPermission
-        assertEquals(listOf(android.Manifest.permission.CAMERA), request.requestedPermissions.toList())
+        assertEquals(listOf(android.Manifest.permission.READ_MEDIA_IMAGES), request.requestedPermissions.toList())
         compose.runOnIdle {
             available = true
             compose.activity.onRequestPermissionsResult(request.requestCode, request.requestedPermissions,

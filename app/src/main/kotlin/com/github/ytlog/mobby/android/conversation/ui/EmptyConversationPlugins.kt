@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -30,20 +29,20 @@ private fun pluginOptions(tablet: Boolean) = listOf(
     PluginOption("plugin:device:screen", if (tablet) AppStrings.useTabletPlugin else AppStrings.usePhonePlugin, if (tablet) AppIcons.Tablet else AppIcons.Phone),
     PluginOption(PROGRAM_DEVELOPMENT, AppStrings.programDevelopment, AppIcons.Terminal),
     PluginOption("plugin:device:storage", AppStrings.browseFilesPlugin, AppIcons.Folder),
-    PluginOption("plugin:device:camera", AppStrings.useCameraPlugin, AppIcons.Camera),
+    PluginOption("plugin:device:media", AppStrings.viewPhotosPlugin, AppIcons.Photo),
 )
 
 /** Installed programs for the empty page and how to open them; the drawer uses the same shortcuts. */
 class EmptyPagePrograms(val shortcuts: List<ProgramShortcut>, val openPage: (String) -> Unit, val openDetails: (String) -> Unit, val openAll: () -> Unit)
 
-/** Without programs the four entries are large cards; with programs they shrink to one row and up to three programs follow. */
+/** The four entries share one row; when programs are installed, up to three of them follow below. */
 @Composable internal fun EmptyConversationPlugins(selected: Set<String>, programs: EmptyPagePrograms? = null, onSelect: (String) -> Unit) {
     val tablet = isTabletDisplay()
-    if (programs != null && programs.shortcuts.isNotEmpty()) {
-        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                pluginOptions(tablet).forEach { option -> CompactPlugin(option, option.ref in selected, onSelect, Modifier.weight(1f)) }
-            }
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            pluginOptions(tablet).forEach { option -> CompactPlugin(option, option.ref in selected, onSelect, Modifier.weight(1f)) }
+        }
+        if (programs != null && programs.shortcuts.isNotEmpty()) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 programs.shortcuts.take(3).forEach { shortcut ->
                     ProgramTile(shortcut.name.take(1).uppercase(), shortcut.name, Modifier.weight(1f)) {
@@ -52,31 +51,6 @@ class EmptyPagePrograms(val shortcuts: List<ProgramShortcut>, val openPage: (Str
                 }
                 ProgramTile(null, AppStrings.allProgramsShort, Modifier.weight(1f), onClick = programs.openAll)
                 repeat(3 - programs.shortcuts.take(3).size) { Spacer(Modifier.weight(1f)) }
-            }
-        }
-        return
-    }
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        pluginOptions(tablet).chunked(2).forEach { pair ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                pair.forEach { option ->
-                    val chosen = option.ref in selected
-                    val ink = if (chosen) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                    Surface(
-                        onClick = { onSelect(option.ref) },
-                        enabled = !chosen,
-                        modifier = Modifier.weight(1f).heightIn(min = 62.dp).testTag(option.ref),
-                        shape = RoundedCornerShape(18.dp),
-                        color = if (chosen) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else raisedColor(),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = if (chosen) 0.45f else 0.32f)),
-                    ) {
-                        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)) {
-                            AppIcon(if (chosen) AppIcons.Check else option.icon, null, Modifier.size(18.dp), tint = ink)
-                            Text(option.label, color = ink, style = MaterialTheme.typography.labelLarge)
-                        }
-                    }
-                }
             }
         }
     }
