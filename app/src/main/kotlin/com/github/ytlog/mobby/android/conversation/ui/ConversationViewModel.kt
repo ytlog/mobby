@@ -440,7 +440,13 @@ internal class ConversationViewModel(val actions: ConversationUseCases) : ViewMo
     fun report(result: OperationResult) { if (result is OperationResult.Failed) feedback.trySend(result.message) }
     private suspend fun safe(action: suspend () -> Unit) {
         try { action() } catch (e: CancellationException) { throw e }
-        catch (_: Exception) { feedback.send(AppStrings.operationIncompleteCheckConnectionOrStorageAndRetryExisting) }
+        catch (failure: Exception) {
+            // Only exception types and code locations: messages may quote stored content such as gateway settings.
+            android.util.Log.w("MobbyConversation", generateSequence<Throwable>(failure) { it.cause }.take(4).joinToString("; caused by ") {
+                "${it.javaClass.name} at ${it.stackTrace.take(6).joinToString()}"
+            })
+            feedback.send(unexpectedFailureNotice(failure))
+        }
     }
     private fun failure(reason: Failure): String = when (reason) {
         Failure.PENDING_ATTACHMENT -> AppStrings.finishOrRemovePendingAttachmentsFirst
@@ -452,5 +458,18 @@ internal class ConversationViewModel(val actions: ConversationUseCases) : ViewMo
         Failure.EMPTY_DRAFT -> AppStrings.enterATaskFirst
         Failure.PENDING_SUBMISSION -> AppStrings.previousRequestIsUnconfirmedCheckTheOriginalRequestFirst
         Failure.UNAVAILABLE -> AppStrings.runtimeServiceUnavailableCheckConnectionAndRetry
+    }
+}
+
+/** What the user is told when an operation fails unexpectedly; it names the cause, never the exception message. */
+internal fun unexpectedFailureNotice(failure: Throwable): String {
+    val chain = generateSequence(failure) { it.cause }.take(8).toList()
+    return when {
+        chain.any { it is android.database.sqlite.SQLiteFullException || (it is java.io.IOException && it.message?.contains("ENOSPC") == true) } ->
+            AppStrings.notEnoughStorageOperationIncomplete
+        chain.any { it is java.net.SocketException || it is java.net.SocketTimeoutException } -> AppStrings.runtimeServiceUnavailableCheckConnectionAndRetry
+        chain.any { it is android.database.SQLException || it is java.io.IOException } -> AppStrings.localDataCouldNotBeReadOrWritten
+        chain.any { it is java.security.GeneralSecurityException } -> AppStrings.encryptedSettingsCouldNotBeRead
+        else -> AppStrings.operationIncompleteInternalError(failure.javaClass.simpleName)
     }
 }
