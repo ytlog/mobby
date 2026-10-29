@@ -10,7 +10,7 @@ internal class DeviceActionDefinition(val plugin: String, val action: String) {
         ?: deviceFailure(DeviceErrorCode.UNSUPPORTED_CAPABILITY)
     private val command = spec.commands.firstOrNull { it.action == action }
         ?: deviceFailure(DeviceErrorCode.UNSUPPORTED_CAPABILITY)
-    val writes = (plugin == "screen" && action != "snapshot") || command.grant || (plugin == "storage" && action == "export") || (plugin == "office" && action == "write")
+    val writes = (plugin == "screen" && action != "snapshot") || command.grant || (plugin == "storage" && action == "export")
     val displayType = when (plugin) {
         "screen" -> "screen_control"
         "sms" -> if (action == "send") "message_send" else "message_list"
@@ -19,7 +19,7 @@ internal class DeviceActionDefinition(val plugin: String, val action: String) {
         "camera", "microphone" -> "capture"
         "location", "sensors" -> "measurement"
         "contacts", "calendar" -> if (action == "list") "file_list" else "record_change"
-        "office", "clipboard" -> if (action == "write") "record_change" else "basic"
+        "clipboard" -> if (action == "write") "record_change" else "basic"
         else -> "basic"
     }
     private val fields: Map<String, Int> = when ("$plugin.$action") {
@@ -36,8 +36,6 @@ internal class DeviceActionDefinition(val plugin: String, val action: String) {
         "storage.copy" -> mapOf("name" to 120)
         "storage.export" -> mapOf("from" to 4000, "name" to 120)
         "clipboard.write" -> mapOf("text" to 4000)
-        "office.inspect", "office.read" -> mapOf("path" to 4000)
-        "office.write" -> mapOf("path" to 4000, "text" to 4000)
         "programs.validate" -> mapOf("path" to 4000)
         "programs.dry-run" -> mapOf("path" to 4000, "events" to 64_000, "timeoutMs" to 6)
         "programs.records" -> mapOf("programId" to 63, "limit" to 3)
@@ -60,7 +58,7 @@ internal class DeviceActionDefinition(val plugin: String, val action: String) {
             primitive.content.also { if (it.length > fields.getValue(key) || '\u0000' in it) deviceFailure(DeviceErrorCode.INVALID_ARGUMENT) }
         }
         val optional = optionalArguments
-        if ((fields.keys - optional).any { it !in result || (result[it].isNullOrBlank() && !(plugin == "office" && it == "text")) })
+        if ((fields.keys - optional).any { it !in result || result[it].isNullOrBlank() })
             deviceFailure(DeviceErrorCode.INVALID_ARGUMENT, "Missing action argument")
         if ("id" in result && (result["id"]?.toLongOrNull()?.let { it >= 0 } != true)) deviceFailure(DeviceErrorCode.INVALID_ARGUMENT)
         if (plugin == "screen" && action == "tap" && result.values.any { it.toDoubleOrNull()?.let { n -> n.isFinite() && n in 0.0..1.0 } != true }) deviceFailure(DeviceErrorCode.INVALID_ARGUMENT)

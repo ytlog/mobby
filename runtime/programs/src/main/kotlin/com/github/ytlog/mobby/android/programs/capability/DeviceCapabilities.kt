@@ -37,9 +37,6 @@ internal val PHASE_ONE_DEVICE_CAPABILITIES = listOf(
     DeviceCapabilitySpec("device.storage.list", "storage", "list", CapabilityKind.QUERY, setOf(SideEffect.READ)),
     DeviceCapabilitySpec("device.storage.copy", "storage", "copy", CapabilityKind.COMMAND, setOf(SideEffect.READ)),
     DeviceCapabilitySpec("device.storage.export", "storage", "export", CapabilityKind.COMMAND, setOf(SideEffect.WRITE)),
-    DeviceCapabilitySpec("office.inspect", "office", "inspect", CapabilityKind.QUERY, setOf(SideEffect.READ)),
-    DeviceCapabilitySpec("office.read", "office", "read", CapabilityKind.QUERY, setOf(SideEffect.READ)),
-    DeviceCapabilitySpec("office.write", "office", "write", CapabilityKind.COMMAND, setOf(SideEffect.WRITE)),
 )
 
 /** Seam over [DeviceExecutors] so the mapping is testable without device services. */

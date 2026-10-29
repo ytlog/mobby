@@ -1074,7 +1074,6 @@ internal fun capabilityLabel(ref: String): String {
     "sensors" -> AppStrings.sensors
     "clipboard" -> AppStrings.clipboard
     "clipboard:write" -> AppStrings.writeToClipboard
-    "office" -> AppStrings.officeDocuments
     "programs" -> AppStrings.programDevelopment
     else -> ref.split(':').getOrNull(3) ?: AppStrings.skills
 }

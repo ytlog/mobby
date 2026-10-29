@@ -54,7 +54,6 @@ internal class DeviceActions(private val context: Context, private val inbox: Fi
             "location" -> location()
             "sensors" -> sensors()
             "clipboard" -> clipboard(action, args)
-            "office" -> office(action, args)
             "programs" -> programs(action, args)
             else -> error(AppStrings.unsupportedPlugin)
         }
@@ -362,21 +361,6 @@ internal class DeviceActions(private val context: Context, private val inbox: Fi
                 if (text.isEmpty() || text.length > 4_000) error(AppStrings.enterTextOfAtMostCharacters)
                 manager.setPrimaryClip(ClipData.newPlainText("mobby", text))
                 recordChange(action, "clipboard", fields("text" to text))
-            }
-            else -> error(AppStrings.unsupportedOperation)
-        }
-    }
-
-    private fun office(action: String, args: Map<String, String>): DeviceResult {
-        val file = DevicePaths.resolve(workspace, inbox, args["path"].orEmpty())
-        return when (action) {
-            "inspect" -> deviceText(OfficePackage.inspect(file))
-            "read" -> deviceText(OfficePackage.read(file))
-            "write" -> {
-                val text = args["text"] ?: error(AppStrings.missingText)
-                OfficePackage.write(file, text)
-                val ref = resources.register(file, "application/octet-stream")
-                deviceResult("record_change", fields("action" to "write", "after" to fields("name" to file.name, "sizeBytes" to file.length()), "previewText" to OfficePackage.read(file).take(4000)), EffectState.CONFIRMED, listOf(ref))
             }
             else -> error(AppStrings.unsupportedOperation)
         }

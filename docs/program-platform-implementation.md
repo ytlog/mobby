@@ -9,7 +9,7 @@
 | 模块 | `:program-platform`（`runtime/programs`），边界测试限定依赖 `device-plugins`、`runtime-api`、`localization` | `runtime/test_module_boundaries.py` |
 | 数据 | `programs.db`：程序、版本、授权、权限申请、配置、凭据、订阅、全局开关、运行、操作、键值、日志 | `store/ProgramsDatabase.kt` |
 | 能力注册与调用 | 注册表、Schema 子集校验、调用管线（去重、校验、权限、派发前记录、修订号复核、期限、频率上限、试运行） | `capability/`、`call/` |
-| 手机能力 | 短信、联系人、日历、剪贴板、位置、传感器、授权目录、Office，经 `DeviceExecutors` 复用现有执行器 | `capability/DeviceCapabilities.kt` |
+| 手机能力 | 短信、联系人、日历、剪贴板、位置、传感器、授权目录，经 `DeviceExecutors` 复用现有执行器 | `capability/DeviceCapabilities.kt` |
 | 平台基础能力 | `storage.kv`、`storage.files`、`storage.sql`、`net.http`、`secrets`、`config`、`log`、`notify.show`、`time.schedule` | `base/`、`event/ScheduleCapability.kt` |
 | 程序包 | `mobby.program/1` 严格校验、安装副本、更新只取旧授权与新申请的交集、删除可选保留数据 | `program/` |
 | 权限 | 系统、全局开关、程序授权（范围、到期）、调用上下文四层；用户只能缩小授权；程序只能查询自己的权限并提交申请 | `permission/` |
@@ -136,3 +136,7 @@ AI 读取新指南后改用 `response.simulated`，其后的两次试运行无�
 - 小米平板在允许自启动、省电策略“无限制”后的后台定时已连续运行约 6 小时；更长时间、重启后以及其他厂商系统上的表现，和 Android 12 起子进程限制的实际阈值仍未验证。
 - 系统 WebView 的内容安全策略与 Service Worker 拦截（小米平板上 `WEB_MESSAGE_LISTENER` 消息桥已实际工作，拦截行为未单独测试）。
 - 第二阶段能力（屏幕事件与操作、`net.websocket`、`ai.call`、`entry`）尚未实现。
+
+## 移除 Office 插件
+
+Office 插件（`plugin:device:office`，程序能力 `office.inspect/read/write`）只能算样子：读 xlsx 时只取文字单元格，数字、日期、公式结果都读不到，相同的值会去重，行列结构也丢了；写入时整份替换原文件，只能写纯文本行，所有内容都塞进 A 列；生成的 pptx 缺少母版和版式；测试只验证了它自己写出的文件。现在把插件条目、执行器、参数规则、程序能力和文案直接删除，不保留兼容处理。手机上的 Agent 可以在工作区里用 shell、`unzip` 和 Node 直接处理这些文件。

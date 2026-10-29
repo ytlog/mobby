@@ -42,7 +42,7 @@ mobby 只提供基础能力：把手机能力和编写程序所需的通用能�
 
 | 基础 | 代码 | 本方案的处理 |
 | --- | --- | --- |
-| 设备能力目录与执行 | [DeviceCatalog](../../runtime/device-plugins/src/main/kotlin/com/github/ytlog/mobby/android/device/DeviceCatalog.kt)、[DeviceActions](../../runtime/device-plugins/src/main/kotlin/com/github/ytlog/mobby/android/device/DeviceActions.kt) | 已有屏幕、短信、联系人、日历、媒体、存储、相机、麦克风、位置、传感器、剪贴板、Office 动作；作为手机能力的执行器复用，不另写一套 |
+| 设备能力目录与执行 | [DeviceCatalog](../../runtime/device-plugins/src/main/kotlin/com/github/ytlog/mobby/android/device/DeviceCatalog.kt)、[DeviceActions](../../runtime/device-plugins/src/main/kotlin/com/github/ytlog/mobby/android/device/DeviceActions.kt) | 已有屏幕、短信、联系人、日历、媒体、存储、相机、麦克风、位置、传感器、剪贴板动作；作为手机能力的执行器复用，不另写一套 |
 | 聊天设备桥接 | [DeviceHost](../../runtime/device-plugins/src/main/kotlin/com/github/ytlog/mobby/android/device/DeviceHost.kt)、[DeviceCommands](../../runtime/device-plugins/src/main/kotlin/com/github/ytlog/mobby/android/device/DeviceCommands.kt) | 每轮聊天的令牌、allow 表和 `mobby.device/1` 不变；开发插件经它接入；程序平台另设身份，不延长聊天令牌 |
 | 无障碍服务 | [ScreenAccessService](../../runtime/device-plugins/src/main/kotlin/com/github/ytlog/mobby/android/device/ScreenAccessService.kt)、[配置](../../runtime/device-plugins/src/main/res/xml/screen_accessibility_service.xml) | 当前只声明窗口状态类事件，`onAccessibilityEvent` 为空；屏幕事件来源需要新增 |
 | 屏幕操作 | `ScreenOperation`、`operate` | 每次动作在主线程执行、动作后截图；点击只按文字匹配。程序需要不截图的读取和按节点点击入口 |
@@ -222,7 +222,7 @@ SDK 不隐藏失败：缺权限、目标不唯一、超时、取消、效果不�
 | `contacts.*`、`calendar.*` | query、command | 复用现有读写 | 1 |
 | `clipboard.read`、`clipboard.write` | query、command | 复用；仅前台可用的限制如实报告 | 1 |
 | `location.current`、`sensors.sample` | query | 复用单次采样 | 1 |
-| `device.storage.*`、`office.*` | query、command | 复用授权目录与工作区内的读写 | 1 |
+| `device.storage.*` | query、command | 复用授权目录与工作区内的读写 | 1 |
 | `screen.read` | query | 新增：当前窗口的包名、窗口类名和节点（viewId、类名、文字、描述、可点击、可见、按显示比例的边界），不截图 | 2 |
 | `screen.click` | command | 新增：在一次新鲜读取中按节点描述点击唯一目标；多个目标时拒绝 | 2 |
 | `screen.tap`、`screen.type`、`screen.back`、`screen.home` | command | 复用现有动作 | 2 |

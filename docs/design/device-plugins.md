@@ -4,7 +4,7 @@
 
 ## 1. 目标
 
-Android 能力统一进入模块 `:device-plugins`。屏幕、短信、通讯录、日历、相册、存储、相机、麦克风、位置、传感器、剪贴板和 Office 共用：
+Android 能力统一进入模块 `:device-plugins`。屏幕、短信、通讯录、日历、相册、存储、相机、麦克风、位置、传感器和剪贴板共用：
 
 - 一份插件目录
 - 一种引用格式
@@ -46,7 +46,6 @@ CLI 中的 Node 不能调用 Android API。模型阅读技能文件，用 Bash �
 | 位置 | `plugin:device:location` | — | `mobby-location` |
 | 传感器 | `plugin:device:sensors` | — | `mobby-sensors` |
 | 剪贴板 | `plugin:device:clipboard` | `plugin:device:clipboard:write` | `mobby-clipboard` |
-| Office | `plugin:device:office` | 写回工作区或已授权文件 | `mobby-office` |
 
 写入引用依附对应的读取引用。读取从草稿移除时，发送或修改一并移除。
 
@@ -102,7 +101,6 @@ CLI 中的 Node 不能调用 Android API。模型阅读技能文件，用 Bash �
 | 位置 | `ACCESS_COARSE_LOCATION` 与 `ACCESS_FINE_LOCATION` | `current` | 一次定位的经纬度、精度和时间。使用 `LocationManager` |
 | 传感器 | 运动与环境传感器无危险权限 | `sample` | 一次采样，不保持订阅 |
 | 剪贴板 | 无危险权限；写入使用独立引用 | `read`；写入为 `write` | 纯文本。应用不在前台时读取失败 |
-| Office | 无权限 | `inspect` `read` `write` | xlsx、docx、pptx 的文本摘要，或写回后的路径 |
 
 屏幕插件没有调用任意 Android API 的动作。打开屏幕插件不会同时获得短信或相册。
 
@@ -112,7 +110,7 @@ CLI 中的 Node 不能调用 Android API。模型阅读技能文件，用 Bash �
 
 相机和麦克风在命令到达时把取景或录音界面拉到前台，用户能看见快门或录音状态。位置只做前台的一次读取，不做持续跟踪，不申请后台位置，不引入 Google Play 服务。
 
-短信不注册接收，也不把应用设为默认短信应用。存储覆盖 SD 卡和用户选中的可移动目录，不申请所有文件访问。目录 URI 保存在应用私有存储。Office 在应用进程中解析和写回文件，不执行宏，也不通过无障碍操作其他 Office 应用。文件必须位于工作区、收件箱或已授权目录。
+短信不注册接收，也不把应用设为默认短信应用。存储覆盖 SD 卡和用户选中的可移动目录，不申请所有文件访问。目录 URI 保存在应用私有存储。
 
 插件页的「开启」按摘要中的授权类型动作：
 

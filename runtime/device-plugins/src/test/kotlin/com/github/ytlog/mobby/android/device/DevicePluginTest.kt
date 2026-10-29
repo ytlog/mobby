@@ -216,21 +216,10 @@ class DevicePluginTest {
         assertTrue(both.contains("send {"))
     }
 
-    @Test fun `office files round-trip text and stay inside the workspace`() {
+    @Test fun `device paths stay inside the workspace and inbox`() {
         val workspace = temporary.newFolder("workspace")
         val inbox = temporary.newFolder("inbox")
-        val docx = File(workspace, "notes.docx")
-        OfficePackage.write(docx, "第一段\n第二段")
-        assertEquals("docx 段落 2", OfficePackage.inspect(docx))
-        assertEquals("第一段\n第二段", OfficePackage.read(docx))
-        val xlsx = File(workspace, "sheet.xlsx")
-        OfficePackage.write(xlsx, "甲\n乙")
-        assertTrue(OfficePackage.read(xlsx).contains("甲"))
-        val pptx = File(workspace, "deck.pptx")
-        OfficePackage.write(pptx, "封面")
-        assertEquals("pptx 幻灯片 1", OfficePackage.inspect(pptx))
-        assertEquals("封面", OfficePackage.read(pptx))
-        assertEquals(docx.canonicalFile, DevicePaths.resolve(workspace, inbox, "notes.docx"))
+        assertEquals(File(workspace, "notes.txt").canonicalFile, DevicePaths.resolve(workspace, inbox, "notes.txt"))
         assertThrows(IllegalStateException::class.java) { DevicePaths.resolve(workspace, inbox, "../secret") }
         val outside = temporary.newFile("outside.txt")
         assertThrows(IllegalStateException::class.java) { DevicePaths.resolve(workspace, inbox, outside.absolutePath) }

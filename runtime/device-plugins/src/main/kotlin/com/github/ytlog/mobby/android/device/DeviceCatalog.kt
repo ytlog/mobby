@@ -141,16 +141,6 @@ object DeviceCatalog {
                 DeviceCommand("write", """write {"text":"text"}""", "text is at most 4000 characters.", grant = true),
             ),
         ),
-        DevicePluginSpec(
-            "office", AppStrings.officeDocuments, AppStrings.readAndWriteXlsxDocxAndPptxFilesIn, CatalogIds.FILES,
-            "Inspect, read and write xlsx, docx and pptx in the workspace or this run's inbox. Do not execute macros. Paths stay inside those directories.",
-            DeviceAccess.NONE,
-            commands = listOf(
-                DeviceCommand("inspect", """inspect {"path":"notes.docx"}"""),
-                DeviceCommand("read", """read {"path":"notes.docx"}"""),
-                DeviceCommand("write", """write {"path":"notes.docx","text":"hello"}""", "Writes a simple document. Existing files with the same path are replaced only when the command succeeds."),
-            ),
-        ),
     )
 
     fun isKnown(ref: String) = all.any { it.ref == ref || it.grantRef == ref }

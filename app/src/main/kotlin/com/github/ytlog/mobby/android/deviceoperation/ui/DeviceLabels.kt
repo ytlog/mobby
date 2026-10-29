@@ -27,7 +27,7 @@ object DeviceLabels {
             "media" -> text("相册与媒体", "Photos and media"); "storage" -> text("文件", "Files")
             "camera" -> text("拍摄照片", "Take photo"); "microphone" -> text("录音", "Record audio")
             "location" -> text("位置", "Location"); "sensors" -> text("传感器", "Sensors")
-            "clipboard" -> text("剪贴板", "Clipboard"); "office" -> text("Office 文档", "Office document")
+            "clipboard" -> text("剪贴板", "Clipboard")
             "appfunction" -> text("应用功能", "App function")
             else -> text("设备任务", "Device task")
         }
