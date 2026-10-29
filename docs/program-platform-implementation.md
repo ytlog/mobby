@@ -113,6 +113,8 @@ AI 读取新指南后改用 `response.simulated`，其后的两次试运行无�
 - 现在后台与页面 SDK 在发请求前检查参数类型，不符时以 `TypeError` 拒绝并给出正确写法；试运行的 `ui.post` 不再送到页面，记入结果的 `uiMessages`；运行器加载入口后打印已注册的处理函数，试运行结果给出 `handlers` 与本次未覆盖的 `notExercised`；开发指南说明页面的 `ui.send` 以 `ui.message` 处理函数接收，并给出模拟事件写法。
 - 平板验收（versionCode 32，Pi）：只要求 AI 先用一个定时事件试运行 Expense Log，结果为 `handlers: ["onSchedule","ui.message"]`、`notExercised: ["ui.message"]`、`uiMessages: []`。AI 随后按 `ui/app.js` 实际发送的消息试运行 `ui.message`：`addExpense` 返回 `uiMessages: [{"type":"updated"},{"type":"added"}]`；`exportCSV` 的 `storage.sql` 失败（`no such table: expenses`），`uiMessages` 为 `exportFailed`。这暴露了 Expense Log 的一个真实问题：后台导出前不建表，新安装后先点导出会失败；程序本身未修改。用平板上的 Node 直接调用 `files.write({op, path, text})`，得到 `TypeError: files.write(path, text): path must be a string, got an object. Arguments are positional, e.g. files.write('report.csv', text)`，没有发出请求。
 - 试运行的 `ui.post` 不送到已打开页面由单元测试覆盖，平板上该次试运行时页面未打开。
+- 随后在同一对话中请手机 AI 修复导出：它在导出处理中先 `CREATE TABLE IF NOT EXISTS` 再查询，版本改为 1.0.2，`validate` 通过；`exportCSV` 试运行的调用依次为 `storage.sql`（建表）、`storage.sql`（查询）、`storage.files`，`uiMessages` 为 `exported`，`addExpense` 仍为 `updated`、`added`。在“待处理”点“更新”一次完成；页面点“Export CSV”后 `expenses.csv` 重新写入（表头加 3 行），页面无错误，列表显示“每天 21:00 · 15:20 正常”。
+- 同时观察到：应用覆盖安装后设备桥目录 ID 改变，已有对话中技能说明里的 `device.cjs` 路径失效，AI 先报 `Cannot find module`，自行查找新路径后继续。新对话不受影响；已有对话的路径更新尚未处理。
 
 开发中由测试发现并修复的缺陷：目录占用统计跟随符号链接；URL 中的凭据占位符导致解析失败；运行在进程启动后才登记凭据，快速子进程会被拒；事件队列满时停止通知无法送达；试运行只清理了程序包副本而遗留试运行存储。
 
