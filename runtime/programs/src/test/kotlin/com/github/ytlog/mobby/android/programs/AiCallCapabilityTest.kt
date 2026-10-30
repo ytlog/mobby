@@ -81,6 +81,11 @@ class AiCallCapabilityTest {
         assertEquals(2, settings.usage("p").calls)
     }
 
+    @Test fun `the platform registry accepts the schema and it refuses an empty conversation`() {
+        assertSame(handler, CapabilityRegistry(listOf(handler))["ai.call"])
+        assertTrue(SchemaCheck.problems(handler.descriptor.inputSchema, Json.parseToJsonElement("""{"messages":[]}""").jsonObject).isNotEmpty())
+    }
+
     @Test fun `images, tools and other fields are refused rather than dropped`() {
         assertTrue(SchemaCheck.problems(handler.descriptor.inputSchema,
             Json.parseToJsonElement("""{"messages":[{"role":"user","text":"x","image":"a.png"}]}""").jsonObject).isNotEmpty())

@@ -4,12 +4,12 @@ import kotlinx.serialization.json.*
 
 /**
  * Validates the JSON Schema subset the registry uses: type, properties, required,
- * additionalProperties, items, maxLength, minimum, maximum, maxItems and enum.
+ * additionalProperties, items, maxLength, minimum, maximum, minItems, maxItems and enum.
  * Unsupported keywords are rejected at registration rather than silently ignored.
  */
 object SchemaCheck {
     private val SUPPORTED = setOf("type", "properties", "required", "additionalProperties", "items", "maxLength",
-        "minimum", "maximum", "maxItems", "enum", "description")
+        "minimum", "maximum", "minItems", "maxItems", "enum", "description")
 
     fun supported(schema: JsonObject): Boolean = schema.keys.all { it in SUPPORTED } &&
         (schema["properties"] as? JsonObject)?.values?.all { it is JsonObject && supported(it) } != false &&
@@ -33,6 +33,7 @@ object SchemaCheck {
                 value.forEach { (key, child) -> (properties[key] as? JsonObject)?.let { result += problems(it, child, "$path.$key") } }
             }
             is JsonArray -> {
+                schema["minItems"]?.jsonPrimitive?.intOrNull?.let { if (value.size < it) result += "$path has fewer than $it items" }
                 schema["maxItems"]?.jsonPrimitive?.intOrNull?.let { if (value.size > it) result += "$path has more than $it items" }
                 (schema["items"] as? JsonObject)?.let { items -> value.forEachIndexed { i, child -> result += problems(items, child, "$path[$i]") } }
             }
