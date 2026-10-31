@@ -208,7 +208,7 @@ internal fun gatewayLabel(profile: GatewayProfile): String {
     val checkScope = rememberCoroutineScope()
     LaunchedEffect(editingId) {
         val first = group.firstOrNull()
-        val provider = if (first == null) GatewayProviders.preferred(LanguagePreferences.current) else GatewayProviders.matchGroup(group)
+        val provider = GatewayProviders.matchGroup(group)
         providerId = provider?.id ?: GatewayProviders.CUSTOM
         providerSite = provider?.site ?: GatewaySite.SHARED
         baseEndpoint = gatewayBaseAddress(provider?.candidates()?.responses ?: first?.endpoint.orEmpty())

@@ -55,7 +55,6 @@ internal object GatewayProviders {
         compareBy<GatewayProvider> { it.domestic != (language == AppLanguage.CHINESE) }
             .thenBy { if (it.id == "bailian") 0 else 1 },
     )
-    fun preferred(language: AppLanguage): GatewayProvider = ordered(language).first()
     fun find(id: String, site: GatewaySite? = null): GatewayProvider? =
         if (site == null) all.firstOrNull { it.id == id } else variants.firstOrNull { it.id == id && it.site == site }
     fun matchGroup(profiles: List<GatewayProfile>): GatewayProvider? = profiles.takeIf { it.isNotEmpty() }?.let { group ->

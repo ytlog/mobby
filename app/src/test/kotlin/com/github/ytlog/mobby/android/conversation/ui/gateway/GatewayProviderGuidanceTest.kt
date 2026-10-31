@@ -3,6 +3,7 @@ package com.github.ytlog.mobby.android.conversation.ui.gateway
 import android.content.Context
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import com.github.ytlog.mobby.android.conversation.domain.*
@@ -25,6 +26,10 @@ class GatewayProviderGuidanceTest {
     @After fun reset() { prefs.edit().clear().commit(); LanguagePreferences.restore(prefs) }
     private fun language(value: AppLanguage) { LanguagePreferences.select(prefs, value) }
     private fun field(label: String) = compose.onNode(hasSetTextAction() and hasText(label))
+    private fun selectOpenRouter() {
+        compose.onNodeWithText("Service: Custom").performScrollTo().performClick()
+        compose.onNodeWithText("OpenRouter").performScrollTo().performClick()
+    }
     private val catalog = GatewayCatalogResult(listOf(GatewayModel("openrouter/free", "Free router"), GatewayModel("openai/paid", "Paid model")), null)
     private fun form(
         fetch: suspend (GatewayEdit) -> DataResult<GatewayCatalogResult> = { DataResult.Loaded(catalog) },
@@ -39,23 +44,41 @@ class GatewayProviderGuidanceTest {
                 {}, {}, { DataResult.Failed("unused") }, editingId = profiles.firstOrNull()?.id ?: "", signIn = signIn, openLink = open)
         } }
     }
-    @Test fun `Chinese ordinary form defaults to Beijing and saves without a trial mode`() {
+    @Test fun `Chinese new gateway defaults to custom and saves the entered address`() {
         language(AppLanguage.CHINESE)
         var saved: GatewayEdit? = null
         form(fetch = { DataResult.Loaded(GatewayCatalogResult(listOf(GatewayModel("selected-model", "Selected model")), null)) },
             save = { saved = it; GatewaySaveResult.Failed("test saved") })
         compose.onNodeWithText("添加网关").assertExists()
         compose.onNodeWithText("免费体验").assertDoesNotExist()
-        compose.onNodeWithText("服务：阿里云百炼").assertExists()
+        compose.onNodeWithText("服务：自定义").assertExists()
+        field("Base 地址").assertIsEnabled()
+        assertEquals("", field("Base 地址").fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
+        compose.onNodeWithText("获取模型").assertIsNotEnabled()
+        field("Base 地址").performScrollTo().performTextReplacement("https://gateway.invalid/v1")
         compose.onNodeWithText("获取模型").performScrollTo().performClick()
         compose.onNodeWithText("模型：请选择").performScrollTo().performClick()
         compose.onAllNodesWithText("设为默认")[0].performClick()
         compose.onNodeWithText("我已确认所选模型有免费额度，并已设置额度用完停止调用").assertDoesNotExist()
         compose.onNodeWithText("保存网关").performScrollTo().assertIsEnabled().performClick()
         compose.waitUntil(5_000) { saved != null }
-        assertEquals("https://dashscope.aliyuncs.com/compatible-mode/v1", saved!!.addresses.responses)
-        assertEquals("https://dashscope.aliyuncs.com/apps/anthropic/v1", saved!!.addresses.messages)
+        assertEquals("https://gateway.invalid/v1", saved!!.addresses.responses)
+        assertEquals("https://gateway.invalid/v1", saved!!.addresses.messages)
         assertEquals("selected-model", saved!!.model)
+    }
+    @Test fun `English new gateway defaults to custom with an editable empty address`() {
+        language(AppLanguage.ENGLISH)
+        var fetched: GatewayEdit? = null
+        form(fetch = { fetched = it; DataResult.Loaded(catalog) })
+        compose.onNodeWithText("Service: Custom").assertExists()
+        field("Base address").assertIsEnabled()
+        assertEquals("", field("Base address").fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
+        compose.onNodeWithText("Fetch models").assertIsNotEnabled()
+        field("Base address").performScrollTo().performTextReplacement("https://gateway.invalid/v1")
+        compose.onNodeWithText("Fetch models").performScrollTo().performClick()
+        compose.waitUntil(5_000) { fetched != null }
+        assertEquals("https://gateway.invalid/v1", fetched!!.addresses.responses)
+        assertEquals("https://gateway.invalid/v1", fetched!!.addresses.messages)
     }
     @Test fun `English sign in preserves full model catalog and manual model choice`() {
         language(AppLanguage.ENGLISH)
@@ -64,6 +87,7 @@ class GatewayProviderGuidanceTest {
         var saved: GatewayEdit? = null
         form(fetch = { fetchedKey = it.credential!!.concatToString(); DataResult.Loaded(catalog) },
             save = { saved = it; GatewaySaveResult.Failed("test saved") }, signIn = { GatewaySignInResult.Credential(secret) })
+        selectOpenRouter()
         compose.onNodeWithText("Service: OpenRouter").assertExists()
         compose.onNodeWithText("Sign in with OpenRouter").performScrollTo().performClick()
         compose.waitUntil(5_000) { secret.all { it == '\u0000' } }
@@ -86,7 +110,7 @@ class GatewayProviderGuidanceTest {
         language(AppLanguage.CHINESE)
         var opened = ""
         form(open = { opened = it })
-        var selected = "阿里云百炼"
+        var selected = "自定义"
         for (provider in GatewayProviders.ordered(AppLanguage.CHINESE)) {
             compose.onNodeWithText("服务：$selected").performScrollTo().performClick()
             compose.onNodeWithText(provider.label).performScrollTo().performClick()
@@ -105,6 +129,7 @@ class GatewayProviderGuidanceTest {
         var saves = 0
         form(signIn = { try { awaitCancellation() } finally { cancelled = true } },
             save = { saves++; GatewaySaveResult.Failed("unused") })
+        selectOpenRouter()
         compose.onNodeWithText("Sign in with OpenRouter").performScrollTo().performClick()
         compose.onNodeWithText("Cancel sign-in").performScrollTo().performClick()
         compose.waitUntil(5_000) { cancelled }
@@ -117,6 +142,7 @@ class GatewayProviderGuidanceTest {
         var fetchedKey: String? = null
         form(fetch = { fetchedKey = it.credential!!.concatToString(); DataResult.Loaded(catalog) },
             signIn = { GatewaySignInResult.Credential("synthetic-key".toCharArray()) })
+        selectOpenRouter()
         compose.onNodeWithText("Sign in with OpenRouter").performScrollTo().performClick()
         compose.onNodeWithText("Service: OpenRouter").performScrollTo().performClick()
         compose.onNodeWithText("OpenRouter").performClick()
