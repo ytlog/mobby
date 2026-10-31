@@ -198,6 +198,10 @@ class NetWebSocketTest {
         assertEquals("address_not_allowed", call("""{"op":"open","url":"wss://intranet.example.com/"}""").error!!.reason)
         assertEquals("http_not_granted", call("""{"op":"open","url":"ws://live.example.com/"}""").error!!.reason)
         assertEquals("only_ws_and_wss", call("""{"op":"open","url":"https://live.example.com/"}""").error!!.reason)
+        // Sessions cannot be simulated, so a dry run is refused before anything connects.
+        val dry = CallContext("p", "1", Surface.BACKGROUND, runId = "dry", dryRun = com.github.ytlog.mobby.android.programs.call.DryRunScope(emptySet(),
+            mapOf("net.websocket" to Scope(domains = setOf("live.example.com")))))
+        assertEquals("not_allowed_in_dry_run", call("""{"op":"open","url":"wss://live.example.com/"}""", dry).error!!.reason)
         assertEquals("header_not_allowed: Sec-WebSocket-Key", call("""{"op":"open","url":"wss://live.example.com/","headers":{"Sec-WebSocket-Key":"x"}}""").error!!.reason)
         assertNull(handshakes.poll(200, TimeUnit.MILLISECONDS))
     }

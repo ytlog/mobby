@@ -96,7 +96,8 @@ SDK (arguments are positional; only the ones shown in braces take an object):
   `{code, reason, by: 'program' | 'peer' | 'mobby'}`: a background run lasts at most 2 minutes and 15 s without calls, and
   its sockets close with it; a page's sockets close with the page; revoking the grant closes them too. Messages up to 1 MiB,
   4 sockets at a time; if 256 messages or 4 MiB wait unread, mobby closes the socket (`receive_buffer_full`) rather than drop
-  messages. A dry run opens nothing: `send` returns `{simulated: true}` and `receive` throws `SIMULATED`.
+  messages. A dry run cannot open sockets: `net.websocket` throws `MobbyError` code `PERMISSION_DENIED`, reason
+  `not_allowed_in_dry_run`; catch exactly that to dry-run the rest of the handler.
 - `ai.call({system, messages, maxOutputTokens})` with `messages: [{role: 'user' | 'assistant', text}]`, last one from the user;
   returns `{text, model, usage}`. Text only: images, tools and other fields are refused. The user picks the gateway and model
   when installing, and daily calls and tokens are capped (`QUOTA_EXCEEDED`); request `ai.call` in the manifest without a scope.
