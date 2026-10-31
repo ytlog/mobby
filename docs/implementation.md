@@ -940,6 +940,8 @@ Runtime 对外的对话消息现在是固定类型。回复仍是 `AssistantDelt
 
 运行事件同样是固定类型，不再保留自由文本或原始 JSON。接纳是 `RunAccepted`（冻结配置）和 `RunStarted`（sessionRef）。进度是 `Progress`，目前只有 `OUTPUT_TRUNCATED`。审批是 `PendingApproval`（approvalId、revision、`ApprovalSubject`）；Subject 与步骤同形，读取带 offset 与 limit，写入带 content，修改带 diff。类型之外的输入键不会成为审批，决定仍按 CLI 的 request id 允许或拒绝一次。取消是 `CancellationRequested`，目前只有 `USER_REQUEST`。终态是 `RunFinished`，只接受终态阶段，证据是 `TerminalEvidence`。认不出的 CLI 行仍是 `Unknown`，不算成功，也不算对话消息。
 
+输出段的合并：每次运行最多保留 2048 段输出和 4 MiB。连续的同一条回复或同一步骤的流式片段合并成一段，遇到其他事实、达到 64 KiB、运行结束或定时器到期时写出；定时器在前 1024 段内每 250 毫秒、之后每 3 秒一次。此前每个片段单独占一段，长时间的 Pi 运行会用完段数，之后的内容连同最终回复全部丢失，只剩“输出超过保留上限”。2026-10-31 小米平板验收（versionCode 67）：让 Pi 不用工具写一篇约 2500 词的长文，运行成功、没有截断提示，回复共 218 段、思考 3 段，全文 2563 词完整显示到最后一行。
+
 没有旧快照兼容。交互库升到 6，运行日志升到 3；下次打开应用会清空对话投影和运行日志，加密网关、HOME 和工作区留在各自的存储里。缺少 `body` 的旧步骤不能再解码。
 
 ## 屏幕插件这一轮保持常亮（2026-09-23）
