@@ -4,6 +4,7 @@ import android.app.KeyguardManager
 import android.content.Context
 import android.graphics.Rect
 import android.os.Build
+import android.os.Bundle
 import android.os.PowerManager
 import android.view.accessibility.AccessibilityNodeInfo
 import java.util.concurrent.TimeUnit
@@ -12,10 +13,11 @@ import java.util.concurrent.locks.ReentrantLock
 /**
  * One node of a window snapshot. [parent] is the index of its parent in the same snapshot; [bounds] are left, top, right,
  * bottom in thousandths of the display, so they do not depend on its resolution. Password fields read as `[secure]`.
+ * [focused] marks the node that has input focus.
  */
 data class ScreenNode(
     val index: Int, val parent: Int?, val className: String, val viewId: String?, val text: String?, val description: String?,
-    val clickable: Boolean, val editable: Boolean, val visible: Boolean, val bounds: List<Int>,
+    val clickable: Boolean, val editable: Boolean, val visible: Boolean, val bounds: List<Int>, val focused: Boolean = false,
 )
 
 /** The window in front when it was read. [truncated] says nodes past the limit were left out. */
@@ -44,7 +46,7 @@ data class ScreenTarget(
     }
 }
 
-enum class ScreenRefusal { SERVICE_OFF, NO_WINDOW, SCREEN_OFF, LOCKED, BUSY, OWN_APP, WINDOW_CHANGED, NOT_FOUND, NOT_UNIQUE, FAILED }
+enum class ScreenRefusal { SERVICE_OFF, NO_WINDOW, SCREEN_OFF, LOCKED, BUSY, OWN_APP, SECURE, WINDOW_CHANGED, NOT_FOUND, NOT_UNIQUE, FAILED }
 
 /** A screen request that was not carried out, with the reason; nothing was done on screen. */
 class ScreenRefused(val reason: ScreenRefusal, message: String) : Exception(message)
@@ -95,6 +97,16 @@ internal object ScreenMatcher {
             else -> throw ScreenRefused(ScreenRefusal.NOT_UNIQUE, "${chosen.size}_controls_match")
         }
     }
+
+    /** Picks the one visible editable field [target] names, or with an empty target the one that has input focus. */
+    fun pickField(nodes: List<ScreenNode>, target: ScreenTarget): ScreenNode {
+        val fields = nodes.filter { it.editable && it.visible && if (target.empty) it.focused else target.matches(it) }
+        return when (fields.size) {
+            0 -> throw ScreenRefused(ScreenRefusal.NOT_FOUND, if (target.empty) "no_focused_field" else "no_visible_field_matches")
+            1 -> fields.single()
+            else -> throw ScreenRefused(ScreenRefusal.NOT_UNIQUE, "${fields.size}_fields_match")
+        }
+    }
 }
 
 /**
@@ -137,15 +149,49 @@ object ProgramScreen {
         picked
     }
 
+    /**
+     * Replaces the text of the one field [target] names in [packageName]'s window (with an empty target, the focused field)
+     * with [value], and returns the field as read before. Password fields are never typed into.
+     */
+    fun type(context: Context, packageName: String, target: ScreenTarget, value: String): ScreenNode = ScreenCoordinator.programAction {
+        dispatchable(context)
+        capture(context) { window, nodes ->
+            if (window.packageName != packageName) throw ScreenRefused(ScreenRefusal.WINDOW_CHANGED, "window_is_${window.packageName}")
+            val picked = ScreenMatcher.pickField(window.nodes, target)
+            val node = nodes[picked.index]
+            if (node.isPassword) throw ScreenRefused(ScreenRefusal.SECURE, "password_fields_are_not_typed")
+            val arguments = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, value) }
+            if (!node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)) throw ScreenRefused(ScreenRefusal.FAILED, "text_not_set")
+            picked
+        }
+    }
+
+    /** A touch at ([x], [y]) in thousandths of the display, the units of [ScreenNode.bounds], while [packageName] is in front. */
+    fun tap(context: Context, packageName: String, x: Int, y: Int) = ScreenCoordinator.programAction {
+        dispatchable(context)
+        val service = front(context, packageName)
+        val metrics = service.resources.displayMetrics
+        val width = metrics.widthPixels.coerceAtLeast(1)
+        val height = metrics.heightPixels.coerceAtLeast(1)
+        val pixelX = (x.toFloat() * width / 1000).coerceIn(0f, width - 1f)
+        val pixelY = (y.toFloat() * height / 1000).coerceIn(0f, height - 1f)
+        if (!service.tapAt(pixelX, pixelY)) throw ScreenRefused(ScreenRefusal.FAILED, "tap_not_completed")
+    }
+
     /** A global action, only while [packageName]'s window is in front. */
     fun global(context: Context, packageName: String, action: Int) = ScreenCoordinator.programAction {
         dispatchable(context)
+        if (!front(context, packageName).performGlobalAction(action)) throw ScreenRefused(ScreenRefusal.FAILED, "action_not_performed")
+    }
+
+    /** The service, once [packageName]'s window is checked to be the one in front. */
+    private fun front(context: Context, packageName: String): ScreenAccessService {
         val service = ScreenAccessService.instance ?: throw ScreenRefused(ScreenRefusal.SERVICE_OFF, "screen_service_off")
         val current = service.rootInActiveWindow?.let { root -> try { root.packageName?.toString() } finally { root.recycle() } }
             ?: throw ScreenRefused(ScreenRefusal.NO_WINDOW, "no_readable_window")
         if (current == context.packageName) throw ScreenRefused(ScreenRefusal.OWN_APP, "mobby_window_is_not_for_programs")
         if (current != packageName) throw ScreenRefused(ScreenRefusal.WINDOW_CHANGED, "window_is_$current")
-        if (!service.performGlobalAction(action)) throw ScreenRefused(ScreenRefusal.FAILED, "action_not_performed")
+        return service
     }
 
     private fun dispatchable(context: Context) {
@@ -177,7 +223,8 @@ object ProgramScreen {
             nodes += ScreenNode(index, parent, node.className?.toString().orEmpty(), node.viewIdResourceName,
                 if (node.isPassword) "[secure]" else node.text?.toString()?.take(MAX_TEXT),
                 node.contentDescription?.toString()?.take(MAX_TEXT), node.isClickable, node.isEditable, node.isVisibleToUser,
-                listOf(rect.left * 1000 / width, rect.top * 1000 / height, rect.right * 1000 / width, rect.bottom * 1000 / height))
+                listOf(rect.left * 1000 / width, rect.top * 1000 / height, rect.right * 1000 / width, rect.bottom * 1000 / height),
+                node.isFocused)
             held += node
             for (i in 0 until node.childCount) {
                 val child = (if (Build.VERSION.SDK_INT >= 33) node.getChild(i, PREFETCH) else node.getChild(i)) ?: continue

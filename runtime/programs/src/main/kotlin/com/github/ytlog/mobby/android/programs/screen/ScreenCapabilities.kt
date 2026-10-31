@@ -27,6 +27,8 @@ interface ScreenPort {
     fun available(): Boolean
     fun read(): ScreenWindow
     fun click(packageName: String, target: ScreenTarget, tap: Boolean = false): ScreenNode
+    fun tap(packageName: String, x: Int, y: Int)
+    fun type(packageName: String, target: ScreenTarget, value: String): ScreenNode
     fun back(packageName: String)
     fun home(packageName: String)
 }
@@ -35,6 +37,8 @@ class AndroidScreenPort(private val context: Context) : ScreenPort {
     override fun available() = ScreenAccessService.connected()
     override fun read() = ProgramScreen.read(context)
     override fun click(packageName: String, target: ScreenTarget, tap: Boolean) = ProgramScreen.click(context, packageName, target, tap)
+    override fun tap(packageName: String, x: Int, y: Int) = ProgramScreen.tap(context, packageName, x, y)
+    override fun type(packageName: String, target: ScreenTarget, value: String) = ProgramScreen.type(context, packageName, target, value)
     override fun back(packageName: String) = ProgramScreen.global(context, packageName, AccessibilityService.GLOBAL_ACTION_BACK)
     override fun home(packageName: String) = ProgramScreen.global(context, packageName, AccessibilityService.GLOBAL_ACTION_HOME)
 }
@@ -51,21 +55,22 @@ object AndroidScreenEvents : ScreenEventSource {
 }
 
 /**
- * `screen.read`, `screen.click`, `screen.back` and `screen.home`: the window in front, read fresh for every call, scoped
- * to the apps the program was granted (`"*"` for all). An action names the app it expects in front and is refused when
- * another window is there. Programs never read or act on mobby itself, and act only with the screen on and unlocked.
+ * `screen.read`, `screen.click`, `screen.tap`, `screen.type`, `screen.back` and `screen.home`: the window in front, read
+ * fresh for every call, scoped to the apps the program was granted (`"*"` for all). An action names the app it expects in
+ * front and is refused when another window is there. Programs never read or act on mobby itself, never type into password
+ * fields, and act only with the screen on and unlocked.
  */
 class ScreenCapability(id: String, private val port: ScreenPort) : CapabilityHandler {
     private val action = id.substringAfter("screen.")
 
-    init { require(action in setOf("read", "click", "back", "home")) }
+    init { require(action in setOf("read", "click", "tap", "type", "back", "home")) }
 
     override val descriptor = CapabilityDescriptor(id, 1, if (action == "read") CapabilityKind.QUERY else CapabilityKind.COMMAND,
         when (action) {
             "read" -> schema(emptyList(), "package" to stringType(255))
-            "click" -> schema(listOf("package"), "package" to stringType(255), "text" to stringType(200), "textContains" to stringType(200),
-                "description" to stringType(200), "descriptionContains" to stringType(200), "viewId" to stringType(255), "className" to stringType(255),
-                "via" to enumType("action", "tap"))
+            "click" -> schema(listOf("package"), "package" to stringType(255), *TARGET, "via" to enumType("action", "tap"))
+            "tap" -> schema(listOf("package", "x", "y"), "package" to stringType(255), "x" to PERMILLE, "y" to PERMILLE)
+            "type" -> schema(listOf("package", "value"), "package" to stringType(255), "value" to stringType(2_000), *TARGET)
             else -> schema(listOf("package"), "package" to stringType(255))
         },
         buildJsonObject { put("type", "object") }, ScopeKind.PACKAGES,
@@ -91,8 +96,7 @@ class ScreenCapability(id: String, private val port: ScreenPort) : CapabilityHan
                     CapabilityOutcome(Effect.NONE, window.toJson())
                 }
                 "click" -> {
-                    val target = ScreenTarget(call.args.text("text"), call.args.text("textContains"), call.args.text("description"),
-                        call.args.text("descriptionContains"), call.args.text("viewId"), call.args.text("className"))
+                    val target = call.args.target()
                     if (target.empty) invalid("click_needs_text_description_view_id_or_class_name")
                     val tap = call.args.text("via") == "tap"
                     CapabilityOutcome(Effect.CONFIRMED, buildJsonObject {
@@ -100,6 +104,13 @@ class ScreenCapability(id: String, private val port: ScreenPort) : CapabilityHan
                         put("via", if (tap) "tap" else "action")
                     })
                 }
+                "tap" -> {
+                    port.tap(packageName!!, call.args.getValue("x").jsonPrimitive.int, call.args.getValue("y").jsonPrimitive.int)
+                    CapabilityOutcome(Effect.CONFIRMED, JsonObject(emptyMap()))
+                }
+                "type" -> CapabilityOutcome(Effect.CONFIRMED, buildJsonObject {
+                    put("field", port.type(packageName!!, call.args.target(), call.args.text("value")!!).toJson())
+                })
                 "back" -> { port.back(packageName!!); CapabilityOutcome(Effect.CONFIRMED, JsonObject(emptyMap())) }
                 else -> { port.home(packageName!!); CapabilityOutcome(Effect.CONFIRMED, JsonObject(emptyMap())) }
             }
@@ -107,7 +118,7 @@ class ScreenCapability(id: String, private val port: ScreenPort) : CapabilityHan
     } catch (refused: ScreenRefused) {
         throw CapabilityException(when (refused.reason) {
             ScreenRefusal.SERVICE_OFF -> ProgramErrorCode.SOURCE_DISCONNECTED
-            ScreenRefusal.OWN_APP -> ProgramErrorCode.SCOPE_DENIED
+            ScreenRefusal.OWN_APP, ScreenRefusal.SECURE -> ProgramErrorCode.SCOPE_DENIED
             ScreenRefusal.WINDOW_CHANGED -> ProgramErrorCode.STALE_OBSERVATION
             ScreenRefusal.NOT_FOUND -> ProgramErrorCode.RESOURCE_MISSING
             ScreenRefusal.NOT_UNIQUE -> ProgramErrorCode.TARGET_NOT_UNIQUE
@@ -165,7 +176,16 @@ class ScreenWindowCapability : CapabilityHandler, EventCapability {
     }
 }
 
-val SCREEN_CAPABILITIES = listOf("screen.read", "screen.click", "screen.back", "screen.home")
+val SCREEN_CAPABILITIES = listOf("screen.read", "screen.click", "screen.tap", "screen.type", "screen.back", "screen.home")
+
+/** The fields that name a control, shared by `screen.click` and `screen.type`. */
+private val TARGET = arrayOf("text" to stringType(200), "textContains" to stringType(200), "description" to stringType(200),
+    "descriptionContains" to stringType(200), "viewId" to stringType(255), "className" to stringType(255))
+
+private val PERMILLE = buildJsonObject { put("type", "integer"); put("minimum", 0); put("maximum", 1_000) }
+
+private fun JsonObject.target() = ScreenTarget(text("text"), text("textContains"), text("description"), text("descriptionContains"),
+    text("viewId"), text("className"))
 
 private fun ScreenNode.toJson() = buildJsonObject {
     put("index", index)
@@ -176,6 +196,7 @@ private fun ScreenNode.toJson() = buildJsonObject {
     description?.let { put("description", it) }
     put("clickable", clickable)
     if (editable) put("editable", true)
+    if (focused) put("focused", true)
     put("visible", visible)
     put("bounds", JsonArray(bounds.map(::JsonPrimitive)))
 }

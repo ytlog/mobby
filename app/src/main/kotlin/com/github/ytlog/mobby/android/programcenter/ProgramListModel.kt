@@ -38,6 +38,8 @@ internal fun purposeLabel(capability: String, scope: Scope, schedules: List<Json
     "net.websocket" -> AppStrings.purposeWebSocket(scope.domains?.sorted()?.joinToString().orEmpty()) + if (scope.insecureHttp) AppStrings.purposePlainWebSocket else ""
     "screen.read" -> AppStrings.purposeScreenRead(apps(scope))
     "screen.click" -> AppStrings.purposeScreenClick(apps(scope))
+    "screen.tap" -> AppStrings.purposeScreenTap(apps(scope))
+    "screen.type" -> AppStrings.purposeScreenType(apps(scope))
     "screen.back" -> AppStrings.purposeScreenBack(apps(scope))
     "screen.home" -> AppStrings.purposeScreenHome(apps(scope))
     "screen.window" -> AppStrings.purposeScreenWindow(apps(scope))

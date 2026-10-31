@@ -15,8 +15,9 @@ import kotlin.concurrent.thread
 @Config(sdk = [34], manifest = Config.NONE)
 class ProgramScreenTest {
     private fun node(index: Int, parent: Int?, text: String? = null, clickable: Boolean = false, visible: Boolean = true,
-        description: String? = null, viewId: String? = null, className: String = "android.widget.TextView") =
-        ScreenNode(index, parent, className, viewId, text, description, clickable, false, visible, listOf(0, 0, 100, 100))
+        description: String? = null, viewId: String? = null, className: String = "android.widget.TextView", editable: Boolean = false,
+        focused: Boolean = false) =
+        ScreenNode(index, parent, className, viewId, text, description, clickable, editable, visible, listOf(0, 0, 100, 100), focused)
 
     @After fun reset() { ScreenEvents.listener = null; ScreenEvents.wantContent = false }
 
@@ -36,6 +37,22 @@ class ProgramScreenTest {
         assertEquals(ScreenRefusal.NOT_FOUND, (runCatching { ScreenMatcher.pick(nodes, ScreenTarget()) }.exceptionOrNull() as ScreenRefused).reason)
         // A match with no clickable ancestor is clicked itself.
         assertEquals(2, ScreenMatcher.pick(listOf(node(0, null), node(1, 0), node(2, 1, text = "OK")), ScreenTarget(text = "OK")).index)
+    }
+
+    @Test fun `typing names one editable field, or the focused one when no field is named`() {
+        val nodes = listOf(
+            node(0, null, className = "android.widget.FrameLayout"),
+            node(1, 0, text = "搜索", clickable = true),
+            node(2, 0, viewId = "com.shop:id/query", className = "android.widget.EditText", editable = true, clickable = true, focused = true),
+            node(3, 0, viewId = "com.shop:id/note", className = "android.widget.EditText", editable = true),
+            node(4, 0, viewId = "com.shop:id/hidden", className = "android.widget.EditText", editable = true, visible = false, focused = true),
+        )
+        assertEquals(2, ScreenMatcher.pickField(nodes, ScreenTarget()).index)
+        assertEquals(3, ScreenMatcher.pickField(nodes, ScreenTarget(viewId = "com.shop:id/note")).index)
+        // A label is not a field, and a field is never swapped for an ancestor or a neighbour.
+        assertEquals(ScreenRefusal.NOT_FOUND, (runCatching { ScreenMatcher.pickField(nodes, ScreenTarget(text = "搜索")) }.exceptionOrNull() as ScreenRefused).reason)
+        assertEquals(ScreenRefusal.NOT_UNIQUE, (runCatching { ScreenMatcher.pickField(nodes, ScreenTarget(className = "EditText")) }.exceptionOrNull() as ScreenRefused).reason)
+        assertEquals("no_focused_field", (runCatching { ScreenMatcher.pickField(nodes.take(2), ScreenTarget()) }.exceptionOrNull() as ScreenRefused).message)
     }
 
     @Test fun `programs act one at a time and never while a chat run uses the screen`() {

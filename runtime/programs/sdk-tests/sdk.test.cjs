@@ -161,6 +161,24 @@ test('arguments of the wrong shape fail before any request and show the right ca
   } finally { api.instance.close(); }
 });
 
+test('screen.tap sends a point and screen.type a value with an optional target', async () => {
+  const api = await server((req, res) => json(res, { requestId: req.body.requestId, status: 'succeeded', effect: 'confirmed', result: {} }));
+  mobby[Symbol.for('mobby.runner')].start(api.port, 'c');
+  try {
+    await mobby.screen.tap('com.shop', { x: 915, y: 65 });
+    await mobby.screen.type('com.shop', '耳机');
+    await mobby.screen.type('com.shop', '', { viewId: 'com.shop:id/query' });
+    assert.deepEqual(api.requests.map((r) => [r.body.capability, r.body.args]), [
+      ['screen.tap', { package: 'com.shop', x: 915, y: 65 }],
+      ['screen.type', { package: 'com.shop', value: '耳机' }],
+      ['screen.type', { package: 'com.shop', value: '', viewId: 'com.shop:id/query' }],
+    ]);
+    await assert.rejects(mobby.screen.tap('com.shop', 915, 65), /screen\.tap\(package, \{x, y\}\): point must be an object, got a number/);
+    await assert.rejects(mobby.screen.type('com.shop', { viewId: 'q' }, '耳机'), /screen\.type\(package, value, target\): value must be a string, got an object/);
+    assert.equal(api.requests.length, 3);
+  } finally { api.instance.close(); }
+});
+
 /** Runs the real runner against a fake API that sends [events] and then run.stopping; resolves with the exit code. */
 async function runRunner(source, events) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'program-'));

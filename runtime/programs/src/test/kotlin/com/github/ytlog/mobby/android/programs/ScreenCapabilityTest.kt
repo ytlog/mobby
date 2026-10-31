@@ -42,6 +42,8 @@ class ScreenCapabilityTest {
     private val dao = database.dao()
     private val skip = ScreenNode(1, 0, "android.widget.TextView", "com.shop:id/skip", "跳过 3", null, true, false, true, listOf(850, 40, 980, 90))
 
+    private val field = ScreenNode(2, 0, "android.widget.EditText", "com.shop:id/query", null, null, true, true, true, listOf(100, 40, 800, 90), true)
+
     private inner class Port : ScreenPort {
         var on = true
         var window = ScreenWindow("com.shop", "SplashActivity", listOf(ScreenNode(0, null, "android.widget.FrameLayout", null, null, null, false, false, true,
@@ -54,6 +56,12 @@ class ScreenCapabilityTest {
             refusal?.let { throw it }
             acted += (if (tap) "tap " else "click ") + "$packageName ${target.textContains ?: target.text}"
             return skip
+        }
+        override fun tap(packageName: String, x: Int, y: Int) { refusal?.let { throw it }; acted += "tap $packageName $x,$y" }
+        override fun type(packageName: String, target: ScreenTarget, value: String): ScreenNode {
+            refusal?.let { throw it }
+            acted += "type $packageName ${target.viewId ?: "focused"} $value"
+            return field
         }
         override fun back(packageName: String) { refusal?.let { throw it }; acted += "back $packageName" }
         override fun home(packageName: String) { refusal?.let { throw it }; acted += "home $packageName" }
@@ -116,6 +124,26 @@ class ScreenCapabilityTest {
             assertEquals(refusal.name, code to "because_${refusal.name.lowercase()}", error.code to error.reason)
         }
         assertEquals(2, port.acted.size)
+    }
+
+    @Test fun `a program taps a point or types into a field of the app it names`() {
+        for (capability in listOf("screen.tap", "screen.type")) grant(capability, setOf("com.shop"))
+        assertEquals(CallStatus.SUCCEEDED, call("screen.tap", """{"package":"com.shop","x":915,"y":65}""").status)
+        // Points are thousandths of the screen, like the bounds a read returns.
+        assertEquals("$.x is above 1000.0", call("screen.tap", """{"package":"com.shop","x":1200,"y":65}""").error!!.reason)
+        assertEquals("$.y is required", call("screen.tap", """{"package":"com.shop","x":10}""").error!!.reason)
+        val typed = call("screen.type", """{"package":"com.shop","value":"耳机"}""").result!!.jsonObject
+        assertEquals("com.shop:id/query", typed["field"]!!.jsonObject["viewId"]!!.jsonPrimitive.content)
+        assertTrue(typed["field"]!!.jsonObject["focused"]!!.jsonPrimitive.boolean)
+        assertEquals(CallStatus.SUCCEEDED, call("screen.type", """{"package":"com.shop","value":"","viewId":"com.shop:id/query"}""").status)
+        assertEquals(listOf("tap com.shop 915,65", "type com.shop focused 耳机", "type com.shop com.shop:id/query "), port.acted)
+        assertEquals("$.value is required", call("screen.type", """{"package":"com.shop"}""").error!!.reason)
+        assertEquals("$.via is not allowed", call("screen.type", """{"package":"com.shop","value":"x","via":"tap"}""").error!!.reason)
+        assertEquals("package_not_granted", call("screen.tap", """{"package":"com.bank","x":1,"y":1}""").error!!.reason)
+        port.refusal = ScreenRefused(ScreenRefusal.SECURE, "password_fields_are_not_typed")
+        assertEquals(ProgramErrorCode.SCOPE_DENIED to "password_fields_are_not_typed",
+            call("screen.type", """{"package":"com.shop","value":"x"}""").error!!.let { it.code to it.reason })
+        assertEquals(3, port.acted.size)
     }
 
     @Test fun `without the screen service the capabilities are unavailable and dry runs never touch the screen`() {

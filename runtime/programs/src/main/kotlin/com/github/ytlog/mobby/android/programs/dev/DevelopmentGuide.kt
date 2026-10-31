@@ -60,7 +60,9 @@ confirmation. You cannot do those steps and must not claim the program is runnin
 - `screen.window` reports an app's window coming to the front, payload `{packageName, className, previousPackage,
   change: "window", at}`; a filter `{"packages": [...]}` narrows the apps and `{"content": true}` also reports content
   changes (`change: "content"`, at most twice a second per app). Request it with a `packages` scope like the screen
-  calls. mobby's own windows are never reported. Example subscription:
+  calls. mobby's own windows are never reported. A program's own taps and typing often open a new page and so raise
+  more events for the same app; remember what was already done (for example in `kv`) so one visit is handled once.
+  Example subscription:
   `{"id": "front", "event": "screen.window", "filter": {}, "handler": "onWindow"}`.
 - Entry events, each requested in `permissions` and subscribed with `"filter": {}`, for example
   `{"id": "shared", "event": "entry.share", "filter": {}, "handler": "onShare"}`.
@@ -104,17 +106,24 @@ SDK (arguments are positional; only the ones shown in braces take an object):
   messages. A dry run opens nothing: `net.websocket` returns a socket with `simulated` true whose `send` and `close`
   are simulated and whose `receive` (and `for await`) throws `MobbyError` code `SIMULATED`; catch that to dry-run the rest.
 - Screen (background only; needs the user to turn on the mobby Screen Control accessibility service):
-  `screen.read({package})` returns the window in front `{packageName, className, truncated, nodes}`; each node has
-  `index, parent, className, viewId, text, description, clickable, editable, visible, bounds` (left, top, right,
-  bottom in thousandths of the screen; password fields read as `[secure]`; at most 300 nodes). `screen.click(package,
+  `screen.read({package})` returns the window in front `{packageName, className, truncated, nodes}` (leaving `package`
+  out needs the `["*"]` scope; a program granted named apps passes the app it expects); each node has
+  `index, parent, className, viewId, text, description, clickable, editable, focused, visible, bounds` (left, top, right,
+  bottom in thousandths of the screen; `editable` and `focused` appear only when true; password fields read as `[secure]`;
+  at most 300 nodes). `screen.click(package,
   {text | textContains | description | descriptionContains | viewId | className})` clicks the one visible control that
   matches every given field, or its nearest clickable parent, with an accessibility click; add `via: 'tap'` to the
   target to touch the control's centre instead, as some apps (ad views especially) ignore accessibility clicks: if the
-  screen does not change after a click, read again and retry with `via: 'tap'`. `screen.back(package)` and `screen.home(package)` act
-  only while that app is in front. Request them with `{"packages": [...]}` naming the apps, or `["*"]` for every app.
+  screen does not change after a click, read again and retry with `via: 'tap'`. `screen.tap(package, {x, y})` touches a
+  point given in the same thousandths as `bounds`, for controls no node describes. `screen.type(package, value, target)`
+  replaces the text of the one visible editable field the target names (same fields as `screen.click`; leave the target
+  out for the field that has input focus) and returns `{field}` as read before typing; `''` clears it; it never presses
+  Enter or Search, so click the button after. Some apps show a field as plain text until it is touched: when no node is
+  editable, tap the field, read again, then type. Password fields are refused. `screen.back(package)` and
+  `screen.home(package)` act only while that app is in front. Request them with `{"packages": [...]}` naming the apps, or `["*"]` for every app.
   Refusals: `TARGET_NOT_UNIQUE` (several match, nothing clicked), `RESOURCE_MISSING` (none), `STALE_OBSERVATION`
   (another app is in front), `CONDITION_UNMET` (screen off or locked, or a chat is using the screen), `SCOPE_DENIED`
-  (mobby's own windows are never readable). Read again before every action; a read is not kept fresh.
+  (mobby's own windows are never readable; password fields are never typed into). Read again before every action; a read is not kept fresh.
 - `ai.call({system, messages, maxOutputTokens})` with `messages: [{role: 'user' | 'assistant', text}]`, last one from the user;
   returns `{text, model, usage}`. Text only: images, tools and other fields are refused. The user picks the gateway and model
   when installing, and daily calls and tokens are capped (`QUOTA_EXCEEDED`); request `ai.call` in the manifest without a scope.
