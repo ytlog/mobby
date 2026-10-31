@@ -191,6 +191,28 @@ class ProtocolDecoderTest {
         assertTrue(decoder.decode("""{"type":"step_finish","sessionID":"ses_Ab12","part":{"type":"step-finish","reason":"stop"}}""").filterIsInstance<AgentFact.Completed>().single().success)
         assertFalse(decoder.decode("""{"type":"error","sessionID":"ses_Ab12","error":{"name":"Provider"}}""").filterIsInstance<AgentFact.Completed>().single().success)
     }
+    // Each CLI reports a reply cut at the model's output limit in its own way; all used to read as a protocol error.
+    @Test fun `opencode codex and claude say a reply stopped at the output limit`() {
+        fun ended(agent: AgentId, vararg lines: String) =
+            ProtocolDecoder(agent).let { decoder -> lines.flatMap { decoder.decode(it) } }.filterIsInstance<AgentFact.Completed>().single()
+        // OpenCode 1.x ends its loop on any finish other than tool-calls; "length" is a Responses max_output_tokens cut.
+        assertEquals(AgentFact.Completed(false, ErrorCode.OUTPUT_TRUNCATED),
+            ended(AgentId.OPEN_CODE, """{"type":"step_finish","sessionID":"ses_Ab12","part":{"type":"step-finish","reason":"length"}}"""))
+        // Codex 0.155 retries response.incomplete as a stream error, then fails the turn with this message.
+        assertEquals(AgentFact.Completed(false, ErrorCode.OUTPUT_TRUNCATED), ended(AgentId.CODEX,
+            """{"type":"turn.failed","error":{"message":"stream disconnected before completion: Incomplete response returned, reason: max_output_tokens","codexErrorInfo":{"responseStreamDisconnected":{"httpStatusCode":null}},"additionalDetails":null}}"""))
+        assertEquals(ErrorCode.PROTOCOL_ERROR, ended(AgentId.CODEX,
+            """{"type":"turn.failed","error":{"message":"stream disconnected before completion: Incomplete response returned, reason: content_filter"}}""").error)
+        // Claude Code 2.1 retries max_tokens three times, then ends on a synthetic API error message; the context window
+        // limit carries the same error tag and only the stop reason of the real message tells them apart.
+        fun claude(stopReason: String) = ended(AgentId.CLAUDE_CODE,
+            """{"type":"stream_event","event":{"type":"message_start","message":{"id":"m"}}}""",
+            """{"type":"stream_event","event":{"type":"message_delta","delta":{"stop_reason":"$stopReason"},"usage":{"output_tokens":32000}}}""",
+            """{"type":"assistant","message":{"id":"e","role":"assistant","stop_reason":"stop_sequence","content":[{"type":"text","text":"API Error: limit"}]},"error":"max_output_tokens"}""",
+            """{"type":"result","subtype":"success","is_error":true,"result":"API Error: limit","stop_reason":"stop_sequence"}""")
+        assertEquals(AgentFact.Completed(false, ErrorCode.OUTPUT_TRUNCATED), claude("max_tokens"))
+        assertEquals(ErrorCode.PROTOCOL_ERROR, claude("model_context_window_exceeded").error)
+    }
     @Test fun `opencode keeps session and image files in the stdin command`() = kotlinx.coroutines.runBlocking {
         val image = "/private/shot.png"
         val request = RunRequest(RequestId("r"), AgentId.OPEN_CODE, WorkspaceRef("default"), emptyList(), "vendor/model", GatewayProfileRef("OPEN_CODE", 1), sessionRef = SessionRef("ses_Ab12"))

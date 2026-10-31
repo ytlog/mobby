@@ -101,7 +101,7 @@ async function runOpenCodeLive(executable, serverArguments, environment, bridge)
       try { event = JSON.parse(line); } catch (_) { return; }
       if (typeof event.sessionID === 'string' && /^ses_[A-Za-z0-9_-]{1,96}$/.test(event.sessionID)) sessionId = event.sessionID;
       if (event.type === 'error' || event.type === 'step_finish' &&
-        ['stop','error'].includes(event.part?.reason)) {
+        ['stop','error','length'].includes(event.part?.reason)) {
         ended = true; active = false;
         // This OpenCode CLI can remain alive after its terminal event. The server stays.
         setTimeout(() => { if (run.exitCode === null) run.kill('SIGTERM'); }, 100);

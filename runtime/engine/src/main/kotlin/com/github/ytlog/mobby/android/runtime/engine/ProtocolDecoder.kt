@@ -36,6 +36,8 @@ class ProtocolDecoder(private val agent: AgentId, private val requestedOutput: R
     private var thinkingStep: String? = null
     private var piMessage = ""
     private var piStopReason: String? = null
+    private var claudeStopReason: String? = null
+    private var claudeErrorTag: String? = null
     private val piBlocks = mutableMapOf<Int, String>()
     fun decode(line: String): List<AgentFact> {
         val controlRequest = agent == AgentId.CLAUDE_CODE && Regex("""^\s*\{\s*"type"\s*:\s*"control_request"""").containsMatchIn(line)
@@ -174,6 +176,7 @@ class ProtocolDecoder(private val agent: AgentId, private val requestedOutput: R
                 when (reason) {
                     "stop" -> if (requestedOutput == RequestedOutput.SKILL_PROPOSAL) addAll(finishSkill(skillResult)) else add(AgentFact.Completed(true))
                     "error" -> add(AgentFact.Completed(false, ErrorCode.PROTOCOL_ERROR))
+                    "length" -> add(AgentFact.Completed(false, ErrorCode.OUTPUT_TRUNCATED))
                 }
             }
             "error" -> {
@@ -188,7 +191,13 @@ class ProtocolDecoder(private val agent: AgentId, private val requestedOutput: R
         "thread.started" -> value.text("thread_id")?.let { listOf(AgentFact.Session(it)) }.orEmpty()
         "turn.started" -> emptyList()
         "turn.completed" -> if (requestedOutput == RequestedOutput.SKILL_PROPOSAL) finishSkill(skillResult) else listOf(AgentFact.Completed(true))
-        "turn.failed", "error" -> listOf(AgentFact.Diagnostic("error", value["error"]?.toString() ?: value.text("message") ?: "CLI error"), AgentFact.Completed(false, ErrorCode.PROTOCOL_ERROR))
+        "turn.failed", "error" -> {
+            // Codex retries an incomplete response as a stream error and only its message names the cause.
+            val message = (value["error"] as? JsonObject)?.text("message")
+            val truncated = message?.contains("Incomplete response returned, reason: max_output_tokens") == true
+            listOf(AgentFact.Diagnostic("error", value["error"]?.toString() ?: value.text("message") ?: "CLI error"),
+                AgentFact.Completed(false, if (truncated) ErrorCode.OUTPUT_TRUNCATED else ErrorCode.PROTOCOL_ERROR))
+        }
         "item.started", "item.updated", "item.completed" -> {
             val item = value["item"] as? JsonObject ?: return listOf(AgentFact.Diagnostic("invalid-item", line))
             val type = item.text("type") ?: "unknown"
@@ -270,6 +279,7 @@ class ProtocolDecoder(private val agent: AgentId, private val requestedOutput: R
             "system" -> if (value.text("subtype") != "init") add(AgentFact.Diagnostic(value.text("subtype") ?: "system", line))
             "stream_event" -> addAll(streamEvent(value))
             "assistant", "user" -> {
+                if (value.text("type") == "assistant") claudeErrorTag = value.text("error")
                 val message = value["message"] as? JsonObject
                 val id = message?.text("id") ?: streamMessageId ?: "message-${fallbackId++}"
                 streamMessageId = id
@@ -329,7 +339,13 @@ class ProtocolDecoder(private val agent: AgentId, private val requestedOutput: R
                     val structured = value["structured_output"]?.toString()?.let(SkillGeneration::parse)
                     structured?.let { if (it.message != lastAssistant) add(AgentFact.Text("result", it.message)) }
                     addAll(finishSkill(structured))
-                } else add(AgentFact.Completed(success, if (denied) ErrorCode.PERMISSION_DENIED else if (!success) ErrorCode.PROTOCOL_ERROR else null))
+                } else add(AgentFact.Completed(success, when {
+                    denied -> ErrorCode.PERMISSION_DENIED
+                    success -> null
+                    // Claude Code tags a context window overflow "max_output_tokens" too; the model's own stop reason tells them apart.
+                    claudeErrorTag == "max_output_tokens" && claudeStopReason == "max_tokens" -> ErrorCode.OUTPUT_TRUNCATED
+                    else -> ErrorCode.PROTOCOL_ERROR
+                }))
             }
             else -> add(AgentFact.Diagnostic(value.text("type") ?: "unknown", line))
         }
@@ -339,6 +355,10 @@ class ProtocolDecoder(private val agent: AgentId, private val requestedOutput: R
         return when (event.text("type")) {
             "message_start" -> {
                 streamMessageId = (event["message"] as? JsonObject)?.text("id") ?: streamMessageId
+                emptyList()
+            }
+            "message_delta" -> {
+                (event["delta"] as? JsonObject)?.text("stop_reason")?.let { claudeStopReason = it }
                 emptyList()
             }
             "content_block_start" -> {

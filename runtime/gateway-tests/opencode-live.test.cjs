@@ -22,7 +22,7 @@ if(args[0]==='serve'){
  const prompt=args.at(-1);
  process.stdout.write(JSON.stringify({type:'step_start',sessionID:'ses_persisted',part:{type:'step-start'}})+'\\n');
  process.stdout.write(JSON.stringify({type:'text',sessionID:'ses_persisted',part:{id:'part-'+prompt,text:'answer-'+prompt}})+'\\n');
- process.stdout.write(JSON.stringify({type:'step_finish',sessionID:'ses_persisted',part:{reason:'stop'}})+'\\n');
+ process.stdout.write(JSON.stringify({type:'step_finish',sessionID:'ses_persisted',part:{reason:prompt==='cut'?'length':'stop'}})+'\\n');
  setInterval(()=>{},1000);
 }`);
   const bridge = join(__dirname, '../../runtime/android/src/main/assets/gateway/bridge.cjs');
@@ -46,20 +46,23 @@ if(args[0]==='serve'){
     child.stdin.write(JSON.stringify({type:'prompt',text:'one',model:'test',images:[]})+'\n');
     await waitFor('answer-one');
     await waitFor('"reason":"stop"');
+    // A reply cut at the output limit ends the turn too; the next prompt must not find OpenCode still running.
+    child.stdin.write(JSON.stringify({type:'prompt',text:'cut',model:'test',sessionId:'ses_persisted',images:[]})+'\n');
+    await waitFor('"reason":"length"');
     child.stdin.write(JSON.stringify({type:'prompt',text:'two',model:'test',sessionId:'ses_persisted',images:[]})+'\n');
     await waitFor('answer-two');
     child.stdin.write(JSON.stringify({type:'prompt',text:'three',model:'test',newSession:true,images:[]})+'\n');
     await waitFor('answer-three');
     const calls = readFileSync(log,'utf8').trim().split('\n').map(JSON.parse);
-    assert.deepEqual(calls.map(args=>args[0]),['serve','run','run','run']);
+    assert.deepEqual(calls.map(args=>args[0]),['serve','run','run','run','run']);
     assert.ok(calls[0].includes('--pure'));
     assert.deepEqual(calls[0].slice(calls[0].indexOf('--hostname'),calls[0].indexOf('--hostname')+2),
       ['--hostname','127.0.0.1']);
     assert.ok(calls[1].includes('--attach') && calls[1].includes('--auto'));
     assert.ok(!calls[1].includes('--session'));
-    assert.deepEqual(calls[2].slice(calls[2].indexOf('--session'),calls[2].indexOf('--session')+2),
+    assert.deepEqual(calls[3].slice(calls[3].indexOf('--session'),calls[3].indexOf('--session')+2),
       ['--session','ses_persisted']);
-    assert.ok(!calls[3].includes('--session'));
+    assert.ok(!calls[4].includes('--session'));
     assert.equal(child.exitCode,null);
   } finally {
     child.kill('SIGTERM');
