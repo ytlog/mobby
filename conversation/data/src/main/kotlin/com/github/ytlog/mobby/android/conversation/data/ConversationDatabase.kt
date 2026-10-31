@@ -70,12 +70,15 @@ internal data class TurnWithChunks(
     suspend fun outputSyncCandidates(): List<RunOutputCandidate>
     @Query("SELECT * FROM turns WHERE pending=1 OR occupied=1") suspend fun unfinished(): List<TurnRow>
     @Query("SELECT * FROM chunks WHERE ref=:ref") suspend fun chunk(ref: String): ChunkRow?
-    @Query("""SELECT t.id AS turnId,t.runId,t.snapshot,t.createdAt,SUM(length(CAST(c.text AS BLOB))) AS bytes
-        FROM turns t JOIN chunks c ON c.runId=t.runId
-        WHERE t.pending=0 AND t.occupied=0 AND t.snapshot IS NOT NULL AND c.expired=0
+    // Chunk bytes are summed per run before the join: grouping the joined rows copied each snapshot once per chunk
+    // into an in-memory sort, about 6 GB for a few long runs, and mobby crashed at every start.
+    @Query("""SELECT t.id AS turnId,t.runId,t.snapshot,t.createdAt,c.bytes
+        FROM turns t JOIN (SELECT runId, SUM(length(CAST(text AS BLOB))) AS bytes FROM chunks WHERE expired=0 GROUP BY runId) c
+        ON c.runId=t.runId
+        WHERE t.pending=0 AND t.occupied=0 AND t.snapshot IS NOT NULL
         AND (:conversationId IS NULL OR t.conversationId=:conversationId)
         AND (:afterTime IS NULL OR t.createdAt > :afterTime OR (t.createdAt=:afterTime AND t.id > :afterId))
-        GROUP BY t.id ORDER BY t.createdAt,t.id LIMIT :limit""")
+        ORDER BY t.createdAt,t.id LIMIT :limit""")
     suspend fun outputCacheCandidates(conversationId: String?, afterTime: Long?, afterId: String, limit: Int): List<OutputCacheCandidate>
     @Query("SELECT ref FROM chunks WHERE runId=:runId AND expired=0 ORDER BY ref") suspend fun availableChunkRefs(runId: String): List<String>
     @Query("SELECT ref FROM chunks WHERE runId=:runId") suspend fun chunkRefs(runId: String): List<String>
