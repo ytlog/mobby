@@ -50,7 +50,7 @@ object DeviceCatalog {
             commands = listOf(
                 DeviceCommand("catalog", "catalog", "Read before writing a program."),
                 DeviceCommand("validate", """validate {"path":"~/workspace/programs/my-program"}"""),
-                DeviceCommand("dry-run", """dry-run {"path":"~/workspace/programs/my-program","events":"[{\"handler\":\"onSchedule\",\"type\":\"time.schedule\",\"payload\":{}}]","timeoutMs":"20000"}""", "Commands and network requests are simulated; storage uses throwaway data."),
+                DeviceCommand("dry-run", """dry-run {"path":"~/workspace/programs/my-program","events":"[{\"handler\":\"onSchedule\",\"type\":\"time.schedule\",\"payload\":{}}]","timeoutMs":"20000"}""", "events is a JSON array encoded as one string, like the example. Commands and network requests are simulated; storage uses throwaway data."),
                 DeviceCommand("records", """records {"programId":"my-program","limit":"50"}""", "Only programs attached to this chat."),
             ),
         ),

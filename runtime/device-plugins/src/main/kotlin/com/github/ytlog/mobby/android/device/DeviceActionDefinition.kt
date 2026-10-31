@@ -49,25 +49,35 @@ internal class DeviceActionDefinition(val plugin: String, val action: String) {
         "programs.records" -> setOf("limit")
         else -> emptySet()
     }
+    /** Refusals name the argument and the expected form, never the value, so the caller can correct itself without leaking input. */
     fun validate(args: JsonObject): Map<String, String> {
-        if (args.keys.any { it !in fields }) deviceFailure(DeviceErrorCode.INVALID_ARGUMENT, "Unknown action argument")
-        val result = args.mapValues { (key, value) ->
-            val primitive = value as? JsonPrimitive ?: deviceFailure(DeviceErrorCode.INVALID_ARGUMENT)
-            if (primitive == JsonNull || (!primitive.isString && !(plugin == "screen" && action == "tap")))
-                deviceFailure(DeviceErrorCode.INVALID_ARGUMENT, "Invalid argument type")
-            primitive.content.also { if (it.length > fields.getValue(key) || '\u0000' in it) deviceFailure(DeviceErrorCode.INVALID_ARGUMENT) }
+        val tap = plugin == "screen" && action == "tap"
+        fun invalid(message: String): Nothing = deviceFailure(DeviceErrorCode.INVALID_ARGUMENT, message)
+        args.keys.firstOrNull { it !in fields }?.let {
+            invalid(if (fields.isEmpty()) "$plugin.$action takes no arguments, got $it"
+                else "Unknown argument $it; $plugin.$action takes ${fields.keys.joinToString(", ")}")
         }
-        val optional = optionalArguments
-        if ((fields.keys - optional).any { it !in result || result[it].isNullOrBlank() })
-            deviceFailure(DeviceErrorCode.INVALID_ARGUMENT, "Missing action argument")
-        if ("id" in result && (result["id"]?.toLongOrNull()?.let { it >= 0 } != true)) deviceFailure(DeviceErrorCode.INVALID_ARGUMENT)
-        if (plugin == "screen" && action == "tap" && result.values.any { it.toDoubleOrNull()?.let { n -> n.isFinite() && n in 0.0..1.0 } != true }) deviceFailure(DeviceErrorCode.INVALID_ARGUMENT)
-        if (plugin == "sms" && action == "send" && !result.getValue("to").matches(Regex("[+0-9][0-9\\- ]{2,20}"))) deviceFailure(DeviceErrorCode.INVALID_ARGUMENT)
+        val result = args.mapValues { (key, value) ->
+            val primitive = value as? JsonPrimitive
+            if (primitive == null || primitive == JsonNull || (!primitive.isString && !tap))
+                invalid(if (tap) "Argument $key must be a number" else "Argument $key must be a string; pass lists and objects as JSON text inside the string")
+            primitive.content.also {
+                if (it.length > fields.getValue(key)) invalid("Argument $key is longer than ${fields.getValue(key)} characters")
+                if ('\u0000' in it) invalid("Argument $key contains a NUL character")
+            }
+        }
+        val missing = (fields.keys - optionalArguments).filter { result[it].isNullOrBlank() }
+        if (missing.isNotEmpty()) invalid("Missing argument ${missing.joinToString(", ")}")
+        if ("id" in result && (result["id"]?.toLongOrNull()?.let { it >= 0 } != true)) invalid("Argument id must be a non-negative integer")
+        if (tap && result.values.any { it.toDoubleOrNull()?.let { n -> n.isFinite() && n in 0.0..1.0 } != true })
+            invalid("Arguments x and y must be numbers from 0 to 1")
+        if (plugin == "sms" && action == "send" && !result.getValue("to").matches(Regex("[+0-9][0-9\\- ]{2,20}")))
+            invalid("Argument to must be a phone number of digits, spaces or dashes, optionally starting with +")
         if (plugin == "calendar" && action == "create") {
             val start = result["start"]?.toLongOrNull(); val end = result["end"]?.toLongOrNull()
-            if (start == null || end == null || start < 0 || end < start) deviceFailure(DeviceErrorCode.INVALID_ARGUMENT)
+            if (start == null || end == null || start < 0 || end < start) invalid("Arguments start and end must be epoch milliseconds, with end not before start")
         }
-        if (plugin == "media" && action == "copy" && result["kind"] !in setOf("image", "video", "audio")) deviceFailure(DeviceErrorCode.INVALID_ARGUMENT)
+        if (plugin == "media" && action == "copy" && result["kind"] !in setOf("image", "video", "audio")) invalid("Argument kind must be image, video or audio")
         return result
     }
     fun admission(request: DeviceRequest, args: Map<String, String>): DeviceAdmission {

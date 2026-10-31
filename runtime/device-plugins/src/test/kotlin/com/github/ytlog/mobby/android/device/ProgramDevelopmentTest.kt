@@ -40,6 +40,25 @@ class ProgramDevelopmentTest {
         assertFalse(DeviceActionDefinition("programs", "dry-run").writes)
     }
 
+    @Test fun `malformed arguments are refused with a message naming the argument and the expected form`() {
+        fun refusal(plugin: String, action: String, args: String): String {
+            val failure = runCatching { DeviceActionDefinition(plugin, action).validate(Json.parseToJsonElement(args).jsonObject) }
+                .exceptionOrNull() as DeviceFailure
+            assertEquals(DeviceErrorCode.INVALID_ARGUMENT, failure.error.code)
+            return failure.error.message
+        }
+        // On the tablet the AI passed events as an array and got an empty message, then guessed at quoting for several turns.
+        val events = refusal("programs", "dry-run", """{"path":"p","events":[{"handler":"onSchedule"}]}""")
+        assertTrue(events, "events" in events && "JSON text" in events)
+        val unknown = refusal("programs", "dry-run", """{"path":"p","event":"[]"}""")
+        assertTrue(unknown, "event" in unknown && "path, events, timeoutMs" in unknown)
+        assertTrue(refusal("programs", "dry-run", """{"events":"[]"}""").contains("path"))
+        assertTrue(refusal("programs", "validate", """{"path":"${"a".repeat(4001)}"}""").contains("path is longer than 4000"))
+        assertTrue(refusal("media", "copy", """{"kind":"photo","id":"1"}""").contains("kind must be image, video or audio"))
+        assertTrue(refusal("contacts", "delete", """{"id":"-3"}""").contains("id must be"))
+        assertTrue(refusal("calendar", "create", """{"title":"t","start":"5","end":"1"}""").contains("start and end"))
+    }
+
     @Test fun `commands reach the port and records need an attached program`() {
         ProgramDevelopment.port = port
         val actions = actions(setOf("price-watch"))
