@@ -45,7 +45,7 @@ internal class MessageManager {
                 AppStrings.OUTPUT_SYNC_MARKER -> listOfNotNull(snapshot?.terminalEvidence?.error?.message(), AppStrings.outputSyncRetrying).joinToString("\n")
                 AppStrings.STATE_SYNC_MARKER -> listOfNotNull(snapshot?.terminalEvidence?.error?.message(), AppStrings.stateSyncRetrying).joinToString("\n")
                 else -> error ?: snapshot?.terminalEvidence?.error?.message()
-            }, snapshot?.progress?.domain() ?: snapshot?.takeIf(::endedWithoutReply)?.let { com.github.ytlog.mobby.android.conversation.domain.ProgressNotice.NO_REPLY }, pending, occupied, queued && !pending, expanded, storageJson.decodeFromString(expandedSteps),
+            }, snapshot?.progress?.domain() ?: snapshot?.takeIf { endedWithoutReply(it, content) }?.let { com.github.ytlog.mobby.android.conversation.domain.ProgressNotice.NO_REPLY }, pending, occupied, queued && !pending, expanded, storageJson.decodeFromString(expandedSteps),
             snapshot?.artifacts?.mapNotNull { ref -> content[ref.value]?.takeUnless { it.expired }?.let { SkillProposal(ref.value, it.text, DomainAgent.valueOf(snapshot.acceptedConfig.agentId.name)) } }.orEmpty(),
             storageJson.decodeFromString<StoredConversation>(frozen).creator != null, snapshot?.artifacts?.any { it.value !in content } == true, storageJson.decodeFromString<StoredConversation>(frozen).attachments,
             snapshot?.pendingApprovals?.map { PermissionRequest(it.approvalId, it.revision, it.subject.domain()) }.orEmpty(), snapshot?.deviceOperations.orEmpty(),
@@ -53,9 +53,13 @@ internal class MessageManager {
     }
 }
 
-/** A run that succeeded with neither reply text nor a skill draft: the agent stopped without answering. */
-private fun endedWithoutReply(snapshot: RunSnapshot) = snapshot.phase == RunPhase.SUCCEEDED && snapshot.artifacts.isEmpty() &&
-    snapshot.outputSegments.all { it.messageId.startsWith("diagnostic:") }
+/**
+ * A run that succeeded with neither reply text nor a skill draft: the agent stopped without answering. Reply output counts
+ * as none only once it is here and blank, such as Pi's newlines between tool calls; output still syncing or expired does not.
+ */
+private fun endedWithoutReply(snapshot: RunSnapshot, content: Map<String, ChunkRow>) = snapshot.phase == RunPhase.SUCCEEDED &&
+    snapshot.artifacts.isEmpty() && snapshot.outputSegments.filterNot { it.messageId.startsWith("diagnostic:") }
+        .all { segment -> content[segment.ref.value]?.let { !it.expired && it.text.isBlank() } == true }
 
 private fun com.github.ytlog.mobby.android.runtime.api.ProgressNotice.domain() = when (this) {
     com.github.ytlog.mobby.android.runtime.api.ProgressNotice.OUTPUT_TRUNCATED ->

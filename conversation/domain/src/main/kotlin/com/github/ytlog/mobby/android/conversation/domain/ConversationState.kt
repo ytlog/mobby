@@ -43,9 +43,12 @@ data class Turn(
     val permissions: List<PermissionRequest> = emptyList(), val deviceOperations: List<DeviceRecord> = emptyList(),
     val workspace: String = "default", val project: String? = null
 ) {
-    /** Replies stay where they were produced. Adjacent tool calls form one run and collapse after they finish. */
+    /**
+     * Replies stay where they were produced. Adjacent tool calls form one run and collapse after they finish. Blank replies,
+     * such as the newlines Pi writes between tool calls, show nothing and do not split a run.
+     */
     fun transcript(): List<TranscriptEntry> {
-        val ordered = (messages.map { it.order to TranscriptPiece.Reply(it) } + steps.map { it.order to TranscriptPiece.Tool(it) } + deviceOperations.map { it.order to TranscriptPiece.Device(it) })
+        val ordered = (messages.filter { it.text.isNotBlank() }.map { it.order to TranscriptPiece.Reply(it) } + steps.map { it.order to TranscriptPiece.Tool(it) } + deviceOperations.map { it.order to TranscriptPiece.Device(it) })
             .sortedWith(compareBy<Pair<Long, TranscriptPiece>>({ it.first }, { if (it.second is TranscriptPiece.Reply) 0 else 1 }))
         val result = mutableListOf<TranscriptEntry>()
         val run = mutableListOf<Step>()

@@ -105,6 +105,18 @@ class ConversationRulesTest {
         assertEquals(listOf("s3"), (entries[3] as TranscriptEntry.ToolRun).steps.map { it.id })
         assertEquals(4, entries.size)
     }
+    // On the tablet Pi wrote "\n\n\n" between tool calls: each blank reply split the tools into another collapsed group and
+    // added the list's spacing twice, so a turn showed a column of "已完成 N 个步骤" rows far apart with nothing between them.
+    @Test fun `blank replies between tool calls neither show nor split the tool group`() {
+        val turn = Turn(TurnId("t"), "生成反色图", null, ExecutionPhase.SUCCEEDED,
+            messages = listOf(Message("a", "\n\n\n", 1), Message("b", " \n", 3), Message("c", "完成了", 5)),
+            steps = listOf(Step.Command("s1", "ls", "ok", "SUCCEEDED", 0), Step.Command("s2", "node a.js", "ok", "SUCCEEDED", 2),
+                Step.Command("s3", "file out.png", "ok", "SUCCEEDED", 4)))
+        val entries = turn.transcript()
+        assertEquals(listOf("s1", "s2", "s3"), (entries[0] as TranscriptEntry.ToolRun).steps.map { it.id })
+        assertEquals("完成了", (entries[1] as TranscriptEntry.Reply).message.text)
+        assertEquals(2, entries.size)
+    }
     @Test fun `last reply in the turn is the only place for reply actions`() {
         val turn = Turn(TurnId("t"), "任务", null, ExecutionPhase.SUCCEEDED,
             messages = listOf(Message("a", "中间说明", 0), Message("b", "最终回复", 2)),

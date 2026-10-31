@@ -630,6 +630,8 @@ class RoomConversationStoreTest {
         repository.recordSubmission(turn, Submission.Accepted(ExecutionId(turn.turnId.value)))
         val failed = state { it.selected?.turns?.singleOrNull()?.failure != null }.selected!!.turns.single()
         assertEquals(ExecutionPhase.SUCCEEDED, failed.phase)
+        // Its reply is not here yet, which is not the same as no reply.
+        assertNull(failed.progress)
         assertFalse(failed.occupied)
         runtime.artifactBodies[ref] = "recovered output".toByteArray()
         val recovered = state { it.selected?.turns?.singleOrNull()?.let { t -> t.messages.singleOrNull()?.text == "recovered output" && t.failure == null } == true }.selected!!.turns.single()
@@ -645,13 +647,17 @@ class RoomConversationStoreTest {
         val turn = (repository.prepareTurn(c.id, TurnId("no-reply")) as PrepareTurnResult.Prepared).turn
         runtime.admit(turn)
         val thought = ResourceRef("no-reply/0")
+        val newlines = ResourceRef("no-reply/1")
         runtime.artifactBodies[thought] = "reading files".toByteArray()
+        // Pi's newlines between tool calls are not a reply.
+        runtime.artifactBodies[newlines] = "\n\n\n".toByteArray()
         runtime.snapshots[turn.turnId.value] = runtime.snapshots.getValue(turn.turnId.value).copy(phase = RunPhase.SUCCEEDED,
+            outputSegments = listOf(OutputSegment("pi-1-1", 1, newlines)),
             steps = listOf(ToolSnapshot("think", StepBody.Thinking, ToolOutcome.SUCCEEDED, listOf(OutputSegment("tool:think", 0, thought)), 0)),
             terminalEvidence = TerminalEvidence(true, 0))
         repository.recordSubmission(turn, Submission.Accepted(ExecutionId(turn.turnId.value)))
-        val silent = state { it.selected?.turns?.singleOrNull()?.phase == ExecutionPhase.SUCCEEDED }.selected!!.turns.single()
-        assertTrue(silent.messages.isEmpty())
+        val silent = state { it.selected?.turns?.singleOrNull()?.progress != null }.selected!!.turns.single()
+        assertTrue(silent.messages.all { it.text.isBlank() })
         assertEquals(com.github.ytlog.mobby.android.conversation.domain.ProgressNotice.NO_REPLY, silent.progress)
         assertNull(silent.failure)
     }
