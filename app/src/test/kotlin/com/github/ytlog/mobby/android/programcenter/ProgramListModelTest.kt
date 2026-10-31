@@ -59,6 +59,14 @@ class ProgramListModelTest {
         assertEquals("screen.click", purposeLabel("screen.click", Scope(), emptyList()))
     }
 
+    /** On the tablet the program page listed the AI permission, its switch and the global switch as the raw id "ai.call". */
+    @Test fun `permission and switch rows name capabilities in words`() {
+        assertEquals(AppStrings.purposeAiCall, capabilityName("ai.call"))
+        assertEquals(AppStrings.purposeNetAny, capabilityName("net.http"))
+        assertEquals(AppStrings.purposeScheduleAny, capabilityName("time.schedule"))
+        assertEquals("screen.click", capabilityName("screen.click"))
+    }
+
     @Test fun `pending programs say whether they are new, updated or broken`() {
         assertEquals(StatusLine(AppStrings.pendingNew), readyStatus(null, 3))
         assertEquals(StatusLine(AppStrings.pendingUpdateAsks(1)), readyStatus("1.0.0", 1))

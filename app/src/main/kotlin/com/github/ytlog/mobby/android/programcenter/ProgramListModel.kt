@@ -58,6 +58,13 @@ internal fun purposeLabel(capability: String, scope: Scope, schedules: List<Json
     else -> capability
 }
 
+/** A capability's name without its scope, for permission rows, switches and event sources. */
+internal fun capabilityName(capability: String): String = when (capability) {
+    "net.http" -> AppStrings.purposeNetAny
+    "time.schedule" -> AppStrings.purposeScheduleAny
+    else -> purposeLabel(capability, Scope(), emptyList())
+}
+
 private val USER_STOPS = setOf("paused", "stopped_by_user", "program_updated", "program_deleted", "stop_all")
 
 /**

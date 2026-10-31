@@ -35,6 +35,7 @@ internal fun RuntimeError.message(): String = when (code) {
     ErrorCode.INCOMPATIBLE_VERSION -> AppStrings.incompatibleRuntimeApiUpdateTheApp
     ErrorCode.NOT_FOUND -> AppStrings.requestWasNotAcceptedYouCanSubmitItAgain
     ErrorCode.PROTOCOL_ERROR -> AppStrings.agentFailedOrReturnedAnIncompleteProtocolResponseExpand
+    ErrorCode.OUTPUT_TRUNCATED -> AppStrings.replyStoppedAtTheModelOutputLimit
 }
 internal fun RunPhase.domain(): ExecutionPhase = ExecutionPhase.valueOf(if (this == RunPhase.STARTING) "ACCEPTED" else name)
 internal fun RuntimeError.failure() = when (code) {

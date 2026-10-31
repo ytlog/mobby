@@ -115,7 +115,11 @@ class ProtocolDecoder(private val agent: AgentId, private val requestedOutput: R
                 add(AgentFact.Diagnostic("error", value.text("errorMessage") ?: "Pi compaction aborted"))
             }
             "agent_settled" -> when {
-                piStopReason != "stop" -> add(AgentFact.Completed(false, if (piStopReason == "aborted") ErrorCode.INTERRUPTED else ErrorCode.PROTOCOL_ERROR))
+                piStopReason != "stop" -> add(AgentFact.Completed(false, when (piStopReason) {
+                    "aborted" -> ErrorCode.INTERRUPTED
+                    "length" -> ErrorCode.OUTPUT_TRUNCATED
+                    else -> ErrorCode.PROTOCOL_ERROR
+                }))
                 requestedOutput == RequestedOutput.SKILL_PROPOSAL -> addAll(finishSkill(skillResult))
                 else -> add(AgentFact.Completed(true))
             }

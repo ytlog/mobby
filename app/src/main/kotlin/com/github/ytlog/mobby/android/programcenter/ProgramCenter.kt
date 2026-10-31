@@ -287,13 +287,13 @@ private fun shortTime(millis: Long): String {
                     SettingsGroup(AppStrings.requestedPermissions) {
                         preview.pkg.permissions.forEachIndexed { index, request ->
                             if (index > 0) GroupDivider()
-                            Line("${request.capability} · ${if (request.required) AppStrings.required else AppStrings.optional}",
+                            Line("${capabilityName(request.capability)} · ${if (request.required) AppStrings.required else AppStrings.optional}",
                                 listOfNotNull(scopeSummary(context, request.scope).ifEmpty { null },
                                     AppStrings.needsYourGrant.takeIf { request.capability in preview.needsNewGrant }).joinToString(" · "))
                         }
                     }
                     if (manifest.subscriptions.isNotEmpty()) SettingsGroup(AppStrings.subscribedEvents) {
-                        manifest.subscriptions.forEach { Line(it.event, "${it.filter} → ${it.handler}") }
+                        manifest.subscriptions.forEach { Line(capabilityName(it.event), "${it.filter} → ${it.handler}") }
                     }
                     SettingsCaption(listOfNotNull(AppStrings.versionLabel(manifest.version), preview.installedVersion?.let(AppStrings::updatingFrom),
                         AppStrings.fileCount(preview.pkg.files.size)).joinToString(" · "))
@@ -359,7 +359,7 @@ private fun shortTime(millis: Long): String {
         if (program.permissions.any { it.capability == ProgramPlatform.AI_CALL }) AiModelSection(platform, program.id)
         if (program.requests.isNotEmpty()) SettingsGroup(AppStrings.pendingRequests) {
             program.requests.forEach { request ->
-                Line(request.capability, scopeSummary(context, request.scope))
+                Line(capabilityName(request.capability), scopeSummary(context, request.scope))
                 Row(Modifier.padding(horizontal = 8.dp)) {
                     TextButton(onClick = { scope.launch { platform.resolveRequest(request, program.id, true) } }) { Text(AppStrings.approve) }
                     TextButton(onClick = { scope.launch { platform.resolveRequest(request, program.id, false) } }) { Text(AppStrings.decline) }
@@ -376,7 +376,7 @@ private fun shortTime(millis: Long): String {
         if (program.subscriptions.isNotEmpty()) SettingsGroup(AppStrings.subscribedEvents) {
             program.subscriptions.forEachIndexed { index, subscription ->
                 if (index > 0) GroupDivider()
-                Line("${subscription.event} → ${subscription.handler}", listOf(
+                Line("${capabilityName(subscription.event)} → ${subscription.handler}", listOf(
                     subscription.filter.toString(),
                     if (subscription.active) AppStrings.subscriptionActive else AppStrings.subscriptionInactive,
                     subscription.lastTriggeredAt?.let { AppStrings.triggered(subscription.triggerCount, formatTime(it)) } ?: AppStrings.neverTriggered,
@@ -411,10 +411,10 @@ private fun shortTime(millis: Long): String {
 
 @Composable private fun PermissionEditor(permission: PermissionView, save: (Boolean, Scope?, Long?) -> Unit) {
     val context = LocalContext.current
-    Line("${permission.capability} · ${if (permission.required) AppStrings.required else AppStrings.optional}",
+    Line("${capabilityName(permission.capability)} · ${if (permission.required) AppStrings.required else AppStrings.optional}",
         listOfNotNull(permissionLabel(permission.state), permission.expiresAt?.let { AppStrings.expiresAt(formatTime(it)) }).joinToString(" · "),
         error = permission.state != com.github.ytlog.mobby.android.programs.permission.PermissionState.GRANTED)
-    SettingsToggle(permission.capability, permission.enabled) { save(it, null, permission.expiresAt) }
+    SettingsToggle(capabilityName(permission.capability), permission.enabled) { save(it, null, permission.expiresAt) }
     val requested = permission.requested
     val granted = permission.granted
     fun choose(picked: Set<String>?, item: String, rebuild: (Set<String>) -> Scope) {
@@ -502,7 +502,7 @@ internal fun configKeyboard(type: ConfigType?) = when (type) {
         SettingsGroup(AppStrings.globalSwitches) {
             capabilities.filterNot { it.implicit }.forEachIndexed { index, capability ->
                 if (index > 0) GroupDivider()
-                SettingsToggle(capability.id, switches[capability.id] ?: true) { scope.launch { platform.setSwitch(capability.id, it) } }
+                SettingsToggle(capabilityName(capability.id), switches[capability.id] ?: true) { scope.launch { platform.setSwitch(capability.id, it) } }
             }
         }
         SettingsCaption(AppStrings.globalSwitchNote)
@@ -510,7 +510,7 @@ internal fun configKeyboard(type: ConfigType?) = when (type) {
             capabilities.filterNot { it.implicit }.forEachIndexed { index, capability ->
                 if (index > 0) GroupDivider()
                 val holders = programs.mapNotNull { p -> p.permissions.firstOrNull { it.capability == capability.id && it.enabled }?.let { p to it } }
-                Line(capability.id, if (holders.isEmpty()) AppStrings.heldByNone
+                Line(capabilityName(capability.id), if (holders.isEmpty()) AppStrings.heldByNone
                     else AppStrings.heldBy(holders.joinToString { (p, perm) -> "${p.name}（${permissionLabel(perm.state)}）" }))
             }
         }
@@ -519,12 +519,12 @@ internal fun configKeyboard(type: ConfigType?) = when (type) {
             programs.forEachIndexed { index, program ->
                 if (index > 0) GroupDivider()
                 Line("${program.name} · ${availabilityLabel(program.availability)}",
-                    program.permissions.joinToString("\n") { "${it.capability}: ${permissionLabel(it.state)}" })
+                    program.permissions.joinToString("\n") { "${capabilityName(it.capability)}: ${permissionLabel(it.state)}" })
             }
         }
         SettingsGroup(AppStrings.bySource) {
             programs.flatMap { p -> p.subscriptions.map { p to it } }.groupBy { it.second.event }.forEach { (event, items) ->
-                Line(event, items.joinToString("\n") { (p, s) ->
+                Line(capabilityName(event), items.joinToString("\n") { (p, s) ->
                     "${p.name} · ${s.id.substringAfter('/')} · ${if (s.active) AppStrings.subscriptionActive else AppStrings.subscriptionInactive}"
                 })
             }

@@ -106,6 +106,10 @@ class PiRpcSessionTest {
             decoder.decode("""{"type":"message_end","message":{"role":"assistant","stopReason":"$reason","content":[]}}""")
             assertFalse(decoder.decode("""{"type":"agent_settled"}""").filterIsInstance<AgentFact.Completed>().single().success)
         }
+        // On the tablet a free model hit its output limit and the chat only said the protocol was incomplete.
+        val cut = ProtocolDecoder(AgentId.PI)
+        cut.decode("""{"type":"message_end","message":{"role":"assistant","stopReason":"length","content":[]}}""")
+        assertEquals(ErrorCode.OUTPUT_TRUNCATED, cut.decode("""{"type":"agent_settled"}""").filterIsInstance<AgentFact.Completed>().single().error)
         val decoder = ProtocolDecoder(AgentId.PI)
         decoder.decode("""{"type":"message_end","message":{"role":"assistant","stopReason":"error","content":[]}}""")
         decoder.decode("""{"type":"agent_end","willRetry":true,"messages":[]}""")
