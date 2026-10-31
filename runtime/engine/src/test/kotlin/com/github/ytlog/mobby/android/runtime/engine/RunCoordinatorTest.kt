@@ -170,6 +170,27 @@ class RunCoordinatorTest {
         assertEquals("t".repeat(3000), snapshot.steps.single().output.sortedBy { it.chunkIndex }.joinToString("") { output.content.getValue(it.ref) })
         assertTrue(snapshot.outputSegments.size + snapshot.steps.single().output.size < 10)
     }
+    // stderr still took one segment per line after replies were merged, so a chatty CLI could use up the run's segments.
+    @Test fun `stderr lines are merged with their line breaks and leave room for the reply`() = runTest {
+        val journal = MemoryJournal(); val output = MemoryOutput()
+        val runtime = RunCoordinator(backgroundScope, environment, process { _, _, emit ->
+            repeat(3000) { emit("warning $it", true) }
+            emit("""{"type":"item.completed","item":{"id":"m","type":"agent_message","text":"done"}}""", false)
+            emit("""{"type":"turn.completed"}""", false)
+            ProcessResult(0, true)
+        }, journal, output)
+        runtime.recover()
+        val id = (runtime.submit(request()) as SubmitResult.Accepted).runId
+        advanceTimeBy(5_000); runCurrent()
+        val snapshot = journal.states.getValue(id)
+        assertEquals(RunPhase.SUCCEEDED, snapshot.phase)
+        assertNull(snapshot.progress)
+        val (diagnostics, replies) = snapshot.outputSegments.sortedBy { it.chunkIndex }.partition { it.messageId == "diagnostic:stderr" }
+        assertEquals((0 until 3000).joinToString("\n") { "warning $it" }, diagnostics.joinToString("\n") { output.content.getValue(it.ref) })
+        assertTrue(diagnostics.size < 10)
+        assertEquals(listOf("done"), replies.map { output.content.getValue(it.ref) })
+        assertEquals(diagnostics.size, journal.events.count { it.runId == id && it.payload is RuntimeEvent.Unknown })
+    }
     @Test fun `native permission request is durable and survives observer reconnect`() = runTest {
         val journal = MemoryJournal()
         val runtime = RunCoordinator(backgroundScope, environment, process { _, signal, emit ->

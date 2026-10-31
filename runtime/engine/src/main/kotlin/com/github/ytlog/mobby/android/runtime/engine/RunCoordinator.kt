@@ -273,28 +273,29 @@ class RunCoordinator(
         // Streamed fragments of one message or tool output are merged into one segment until another fact arrives, the
         // buffer grows large or the flush timer fires. One segment per fragment used up the run's segments in long Pi
         // turns and everything after them was dropped, the final reply included. Callers hold the mutex.
-        class Pending(val messageId: String, val stepId: String?, val separator: String, val text: StringBuilder)
+        class Pending(val messageId: String, val stepId: String?, val separator: String, val text: StringBuilder, val diagnostic: String? = null)
         var pending: Pending? = null
         suspend fun flushLocked() {
             val buffered = pending ?: return
             pending = null
             val part = segment(buffered.messageId, buffered.text.toString()) ?: return
             val state = journal.snapshot(id)!!
-            if (buffered.stepId == null) append(state, RuntimeEvent.AssistantDelta(part), state.copy(outputSegments = state.outputSegments + part))
+            if (buffered.diagnostic != null) append(state, RuntimeEvent.Unknown(buffered.diagnostic, part.ref), state.copy(outputSegments = state.outputSegments + part))
+            else if (buffered.stepId == null) append(state, RuntimeEvent.AssistantDelta(part), state.copy(outputSegments = state.outputSegments + part))
             else append(state, RuntimeEvent.ToolOutput(buffered.stepId, part),
                 state.copy(steps = state.steps.map { if (it.stepId == buffered.stepId) it.copy(output = it.output + part) else it }))
         }
-        suspend fun buffer(messageId: String, stepId: String?, separator: String, text: String) {
+        suspend fun buffer(messageId: String, stepId: String?, separator: String, text: String, diagnostic: String? = null) {
             val current = pending
             if (current != null && current.messageId == messageId) current.text.append(separator).append(text)
-            else { flushLocked(); pending = Pending(messageId, stepId, separator, StringBuilder(text)) }
+            else { flushLocked(); pending = Pending(messageId, stepId, separator, StringBuilder(text), diagnostic) }
             if (pending!!.text.length >= MERGED_SEGMENT_CHARS) flushLocked()
         }
         suspend fun emitFact(fact: AgentFact) = mutex.withLock {
             if (!healthy) return@withLock
             if (journal.snapshot(id)?.phase?.terminal != false) return@withLock
             // Anything but streamed text or tool output lands after what is buffered, keeping the order the agent produced.
-            if (fact !is AgentFact.Text && fact !is AgentFact.Tool) flushLocked()
+            if (fact !is AgentFact.Text && fact !is AgentFact.Tool && fact !is AgentFact.Diagnostic) flushLocked()
             val old = journal.snapshot(id)!!
             when (fact) {
                 is AgentFact.Approval -> {
@@ -340,9 +341,8 @@ class RunCoordinator(
                         append(state, RuntimeEvent.ToolFinished(fact.id, fact.outcome), state.copy(steps = state.steps.map { if (it.stepId == fact.id) it.copy(outcome = fact.outcome) else it }))
                     }
                 }
-                is AgentFact.Diagnostic -> segment("diagnostic:${fact.kind}", fact.text)?.let { part ->
-                    append(old, RuntimeEvent.Unknown(fact.kind, part.ref), old.copy(outputSegments = old.outputSegments + part))
-                }
+                // Diagnostics such as stderr arrive a line at a time; readers join their segments with line breaks too.
+                is AgentFact.Diagnostic -> buffer("diagnostic:${fact.kind}", null, "\n", fact.text, fact.kind)
                 is AgentFact.Completed -> {
                     if (protocolSuccess != false) protocolSuccess = fact.success
                     if (fact.error != null) protocolError = fact.error

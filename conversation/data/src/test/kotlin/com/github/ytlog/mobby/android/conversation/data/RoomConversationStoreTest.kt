@@ -661,6 +661,24 @@ class RoomConversationStoreTest {
         assertEquals(com.github.ytlog.mobby.android.conversation.domain.ProgressNotice.NO_REPLY, silent.progress)
         assertNull(silent.failure)
     }
+    // stderr arrives a line at a time and is stored in merged segments; joining them without a break ran lines together.
+    @Test fun `diagnostic segments are shown one line after another`() = runBlocking {
+        val c = state().selected!!.conversation
+        repository.editDraft(c.id, "fixture", 7, 7)
+        val turn = (repository.prepareTurn(c.id, TurnId("stderr")) as PrepareTurnResult.Prepared).turn
+        runtime.admit(turn)
+        val first = ResourceRef("stderr/0"); val second = ResourceRef("stderr/1"); val answer = ResourceRef("stderr/2")
+        runtime.artifactBodies[first] = "warning 1\nwarning 2".toByteArray()
+        runtime.artifactBodies[second] = "warning 3".toByteArray()
+        runtime.artifactBodies[answer] = "done".toByteArray()
+        runtime.snapshots[turn.turnId.value] = runtime.snapshots.getValue(turn.turnId.value).copy(phase = RunPhase.SUCCEEDED,
+            outputSegments = listOf(OutputSegment("diagnostic:stderr", 0, first), OutputSegment("diagnostic:stderr", 1, second), OutputSegment("m", 2, answer)),
+            terminalEvidence = TerminalEvidence(true, 0))
+        repository.recordSubmission(turn, Submission.Accepted(ExecutionId(turn.turnId.value)))
+        val shown = state { it.selected?.turns?.singleOrNull()?.let { t -> t.diagnostics.singleOrNull()?.text?.contains("warning 3") == true && t.messages.singleOrNull()?.text == "done" } == true }.selected!!.turns.single()
+        assertEquals("warning 1\nwarning 2\nwarning 3", shown.diagnostics.single().text)
+        assertEquals("done", shown.messages.single().text)
+    }
     @Test fun `terminal output interrupted by app closure resumes independently after reopening`() = runBlocking {
         val c = state().selected!!.conversation
         repository.editDraft(c.id, "fixture", 7, 7)

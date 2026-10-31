@@ -20,7 +20,8 @@ internal class MessageManager {
                 previousExpired = row.expired
             }
         }
-        fun List<OutputSegment>.messages() = sortedBy { it.chunkIndex }.groupBy { it.messageId }.map { (id, parts) -> Message(id, parts.renderSegments(), parts.minOf { it.chunkIndex }) }
+        fun List<OutputSegment>.messages(separator: String = "") = sortedBy { it.chunkIndex }.groupBy { it.messageId }
+            .map { (id, parts) -> Message(id, parts.renderSegments(separator), parts.minOf { it.chunkIndex }) }
         val pendingOrder = ((snapshot?.outputSegments.orEmpty() + snapshot?.steps.orEmpty().flatMap { it.output }).maxOfOrNull { it.chunkIndex } ?: -1L) + 1
         var nextOrder = pendingOrder
         Turn(TurnId(id), userText, runId?.let(::ExecutionId), snapshot?.let { RunStateRules.displayedPhase(it).domain() },
@@ -39,7 +40,8 @@ internal class MessageManager {
                     is StepBody.Action -> Step.Action(step.stepId, body.name, body.detail, text, outcome, order)
                 }
             }.orEmpty(),
-            snapshot?.outputSegments?.filter { it.messageId.startsWith("diagnostic:") }?.messages().orEmpty(),
+            // Diagnostics such as stderr are lines; their segments are joined the way the runtime merged them.
+            snapshot?.outputSegments?.filter { it.messageId.startsWith("diagnostic:") }?.messages("\n").orEmpty(),
             when (error) {
                 OutputCache.VERIFICATION_WARNING -> listOfNotNull(snapshot?.terminalEvidence?.error?.message(), AppStrings.cannotVerifyHistoricalOutputYetCachePreservedReconnectAnd).joinToString("\n")
                 AppStrings.OUTPUT_SYNC_MARKER -> listOfNotNull(snapshot?.terminalEvidence?.error?.message(), AppStrings.outputSyncRetrying).joinToString("\n")
