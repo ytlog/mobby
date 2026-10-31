@@ -53,7 +53,8 @@ sealed interface StopResult {
     data class Rejected(val reason: Failure) : StopResult
 }
 enum class ExecutionPhase { ACCEPTED, RUNNING, AWAITING_APPROVAL, CANCELLING, SUCCEEDED, FAILED, CANCELLED, TIMED_OUT, INTERRUPTED, OUTCOME_UNKNOWN }
-enum class ProgressNotice { OUTPUT_TRUNCATED }
+/** [NO_REPLY]: the run succeeded but the agent left no reply text. */
+enum class ProgressNotice { OUTPUT_TRUNCATED, NO_REPLY }
 data class ExecutionFact(val executionId: ExecutionId, val phase: ExecutionPhase)
 sealed interface PermissionSubject {
     data class Command(val command: String) : PermissionSubject

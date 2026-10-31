@@ -615,6 +615,8 @@ open class StringCatalog(private val fixedLanguage: AppLanguage? = null) {
     val image get() = text("[图片：", "[Image:")
     val cannotOpenThisLink get() = text("无法打开此链接", "Cannot open this link")
     fun open2(arg0: Any?) = text("打开 {0}", "Open {0}", arg0)
+    val agentEndedWithoutReply get() = text("Agent 结束了这一轮，但没有给出回复文字；可展开步骤查看它做了什么，或发送「继续」让它接着完成",
+        "The agent ended this turn without any reply text; open the steps to see what it did, or send \"continue\" to have it finish")
     val outputExceedsTheRetentionLimitSubsequentContentWasTruncated get() = text("输出超过保留上限，后续正文已截断", "Output exceeds the retention limit; subsequent content was truncated")
     val awaitingAcceptance get() = text("等待接纳", "Awaiting acceptance")
     val preparing get() = text("准备执行", "Preparing")

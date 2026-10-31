@@ -933,6 +933,11 @@ internal fun Turn.showsSeparateActivity(): Boolean = occupied || pending
                         Text(AppStrings.previewValidateAndSaveTo(candidate.agent.label()))
                     } }
                 } }
+                // Shown outside the step group, which starts collapsed: a turn with no reply has nothing else to read.
+                if (turn.progress == ProgressNotice.NO_REPLY) item(key = "no-reply:${turn.id.value}") {
+                    Text(AppStrings.agentEndedWithoutReply, Modifier.padding(horizontal = 14.dp), style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 if (turn.creatingSkill && !turn.occupied && turn.skillProposals.isEmpty() && !turn.proposalsLoading) item(key = "creator:${turn.id.value}") {
                     Text(AppStrings.noSkillDraftToSaveThisTurnContinueDescribing, style = MaterialTheme.typography.bodySmall)
                 }

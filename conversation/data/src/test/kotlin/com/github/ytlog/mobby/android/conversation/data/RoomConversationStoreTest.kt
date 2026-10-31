@@ -634,7 +634,26 @@ class RoomConversationStoreTest {
         runtime.artifactBodies[ref] = "recovered output".toByteArray()
         val recovered = state { it.selected?.turns?.singleOrNull()?.let { t -> t.messages.singleOrNull()?.text == "recovered output" && t.failure == null } == true }.selected!!.turns.single()
         assertNull(recovered.failure)
+        assertNull(recovered.progress)
         assertEquals(ExecutionPhase.SUCCEEDED, recovered.phase)
+    }
+    // On the tablet a free model wrote a fake tool call into its thinking and Pi ended the turn with no reply: the chat
+    // only said how many steps had finished, so the user could not tell the agent never answered.
+    @Test fun `a successful run without reply text says so and a run with a reply does not`() = runBlocking {
+        val c = state().selected!!.conversation
+        repository.editDraft(c.id, "fixture", 7, 7)
+        val turn = (repository.prepareTurn(c.id, TurnId("no-reply")) as PrepareTurnResult.Prepared).turn
+        runtime.admit(turn)
+        val thought = ResourceRef("no-reply/0")
+        runtime.artifactBodies[thought] = "reading files".toByteArray()
+        runtime.snapshots[turn.turnId.value] = runtime.snapshots.getValue(turn.turnId.value).copy(phase = RunPhase.SUCCEEDED,
+            steps = listOf(ToolSnapshot("think", StepBody.Thinking, ToolOutcome.SUCCEEDED, listOf(OutputSegment("tool:think", 0, thought)), 0)),
+            terminalEvidence = TerminalEvidence(true, 0))
+        repository.recordSubmission(turn, Submission.Accepted(ExecutionId(turn.turnId.value)))
+        val silent = state { it.selected?.turns?.singleOrNull()?.phase == ExecutionPhase.SUCCEEDED }.selected!!.turns.single()
+        assertTrue(silent.messages.isEmpty())
+        assertEquals(com.github.ytlog.mobby.android.conversation.domain.ProgressNotice.NO_REPLY, silent.progress)
+        assertNull(silent.failure)
     }
     @Test fun `terminal output interrupted by app closure resumes independently after reopening`() = runBlocking {
         val c = state().selected!!.conversation

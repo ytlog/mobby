@@ -24,6 +24,7 @@ private val LocalToolCodeActionScale = staticCompositionLocalOf { 1f }
 
 internal fun ProgressNotice.label() = when (this) {
     ProgressNotice.OUTPUT_TRUNCATED -> AppStrings.outputExceedsTheRetentionLimitSubsequentContentWasTruncated
+    ProgressNotice.NO_REPLY -> AppStrings.agentEndedWithoutReply
 }
 
 internal fun AgentId.label() = when (this) {
@@ -131,7 +132,7 @@ internal fun stepKindIcon(kind: String): AppGlyph = when (kind.lowercase()) {
                 AppIcon(if (expanded) AppIcons.ChevronUp else AppIcons.ChevronRight, if (expanded) AppStrings.expanded else AppStrings.collapsed, Modifier.size(18.dp), tint = ink)
             }
             if (expanded) Column(Modifier.padding(start = 2.dp, end = 8.dp, bottom = 8.dp)) {
-                if (showExtras) turn.progress?.let { Text(it.label(), Modifier.padding(horizontal = 12.dp, vertical = 2.dp), style = MaterialTheme.typography.bodySmall, color = ink) }
+                if (showExtras) turn.progress?.takeIf { it != ProgressNotice.NO_REPLY }?.let { Text(it.label(), Modifier.padding(horizontal = 12.dp, vertical = 2.dp), style = MaterialTheme.typography.bodySmall, color = ink) }
                 steps.forEach { step -> key(step.id) {
                     val open = step.id in turn.expandedSteps
                     val view = remember(step, LanguagePreferences.current) { ToolPresentation.present(step) }
