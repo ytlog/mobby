@@ -2,15 +2,15 @@
   "packages": [
     {
       "name": "c-ares",
-      "version": "1.34.8",
-      "url": "https://packages.termux.dev/apt/termux-main/pool/main/c/c-ares/c-ares_1.34.8_aarch64.deb",
-      "sha256": "7681fc23e822d7988ba8b2adf3468f93ae68f724dda365cff1385096a9fa87e6"
+      "version": "1.34.9",
+      "url": "https://packages.termux.dev/apt/termux-main/pool/main/c/c-ares/c-ares_1.34.9_aarch64.deb",
+      "sha256": "623d84855e176f3f2a415d24c0e1d2f529356f4b5439bb3313e6d7ff0da4585c"
     },
     {
       "name": "ca-certificates",
-      "version": "1:2026.09.25",
-      "url": "https://packages.termux.dev/apt/termux-main/pool/main/c/ca-certificates/ca-certificates_1:2026.09.25_all.deb",
-      "sha256": "57fab24bf4561bfdd35afe71bc1929914e51c35458cfd1fca2b15e54bc8df7af"
+      "version": "1:2026.10.20-1",
+      "url": "https://packages.termux.dev/apt/termux-main/pool/main/c/ca-certificates/ca-certificates_1:2026.10.20-1_all.deb",
+      "sha256": "ab8a7fe63293b455c02399ee125eb8a0041e430ccfdf89a5be8317522fdf9107"
     },
     {
       "name": "git",
@@ -32,15 +32,15 @@
     },
     {
       "name": "libcurl",
-      "version": "8.22.0",
-      "url": "https://packages.termux.dev/apt/termux-main/pool/main/libc/libcurl/libcurl_8.22.0_aarch64.deb",
-      "sha256": "e780d925d977c32a3cfe6a2c7d340f0726618786deee98b0cb8b601efb93a8c9"
+      "version": "8.23.0",
+      "url": "https://packages.termux.dev/apt/termux-main/pool/main/libc/libcurl/libcurl_8.23.0_aarch64.deb",
+      "sha256": "2011bb9709261bb3d5ecaa6672faa333be14cf48ad4af37031e3e365309557ac"
     },
     {
       "name": "libexpat",
-      "version": "2.8.5",
-      "url": "https://packages.termux.dev/apt/termux-main/pool/main/libe/libexpat/libexpat_2.8.5_aarch64.deb",
-      "sha256": "3b2c9b061fa890b69b88d2f5dd993efba902d678fe8e1990268892d1faf15e5e"
+      "version": "2.9.0",
+      "url": "https://packages.termux.dev/apt/termux-main/pool/main/libe/libexpat/libexpat_2.9.0_aarch64.deb",
+      "sha256": "f8a104e8227c9c181f6818658a3ee2fa4c107fac94219b068144fc6591086cdb"
     },
     {
       "name": "libiconv",
@@ -74,9 +74,9 @@
     },
     {
       "name": "libsqlite",
-      "version": "3.53.4",
-      "url": "https://packages.termux.dev/apt/termux-main/pool/main/libs/libsqlite/libsqlite_3.53.4_aarch64.deb",
-      "sha256": "0e909ce0d50fe123305446cd22e0c5edf535d40344b9b065fbdcdee52f53198d"
+      "version": "3.54.1",
+      "url": "https://packages.termux.dev/apt/termux-main/pool/main/libs/libsqlite/libsqlite_3.54.1_aarch64.deb",
+      "sha256": "0856cac8cc87f6e112f2eef4fcac6ad5cb08209ecb7cc260f997874fc186a3c0"
     },
     {
       "name": "libssh2",
@@ -92,15 +92,15 @@
     },
     {
       "name": "nodejs-lts",
-      "version": "24.18.0-1",
-      "url": "https://packages.termux.dev/apt/termux-main/pool/main/n/nodejs-lts/nodejs-lts_24.18.0-1_aarch64.deb",
-      "sha256": "490f4d08c45b25a7ea7db6ee466ebb3ee61f07083260b85332704ed018f59a87"
+      "version": "24.22.1",
+      "url": "https://packages.termux.dev/apt/termux-main/pool/main/n/nodejs-lts/nodejs-lts_24.22.1_aarch64.deb",
+      "sha256": "c4aae57009e4398613807d77ff395026455fe03b6d9d8a29f929212b04f74719"
     },
     {
       "name": "npm",
-      "version": "11.20.0",
-      "url": "https://packages.termux.dev/apt/termux-main/pool/main/n/npm/npm_11.20.0_all.deb",
-      "sha256": "a2775653a0626749138ccd6e37a7b63239f36a9e3c62a9e6740818ca4b2d088b"
+      "version": "12.2.1",
+      "url": "https://packages.termux.dev/apt/termux-main/pool/main/n/npm/npm_12.2.1_all.deb",
+      "sha256": "2898344f7f54a44ead5926f0e03e958bee00e839c6fd84a47d54278ecb4a13e6"
     },
     {
       "name": "openssl",
