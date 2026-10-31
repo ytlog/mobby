@@ -186,6 +186,22 @@ class ExecutionFlowTest {
         compose.onNodeWithText("完成 · 1 个步骤").assertDoesNotExist()
     }
 
+    // The truncation notice was drawn only inside the expanded step group; a finished run starts collapsed, so it was hidden.
+    @Test fun `a turn notice is shown under the turn and not inside the collapsed step group`() {
+        val truncated = empty.copy(steps = listOf(step), progress = ProgressNotice.OUTPUT_TRUNCATED)
+        val shown = mutableStateOf(truncated)
+        compose.setContent { MaterialTheme { androidx.compose.foundation.layout.Column {
+            ExecutionFlow(shown.value, vm()) { _, _ -> }
+            shown.value.progress?.let { TurnNotice(it) }
+        } } }
+        compose.onAllNodesWithText("输出超过保留上限，后续正文已截断").assertCountEquals(1)
+        compose.onNodeWithText("运行 ls").assertDoesNotExist()
+        // Opening the steps does not repeat it.
+        shown.value = truncated.copy(expandedSteps = setOf("tools:s1"))
+        compose.onNodeWithText("运行 ls").assertExists()
+        compose.onAllNodesWithText("输出超过保留上限，后续正文已截断").assertCountEquals(1)
+    }
+
     @Test fun `expanded steps list the readable tool title not the raw json`() {
         val open = empty.copy(steps = listOf(step), expandedSteps = setOf("tools:s1"))
         compose.setContent { MaterialTheme { ExecutionFlow(open, vm()) { _, _ -> } } }
