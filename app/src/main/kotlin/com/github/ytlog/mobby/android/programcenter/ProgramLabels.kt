@@ -44,6 +44,7 @@ internal fun runTriggerLabel(trigger: String) = when (trigger) {
     "schedule" -> AppStrings.triggerSchedule
     "share" -> AppStrings.triggerShare
     "shortcut" -> AppStrings.triggerShortcut
+    "screen" -> AppStrings.triggerScreen
     "dry_run" -> AppStrings.triggerDryRun
     else -> trigger
 }

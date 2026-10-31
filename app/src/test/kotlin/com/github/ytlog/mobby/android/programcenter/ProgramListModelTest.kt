@@ -56,7 +56,7 @@ class ProgramListModelTest {
     @Test fun `capabilities are described by what they let the program do`() {
         assertEquals(AppStrings.purposeNet("a.com, b.com"), purposeLabel("net.http", Scope(domains = setOf("b.com", "a.com")), emptyList()))
         assertEquals(AppStrings.purposeSchedule(AppStrings.everyMinutes(15)), purposeLabel("time.schedule", Scope(), listOf(every("PT15M"))))
-        assertEquals("screen.click", purposeLabel("screen.click", Scope(), emptyList()))
+        assertEquals("screen.tap", purposeLabel("screen.tap", Scope(), emptyList()))
     }
 
     /** On the tablet the program page listed the AI permission, its switch and the global switch as the raw id "ai.call". */
@@ -64,10 +64,13 @@ class ProgramListModelTest {
         assertEquals(AppStrings.purposeAiCall, capabilityName("ai.call"))
         assertEquals(AppStrings.purposeNetAny, capabilityName("net.http"))
         assertEquals(AppStrings.purposeWebSocketAny, capabilityName("net.websocket"))
+        assertEquals(AppStrings.purposeScreenClick(AppStrings.anyApp), purposeLabel("screen.click", Scope(packages = setOf("*")), emptyList()))
+        assertEquals(AppStrings.purposeScreenWindow(AppStrings.namedApps("com.a, com.b")), purposeLabel("screen.window", Scope(packages = setOf("com.b", "com.a")), emptyList()))
+        assertEquals(AppStrings.purposeScreenRead(AppStrings.anyApp), capabilityName("screen.read"))
         assertEquals(AppStrings.purposeWebSocket("live.example.com") + AppStrings.purposePlainWebSocket,
             purposeLabel("net.websocket", Scope(domains = setOf("live.example.com"), insecureHttp = true), emptyList()))
         assertEquals(AppStrings.purposeScheduleAny, capabilityName("time.schedule"))
-        assertEquals("screen.click", capabilityName("screen.click"))
+        assertEquals("screen.tap", capabilityName("screen.tap"))
     }
 
     @Test fun `pending programs say whether they are new, updated or broken`() {

@@ -27,6 +27,7 @@ import com.github.ytlog.mobby.android.programs.permission.*
 import com.github.ytlog.mobby.android.programs.program.*
 import com.github.ytlog.mobby.android.programs.run.ProgramProcessLauncher
 import com.github.ytlog.mobby.android.programs.run.RunSupervisor
+import com.github.ytlog.mobby.android.programs.screen.*
 import com.github.ytlog.mobby.android.programs.store.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -98,6 +99,8 @@ class ProgramPlatform internal constructor(
     private val ai: AiSettings? = null,
     /** The host's model gateways for `ai.call`; null where the host offers none. */
     val modelGateways: ModelGatewayPort? = null,
+    /** Window changes for `screen.window`; null where the host has no screen source. */
+    private val screenEvents: ScreenEventSource? = null,
     /** Open program sockets, closed when their run or page ends or their grant changes. */
     private val sockets: NetWebSocketCapability? = null,
     private val clock: () -> Long = System::currentTimeMillis,
@@ -114,7 +117,7 @@ class ProgramPlatform internal constructor(
     private val processes = launcher(File(layout.root, "logs"))
     internal val runs = RunSupervisor(scope, dao, processes, sdkDir, { server.port }, clock = clock, released = ::release)
     private val status = ProgramStatus(dao, gate, config)
-    internal val router = EventRouter(dao, status, runs, layout, schedules, clock)
+    internal val router = EventRouter(dao, status, runs, layout, schedules, clock, grantedScope = { programId, capability -> gate.snapshot.grant(programId, capability)?.granted })
     private val control = Mutex()
     private var expiry: Job? = null
     private val revision = MutableStateFlow(0)
@@ -148,6 +151,13 @@ class ProgramPlatform internal constructor(
         withContext(Dispatchers.IO) { server.start() }
         router.rebuild()
         ScheduleTarget.publish(router)
+        screenEvents?.wantContent(router.screenContentWanted())
+        screenEvents?.let { source ->
+            // One consumer keeps window changes in the order they happened; a backlog drops the oldest, which are stale anyway.
+            val changes = kotlinx.coroutines.channels.Channel<com.github.ytlog.mobby.android.device.ScreenChange>(64, kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST)
+            scope.launch { for (change in changes) router.screen(change) }
+            source.listen { change -> changes.trySend(change) }
+        }
         scheduleExpiry()
     }
 
@@ -157,7 +167,7 @@ class ProgramPlatform internal constructor(
             dataJson = buildJsonObject { put("message", message) }.toString()))
     }
 
-    internal fun stopServer() { if (::server.isInitialized) server.stop() }
+    internal fun stopServer() { screenEvents?.listen(null); if (::server.isInitialized) server.stop() }
 
 
     val programs: Flow<List<ProgramView>> = combine(
@@ -325,6 +335,7 @@ class ProgramPlatform internal constructor(
     private suspend fun refreshLocked(reason: String, programId: String?) {
         permissions.reload()
         router.rebuild()
+        screenEvents?.wantContent(router.screenContentWanted())
         sockets?.let { socket -> socket.recheck { caller, scope -> gate.check(caller, socket.descriptor, scope) is GateDecision.Allowed } }
         // A program that can no longer work stops now instead of at its next call.
         for (program in dao.programs()) {
@@ -411,9 +422,11 @@ class ProgramPlatform internal constructor(
                     KvCapability(dao, clock), FilesCapability(), sql, NetHttpCapability(secrets), sockets, SecretsCapability(secrets),
                     ConfigCapability(ConfigStore(dao, clock)), LogCapability(dao, clock), NotifyCapability(app, dao, openUi), ScheduleCapability(),
                     EntryCapability(EntryCapability.SHARE), EntryCapability(EntryCapability.SHORTCUT), AiCallCapability(models, ai),
-                ))
+                    ScreenWindowCapability(),
+                ) + SCREEN_CAPABILITIES.map { ScreenCapability(it, AndroidScreenPort(app)) })
             return ProgramPlatform(app, database, ProgramLayout(File(app.filesDir, "programs")), workspacePrograms, launcher, registry, secrets,
-                WorkManagerSchedules(app), sql, CoroutineScope(SupervisorJob() + Dispatchers.Default), ai, models, sockets, clock)
+                WorkManagerSchedules(app), sql, CoroutineScope(SupervisorJob() + Dispatchers.Default), ai, models,
+                screenEvents = AndroidScreenEvents, sockets = sockets, clock = clock)
         }
     }
 }

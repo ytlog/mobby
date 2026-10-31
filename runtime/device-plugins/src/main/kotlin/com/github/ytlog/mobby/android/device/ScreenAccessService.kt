@@ -37,8 +37,22 @@ class ScreenAccessService : AccessibilityService() {
         // The framework may create and bind the service before delivering its connection callback.
         instance = this
     }
-    override fun onServiceConnected() { instance = this }
-    override fun onAccessibilityEvent(event: android.view.accessibility.AccessibilityEvent?) = Unit
+    override fun onServiceConnected() {
+        instance = this
+        reportContent(ScreenEvents.wantContent)
+    }
+    override fun onAccessibilityEvent(event: android.view.accessibility.AccessibilityEvent?) {
+        event ?: return
+        ScreenEvents.observe(packageName, event.eventType, event.packageName?.toString(), event.className?.toString(), System.currentTimeMillis())
+    }
+
+    /** Content changes are frequent; they are asked for only while a program subscribes to them. */
+    internal fun reportContent(content: Boolean) {
+        val info = serviceInfo ?: return
+        val base = android.view.accessibility.AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or android.view.accessibility.AccessibilityEvent.TYPE_WINDOWS_CHANGED
+        info.eventTypes = if (content) base or android.view.accessibility.AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED else base
+        serviceInfo = info
+    }
     override fun onInterrupt() = Unit
     override fun onDestroy() {
         stay.drop()

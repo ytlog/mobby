@@ -11,7 +11,7 @@ import kotlin.coroutines.coroutineContext
 object ScreenOperation {
     var hideOverlay: () -> AutoCloseable = { AutoCloseable {} }
 
-    internal fun <T> run(checkActive: () -> Unit, action: suspend () -> T): T = runBlocking {
+    internal fun <T> run(checkActive: () -> Unit, action: suspend () -> T): T = ScreenCoordinator.chatAction { runBlocking {
         withTimeout(8_000) {
             withContext(Dispatchers.Main.immediate) {
                 coroutineContext.ensureActive()
@@ -23,5 +23,5 @@ object ScreenOperation {
                 }
             }
         }
-    }
+    } }
 }

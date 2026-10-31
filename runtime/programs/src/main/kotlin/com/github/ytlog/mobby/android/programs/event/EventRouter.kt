@@ -6,6 +6,7 @@ import com.github.ytlog.mobby.android.programs.program.ProgramLayout
 import com.github.ytlog.mobby.android.programs.program.ProgramStatus
 import com.github.ytlog.mobby.android.programs.run.RunSupervisor
 import com.github.ytlog.mobby.android.programs.run.RunTarget
+import com.github.ytlog.mobby.android.programs.screen.ScreenWindowCapability
 import com.github.ytlog.mobby.android.programs.store.ProgramsDao
 import com.github.ytlog.mobby.android.programs.store.SubscriptionRow
 import kotlinx.coroutines.sync.Mutex
@@ -34,6 +35,8 @@ class EventRouter(
     private val schedules: ScheduleBackend,
     private val clock: () -> Long,
     private val newId: () -> String = { UUID.randomUUID().toString() },
+    /** The scope a program holds for an event capability, e.g. the apps its `screen.window` grant covers. */
+    private val grantedScope: (programId: String, capability: String) -> com.github.ytlog.mobby.android.programs.permission.Scope? = { _, _ -> null },
 ) {
     private val lock = Mutex()
     @Volatile private var active: Map<String, SubscriptionRow> = emptyMap()
@@ -79,6 +82,21 @@ class EventRouter(
         val rows = active.values.filter { it.programId == programId && it.eventType == event }
         rows.forEach { deliver(it, payload, event.substringAfter('.')) }
         return rows.isNotEmpty()
+    }
+
+    /** A window change; each active `screen.window` subscription whose filter and granted apps include it receives it. */
+    suspend fun screen(change: com.github.ytlog.mobby.android.device.ScreenChange) {
+        for (row in active.values) {
+            if (row.eventType != ScreenWindowCapability.ID) continue
+            if (!ScreenWindowCapability.accepts(Json.parseToJsonElement(row.filterJson).jsonObject, change)) continue
+            if (grantedScope(row.programId, row.eventType)?.allowsPackage(change.packageName) != true) continue
+            deliver(row, ScreenWindowCapability.payload(change), "screen")
+        }
+    }
+
+    /** Whether some active subscription asks for content changes, which the screen source then reports. */
+    fun screenContentWanted() = active.values.any { row ->
+        row.eventType == ScreenWindowCapability.ID && (Json.parseToJsonElement(row.filterJson).jsonObject["content"] as? JsonPrimitive)?.booleanOrNull == true
     }
 
     /** Platform notices such as permission or config changes; only a live run receives them. */

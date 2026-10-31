@@ -223,10 +223,11 @@ SDK 不隐藏失败：缺权限、目标不唯一、超时、取消、效果不�
 | `clipboard.read`、`clipboard.write` | query、command | 复用；仅前台可用的限制如实报告 | 1 |
 | `location.current`、`sensors.sample` | query | 复用单次采样 | 1 |
 | `device.storage.*` | query、command | 复用授权目录与工作区内的读写 | 1 |
-| `screen.read` | query | 新增：当前窗口的包名、窗口类名和节点（viewId、类名、文字、描述、可点击、可见、按显示比例的边界），不截图 | 2 |
-| `screen.click` | command | 新增：在一次新鲜读取中按节点描述点击唯一目标；多个目标时拒绝 | 2 |
-| `screen.tap`、`screen.type`、`screen.back`、`screen.home` | command | 复用现有动作 | 2 |
-| `screen.window` | event | 新增：窗口状态和内容变化，见 [屏幕事件](#52-屏幕事件) | 2 |
+| `screen.read` | query | 已实现：当前窗口的包名、窗口类名和节点（viewId、类名、文字、描述、可点击、可见、按显示比例的边界），不截图 | 2 |
+| `screen.click` | command | 已实现：在一次新鲜读取中按节点描述点击唯一目标；多个目标时拒绝 | 2 |
+| `screen.back`、`screen.home` | command | 已实现：只在指定应用位于前台时执行 | 2 |
+| `screen.tap`、`screen.type` | command | 尚未实现 | 2 |
+| `screen.window` | event | 已实现：窗口状态和内容变化，见 [屏幕事件](#52-屏幕事件) | 2 |
 
 相机、麦克风保留现有可见采集与确认流程，作为界面中的交接能力接入。通知读取、蓝牙、后台定位等列入后续候选，需单独设计授权和真机验收。
 

@@ -46,6 +46,13 @@ class EventRoutingTest {
         override fun terminate() { exit.complete(143) }
     }
 
+    private class FakeScreenEvents : com.github.ytlog.mobby.android.programs.screen.ScreenEventSource {
+        var listener: ((com.github.ytlog.mobby.android.device.ScreenChange) -> Unit)? = null
+        var content = false
+        override fun listen(listener: ((com.github.ytlog.mobby.android.device.ScreenChange) -> Unit)?) { this.listener = listener }
+        override fun wantContent(wanted: Boolean) { content = wanted }
+    }
+    private val screenEvents = FakeScreenEvents()
     private val launched = mutableListOf<ProcessSpec>()
     private val processes = mutableListOf<Process>()
     private val schedules = FakeSchedules()
@@ -54,11 +61,12 @@ class EventRoutingTest {
         File(root, "workspace/programs"), { object : ProgramProcessLauncher {
             override fun launch(spec: ProcessSpec): ProgramProcess { launched += spec; return Process().also { processes += it } }
         } }, CapabilityRegistry(listOf(FakeHandler("net.http", scope = ScopeKind.DOMAINS), FakeHandler("storage.sql"), ScheduleCapability(),
-            EntryCapability(EntryCapability.SHARE), EntryCapability(EntryCapability.SHORTCUT))),
+            EntryCapability(EntryCapability.SHARE), EntryCapability(EntryCapability.SHORTCUT),
+            com.github.ytlog.mobby.android.programs.screen.ScreenWindowCapability())),
         com.github.ytlog.mobby.android.programs.base.secrets.SecretStore(database.dao(), object : com.github.ytlog.mobby.android.programs.base.secrets.SecretCipher {
             override fun encrypt(plain: ByteArray) = plain to byteArrayOf(0)
             override fun decrypt(ciphertext: ByteArray, iv: ByteArray) = ciphertext
-        }) { now }, schedules, null, scope) { now }
+        }) { now }, schedules, null, scope, screenEvents = screenEvents) { now }
 
     @After fun close() { scope.cancel(); runCatching { platform.stopServer() }; database.close(); root.deleteRecursively() }
 
@@ -166,6 +174,40 @@ class EventRoutingTest {
         assertEquals(listOf("share"), platform.runs(10).first().map { it.trigger })
         platform.setSubscriptionPaused("clip-keeper/shared", true)
         assertFalse(platform.share("clip-keeper", "later", null))
+    }
+
+    @Test fun `window changes reach subscriptions for granted apps and content changes only when asked`() = runBlocking {
+        platform.start()
+        platform.install(PackageBuilder(File(root, "workspace/programs/skip-wait")).apply {
+            id = "skip-wait"; ui = null; config = "[]"
+            permissions = """[{"capability":"screen.window","required":true,"scope":{"packages":["*"]}}]"""
+            subscriptions = """[{"id":"front","event":"screen.window","filter":{},"handler":"onWindow"},
+                {"id":"shop","event":"screen.window","filter":{"packages":["com.shop"],"content":true},"handler":"onShop"}]"""
+        }.write())
+        assertFalse(screenEvents.content)
+        platform.setEnabled("skip-wait", true)
+        platform.setGrant("skip-wait", "screen.window", true, null, null)
+        assertTrue(screenEvents.content)
+        val send = screenEvents.listener!!
+        send(com.github.ytlog.mobby.android.device.ScreenChange("com.shop", "SplashActivity", "com.home", false, 1))
+        // A content change goes only where content was asked for, and only for the filtered app.
+        send(com.github.ytlog.mobby.android.device.ScreenChange("com.bank", null, null, true, 2))
+        send(com.github.ytlog.mobby.android.device.ScreenChange("com.shop", "SplashActivity", null, true, 3))
+        // The listener hands changes to the platform's scope, so the run starts shortly after.
+        withTimeout(5_000) { while (launched.isEmpty()) delay(10) }
+        val events = platform.runs.attach(platform.runs.resolve(launched.single().credential)!!.runId!!)!!.take(3).toList().map { (it as RunMessage.Event).event }
+        assertEquals(setOf("onWindow", "onShop"), events.take(2).map { it.handler }.toSet())
+        assertEquals(buildJsonObject { put("packageName", "com.shop"); put("className", "SplashActivity"); put("previousPackage", "com.home")
+            put("change", "window"); put("at", 1) }, events[0].payload)
+        assertEquals("onShop" to "content", events[2].handler to events[2].payload["change"]!!.jsonPrimitive.content)
+        assertEquals(listOf("screen"), platform.runs(10).first().map { it.trigger })
+        // Pausing the only content subscription stops content reporting; a grant narrowed to one app filters the rest.
+        platform.setSubscriptionPaused("skip-wait/shop", true)
+        assertFalse(screenEvents.content)
+        platform.setGrant("skip-wait", "screen.window", true, Scope(packages = setOf("com.shop")), null)
+        assertTrue(platform.router.isActive("skip-wait/front"))
+        assertEquals(listOf("package com.other is not in the scope requested for screen.window", "content must be true or false"),
+            com.github.ytlog.mobby.android.programs.screen.ScreenWindowCapability().validateFilter(json("""{"packages":["com.other"],"content":"yes"}"""), Scope(packages = setOf("com.shop"))).sorted().reversed())
     }
 
     @Test fun `shared text must fit and entry subscriptions take no filter`() = runBlocking {

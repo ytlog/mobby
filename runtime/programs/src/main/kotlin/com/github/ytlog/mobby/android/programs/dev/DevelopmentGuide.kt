@@ -57,6 +57,11 @@ confirmation. You cannot do those steps and must not claim the program is runnin
 - `time.schedule` filters: `{"every": "PT15M".."P30D"}`, `{"at": "2026-10-24T09:00:00Z"}` or `{"daily": "09:00", "timezone": "Asia/Shanghai"}`, optional `"missed": "skip"|"once"`.
 - Domain scopes are exact hosts or `*.suffix`; HTTPS only unless `"insecureHttp": true`.
 - An event reaches a handler only through a `subscriptions` entry; requesting the capability alone delivers nothing.
+- `screen.window` reports an app's window coming to the front, payload `{packageName, className, previousPackage,
+  change: "window", at}`; a filter `{"packages": [...]}` narrows the apps and `{"content": true}` also reports content
+  changes (`change: "content"`, at most twice a second per app). Request it with a `packages` scope like the screen
+  calls. mobby's own windows are never reported. Example subscription:
+  `{"id": "front", "event": "screen.window", "filter": {}, "handler": "onWindow"}`.
 - Entry events, each requested in `permissions` and subscribed with `"filter": {}`, for example
   `{"id": "shared", "event": "entry.share", "filter": {}, "handler": "onShare"}`.
   `entry.share` receives text the user shares from another app and sends to this program, payload `{text, subject?}`
@@ -98,6 +103,16 @@ SDK (arguments are positional; only the ones shown in braces take an object):
   4 sockets at a time; if 256 messages or 4 MiB wait unread, mobby closes the socket (`receive_buffer_full`) rather than drop
   messages. A dry run opens nothing: `net.websocket` returns a socket with `simulated` true whose `send` and `close`
   are simulated and whose `receive` (and `for await`) throws `MobbyError` code `SIMULATED`; catch that to dry-run the rest.
+- Screen (background only; needs the user to turn on the mobby Screen Control accessibility service):
+  `screen.read({package})` returns the window in front `{packageName, className, truncated, nodes}`; each node has
+  `index, parent, className, viewId, text, description, clickable, editable, visible, bounds` (left, top, right,
+  bottom in thousandths of the screen; password fields read as `[secure]`; at most 300 nodes). `screen.click(package,
+  {text | textContains | description | descriptionContains | viewId | className})` clicks the one visible control that
+  matches every given field, or its nearest clickable parent; `screen.back(package)` and `screen.home(package)` act
+  only while that app is in front. Request them with `{"packages": [...]}` naming the apps, or `["*"]` for every app.
+  Refusals: `TARGET_NOT_UNIQUE` (several match, nothing clicked), `RESOURCE_MISSING` (none), `STALE_OBSERVATION`
+  (another app is in front), `CONDITION_UNMET` (screen off or locked, or a chat is using the screen), `SCOPE_DENIED`
+  (mobby's own windows are never readable). Read again before every action; a read is not kept fresh.
 - `ai.call({system, messages, maxOutputTokens})` with `messages: [{role: 'user' | 'assistant', text}]`, last one from the user;
   returns `{text, model, usage}`. Text only: images, tools and other fields are refused. The user picks the gateway and model
   when installing, and daily calls and tokens are capped (`QUOTA_EXCEEDED`); request `ai.call` in the manifest without a scope.

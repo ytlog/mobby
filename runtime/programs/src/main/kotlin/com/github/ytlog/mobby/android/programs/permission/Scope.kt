@@ -38,13 +38,14 @@ data class Scope(
 
     /** True when every value here is also in [requested]. */
     fun within(requested: Scope): Boolean =
-        packages.orEmpty().all { it in requested.packages.orEmpty() } &&
+        packages.orEmpty().all { it in requested.packages.orEmpty() || ANY_PACKAGE in requested.packages.orEmpty() } &&
             domains.orEmpty().all { it in requested.domains.orEmpty() } &&
             (requested.methods == null || (methods != null && requested.methods.containsAll(methods))) &&
             (!insecureHttp || requested.insecureHttp) &&
             models.orEmpty().all { it in requested.models.orEmpty() }
 
-    fun allowsPackage(name: String) = packages?.contains(name) == true
+    /** `"*"` stands for every app; mobby itself is kept out by the capabilities that act on apps. */
+    fun allowsPackage(name: String) = packages?.let { name in it || ANY_PACKAGE in it } == true
 
     fun allowsHost(host: String): Boolean = domains.orEmpty().any { domain ->
         if (domain.startsWith("*.")) host.endsWith(domain.substring(1)) && host.length > domain.length - 1 else host == domain
@@ -56,6 +57,8 @@ data class Scope(
 
     companion object {
         val NONE = Scope()
+        /** In a package scope, every app. */
+        const val ANY_PACKAGE = "*"
 
         /** Strict parse: keys must belong to [kind]; returns problems instead of guessing. */
         fun parse(kind: ScopeKind, json: JsonObject?): Pair<Scope?, List<String>> {
@@ -81,7 +84,7 @@ data class Scope(
             }
             val scope = when (kind) {
                 ScopeKind.NONE, ScopeKind.RECORDS, ScopeKind.DIRECTORIES -> NONE
-                ScopeKind.PACKAGES -> Scope(packages = strings("packages", 32) { it.length <= 255 && it.matches(PACKAGE) }
+                ScopeKind.PACKAGES -> Scope(packages = strings("packages", 32) { it == ANY_PACKAGE || it.length <= 255 && it.matches(PACKAGE) }
                     ?: emptySet<String>().also { problems += "packages is required" })
                 ScopeKind.DOMAINS -> Scope(
                     domains = strings("domains", 32, ::validDomain) ?: emptySet<String>().also { problems += "domains is required" },

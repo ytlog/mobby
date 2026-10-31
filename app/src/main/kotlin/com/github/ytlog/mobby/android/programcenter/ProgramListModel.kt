@@ -36,6 +36,11 @@ internal fun scheduleLabel(filter: JsonObject): String? {
 internal fun purposeLabel(capability: String, scope: Scope, schedules: List<JsonObject>): String = when (capability) {
     "net.http" -> AppStrings.purposeNet(scope.domains?.sorted()?.joinToString().orEmpty()) + if (scope.insecureHttp) AppStrings.purposePlainHttp else ""
     "net.websocket" -> AppStrings.purposeWebSocket(scope.domains?.sorted()?.joinToString().orEmpty()) + if (scope.insecureHttp) AppStrings.purposePlainWebSocket else ""
+    "screen.read" -> AppStrings.purposeScreenRead(apps(scope))
+    "screen.click" -> AppStrings.purposeScreenClick(apps(scope))
+    "screen.back" -> AppStrings.purposeScreenBack(apps(scope))
+    "screen.home" -> AppStrings.purposeScreenHome(apps(scope))
+    "screen.window" -> AppStrings.purposeScreenWindow(apps(scope))
     "storage.sql" -> AppStrings.purposeSql
     "storage.kv" -> AppStrings.purposeKv
     "storage.files" -> AppStrings.purposeFiles
@@ -60,6 +65,9 @@ internal fun purposeLabel(capability: String, scope: Scope, schedules: List<Json
     "device.storage.export" -> AppStrings.purposeDeviceStorageExport
     else -> capability
 }
+
+/** The apps a package scope names; `"*"` and an empty scope read as any app. */
+private fun apps(scope: Scope) = scope.packages?.takeIf { it.isNotEmpty() && Scope.ANY_PACKAGE !in it }?.sorted()?.joinToString()?.let(AppStrings::namedApps) ?: AppStrings.anyApp
 
 /** A capability's name without its scope, for permission rows, switches and event sources. */
 internal fun capabilityName(capability: String): String = when (capability) {

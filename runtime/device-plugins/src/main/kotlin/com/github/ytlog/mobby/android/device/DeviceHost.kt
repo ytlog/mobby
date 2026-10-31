@@ -95,7 +95,7 @@ object DeviceHost {
         context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
 
     fun start(context: Context, root: File, inbox: File, workspace: File, node: String, refs: Set<String>, operations: DeviceOperationPort, registerResource: (File, String) -> String, registerCachedResource: (File, String) -> String, exportResource: (String) -> String, isCancelled: () -> Boolean = { false }, attachedPrograms: Set<String> = emptySet()): DeviceSession =
-        openDeviceSession(refs, ScreenAccessService::stay) {
+        openDeviceSession(refs, ::chatScreenSession) {
             val token = DeviceCommands.token()
             val allow = DeviceCatalog.allow(refs)
             val gate = DeviceActionGate(isCancelled)
@@ -118,6 +118,13 @@ object DeviceHost {
                 throw error
             }
         }
+}
+
+/** A chat run with the screen plugin keeps the screen on and, while it lasts, programs may read but not act on screen. */
+private fun chatScreenSession(): AutoCloseable {
+    val chat = ScreenCoordinator.chatSession()
+    val stay = try { ScreenAccessService.stay() } catch (error: Throwable) { chat.close(); throw error }
+    return AutoCloseable { try { stay.close() } finally { chat.close() } }
 }
 
 internal fun openDeviceSession(
