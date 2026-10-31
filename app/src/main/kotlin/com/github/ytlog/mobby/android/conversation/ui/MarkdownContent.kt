@@ -15,6 +15,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.*
 import androidx.compose.ui.text.font.*
@@ -98,20 +101,76 @@ private data class ParsedReply(val source: String, val document: Node)
     }
 }
 
+/**
+ * A table sized by its content: columns get their natural widths (64-320 dp), stretched to fill the reply when they
+ * fit and shrunk toward 120 dp when they do not; only a table still too wide scrolls sideways. Cells in a row share
+ * the tallest cell's height so their borders line up.
+ */
 @Composable private fun MarkdownTable(node: TableBlock) {
     val rows = ReplyMarkdown.children(node).flatMap { ReplyMarkdown.children(it) }
-    Column(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).border(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
-        rows.forEach { row ->
-            Row {
-                ReplyMarkdown.children(row).filterIsInstance<TableCell>().forEach { cell ->
-                    Box(Modifier.width(180.dp).background(if (cell.isHeader) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface)
-                        .border(0.5.dp, MaterialTheme.colorScheme.outlineVariant).padding(10.dp)) {
-                        val alignment = when (cell.alignment) { TableCell.Alignment.CENTER -> androidx.compose.ui.text.style.TextAlign.Center; TableCell.Alignment.RIGHT -> androidx.compose.ui.text.style.TextAlign.End; else -> androidx.compose.ui.text.style.TextAlign.Start }
-                        MarkdownInline(cell, MaterialTheme.typography.bodyMedium.copy(fontWeight = if (cell.isHeader) FontWeight.SemiBold else FontWeight.Normal, textAlign = alignment))
-                    }
+        .map { row -> ReplyMarkdown.children(row).filterIsInstance<TableCell>() }
+    val columns = rows.maxOfOrNull { it.size } ?: 0
+    if (columns == 0) return
+    val outline = MaterialTheme.colorScheme.outlineVariant
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val available = constraints.maxWidth
+        Layout(
+            content = { rows.forEach { row -> repeat(columns) { column -> MarkdownTableCell(row.getOrNull(column), outline) } } },
+            modifier = Modifier.horizontalScroll(rememberScrollState()).border(1.dp, outline),
+        ) { measurables, _ ->
+            val grid = measurables.chunked(columns)
+            val shortest = 64.dp.roundToPx(); val longest = 320.dp.roundToPx(); val floor = 120.dp.roundToPx()
+            val natural = (0 until columns).map { column -> grid.maxOf { it[column].maxIntrinsicWidth(Constraints.Infinity) }.coerceIn(shortest, longest) }
+            val widths = tableColumnWidths(natural, natural.map { it.coerceAtMost(floor) }, available)
+            val heights = grid.map { row -> row.indices.maxOf { column -> row[column].minIntrinsicHeight(widths[column]) } }
+            val placeables = grid.mapIndexed { r, row -> row.mapIndexed { column, cell -> cell.measure(Constraints.fixed(widths[column], heights[r])) } }
+            layout(widths.sum(), heights.sum()) {
+                var y = 0
+                placeables.forEachIndexed { r, row ->
+                    var x = 0
+                    row.forEachIndexed { column, cell -> cell.place(x, y); x += widths[column] }
+                    y += heights[r]
                 }
             }
         }
+    }
+}
+
+@Composable private fun MarkdownTableCell(cell: TableCell?, outline: Color) {
+    Box(Modifier.testTag("markdown-table-cell")
+        .background(if (cell?.isHeader == true) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface)
+        .border(0.5.dp, outline).padding(10.dp)) {
+        cell ?: return@Box
+        val alignment = when (cell.alignment) { TableCell.Alignment.CENTER -> androidx.compose.ui.text.style.TextAlign.Center; TableCell.Alignment.RIGHT -> androidx.compose.ui.text.style.TextAlign.End; else -> androidx.compose.ui.text.style.TextAlign.Start }
+        MarkdownInline(cell, MaterialTheme.typography.bodyMedium.copy(fontWeight = if (cell.isHeader) FontWeight.SemiBold else FontWeight.Normal, textAlign = alignment))
+    }
+}
+
+/**
+ * Column widths in pixels for a table [available] wide. Columns that fit at their [natural] widths are stretched in
+ * proportion until the table fills the width; wider tables shrink each column toward its [least] width, and only a
+ * table whose floors still overflow keeps them and scrolls sideways.
+ */
+internal fun tableColumnWidths(natural: List<Int>, least: List<Int>, available: Int): List<Int> {
+    val full = natural.sum()
+    if (full <= available) return spread(natural, natural, available - full)
+    val floor = least.sum()
+    if (floor >= available) return least
+    return spread(least, natural.zip(least) { n, l -> n - l }, available - floor)
+}
+
+/** Adds [extra] to [base] in proportion to [weights]; rounding leftovers go to the last column. */
+private fun spread(base: List<Int>, weights: List<Int>, extra: Int): List<Int> {
+    val total = weights.sum().toLong()
+    var given = 0
+    return base.mapIndexed { i, width ->
+        val add = when {
+            i == base.lastIndex -> extra - given
+            total == 0L -> extra / base.size
+            else -> (extra * weights[i] / total).toInt()
+        }
+        given += add
+        width + add
     }
 }
 

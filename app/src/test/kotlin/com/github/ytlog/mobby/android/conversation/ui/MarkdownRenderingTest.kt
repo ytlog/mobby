@@ -5,6 +5,12 @@ import androidx.compose.runtime.*
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertEquals
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.dp
 import android.os.Looper
 import org.junit.Assert.assertNotEquals
 import androidx.compose.ui.test.*
@@ -72,6 +78,27 @@ class MarkdownRenderingTest {
         compose.onNodeWithText("☐").assertExists()
         compose.onNodeWithText("done").assertExists()
         compose.onNodeWithText("pending").assertExists()
+    }
+    /** On the tablet a two-column table stopped at 360 dp inside a full-width border, and a long cell stood taller than its neighbour. */
+    @Config(qualifiers = "w1000dp-h800dp")
+    @Test fun `a narrow table fills the reply width and each row's cells are equally tall`() {
+        compose.setContent { MaterialTheme { Box(Modifier.width(600.dp).testTag("reply")) {
+            ReplyContent("| Name | Note |\n|---|---|\n| x | a much longer note that has to wrap onto a few lines in its column |") { _, _ -> }
+        } } }
+        compose.waitUntil(5_000) { compose.onAllNodesWithTag("markdown-table-cell", useUnmergedTree = true).fetchSemanticsNodes().size == 4 }
+        val reply = compose.onNodeWithTag("reply").fetchSemanticsNode().boundsInRoot
+        val cells = compose.onAllNodesWithTag("markdown-table-cell", useUnmergedTree = true).fetchSemanticsNodes().map { it.boundsInRoot }
+        assertEquals(reply.right, cells[1].right, 1f)
+        assertEquals(reply.right, cells[3].right, 1f)
+        assertEquals(cells[2].height, cells[3].height, 0.5f)
+        assertEquals(cells[0].left, reply.left, 1f)
+    }
+    @Test fun `table columns stretch to fill, shrink toward their floor, and scroll only past it`() {
+        assertEquals(listOf(200, 400), tableColumnWidths(listOf(100, 200), listOf(100, 120), 600))
+        // Too wide: each column gives up its share above its floor.
+        assertEquals(listOf(100, 200), tableColumnWidths(listOf(100, 400), listOf(100, 120), 300))
+        assertEquals(listOf(100, 120), tableColumnWidths(listOf(300, 400), listOf(100, 120), 200))
+        assertEquals(600, tableColumnWidths(listOf(33, 33, 34), listOf(33, 33, 34), 600).sum())
     }
     @Test fun `four backtick skill document remains one code block with nested code intact`() {
         compose.setContent { MaterialTheme { ReplyContent("````SKILL.md\n# Workflow\n```sh\necho hi\n```\n````") { _, _ -> } } }
