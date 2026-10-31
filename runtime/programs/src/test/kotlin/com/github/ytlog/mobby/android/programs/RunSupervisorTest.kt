@@ -48,6 +48,7 @@ class RunSupervisorTest {
     }
 
     private val launcher = FakeLauncher()
+    private val released = mutableListOf<String>()
     private var ids = 0
     private fun target(id: String = "a") = RunTarget(id, "1", File("/pkg/$id"), "main.js", File("/data/$id"))
     private fun event(n: Int, handler: String = "onTick") = ProgramEvent("e$n", "time.schedule", handler, "a/tick", n.toLong(), JsonObject(emptyMap()))
@@ -56,7 +57,7 @@ class RunSupervisorTest {
     private fun TestScope.supervisor(limits: RunLimits = RunLimits(maxConcurrent = 2, startTimeoutMillis = 1_000, maxRunMillis = 60_000,
         idleMillis = 5_000, graceMillis = 500, queueLength = 2, queueExpiryMillis = 10_000, eventQueue = 2)): RunSupervisor {
         val scope = CoroutineScope(StandardTestDispatcher(testScheduler) + SupervisorJob()).also { scopes += it }
-        return RunSupervisor(scope, dao, launcher, File("/sdk"), { 4321 }, limits, { testScheduler.currentTime }) { "run-${++ids}" }
+        return RunSupervisor(scope, dao, launcher, File("/sdk"), { 4321 }, limits, { testScheduler.currentTime }, { released += it }) { "run-${++ids}" }
     }
     /** Runs what is due now plus short delays such as the stop grace period. */
     private fun TestScope.settle(millis: Long = 600) { advanceTimeBy(millis); runCurrent() }
@@ -95,6 +96,9 @@ class RunSupervisorTest {
         assertEquals("start_timeout", run(silent).reason)
         advanceTimeBy(5_000)
         assertEquals("idle", run(idle).reason)
+        // Each run's sockets and other held resources are freed as soon as it stops taking calls.
+        assertEquals(listOf("run:$silent", "run:$idle"), released.distinct())
+        assertEquals(listOf("run-1", "run-2"), listOf(idle, silent))
     }
 
     @Test fun `exits are told apart from failures and system kills`() = runTest {

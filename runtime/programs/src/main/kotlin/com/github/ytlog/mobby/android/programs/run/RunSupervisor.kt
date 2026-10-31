@@ -94,6 +94,8 @@ class RunSupervisor(
     private val apiPort: () -> Int,
     private val limits: RunLimits = RunLimits(),
     private val clock: () -> Long = System::currentTimeMillis,
+    /** Frees what a run held for its whole life, such as open sockets; called once its credential stops working. */
+    private val released: (caller: String) -> Unit = {},
     private val newId: () -> String = { UUID.randomUUID().toString() },
 ) : CallerResolver {
     private enum class State { STARTING, RUNNING, STOPPING }
@@ -244,6 +246,7 @@ class RunSupervisor(
         run.stopReason = reason
         run.platformStopped = true
         credentials.remove(run.credential)
+        released(run.context.caller)
         run.messages.trySend(RunMessage.Stopping(reason))
         run.messages.close()
         scope.launch { delay(limits.graceMillis); run.process?.terminate() }
@@ -253,6 +256,7 @@ class RunSupervisor(
         if (live[run.key] !== run) return
         live.remove(run.key)
         credentials.remove(run.credential)
+        released(run.context.caller)
         listOf(run.startTimer, run.deadline, run.idle).forEach { it?.cancel() }
         run.messages.close()
         val outcome = when {

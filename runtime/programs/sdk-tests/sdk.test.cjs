@@ -97,6 +97,46 @@ test('ai.call sends text messages and returns the reply, and a dry run says no m
   } finally { api.instance.close(); }
 });
 
+test('a socket sends text and bytes, pulls messages until it closes, and a dry run has nothing to read', async () => {
+  const inbox = [
+    { messages: [{ type: 'text', text: 'pong' }, { type: 'binary', base64: 'AQID' }] },
+    { messages: [], closed: { code: 4001, reason: 'maintenance', by: 'peer' } },
+  ];
+  const api = await server((req, res) => {
+    const args = req.body.args;
+    const ok = (result) => json(res, { requestId: req.body.requestId, status: 'succeeded', effect: 'confirmed', result });
+    if (args.url === 'wss://dry.example.com/') return json(res, { requestId: req.body.requestId, status: 'simulated', effect: 'none' });
+    if (args.op === 'open') return ok({ socket: 's-1', protocol: 'v1' });
+    if (args.op === 'send') return ok({});
+    if (args.op === 'receive') return ok(inbox.shift());
+    return ok({ closed: { code: 1000, reason: 'closed', by: 'program' } });
+  });
+  mobby[Symbol.for('mobby.runner')].start(api.port, 'c');
+  try {
+    const ws = await mobby.net.websocket('wss://live.example.com/feed', { protocols: ['v1'], headers: { Authorization: 'Bearer {{secret:token}}' } });
+    assert.equal(ws.protocol, 'v1');
+    await ws.send('ping');
+    await ws.send(new Uint8Array([1, 2, 3]));
+    const received = [];
+    for await (const message of ws) received.push(message.type === 'text' ? message.text : [...message.bytes]);
+    assert.deepEqual(received, ['pong', [1, 2, 3]]);
+    assert.deepEqual(ws.closed, { code: 4001, reason: 'maintenance', by: 'peer' });
+    await assert.rejects(ws.send('late'), (error) => error.code === 'CONDITION_UNMET' && error.reason === 'socket_closed');
+    // The peer already closed it; closing again asks mobby nothing.
+    assert.deepEqual(await ws.close(), ws.closed);
+    const args = api.requests.map((r) => r.body.args);
+    assert.deepEqual(args[0], { op: 'open', url: 'wss://live.example.com/feed', headers: { Authorization: 'Bearer {{secret:token}}' }, protocols: ['v1'] });
+    assert.deepEqual(args.slice(1, 3), [{ op: 'send', socket: 's-1', text: 'ping' }, { op: 'send', socket: 's-1', base64: 'AQID' }]);
+    assert.equal(args.filter((a) => a.op === 'receive').length, 2);
+    assert.equal(args.filter((a) => a.op === 'close').length, 0);
+    const dry = await mobby.net.websocket('wss://dry.example.com/');
+    assert.equal(dry.simulated, true);
+    assert.deepEqual(await dry.send('x'), { simulated: true });
+    await assert.rejects(dry.receive(), (error) => error.code === 'SIMULATED' && error.reason === 'dry_run_has_no_socket_messages');
+    await assert.rejects(mobby.net.websocket({ url: 'wss://a.example' }), /net\.websocket\(url, \{headers, protocols\}\): url must be a string/);
+  } finally { api.instance.close(); }
+});
+
 test('arguments of the wrong shape fail before any request and show the right call', async () => {
   const api = await server((req, res) => json(res, { requestId: req.body.requestId, status: 'succeeded', effect: 'confirmed', result: null }));
   mobby[Symbol.for('mobby.runner')].start(api.port, 'c');

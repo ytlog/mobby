@@ -118,6 +118,7 @@ class ProgramUiHost(private val platform: ProgramPlatform, private val sdkScript
         session.closed = true
         session.reply = null
         sessions.remove(session.sessionId)
+        platform.release("ui:${session.sessionId}")
     }
 
     private fun serve(policy: UiRequestPolicy, url: String, method: String): WebResourceResponse = when (val response = policy.respond(url, method)) {

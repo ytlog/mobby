@@ -63,6 +63,9 @@ class ProgramListModelTest {
     @Test fun `permission and switch rows name capabilities in words`() {
         assertEquals(AppStrings.purposeAiCall, capabilityName("ai.call"))
         assertEquals(AppStrings.purposeNetAny, capabilityName("net.http"))
+        assertEquals(AppStrings.purposeWebSocketAny, capabilityName("net.websocket"))
+        assertEquals(AppStrings.purposeWebSocket("live.example.com") + AppStrings.purposePlainWebSocket,
+            purposeLabel("net.websocket", Scope(domains = setOf("live.example.com"), insecureHttp = true), emptyList()))
         assertEquals(AppStrings.purposeScheduleAny, capabilityName("time.schedule"))
         assertEquals("screen.click", capabilityName("screen.click"))
     }

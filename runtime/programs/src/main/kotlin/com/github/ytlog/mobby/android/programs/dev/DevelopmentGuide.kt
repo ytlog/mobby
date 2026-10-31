@@ -88,6 +88,15 @@ SDK (arguments are positional; only the ones shown in braces take an object):
 - `sql.query(sql, params)`, `sql.execute(sql, params)`, `sql.transaction([{sql, params}])`
 - `files.read(path)`, `files.write(path, text)`, `files.list(dir)`, `files.delete(path)`; paths are relative to the program's own files
 - `net.fetch(url, {method, headers, body})`, `notify.show({title, body, openUi})`
+- `net.websocket(url, {headers, protocols})` opens a `wss://` socket (`ws://` needs `insecureHttp`) that mobby holds for this
+  run or page; request `net.websocket` with `domains` like `net.http`. The socket has `send(text | Uint8Array)`,
+  `receive({waitMs})` (messages so far, waiting up to 25 s for the first; `[]` if none), `close(code, reason)` and
+  `for await (const message of socket)`; a message is `{type: 'text', text}` or `{type: 'binary', bytes}`. Messages wait in
+  mobby until you pull them, so a handler can send and then wait for the reply. `socket.closed` becomes
+  `{code, reason, by: 'program' | 'peer' | 'mobby'}`: a background run lasts at most 2 minutes and 15 s without calls, and
+  its sockets close with it; a page's sockets close with the page; revoking the grant closes them too. Messages up to 1 MiB,
+  4 sockets at a time; if 256 messages or 4 MiB wait unread, mobby closes the socket (`receive_buffer_full`) rather than drop
+  messages. A dry run opens nothing: `send` returns `{simulated: true}` and `receive` throws `SIMULATED`.
 - `ai.call({system, messages, maxOutputTokens})` with `messages: [{role: 'user' | 'assistant', text}]`, last one from the user;
   returns `{text, model, usage}`. Text only: images, tools and other fields are refused. The user picks the gateway and model
   when installing, and daily calls and tokens are capped (`QUOTA_EXCEEDED`); request `ai.call` in the manifest without a scope.
@@ -102,7 +111,8 @@ with exit code 1 and its error is in the program log.
 Failures throw `MobbyError` with `code`, `layer`, `reason`, `effect`; never treat an error or `EFFECT_UNKNOWN` as success.
 Arguments of the wrong type (an object where a path is expected, params that are not an array) reject with a `TypeError`
 that shows the call's real form, before anything is sent.
-Secrets are written with `secrets.put` or by the user, and used only as `{{secret:name}}` in headers or query strings.
+Secrets are written with `secrets.put` or by the user, and used only as `{{secret:name}}` in headers or query strings
+of `net.fetch` and `net.websocket`; their domains must be ones requested for `net.http` or `net.websocket`.
 Use the SDK instead of Node's own fetch, fs, sqlite or child_process: direct use is not governed, recorded or counted.
 
 ## Page (WebView)
@@ -121,7 +131,7 @@ A dry run covers background logic only, never the page: catch page failures and 
 `validate` parses every script (background and page) without running it and lists those that do not parse. Errors a page
 reports to its console (uncaught exceptions, syntax errors, blocked resources, `console.error`) appear in `records` logs as `page_error`.
 Pages may load only their own files: no inline scripts or `on…=` handlers, no external scripts, styles or images,
-no direct network access (use `mobby.net.fetch`). External links open in the browser after the user confirms.
+no direct network access (use `mobby.net.fetch` and `mobby.net.websocket`). External links open in the browser after the user confirms.
 
 ## Commands
 

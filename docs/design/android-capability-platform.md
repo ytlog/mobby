@@ -203,7 +203,7 @@ SDK 不隐藏失败：缺权限、目标不唯一、超时、取消、效果不�
 | `time.schedule` | event | 单次或周期定时 | 无 | 1 |
 | `ui` | command、event | 界面与后台互发消息 | 无 | 1 |
 | `log` | command | 写入运行记录 | 长度与频率 | 1 |
-| `net.websocket` | session | WebSocket 连接 | 域名 | 2 |
+| `net.websocket` | session | WebSocket 客户端连接（已实现）：程序按需拉取收到的消息，连接随运行或界面会话结束 | 域名 | 2 |
 | `ai.call` | command | 经 mobby 已配置的网关调用模型 | 模型；次数与费用上限 | 2 |
 | `entry.share`、`entry.shortcut` | event | 分享文字、桌面快捷方式触发程序（已实现，分享暂只支持文字） | 各自单独授权 | 2 |
 

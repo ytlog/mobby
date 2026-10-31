@@ -35,6 +35,7 @@ internal fun scheduleLabel(filter: JsonObject): String? {
 /** What a requested capability lets the program do, in words; unknown capabilities are shown by id. */
 internal fun purposeLabel(capability: String, scope: Scope, schedules: List<JsonObject>): String = when (capability) {
     "net.http" -> AppStrings.purposeNet(scope.domains?.sorted()?.joinToString().orEmpty()) + if (scope.insecureHttp) AppStrings.purposePlainHttp else ""
+    "net.websocket" -> AppStrings.purposeWebSocket(scope.domains?.sorted()?.joinToString().orEmpty()) + if (scope.insecureHttp) AppStrings.purposePlainWebSocket else ""
     "storage.sql" -> AppStrings.purposeSql
     "storage.kv" -> AppStrings.purposeKv
     "storage.files" -> AppStrings.purposeFiles
@@ -63,6 +64,7 @@ internal fun purposeLabel(capability: String, scope: Scope, schedules: List<Json
 /** A capability's name without its scope, for permission rows, switches and event sources. */
 internal fun capabilityName(capability: String): String = when (capability) {
     "net.http" -> AppStrings.purposeNetAny
+    "net.websocket" -> AppStrings.purposeWebSocketAny
     "time.schedule" -> AppStrings.purposeScheduleAny
     else -> purposeLabel(capability, Scope(), emptyList())
 }

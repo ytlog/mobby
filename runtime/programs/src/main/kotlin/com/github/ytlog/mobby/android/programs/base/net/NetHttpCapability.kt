@@ -17,6 +17,11 @@ import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
 import java.nio.charset.CodingErrorAction
 import java.util.UUID
+import javax.net.ssl.HttpsURLConnection
+import javax.net.ssl.SNIHostName
+import javax.net.ssl.SSLPeerUnverifiedException
+import javax.net.ssl.SSLSocket
+import javax.net.ssl.SSLSocketFactory
 
 data class NetLimits(
     val requestBytes: Int = 1024 * 1024,
@@ -31,6 +36,21 @@ data class NetLimits(
 interface NetTransport {
     fun resolve(host: String): List<InetAddress> = InetAddress.getAllByName(host).toList()
     fun open(url: URL): HttpURLConnection = url.openConnection() as HttpURLConnection
+    /** A plain socket to an address that was already checked. */
+    fun connect(address: InetSocketAddress, timeoutMillis: Int): Socket = Socket().apply { connect(address, timeoutMillis) }
+    /** TLS over [socket] for [host]: SNI and certificate checks use the name, never the address. */
+    fun secure(socket: Socket, host: String, port: Int): Socket {
+        val tls = (SSLSocketFactory.getDefault() as SSLSocketFactory).createSocket(socket, host, port, true) as SSLSocket
+        tls.sslParameters = tls.sslParameters.apply {
+            endpointIdentificationAlgorithm = "HTTPS"
+            runCatching { serverNames = listOf(SNIHostName(host)) }
+        }
+        tls.startHandshake()
+        if (!HttpsURLConnection.getDefaultHostnameVerifier().verify(host, tls.session)) {
+            tls.close(); throw SSLPeerUnverifiedException("certificate_does_not_match_host")
+        }
+        return tls
+    }
     fun blocked(address: InetAddress): Boolean = address.isLoopbackAddress || address.isLinkLocalAddress || address.isSiteLocalAddress ||
         address.isAnyLocalAddress || address.isMulticastAddress ||
         (address is Inet6Address && (address.address[0].toInt() and 0xfe) == 0xfc) ||
@@ -79,15 +99,15 @@ class NetHttpCapability(
             val host = url.host.lowercase()
             if (hops > 0 && !call.allows(CallScope(host = host, method = method, insecureHttp = url.protocol == "http")))
                 throw CapabilityException(ProgramErrorCode.SCOPE_DENIED, "redirect_to_ungranted_host", Effect.UNKNOWN)
-            checkAddresses(host)
+            transport.checkedAddresses(host)
             // Secrets are filled per hop, so a redirect to another host never receives them.
-            val target = parse(fill(template, call.context.programId, host, encode = true))
-            val hopHeaders = headers.mapValues { fill(it.value, call.context.programId, host, encode = false) }
+            val target = parse(SecretPlaceholders.fill(secrets, template, call.context.programId, host, encode = true))
+            val hopHeaders = headers.mapValues { SecretPlaceholders.fill(secrets, it.value, call.context.programId, host, encode = false) }
             val response = runInterruptible(Dispatchers.IO) { exchange(target, method, hopHeaders, body, call) }
             if (response.status in 300..399 && response.location != null) {
                 if (++hops > limits.maxRedirects) throw CapabilityException(ProgramErrorCode.FAILED, "too_many_redirects", Effect.UNKNOWN)
                 template = URL(target, response.location).toString()
-                if (SECRET.containsMatchIn(template)) invalid("redirect_with_placeholder")
+                if (SecretPlaceholders.present(template)) invalid("redirect_with_placeholder")
                 url = parse(template)
                 continue
             }
@@ -153,31 +173,9 @@ class NetHttpCapability(
         } finally { connection.disconnect() }
     }
 
-    private fun checkAddresses(host: String) {
-        val addresses = try { transport.resolve(host) } catch (_: UnknownHostException) {
-            throw CapabilityException(ProgramErrorCode.SOURCE_DISCONNECTED, "host_not_resolved")
-        }
-        if (addresses.isEmpty() || addresses.any(transport::blocked)) throw CapabilityException(ProgramErrorCode.SCOPE_DENIED, "address_not_allowed")
-    }
-
-    private suspend fun fill(text: String, programId: String, host: String, encode: Boolean): String {
-        var result = text
-        for (match in SECRET.findAll(text).toList()) {
-            val value = secrets.reveal(programId, match.groupValues[1], host)
-            result = result.replace(match.value, if (encode) URLEncoder.encode(value, "UTF-8") else value)
-        }
-        return result
-    }
-
     private fun method(args: JsonObject) = args.text("method") ?: "GET"
 
-    /** Parsable stand-in for a URL template; a placeholder may not decide the host. */
-    private fun neutral(template: String): String {
-        val replaced = SECRET.replace(template, "secret")
-        val host = runCatching { URI(replaced).host }.getOrNull()
-        if (host != null && SECRET.containsMatchIn(template.substringAfter("://").substringBefore('/'))) invalid("placeholder_in_host")
-        return replaced
-    }
+    private fun neutral(template: String) = SecretPlaceholders.neutral(template)
 
     private fun parse(text: String): URL {
         val url = try { URI(text).toURL() } catch (_: Exception) { invalid("invalid_url") }
@@ -193,8 +191,40 @@ class NetHttpCapability(
     private fun JsonObject?.orEmpty() = this ?: JsonObject(emptyMap())
 
     companion object {
-        private val SECRET = Regex("\\{\\{secret:([A-Za-z][A-Za-z0-9_-]{0,63})\\}\\}")
-        private val HEADER_NAME = Regex("[A-Za-z0-9!#$%&'*+.^_`|~-]{1,128}")
+        internal val HEADER_NAME = Regex("[A-Za-z0-9!#$%&'*+.^_`|~-]{1,128}")
         private val FORBIDDEN_HEADERS = setOf("host", "content-length", "connection", "transfer-encoding", "upgrade", "proxy-authorization", "te", "trailer")
+    }
+}
+
+/** Resolves [host] and refuses it when any address is loopback, private, link-local or otherwise not public. */
+internal fun NetTransport.checkedAddresses(host: String): List<InetAddress> {
+    val addresses = try { resolve(host) } catch (_: UnknownHostException) {
+        throw CapabilityException(ProgramErrorCode.SOURCE_DISCONNECTED, "host_not_resolved")
+    }
+    if (addresses.isEmpty() || addresses.any(::blocked)) throw CapabilityException(ProgramErrorCode.SCOPE_DENIED, "address_not_allowed")
+    return addresses
+}
+
+/** `{{secret:<name>}}` in URLs and header values, filled per host so a secret only reaches the hosts it is bound to. */
+internal object SecretPlaceholders {
+    private val SECRET = Regex("\\{\\{secret:([A-Za-z][A-Za-z0-9_-]{0,63})\\}\\}")
+
+    fun present(text: String) = SECRET.containsMatchIn(text)
+
+    /** Parsable stand-in for a URL template; a placeholder may not decide the host. */
+    fun neutral(template: String): String {
+        val replaced = SECRET.replace(template, "secret")
+        val host = runCatching { URI(replaced).host }.getOrNull()
+        if (host != null && SECRET.containsMatchIn(template.substringAfter("://").substringBefore('/'))) invalid("placeholder_in_host")
+        return replaced
+    }
+
+    suspend fun fill(secrets: SecretStore, text: String, programId: String, host: String, encode: Boolean): String {
+        var result = text
+        for (match in SECRET.findAll(text).toList()) {
+            val value = secrets.reveal(programId, match.groupValues[1], host)
+            result = result.replace(match.value, if (encode) URLEncoder.encode(value, "UTF-8") else value)
+        }
+        return result
     }
 }

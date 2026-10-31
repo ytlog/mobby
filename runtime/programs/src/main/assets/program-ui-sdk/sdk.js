@@ -75,6 +75,40 @@ function response(result) {
   };
 }
 
+const toBase64 = (bytes) => btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join(''));
+const fromBase64 = (text) => Uint8Array.from(atob(text), (c) => c.charCodeAt(0));
+
+/** A WebSocket mobby holds for this page; it closes when the page closes. Messages wait in mobby until receive(). */
+function socket(id, protocol) {
+  let closed = null;
+  const decode = (m) => (m.type === 'text' ? { type: 'text', text: m.text } : { type: 'binary', bytes: fromBase64(m.base64) });
+  const self = {
+    protocol,
+    get closed() { return closed; },
+    send: async (data) => {
+      if (closed) throw new MobbyError('CONDITION_UNMET', 'socket_closed');
+      if (typeof data === 'string') return call('net.websocket', { op: 'send', socket: id, text: data });
+      if (data instanceof Uint8Array) return call('net.websocket', { op: 'send', socket: id, base64: toBase64(data) });
+      throw new TypeError(`socket.send(data): data must be a string or a Uint8Array, got ${kind(data)}.`);
+    },
+    receive: async (options = {}) => {
+      if (closed) return [];
+      const result = await call('net.websocket', { op: 'receive', socket: id, waitMs: options.waitMs === undefined ? 25000 : options.waitMs });
+      if (result.closed) closed = result.closed;
+      return result.messages.map(decode);
+    },
+    close: async (code = 1000, reason = '') => {
+      if (closed) return closed;
+      closed = (await call('net.websocket', { op: 'close', socket: id, code, reason })).closed;
+      return closed;
+    },
+    async *[Symbol.asyncIterator]() {
+      while (!closed) for (const message of await self.receive()) yield message;
+    },
+  };
+  return self;
+}
+
 const mobby = {
   MobbyError,
   call,
@@ -114,6 +148,14 @@ const mobby = {
       return response(await call('net.http', {
         url, method: init.method || 'GET', headers: init.headers || {}, ...(init.body === undefined ? {} : { body: String(init.body) }),
       }));
+    },
+    websocket: async (url, options = {}) => {
+      expect('net.websocket(url, {headers, protocols})', "e.g. const ws = await net.websocket('wss://stream.example.com/feed')",
+        [['url', url, 'string'], ['options', options, 'object']]);
+      const opened = await call('net.websocket', {
+        op: 'open', url, ...(options.headers ? { headers: options.headers } : {}), ...(options.protocols ? { protocols: options.protocols } : {}),
+      });
+      return socket(opened.socket, opened.protocol || null);
     },
   },
   secrets: {

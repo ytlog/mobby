@@ -12,6 +12,7 @@ import com.github.ytlog.mobby.android.programs.base.config.ConfigCapability
 import com.github.ytlog.mobby.android.programs.base.config.ConfigStore
 import com.github.ytlog.mobby.android.programs.base.log.LogCapability
 import com.github.ytlog.mobby.android.programs.base.net.NetHttpCapability
+import com.github.ytlog.mobby.android.programs.base.net.NetWebSocketCapability
 import com.github.ytlog.mobby.android.programs.base.notify.NotifyCapability
 import com.github.ytlog.mobby.android.programs.base.secrets.KeystoreSecretCipher
 import com.github.ytlog.mobby.android.programs.base.secrets.SecretStore
@@ -97,6 +98,8 @@ class ProgramPlatform internal constructor(
     private val ai: AiSettings? = null,
     /** The host's model gateways for `ai.call`; null where the host offers none. */
     val modelGateways: ModelGatewayPort? = null,
+    /** Open program sockets, closed when their run or page ends or their grant changes. */
+    private val sockets: NetWebSocketCapability? = null,
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
     internal val dao = database.dao()
@@ -109,7 +112,7 @@ class ProgramPlatform internal constructor(
     private val sdkDir = File(layout.root, "sdk")
     private lateinit var server: ProgramApiServer
     private val processes = launcher(File(layout.root, "logs"))
-    internal val runs = RunSupervisor(scope, dao, processes, sdkDir, { server.port }, clock = clock)
+    internal val runs = RunSupervisor(scope, dao, processes, sdkDir, { server.port }, clock = clock, released = ::release)
     private val status = ProgramStatus(dao, gate, config)
     internal val router = EventRouter(dao, status, runs, layout, schedules, clock)
     private val control = Mutex()
@@ -122,6 +125,9 @@ class ProgramPlatform internal constructor(
 
     /** Parses a package's scripts with the program runtime; see [ProgramProcessLauncher.checkSyntax]. */
     internal fun checkSyntax(packageDir: File, scripts: List<String>) = processes.checkSyntax(sdkDir, packageDir, scripts)
+
+    /** Frees what a run or page session held, such as its open sockets. */
+    internal fun release(caller: String) { sockets?.release(caller) }
 
     /** Closes cached database connections under [dir] before it is deleted. */
     internal fun releaseStorage(dir: File) { sql?.close(dir) }
@@ -319,6 +325,7 @@ class ProgramPlatform internal constructor(
     private suspend fun refreshLocked(reason: String, programId: String?) {
         permissions.reload()
         router.rebuild()
+        sockets?.let { socket -> socket.recheck { caller, scope -> gate.check(caller, socket.descriptor, scope) is GateDecision.Allowed } }
         // A program that can no longer work stops now instead of at its next call.
         for (program in dao.programs()) {
             val availability = status.availability(program.programId)
@@ -397,15 +404,16 @@ class ProgramPlatform internal constructor(
             val clock = System::currentTimeMillis
             val secrets = SecretStore(dao, KeystoreSecretCipher(), clock)
             val sql = SqlCapability()
+            val sockets = NetWebSocketCapability(secrets)
             val ai = AiSettings(app)
             val registry = CapabilityRegistry(
                 PHASE_ONE_DEVICE_CAPABILITIES.map { DeviceCapabilityHandler(it, AndroidDevicePort(app)) } + listOf(
-                    KvCapability(dao, clock), FilesCapability(), sql, NetHttpCapability(secrets), SecretsCapability(secrets),
+                    KvCapability(dao, clock), FilesCapability(), sql, NetHttpCapability(secrets), sockets, SecretsCapability(secrets),
                     ConfigCapability(ConfigStore(dao, clock)), LogCapability(dao, clock), NotifyCapability(app, dao, openUi), ScheduleCapability(),
                     EntryCapability(EntryCapability.SHARE), EntryCapability(EntryCapability.SHORTCUT), AiCallCapability(models, ai),
                 ))
             return ProgramPlatform(app, database, ProgramLayout(File(app.filesDir, "programs")), workspacePrograms, launcher, registry, secrets,
-                WorkManagerSchedules(app), sql, CoroutineScope(SupervisorJob() + Dispatchers.Default), ai, models, clock)
+                WorkManagerSchedules(app), sql, CoroutineScope(SupervisorJob() + Dispatchers.Default), ai, models, sockets, clock)
         }
     }
 }

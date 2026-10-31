@@ -47,17 +47,17 @@ data class SecretInfo(val name: String, val domains: Set<String>, val updatedAt:
 
 /**
  * Program credentials: write-only for programs, released only into requests to their bound domains.
- * Bound domains must stay within what the program requested for net.http.
+ * Bound domains must stay within what the program requested for net.http or net.websocket.
  */
 class SecretStore(private val dao: ProgramsDao, private val cipher: SecretCipher, private val clock: () -> Long) {
     suspend fun put(programId: String, name: String, value: String, domains: Set<String>) {
         if (!name.matches(NAME)) invalid("invalid_secret_name")
         if (value.isEmpty() || value.length > 8_192) invalid("secret_must_be_1_to_8192_characters")
         if (domains.isEmpty() || domains.any { !Scope.validDomain(it) }) invalid("secret_needs_valid_domains")
-        val requested = dao.grants(programId).firstOrNull { it.capability == "net.http" }?.let { Scope.fromJson(it.requestedScope) }
-            ?: throw CapabilityException(ProgramErrorCode.SCOPE_DENIED, "secret_needs_net_http")
-        if (!domains.all { it in requested.domains.orEmpty() || requested.allowsHost(it.removePrefix("*.")) && !it.startsWith("*.") })
-            throw CapabilityException(ProgramErrorCode.SCOPE_DENIED, "secret_domains_outside_net_http_request")
+        val requested = dao.grants(programId).filter { it.capability in NETWORK }.map { Scope.fromJson(it.requestedScope) }
+        if (requested.isEmpty()) throw CapabilityException(ProgramErrorCode.SCOPE_DENIED, "secret_needs_net_http_or_net_websocket")
+        if (!domains.all { domain -> requested.any { domain in it.domains.orEmpty() || it.allowsHost(domain.removePrefix("*.")) && !domain.startsWith("*.") } })
+            throw CapabilityException(ProgramErrorCode.SCOPE_DENIED, "secret_domains_outside_network_request")
         val (ciphertext, iv) = cipher.encrypt(value.toByteArray())
         val now = clock()
         val created = dao.secret(programId, name)?.createdAt ?: now
@@ -76,7 +76,10 @@ class SecretStore(private val dao: ProgramsDao, private val cipher: SecretCipher
         return cipher.decrypt(row.ciphertext, row.iv).decodeToString()
     }
 
-    companion object { val NAME = Regex("[A-Za-z][A-Za-z0-9_-]{0,63}") }
+    companion object {
+        val NAME = Regex("[A-Za-z][A-Za-z0-9_-]{0,63}")
+        private val NETWORK = setOf("net.http", "net.websocket")
+    }
 }
 
 /** `secrets`: programs store and list their credentials; reading the value back is not offered. */
