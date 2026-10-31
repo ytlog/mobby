@@ -172,7 +172,7 @@ Office 插件（`plugin:device:office`，程序能力 `office.inspect/read/write
 - 接口：`open`、`send`（文字或 base64 二进制）、`receive`（最多等 25 秒，返回已收到的消息，连接结束时附带 `{code, reason, by}`）、`close`。SDK 提供 `net.websocket(url, {headers, protocols})`，返回的对象有 `send`、`receive`、`close` 和 `for await` 迭代，后台与页面写法相同。
 - 生命周期：连接属于打开它的运行或页面会话，其他调用方拿不到；运行停止、页面关闭、授权撤销或收窄时由 mobby 关闭。每个调用方最多 4 个连接，单条消息最大 1 MiB；未读消息超过 256 条或 4 MiB 时关闭连接并报告 `receive_buffer_full`，不静默丢消息。
 - 记录：每次调用都写入操作记录，包含域名、`WEBSOCKET`、握手状态 101 和收发字节数，不保存消息内容。
-- 试运行不能打开连接：和其他会话类能力一样，权限检查返回 `PERMISSION_DENIED`（`not_allowed_in_dry_run`），开发指南写明了这一点。
+- 试运行不打开连接：权限检查照常按程序申请的域名核对，打开连接记为模拟；SDK 返回模拟连接，发送和关闭在本地模拟，`receive` 抛出 `SIMULATED`。交接类能力在试运行中仍被拒绝。
 
 测试用手写的本地 WebSocket 服务端覆盖：收发文字和二进制、关闭握手、对端关闭、分片拼接、自动回 pong、带掩码和非 UTF-8 帧的拒绝、积压关闭、握手被拒或伪造、未授权域名、私有地址和未授权 ws、凭据只填给绑定域名、连接归属与释放、授权收窄后关闭，以及服务端不响应 TLS 时按超时失败（首次测试时这一情况会一直卡住，已修复）。
 

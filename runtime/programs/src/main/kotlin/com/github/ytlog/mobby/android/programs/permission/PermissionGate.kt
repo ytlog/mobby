@@ -81,7 +81,8 @@ class PermissionGate(private val registry: CapabilityRegistry, private val clock
         if (grant.expiresAt != null && clock() >= grant.expiresAt) return GateDecision.Denied(Layer.PROGRAM, DenyReason.EXPIRED)
         scopeDenial(descriptor.scope, grant.granted, scope)?.let { return GateDecision.Denied(Layer.PROGRAM, it) }
         if (context.surface !in descriptor.surfaces) return GateDecision.Denied(Layer.CONTEXT, DenyReason.SURFACE_NOT_ALLOWED)
-        if (context.dryRun != null && (descriptor.kind == CapabilityKind.HANDOFF || descriptor.kind == CapabilityKind.SESSION))
+        // A handoff needs a person; a session is checked like any call and then simulated, so the rest of a handler can run.
+        if (context.dryRun != null && descriptor.kind == CapabilityKind.HANDOFF)
             return GateDecision.Denied(Layer.CONTEXT, DenyReason.NOT_ALLOWED_IN_DRY_RUN)
         return GateDecision.Allowed(grant.revision)
     }

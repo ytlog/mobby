@@ -97,7 +97,7 @@ test('ai.call sends text messages and returns the reply, and a dry run says no m
   } finally { api.instance.close(); }
 });
 
-test('a socket sends text and bytes, pulls messages until it closes, and a dry run refusal reaches the program', async () => {
+test('a socket sends text and bytes, pulls messages until it closes, and a dry run gets a simulated socket', async () => {
   const inbox = [
     { messages: [{ type: 'text', text: 'pong' }, { type: 'binary', base64: 'AQID' }] },
     { messages: [], closed: { code: 4001, reason: 'maintenance', by: 'peer' } },
@@ -105,7 +105,7 @@ test('a socket sends text and bytes, pulls messages until it closes, and a dry r
   const api = await server((req, res) => {
     const args = req.body.args;
     const ok = (result) => json(res, { requestId: req.body.requestId, status: 'succeeded', effect: 'confirmed', result });
-    if (args.url === 'wss://dry.example.com/') return json(res, { requestId: req.body.requestId, status: 'failed', effect: 'none', error: { code: 'PERMISSION_DENIED', layer: 'context', reason: 'not_allowed_in_dry_run' } });
+    if (args.url === 'wss://dry.example.com/') return json(res, { requestId: req.body.requestId, status: 'simulated', effect: 'none' });
     if (args.op === 'open') return ok({ socket: 's-1', protocol: 'v1' });
     if (args.op === 'send') return ok({});
     if (args.op === 'receive') return ok(inbox.shift());
@@ -129,8 +129,15 @@ test('a socket sends text and bytes, pulls messages until it closes, and a dry r
     assert.deepEqual(args.slice(1, 3), [{ op: 'send', socket: 's-1', text: 'ping' }, { op: 'send', socket: 's-1', base64: 'AQID' }]);
     assert.equal(args.filter((a) => a.op === 'receive').length, 2);
     assert.equal(args.filter((a) => a.op === 'close').length, 0);
-    // On the tablet the guide said a dry run returns a simulated socket; the gate refuses sessions in dry runs instead.
-    await assert.rejects(mobby.net.websocket('wss://dry.example.com/'), (error) => error.code === 'PERMISSION_DENIED' && error.reason === 'not_allowed_in_dry_run');
+    // A dry run opens nothing: sending and closing are simulated here, and there are no messages to read.
+    const before = api.requests.length;
+    const dry = await mobby.net.websocket('wss://dry.example.com/');
+    assert.equal(dry.simulated, true);
+    assert.deepEqual(await dry.send('x'), { simulated: true });
+    await assert.rejects(dry.receive(), (error) => error.code === 'SIMULATED' && error.reason === 'dry_run_has_no_socket_messages');
+    await assert.rejects((async () => { for await (const message of dry) void message; })(), (error) => error.code === 'SIMULATED');
+    assert.deepEqual(await dry.close(), { code: 1000, reason: 'simulated', by: 'program' });
+    assert.equal(api.requests.length, before + 1);
     await assert.rejects(mobby.net.websocket({ url: 'wss://a.example' }), /net\.websocket\(url, \{headers, protocols\}\): url must be a string/);
   } finally { api.instance.close(); }
 });
