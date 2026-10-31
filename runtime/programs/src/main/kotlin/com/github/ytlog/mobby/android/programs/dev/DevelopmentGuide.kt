@@ -108,7 +108,9 @@ SDK (arguments are positional; only the ones shown in braces take an object):
   `index, parent, className, viewId, text, description, clickable, editable, visible, bounds` (left, top, right,
   bottom in thousandths of the screen; password fields read as `[secure]`; at most 300 nodes). `screen.click(package,
   {text | textContains | description | descriptionContains | viewId | className})` clicks the one visible control that
-  matches every given field, or its nearest clickable parent; `screen.back(package)` and `screen.home(package)` act
+  matches every given field, or its nearest clickable parent, with an accessibility click; add `via: 'tap'` to the
+  target to touch the control's centre instead, as some apps (ad views especially) ignore accessibility clicks: if the
+  screen does not change after a click, read again and retry with `via: 'tap'`. `screen.back(package)` and `screen.home(package)` act
   only while that app is in front. Request them with `{"packages": [...]}` naming the apps, or `["*"]` for every app.
   Refusals: `TARGET_NOT_UNIQUE` (several match, nothing clicked), `RESOURCE_MISSING` (none), `STALE_OBSERVATION`
   (another app is in front), `CONDITION_UNMET` (screen off or locked, or a chat is using the screen), `SCOPE_DENIED`

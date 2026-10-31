@@ -162,6 +162,19 @@ class ScreenAccessService : AccessibilityService() {
         }
     }
 
+    /** A short touch at screen pixel ([x], [y]) for programs; waits for the system to finish or cancel the gesture. */
+    internal fun tapAt(x: Float, y: Float): Boolean {
+        val path = Path().apply { moveTo(x, y) }
+        val gesture = GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, 60)).build()
+        val done = CountDownLatch(1)
+        val completed = java.util.concurrent.atomic.AtomicBoolean(false)
+        val accepted = dispatchGesture(gesture, object : GestureResultCallback() {
+            override fun onCompleted(gestureDescription: GestureDescription?) { completed.set(true); done.countDown() }
+            override fun onCancelled(gestureDescription: GestureDescription?) { done.countDown() }
+        }, Handler(Looper.getMainLooper()))
+        return accepted && done.await(2, TimeUnit.SECONDS) && completed.get()
+    }
+
     private fun global(action: Int, success: String, failure: String): String {
         check(performGlobalAction(action)) { failure }
         return success

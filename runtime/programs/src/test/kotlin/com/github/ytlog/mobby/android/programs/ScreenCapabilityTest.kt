@@ -50,9 +50,9 @@ class ScreenCapabilityTest {
         val acted = mutableListOf<String>()
         override fun available() = on
         override fun read() = refusal?.let { throw it } ?: window
-        override fun click(packageName: String, target: ScreenTarget): ScreenNode {
+        override fun click(packageName: String, target: ScreenTarget, tap: Boolean): ScreenNode {
             refusal?.let { throw it }
-            acted += "click $packageName ${target.textContains ?: target.text}"
+            acted += (if (tap) "tap " else "click ") + "$packageName ${target.textContains ?: target.text}"
             return skip
         }
         override fun back(packageName: String) { refusal?.let { throw it }; acted += "back $packageName" }
@@ -98,6 +98,11 @@ class ScreenCapabilityTest {
         assertEquals(CallStatus.SUCCEEDED, call("screen.click", """{"package":"com.shop","textContains":"跳过"}""").status)
         assertEquals(CallStatus.SUCCEEDED, call("screen.back", """{"package":"com.shop"}""").status)
         assertEquals(listOf("click com.shop 跳过", "back com.shop"), port.acted)
+        // Some views ignore accessibility clicks; a program may ask for a touch at the control's centre instead.
+        assertEquals("tap", call("screen.click", """{"package":"com.shop","text":"跳过 3","via":"tap"}""").result!!.jsonObject["via"]!!.jsonPrimitive.content)
+        assertEquals("tap com.shop 跳过 3", port.acted.last())
+        assertTrue(call("screen.click", """{"package":"com.shop","text":"x","via":"swipe"}""").error!!.reason.startsWith("$.via must be one of"))
+        port.acted.removeAt(port.acted.lastIndex)
         assertEquals("$.package is required", call("screen.click", """{"textContains":"跳过"}""").error!!.reason)
         assertEquals("click_needs_text_description_view_id_or_class_name", call("screen.click", """{"package":"com.shop"}""").error!!.reason)
         assertEquals("package_not_granted", call("screen.home", """{"package":"com.bank"}""").error!!.reason)

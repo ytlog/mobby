@@ -11,6 +11,7 @@ import com.github.ytlog.mobby.android.device.ScreenRefusal
 import com.github.ytlog.mobby.android.device.ScreenRefused
 import com.github.ytlog.mobby.android.device.ScreenTarget
 import com.github.ytlog.mobby.android.device.ScreenWindow
+import com.github.ytlog.mobby.android.programs.base.storage.enumType
 import com.github.ytlog.mobby.android.programs.base.storage.invalid
 import com.github.ytlog.mobby.android.programs.base.storage.schema
 import com.github.ytlog.mobby.android.programs.base.storage.stringType
@@ -25,7 +26,7 @@ import kotlinx.serialization.json.*
 interface ScreenPort {
     fun available(): Boolean
     fun read(): ScreenWindow
-    fun click(packageName: String, target: ScreenTarget): ScreenNode
+    fun click(packageName: String, target: ScreenTarget, tap: Boolean = false): ScreenNode
     fun back(packageName: String)
     fun home(packageName: String)
 }
@@ -33,7 +34,7 @@ interface ScreenPort {
 class AndroidScreenPort(private val context: Context) : ScreenPort {
     override fun available() = ScreenAccessService.connected()
     override fun read() = ProgramScreen.read(context)
-    override fun click(packageName: String, target: ScreenTarget) = ProgramScreen.click(context, packageName, target)
+    override fun click(packageName: String, target: ScreenTarget, tap: Boolean) = ProgramScreen.click(context, packageName, target, tap)
     override fun back(packageName: String) = ProgramScreen.global(context, packageName, AccessibilityService.GLOBAL_ACTION_BACK)
     override fun home(packageName: String) = ProgramScreen.global(context, packageName, AccessibilityService.GLOBAL_ACTION_HOME)
 }
@@ -63,7 +64,8 @@ class ScreenCapability(id: String, private val port: ScreenPort) : CapabilityHan
         when (action) {
             "read" -> schema(emptyList(), "package" to stringType(255))
             "click" -> schema(listOf("package"), "package" to stringType(255), "text" to stringType(200), "textContains" to stringType(200),
-                "description" to stringType(200), "descriptionContains" to stringType(200), "viewId" to stringType(255), "className" to stringType(255))
+                "description" to stringType(200), "descriptionContains" to stringType(200), "viewId" to stringType(255), "className" to stringType(255),
+                "via" to enumType("action", "tap"))
             else -> schema(listOf("package"), "package" to stringType(255))
         },
         buildJsonObject { put("type", "object") }, ScopeKind.PACKAGES,
@@ -92,7 +94,11 @@ class ScreenCapability(id: String, private val port: ScreenPort) : CapabilityHan
                     val target = ScreenTarget(call.args.text("text"), call.args.text("textContains"), call.args.text("description"),
                         call.args.text("descriptionContains"), call.args.text("viewId"), call.args.text("className"))
                     if (target.empty) invalid("click_needs_text_description_view_id_or_class_name")
-                    CapabilityOutcome(Effect.CONFIRMED, buildJsonObject { put("clicked", port.click(packageName!!, target).toJson()) })
+                    val tap = call.args.text("via") == "tap"
+                    CapabilityOutcome(Effect.CONFIRMED, buildJsonObject {
+                        put("clicked", port.click(packageName!!, target, tap).toJson())
+                        put("via", if (tap) "tap" else "action")
+                    })
                 }
                 "back" -> { port.back(packageName!!); CapabilityOutcome(Effect.CONFIRMED, JsonObject(emptyMap())) }
                 else -> { port.home(packageName!!); CapabilityOutcome(Effect.CONFIRMED, JsonObject(emptyMap())) }

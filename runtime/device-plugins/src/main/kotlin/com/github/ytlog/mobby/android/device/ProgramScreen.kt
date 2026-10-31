@@ -3,6 +3,7 @@ package com.github.ytlog.mobby.android.device
 import android.app.KeyguardManager
 import android.content.Context
 import android.graphics.Rect
+import android.os.Build
 import android.os.PowerManager
 import android.view.accessibility.AccessibilityNodeInfo
 import java.util.concurrent.TimeUnit
@@ -105,18 +106,35 @@ object ProgramScreen {
     const val MAX_NODES = 300
     private const val MAX_DEPTH = 30
     private const val MAX_TEXT = 200
+    private const val PREFETCH = AccessibilityNodeInfo.FLAG_PREFETCH_DESCENDANTS_HYBRID
 
     fun read(context: Context): ScreenWindow = capture(context) { window, _ -> window }
 
-    /** Clicks the one control [target] names in [packageName]'s window and returns it. */
-    fun click(context: Context, packageName: String, target: ScreenTarget): ScreenNode = ScreenCoordinator.programAction {
+    /**
+     * Clicks the one control [target] names in [packageName]'s window and returns it. With [tap] the control is touched at
+     * its centre instead of sent an accessibility click: on the tablet a video app's splash ad ignored the click.
+     */
+    fun click(context: Context, packageName: String, target: ScreenTarget, tap: Boolean = false): ScreenNode = ScreenCoordinator.programAction {
         dispatchable(context)
-        capture(context) { window, nodes ->
+        val (picked, centre) = capture(context) { window, nodes ->
             if (window.packageName != packageName) throw ScreenRefused(ScreenRefusal.WINDOW_CHANGED, "window_is_${window.packageName}")
             val picked = ScreenMatcher.pick(window.nodes, target)
-            if (!nodes[picked.index].performAction(AccessibilityNodeInfo.ACTION_CLICK)) throw ScreenRefused(ScreenRefusal.FAILED, "click_not_performed")
-            picked
+            val node = nodes[picked.index]
+            if (tap) {
+                val rect = Rect().also(node::getBoundsInScreen)
+                if (rect.isEmpty) throw ScreenRefused(ScreenRefusal.FAILED, "control_has_no_area_to_tap")
+                picked to (rect.exactCenterX() to rect.exactCenterY())
+            } else {
+                if (!node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) throw ScreenRefused(ScreenRefusal.FAILED, "click_not_performed")
+                picked to null
+            }
         }
+        // The gesture is sent after the nodes are released; the window was checked in the same read.
+        centre?.let { (x, y) ->
+            val service = ScreenAccessService.instance ?: throw ScreenRefused(ScreenRefusal.SERVICE_OFF, "screen_service_off")
+            if (!service.tapAt(x, y)) throw ScreenRefused(ScreenRefusal.FAILED, "tap_not_completed")
+        }
+        picked
     }
 
     /** A global action, only while [packageName]'s window is in front. */
@@ -138,7 +156,10 @@ object ProgramScreen {
     /** Reads the active window once; [use] runs while its nodes are still valid. */
     private fun <T> capture(context: Context, use: (ScreenWindow, List<AccessibilityNodeInfo>) -> T): T {
         val service = ScreenAccessService.instance ?: throw ScreenRefused(ScreenRefusal.SERVICE_OFF, "screen_service_off")
-        val root = service.rootInActiveWindow ?: throw ScreenRefused(ScreenRefusal.NO_WINDOW, "no_readable_window")
+        // Every node fetch is answered on the app's main thread, which is busy while it starts. Fetched one by one, a
+        // splash screen of about 220 nodes took 1-1.7 s to read on the tablet; prefetching gets them in a few requests.
+        val root = (if (Build.VERSION.SDK_INT >= 33) service.getRootInActiveWindow(PREFETCH) else service.rootInActiveWindow)
+            ?: throw ScreenRefused(ScreenRefusal.NO_WINDOW, "no_readable_window")
         val packageName = root.packageName?.toString().orEmpty()
         if (packageName == context.packageName) { root.recycle(); throw ScreenRefused(ScreenRefusal.OWN_APP, "mobby_window_is_not_for_programs") }
         val metrics = service.resources.displayMetrics
@@ -159,7 +180,7 @@ object ProgramScreen {
                 listOf(rect.left * 1000 / width, rect.top * 1000 / height, rect.right * 1000 / width, rect.bottom * 1000 / height))
             held += node
             for (i in 0 until node.childCount) {
-                val child = node.getChild(i) ?: continue
+                val child = (if (Build.VERSION.SDK_INT >= 33) node.getChild(i, PREFETCH) else node.getChild(i)) ?: continue
                 if (!walk(child, index, depth + 1)) child.recycle()
             }
             return true
