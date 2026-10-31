@@ -141,6 +141,35 @@ class RunCoordinatorTest {
         assertEquals(4 * 1024 * 1024, output.content.values.sumOf { it.toByteArray().size })
         assertEquals(ConnectionState.CONNECTED, runtime.connection.value)
     }
+    // On the tablet a long Pi turn showed only "output exceeds the retention limit": every streamed fragment took one of the
+    // run's 2048 segments, so the fragments ran out and the final reply was dropped.
+    @Test fun `streamed fragments are merged so a long reply after long thinking is kept whole`() = runTest {
+        val journal = MemoryJournal(); val output = MemoryOutput()
+        var duringPause = emptyList<String>()
+        val runtime = RunCoordinator(backgroundScope, environment, process { _, _, emit ->
+            emit("""{"type":"message_start","message":{"role":"assistant"}}""", false)
+            repeat(3000) { emit("""{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":"t"}}""", false) }
+            repeat(3000) { emit("""{"type":"message_update","assistantMessageEvent":{"type":"text_delta","contentIndex":1,"delta":"w$it "}}""", false) }
+            // A pause in the stream still shows what arrived, without waiting for the next fragment.
+            delay(1_000)
+            duringPause = journal.states.values.single().outputSegments.map { output.content.getValue(it.ref) }
+            emit("""{"type":"message_update","assistantMessageEvent":{"type":"text_delta","contentIndex":1,"delta":"end"}}""", false)
+            emit("""{"type":"message_end","message":{"role":"assistant","stopReason":"stop","content":[]}}""", false)
+            emit("""{"type":"agent_settled"}""", false)
+            ProcessResult(0, true)
+        }, journal, output)
+        runtime.recover()
+        val id = (runtime.submit(request().copy(agentId = AgentId.PI)) as SubmitResult.Accepted).runId
+        advanceTimeBy(5_000); runCurrent()
+        val snapshot = journal.states.getValue(id)
+        assertEquals(RunPhase.SUCCEEDED, snapshot.phase)
+        assertNull(snapshot.progress)
+        val reply = (0 until 3000).joinToString("") { "w$it " }
+        assertEquals(reply, duringPause.joinToString(""))
+        assertEquals(reply + "end", snapshot.outputSegments.sortedBy { it.chunkIndex }.joinToString("") { output.content.getValue(it.ref) })
+        assertEquals("t".repeat(3000), snapshot.steps.single().output.sortedBy { it.chunkIndex }.joinToString("") { output.content.getValue(it.ref) })
+        assertTrue(snapshot.outputSegments.size + snapshot.steps.single().output.size < 10)
+    }
     @Test fun `native permission request is durable and survives observer reconnect`() = runTest {
         val journal = MemoryJournal()
         val runtime = RunCoordinator(backgroundScope, environment, process { _, signal, emit ->
@@ -445,7 +474,8 @@ class RunCoordinatorTest {
             signal.filterNotNull().first(); ProcessResult(143, true)
         }, journal, output)
         runtime.recover(); val id = (runtime.submit(request()) as SubmitResult.Accepted).runId
-        runCurrent()
+        // Streamed output is merged and written within a quarter second, not per fragment.
+        runCurrent(); advanceTimeBy(300); runCurrent()
         val base = runtime.observe(id).first() as RuntimeUpdate.Baseline
         assertEquals(listOf("hello"), base.snapshot.outputSegments.map { output.content[it.ref] })
         assertEquals(RunPhase.RUNNING, journal.states.getValue(id).phase)

@@ -254,26 +254,48 @@ class RunCoordinator(
         var proposal: String? = null
         val seenApprovals = mutableMapOf<String, String>()
         var eligible = true
+        suspend fun segment(messageId: String, text: String): OutputSegment? {
+            val bytes = text.toByteArray().size
+            if (outputBytes + bytes > 4 * 1024 * 1024 || chunk >= 2048) {
+                if (!truncated) {
+                    truncated = true
+                    // This fact may already have persisted ToolStarted before writing its output.
+                    val current = journal.snapshot(id)!!
+                    append(current, RuntimeEvent.Progress(ProgressNotice.OUTPUT_TRUNCATED), current.copy(progress = ProgressNotice.OUTPUT_TRUNCATED))
+                }
+                return null
+            }
+            val index = chunk++
+            val ref = outputStore.write(id, index.toString(), text)
+            outputBytes += bytes
+            return OutputSegment(messageId, index, ref)
+        }
+        // Streamed fragments of one message or tool output are merged into one segment until another fact arrives, the
+        // buffer grows large or the flush timer fires. One segment per fragment used up the run's segments in long Pi
+        // turns and everything after them was dropped, the final reply included. Callers hold the mutex.
+        class Pending(val messageId: String, val stepId: String?, val separator: String, val text: StringBuilder)
+        var pending: Pending? = null
+        suspend fun flushLocked() {
+            val buffered = pending ?: return
+            pending = null
+            val part = segment(buffered.messageId, buffered.text.toString()) ?: return
+            val state = journal.snapshot(id)!!
+            if (buffered.stepId == null) append(state, RuntimeEvent.AssistantDelta(part), state.copy(outputSegments = state.outputSegments + part))
+            else append(state, RuntimeEvent.ToolOutput(buffered.stepId, part),
+                state.copy(steps = state.steps.map { if (it.stepId == buffered.stepId) it.copy(output = it.output + part) else it }))
+        }
+        suspend fun buffer(messageId: String, stepId: String?, separator: String, text: String) {
+            val current = pending
+            if (current != null && current.messageId == messageId) current.text.append(separator).append(text)
+            else { flushLocked(); pending = Pending(messageId, stepId, separator, StringBuilder(text)) }
+            if (pending!!.text.length >= MERGED_SEGMENT_CHARS) flushLocked()
+        }
         suspend fun emitFact(fact: AgentFact) = mutex.withLock {
             if (!healthy) return@withLock
-            val old = journal.snapshot(id) ?: return@withLock
-            if (old.phase.terminal) return@withLock
-            suspend fun segment(messageId: String, text: String): OutputSegment? {
-                val bytes = text.toByteArray().size
-                if (outputBytes + bytes > 4 * 1024 * 1024 || chunk >= 2048) {
-                    if (!truncated) {
-                        truncated = true
-                        // This fact may already have persisted ToolStarted before writing its output.
-                        val current = journal.snapshot(id)!!
-                        append(current, RuntimeEvent.Progress(ProgressNotice.OUTPUT_TRUNCATED), current.copy(progress = ProgressNotice.OUTPUT_TRUNCATED))
-                    }
-                    return null
-                }
-                val index = chunk++
-                val ref = outputStore.write(id, index.toString(), text)
-                outputBytes += bytes
-                return OutputSegment(messageId, index, ref)
-            }
+            if (journal.snapshot(id)?.phase?.terminal != false) return@withLock
+            // Anything but streamed text or tool output lands after what is buffered, keeping the order the agent produced.
+            if (fact !is AgentFact.Text && fact !is AgentFact.Tool) flushLocked()
+            val old = journal.snapshot(id)!!
             when (fact) {
                 is AgentFact.Approval -> {
                     if (old.phase == RunPhase.CANCELLING || signal.value != null) return@withLock
@@ -291,29 +313,29 @@ class RunCoordinator(
                 }
                 AgentFact.InvalidApproval -> if (signal.value == null) stopLocked(id, StopCause.PROTOCOL_FAILURE)
                 is AgentFact.Session -> if (old.sessionRef?.value != fact.id) append(old, RuntimeEvent.RunStarted(SessionRef(fact.id)), old.copy(sessionRef = SessionRef(fact.id)))
-                is AgentFact.Text -> {
-                    segment(fact.messageId, fact.text)?.let { part ->
-                        append(old, RuntimeEvent.AssistantDelta(part), old.copy(outputSegments = old.outputSegments + part))
-                    }
-                }
+                is AgentFact.Text -> buffer(fact.messageId, null, "", fact.text)
                 is AgentFact.Proposal -> if (request.requestedOutput == RequestedOutput.SKILL_PROPOSAL) proposal = fact.markdown
                 is AgentFact.Tool -> {
                     val existing = old.steps.firstOrNull { it.stepId == fact.id }
                     if (existing == null) {
                         if (old.steps.size >= 512) return@withLock
+                        flushLocked()
+                        val state = journal.snapshot(id)!!
                         val order = chunk++
                         val body = fact.body ?: StepBody.Action("tool", "")
                         val tool = ToolSnapshot(fact.id, body, order = order)
-                        append(old, RuntimeEvent.ToolStarted(fact.id, body, order), old.copy(steps = old.steps + tool))
+                        append(state, RuntimeEvent.ToolStarted(fact.id, body, order), state.copy(steps = state.steps + tool))
                     } else if (fact.body != null && fact.body.supersedes(existing.body)) {
-                        val tool = existing.copy(body = fact.body)
-                        append(old, RuntimeEvent.ToolStarted(fact.id, fact.body, existing.order), old.copy(steps = old.steps.map { if (it.stepId == fact.id) tool else it }))
-                    }
-                    if (fact.output != null) segment("tool:${fact.id}", fact.output)?.let { part ->
+                        flushLocked()
                         val state = journal.snapshot(id)!!
-                        append(state, RuntimeEvent.ToolOutput(fact.id, part), state.copy(steps = state.steps.map { if (it.stepId == fact.id) it.copy(output = it.output + part) else it }))
+                        val tool = existing.copy(body = fact.body)
+                        append(state, RuntimeEvent.ToolStarted(fact.id, fact.body, existing.order), state.copy(steps = state.steps.map { if (it.stepId == fact.id) tool else it }))
                     }
+                    // Readers join a step's segments with these separators, so merging here renders the same text.
+                    if (fact.output != null) buffer("tool:${fact.id}", fact.id,
+                        if ((fact.body ?: existing?.body) is StepBody.Thinking) "" else "\n", fact.output)
                     if (fact.outcome != null) {
+                        flushLocked()
                         val state = journal.snapshot(id)!!
                         append(state, RuntimeEvent.ToolFinished(fact.id, fact.outcome), state.copy(steps = state.steps.map { if (it.stepId == fact.id) it.copy(outcome = fact.outcome) else it }))
                     }
@@ -328,6 +350,7 @@ class RunCoordinator(
             }
         }
         var result: ProcessResult
+        var flusher: Job? = null
         try {
             mutex.withLock {
                 val old = journal.snapshot(id)!!
@@ -335,6 +358,16 @@ class RunCoordinator(
                 else if (old.phase != RunPhase.CANCELLING) append(old, RuntimeEvent.RunStarted(old.sessionRef), old.copy(phase = RunPhase.RUNNING))
             }
             if (!eligible) return
+            flusher = scope.launch {
+                while (true) {
+                    // Later in a long run the timer slows down, so the remaining segments last.
+                    delay(if (chunk < 1024) 250 else 3_000)
+                    mutex.withLock {
+                        if (!healthy || journal.snapshot(id)?.phase?.terminal != false) return@withLock
+                        try { flushLocked() } catch (e: Exception) { failStorage() }
+                    }
+                }
+            }
             result = if (signal.value != null) ProcessResult(null, true) else process.execute(request, signal, devicePort(id) { chunk++ }) { line, stderr ->
                 try {
                     if (stderr) emitFact(AgentFact.Diagnostic("stderr", line))
@@ -351,8 +384,10 @@ class RunCoordinator(
             result = ProcessResult(null, false, ErrorCode.PROTOCOL_ERROR)
         }
         withContext(NonCancellable) {
+            flusher?.cancelAndJoin()
             mutex.withLock {
                 try {
+                    if (healthy && journal.snapshot(id)?.phase?.terminal == false) flushLocked()
                     val old = journal.snapshot(id) ?: return@withLock
                     if (old.phase.terminal) return@withLock
                     val cause = signal.value
@@ -439,5 +474,9 @@ class RunCoordinator(
         wake.value++
     }
     private fun envelope(id: RunId, sequence: Long, payload: RuntimeEvent) = EventEnvelope("${id.value}:$sequence", id, sequence, now(), payload)
+    private companion object {
+        /** A merged segment is written once it reaches this size, so a reader never waits on one huge buffer. */
+        const val MERGED_SEGMENT_CHARS = 64 * 1024
+    }
     private fun failStorage() { healthy = false; connected.value = ConnectionState.DISCONNECTED; stop?.value = StopCause.STORAGE_FAILURE; wake.value++ }
 }
