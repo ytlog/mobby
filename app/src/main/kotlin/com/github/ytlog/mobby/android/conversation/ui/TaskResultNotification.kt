@@ -8,7 +8,6 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import com.github.ytlog.mobby.android.MainActivity
 import com.github.ytlog.mobby.android.conversation.domain.ConversationId
 import com.github.ytlog.mobby.android.conversation.domain.ConversationState
 import com.github.ytlog.mobby.android.conversation.domain.ExecutionPhase
@@ -25,8 +24,11 @@ internal fun finishedRuns(previous: ConversationState, current: ConversationStat
     }
 }
 
-/** Tells the user a task ended while mobby was in the background; tapping opens its conversation. */
-internal class TaskResultNotifier(private val context: Context) {
+/**
+ * Tells the user a task ended while mobby was in the background; tapping opens its conversation through [open], which the
+ * app supplies so this layer does not name its activity.
+ */
+internal class TaskResultNotifier(private val context: Context, private val open: (ConversationId) -> Intent) {
     private val manager = context.getSystemService(NotificationManager::class.java)
 
     init {
@@ -34,9 +36,7 @@ internal class TaskResultNotifier(private val context: Context) {
     }
 
     fun show(result: TaskResult) {
-        val open = Intent(context, MainActivity::class.java)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-            .putExtra("conversationId", result.conversation.value)
+        val open = open(result.conversation)
         val id = result.conversation.value.hashCode()
         val notification = Notification.Builder(context, CHANNEL).setSmallIcon(android.R.drawable.stat_notify_chat)
             .setContentTitle(result.title).setContentText(petStatus(result.phase)).setAutoCancel(true)

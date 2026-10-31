@@ -90,7 +90,7 @@ class MobbyApplication : Application() {
                 catch (error: Throwable) { ball.close(); throw error }
             AutoCloseable { try { conversation.close() } finally { ball.close() } }
         }
-        val results = TaskResultNotifier(this)
+        val results = TaskResultNotifier(this, ::conversationIntent)
         petScope.launch { conversations.state.collect { state ->
             // Only while mobby is out of sight; inside the app the conversation already shows how the task ended.
             if (!foreground) finishedRuns(latest, state).forEach(results::show)
@@ -124,11 +124,13 @@ class MobbyApplication : Application() {
         }
     }.getOrDefault(false)
 
-    private fun openConversation(id: ConversationId?) {
+    private fun openConversation(id: ConversationId?) = startActivity(conversationIntent(id))
+
+    private fun conversationIntent(id: ConversationId?): Intent {
         val intent = Intent(this, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
         if (id != null) intent.putExtra("conversationId", id.value)
-        startActivity(intent)
+        return intent
     }
 
     private fun syncPet() {

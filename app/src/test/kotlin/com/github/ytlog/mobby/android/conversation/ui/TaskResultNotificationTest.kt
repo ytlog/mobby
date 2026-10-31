@@ -43,7 +43,7 @@ class TaskResultNotificationTest {
 
     @Test fun `the notification names the conversation and opens it`() {
         val context = ApplicationProvider.getApplicationContext<android.app.Application>()
-        val notifier = TaskResultNotifier(context)
+        val notifier = TaskResultNotifier(context) { id -> Intent(context, android.app.Activity::class.java).putExtra("conversationId", id.value) }
         notifier.show(TaskResult(ConversationId("a"), "整理账单", ExecutionPhase.FAILED))
         val posted = shadowOf(context.getSystemService(NotificationManager::class.java)).allNotifications.single()
         assertEquals("整理账单", posted.extras.getString(android.app.Notification.EXTRA_TITLE))
