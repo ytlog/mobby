@@ -40,6 +40,8 @@ internal fun purposeLabel(capability: String, scope: Scope, schedules: List<Json
     "storage.files" -> AppStrings.purposeFiles
     "notify.show" -> AppStrings.purposeNotify
     "ai.call" -> AppStrings.purposeAiCall
+    "entry.share" -> AppStrings.purposeShare
+    "entry.shortcut" -> AppStrings.purposeShortcut
     "time.schedule" -> schedules.mapNotNull(::scheduleLabel).distinct().takeIf { it.isNotEmpty() }
         ?.let { AppStrings.purposeSchedule(it.joinToString("、")) } ?: AppStrings.purposeScheduleAny
     "secrets" -> AppStrings.purposeSecrets

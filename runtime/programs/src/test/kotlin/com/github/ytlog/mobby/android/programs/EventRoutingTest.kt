@@ -11,6 +11,8 @@ import com.github.ytlog.mobby.android.programs.run.*
 import com.github.ytlog.mobby.android.programs.store.ProgramsDatabase
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.flow.toList
 import kotlinx.serialization.json.*
 import org.junit.After
 import org.junit.Assert.*
@@ -51,7 +53,8 @@ class EventRoutingTest {
     private val platform = ProgramPlatform(ApplicationProvider.getApplicationContext(), database, ProgramLayout(File(root, "programs")),
         File(root, "workspace/programs"), { object : ProgramProcessLauncher {
             override fun launch(spec: ProcessSpec): ProgramProcess { launched += spec; return Process().also { processes += it } }
-        } }, CapabilityRegistry(listOf(FakeHandler("net.http", scope = ScopeKind.DOMAINS), FakeHandler("storage.sql"), ScheduleCapability())),
+        } }, CapabilityRegistry(listOf(FakeHandler("net.http", scope = ScopeKind.DOMAINS), FakeHandler("storage.sql"), ScheduleCapability(),
+            EntryCapability(EntryCapability.SHARE), EntryCapability(EntryCapability.SHORTCUT))),
         com.github.ytlog.mobby.android.programs.base.secrets.SecretStore(database.dao(), object : com.github.ytlog.mobby.android.programs.base.secrets.SecretCipher {
             override fun encrypt(plain: ByteArray) = plain to byteArrayOf(0)
             override fun decrypt(ciphertext: ByteArray, iv: ByteArray) = ciphertext
@@ -135,6 +138,44 @@ class EventRoutingTest {
         val at = ScheduleSpec.parse("s", json("""{"at":"2026-10-24T09:00:00Z"}""")).first!!
         assertNull(at.nextAfter(at.atMillis!! + 1))
         assertEquals(LocalTime.of(9, 0), daily.daily)
+    }
+
+    private fun installEntries() = runBlocking {
+        platform.start()
+        platform.install(PackageBuilder(File(root, "workspace/programs/clip-keeper")).apply {
+            id = "clip-keeper"; ui = null; config = "[]"
+            permissions = """[{"capability":"entry.share","required":true},{"capability":"entry.shortcut","required":false}]"""
+            subscriptions = """[{"id":"shared","event":"entry.share","filter":{},"handler":"onShare"},
+                {"id":"tapped","event":"entry.shortcut","filter":{},"handler":"onShortcut"}]"""
+        }.write())
+    }
+
+    @Test fun `shared text and shortcut taps reach the program only through granted entry subscriptions`() = runBlocking {
+        installEntries()
+        assertFalse(platform.share("clip-keeper", "https://example.com/a", "标题"))
+        platform.setEnabled("clip-keeper", true)
+        platform.setGrant("clip-keeper", EntryCapability.SHARE, true, null, null)
+        assertFalse(platform.shortcut("clip-keeper"))
+        platform.setGrant("clip-keeper", EntryCapability.SHORTCUT, true, null, null)
+        assertTrue(platform.share("clip-keeper", "https://example.com/a", "标题"))
+        assertTrue(platform.shortcut("clip-keeper"))
+        // Both reach the same run: the tap is queued behind the share.
+        val events = platform.runs.attach(platform.runs.resolve(launched.single().credential)!!.runId!!)!!.take(2).toList().map { (it as RunMessage.Event).event }
+        assertEquals(listOf("onShare" to EntryCapability.SHARE, "onShortcut" to EntryCapability.SHORTCUT), events.map { it.handler to it.type })
+        assertEquals(buildJsonObject { put("text", "https://example.com/a"); put("subject", "标题") }, events[0].payload)
+        assertEquals(listOf("share"), platform.runs(10).first().map { it.trigger })
+        platform.setSubscriptionPaused("clip-keeper/shared", true)
+        assertFalse(platform.share("clip-keeper", "later", null))
+    }
+
+    @Test fun `shared text must fit and entry subscriptions take no filter`() = runBlocking {
+        installEntries()
+        platform.setEnabled("clip-keeper", true)
+        platform.setGrant("clip-keeper", EntryCapability.SHARE, true, null, null)
+        assertThrows(IllegalArgumentException::class.java) { runBlocking { platform.share("clip-keeper", "字".repeat(11_000), null) } }
+        assertThrows(IllegalArgumentException::class.java) { runBlocking { platform.share("clip-keeper", " ", null) } }
+        assertTrue(launched.isEmpty())
+        assertEquals(listOf("entry.share takes no filter; use {}"), EntryCapability(EntryCapability.SHARE).validateFilter(json("""{"types":["image"]}"""), Scope()))
     }
 
     private fun json(text: String) = Json.parseToJsonElement(text).jsonObject

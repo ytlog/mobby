@@ -375,7 +375,7 @@ data class ProgramEvent(
 ### 11.6 阶段 2 能力
 
 - `ai.call`（已实现）：一次纯文字、非流式的模型请求。用户在安装确认页为程序选定网关和模型（默认是对话的默认网关与模型），之后可在程序详情里更换；程序自己不能选择或更换，网关地址与密钥不对程序开放。`ModelGatewayPort` 由宿主实现：`GatewayTextModels` 按网关的原生协议（优先 Responses，否则 Messages）直接请求，做法与网关连接检查 `GatewayProbe` 相同，不经 Node 桥接；桥接是为 Agent CLI 提供本机回环地址的，`ai.call` 没有 CLI，且请求是一次性的。参数只有 `system`、`messages`（`role` 为 user/assistant、`text`）和 `maxOutputTokens`，图片、工具等其他字段由 schema 拒绝，不静默丢弃。每个程序默认每天 50 次、10 万 token、单次输出 2000 token，可在详情里调整，超出返回 `QUOTA_EXCEEDED`；网关未报告用量时按输入字数与输出上限保守估算；请求可能已到达网关的失败（超时、5xx）仍计入用量，`effect` 为 unknown。绑定与当日用量存于平台的 SharedPreferences，删除程序时一并清除。试运行不发请求，SDK 读取结果文字时抛出 `SIMULATED`。
-- `entry`：APK 静态声明分享接收 Activity 与快捷方式分发 Activity，按 programId 分发为 `entry.share`、`entry.shortcut` 事件；分享内容以资源引用交给程序，外部 Intent 的自报身份不被信任。
+- `entry`（已实现，拆为 `entry.share` 与 `entry.shortcut` 两个事件能力，各自申请和授权）：APK 静态声明分享接收 `ProgramShareActivity`（导出，仅 `text/plain`，没有程序在接收时禁用该组件）与快捷方式分发 `ProgramShortcutActivity`（不导出，只有 mobby 自己的快捷方式能到达），按 programId 分发。分享由用户在列表中选择接收程序，载荷为 `{text, subject?}`，合计不超过 32 KiB，超出或为空时拒绝而不截断；发送方的自报身份不传给程序。图片和文件分享尚未实现（原设计中的资源引用待后续）。订阅了 `entry.shortcut` 的程序，点快捷方式只运行处理函数、不打开页面；未订阅时仍打开页面或详情。导出的 `MainActivity` 收到的打开程序请求不触发入口事件。
 - `screen.*`：见 3.3 节，处理器调用 `withWindow`；`screen.click` 在同一次读取中按节点描述匹配，恰好一个时点击，否则返回 `TARGET_NOT_UNIQUE` 或 `RESOURCE_MISSING`；派发前取得 `ScreenCoordinator` 租约。
 
 ## 12. 开发服务

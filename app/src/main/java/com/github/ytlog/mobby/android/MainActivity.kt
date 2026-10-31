@@ -143,6 +143,8 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             when (val launch = programLaunch(id, app.programs.programs.first())) {
                 is ProgramLaunch.Page -> startActivity(ProgramUiActivity.intent(this@MainActivity, launch.id))
+                // MainActivity is exported, so an intent here is not proof of a shortcut tap; it never fires the program's entry event.
+                is ProgramLaunch.Run -> programNavigation = ProgramNavigation(launch.id, UUID.randomUUID().toString())
                 is ProgramLaunch.Details -> programNavigation = ProgramNavigation(launch.id, UUID.randomUUID().toString())
                 ProgramLaunch.List -> programNavigation = ProgramNavigation(null, UUID.randomUUID().toString())
             }

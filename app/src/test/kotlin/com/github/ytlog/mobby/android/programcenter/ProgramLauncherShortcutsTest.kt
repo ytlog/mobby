@@ -5,6 +5,9 @@ import androidx.core.content.pm.ShortcutManagerCompat
 import com.github.ytlog.mobby.android.MainActivity
 import com.github.ytlog.mobby.android.conversation.ui.ProgramShortcut
 import com.github.ytlog.mobby.android.programs.ProgramView
+import com.github.ytlog.mobby.android.programs.SubscriptionView
+import com.github.ytlog.mobby.android.programs.event.EntryCapability
+import kotlinx.serialization.json.JsonObject
 import com.github.ytlog.mobby.android.programs.program.ProgramAvailability
 import com.github.ytlog.mobby.android.programs.program.UserState
 import org.junit.Assert.assertEquals
@@ -20,8 +23,11 @@ import org.robolectric.annotation.Config
 class ProgramLauncherShortcutsTest {
     private val context get() = RuntimeEnvironment.getApplication()
 
-    private fun program(id: String, state: UserState = UserState.ENABLED, availability: ProgramAvailability = ProgramAvailability.WORKING, ui: Boolean = true) =
-        ProgramView(id, id.uppercase(), "1.0.0", state, availability, true, ui, emptyList(), emptyList(), emptyList(), emptyList())
+    private fun program(id: String, state: UserState = UserState.ENABLED, availability: ProgramAvailability = ProgramAvailability.WORKING, ui: Boolean = true,
+        entries: List<Pair<String, Boolean>> = emptyList()) =
+        ProgramView(id, id.uppercase(), "1.0.0", state, availability, true, ui, emptyList(), emptyList(),
+            entries.map { (event, active) -> SubscriptionView("$id/${event.substringAfter('.')}", event, JsonObject(emptyMap()), "on", "manifest", false, null, 0, active) },
+            emptyList())
 
     @Test fun `a launch is decided from the program's current state`() {
         val programs = listOf(
@@ -37,6 +43,25 @@ class ProgramLauncherShortcutsTest {
         assertEquals(ProgramLaunch.List, programLaunch("deleted", programs))
     }
 
+    @Test fun `a program listening for its shortcut runs instead of opening, while it can receive the tap`() {
+        val programs = listOf(
+            program("tap", entries = listOf(EntryCapability.SHORTCUT to true)),
+            program("off", entries = listOf(EntryCapability.SHORTCUT to false)),
+        )
+        assertEquals(ProgramLaunch.Run("tap", "TAP"), programLaunch("tap", programs))
+        assertEquals(ProgramLaunch.Page("off"), programLaunch("off", programs))
+    }
+
+    @Test fun `only working programs with an active share subscription are offered shared text`() {
+        val programs = listOf(
+            program("keep", entries = listOf(EntryCapability.SHARE to true)),
+            program("idle", entries = listOf(EntryCapability.SHARE to false)),
+            program("tap", entries = listOf(EntryCapability.SHORTCUT to true)),
+            program("broken", availability = ProgramAvailability.NEEDS_CONFIG, entries = listOf(EntryCapability.SHARE to true)),
+        )
+        assertEquals(listOf("keep"), shareTargets(programs).map { it.id })
+    }
+
     @Test fun `the launcher keeps at most four programs and never more than the system allows`() {
         val programs = (1..8).map { program("p$it") }
         assertEquals(4, launcherShortcuts(programs, emptyMap(), systemLimit = 15).size)
@@ -44,9 +69,9 @@ class ProgramLauncherShortcutsTest {
         assertEquals(emptyList<ProgramShortcut>(), launcherShortcuts(listOf(program("x", UserState.PAUSED, ProgramAvailability.PAUSED)), emptyMap(), 15))
     }
 
-    @Test fun `a shortcut opens mobby with only the program id, so the target is chosen at launch`() {
+    @Test fun `a shortcut goes through mobby's own entry with only the program id, so the target is chosen at launch`() {
         val intent = programShortcutIntent(context, "header-watch")
-        assertEquals(MainActivity::class.java.name, intent.component?.className)
+        assertEquals(ProgramShortcutActivity::class.java.name, intent.component?.className)
         assertEquals("header-watch", requestedProgram(intent))
         assertNull(requestedProgram(Intent(context, MainActivity::class.java).putExtra("programId", "header-watch")))
         assertNull(requestedProgram(Intent(intent).addFlags(Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY)))

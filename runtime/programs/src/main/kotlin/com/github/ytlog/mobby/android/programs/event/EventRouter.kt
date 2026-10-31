@@ -74,6 +74,13 @@ class EventRouter(
         return true
     }
 
+    /** The user shared text or tapped a shortcut; every active subscription of the program to [event] receives it. */
+    suspend fun entry(programId: String, event: String, payload: JsonObject): Boolean {
+        val rows = active.values.filter { it.programId == programId && it.eventType == event }
+        rows.forEach { deliver(it, payload, event.substringAfter('.')) }
+        return rows.isNotEmpty()
+    }
+
     /** Platform notices such as permission or config changes; only a live run receives them. */
     suspend fun notify(programId: String, type: String, payload: JsonObject) {
         runs.deliverIfLive(programId, ProgramEvent(newId(), type, type, null, clock(), payload))

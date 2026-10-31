@@ -3,9 +3,11 @@ package com.github.ytlog.mobby.android.programs.dev
 import com.github.ytlog.mobby.android.device.ProgramDevelopmentPort
 import com.github.ytlog.mobby.android.programs.ProgramPlatform
 import com.github.ytlog.mobby.android.programs.call.DryRunScope
+import com.github.ytlog.mobby.android.programs.capability.CapabilityKind
 import com.github.ytlog.mobby.android.programs.capability.PHASE_ONE_DEVICE_CAPABILITIES
 import com.github.ytlog.mobby.android.programs.event.ProgramEvent
 import com.github.ytlog.mobby.android.programs.program.PackageRejected
+import com.github.ytlog.mobby.android.programs.program.ProgramManifest
 import com.github.ytlog.mobby.android.programs.program.ProgramPackageReader
 import com.github.ytlog.mobby.android.programs.run.LaunchUnavailable
 import com.github.ytlog.mobby.android.programs.run.RunTarget
@@ -39,7 +41,7 @@ class DevelopmentService(private val platform: ProgramPlatform) : ProgramDevelop
                 put("files", pkg.files.size)
                 if (unparsed.isNotEmpty()) put("problems", JsonArray(unparsed.map { JsonPrimitive("${it.path}:${it.line?.let { line -> "$line:" } ?: ""} ${it.message}") }))
                 val notChecked = syntax.exceptionOrNull()?.let { "scripts were not syntax-checked: ${it.message}" }
-                put("warnings", JsonArray((warnings(dir, pkg.manifest.background) + listOfNotNull(notChecked)).map(::JsonPrimitive)))
+                put("warnings", JsonArray((warnings(dir, pkg.manifest.background) + unusedEvents(pkg.manifest) + listOfNotNull(notChecked)).map(::JsonPrimitive)))
             }
         } catch (error: PackageRejected) {
             buildJsonObject { put("valid", false); put("problems", JsonArray(error.problems.map { JsonPrimitive("${it.path}: ${it.message}") })) }
@@ -103,6 +105,7 @@ class DevelopmentService(private val platform: ProgramPlatform) : ProgramDevelop
                 val exercised = simulated.map { it.handler }.toSet()
                 put("notExercised", JsonArray(registered.filter { it !in exercised }.map(::JsonPrimitive)))
             }
+            put("unsubscribed", JsonArray(unsubscribed(pkg.manifest, simulated).map(::JsonPrimitive)))
             output?.let { put("output", it.takeLast(16_000)) }
         }
     }
@@ -146,6 +149,19 @@ class DevelopmentService(private val platform: ProgramPlatform) : ProgramDevelop
     }
 
     /** Direct Node access bypasses mobby's permissions; it is pointed out, not prevented. */
+    /** Event capabilities requested in permissions that no subscription in the manifest uses. */
+    private fun unusedEvents(manifest: ProgramManifest): List<String> = manifest.permissions.map { it.capability }
+        .filter { platform.registry[it]?.descriptor?.kind == CapabilityKind.EVENT && manifest.subscriptions.none { s -> s.event == it } }
+        .map { "permissions request $it but no subscription uses it, so no $it event will reach the program; add " +
+            "{\"id\": \"...\", \"event\": \"$it\", \"filter\": ..., \"handler\": \"...\"} to subscriptions" }
+
+    /** Simulated events of an event capability that no manifest subscription would deliver to that handler. */
+    private fun unsubscribed(manifest: ProgramManifest, events: List<ProgramEvent>): List<String> = events
+        .filter { event -> platform.registry[event.type]?.descriptor?.kind == CapabilityKind.EVENT &&
+            manifest.subscriptions.none { it.event == event.type && it.handler == event.handler } }
+        .map { "${it.type} → ${it.handler}: no subscription in manifest.json delivers this, so real events will not reach the handler" }
+        .distinct()
+
     private fun warnings(dir: File, background: String?): List<String> {
         if (background == null) return emptyList()
         return dir.walkTopDown().filter { it.isFile && it.extension in setOf("js", "cjs", "mjs") && !it.path.contains("/ui/") }.flatMap { file ->

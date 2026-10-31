@@ -9,6 +9,10 @@
         <activity android:name=".MainActivity" android:enableOnBackInvokedCallback="true" tools:targetApi="33" android:exported="true" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity>
+        <activity android:name=".programcenter.ProgramShortcutActivity" android:exported="false" android:taskAffinity="" android:excludeFromRecents="true" android:noHistory="true" android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+        <activity android:name=".programcenter.ProgramShareActivity" android:enabled="false" android:exported="true" android:taskAffinity="" android:excludeFromRecents="true" android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter><action android:name="android.intent.action.SEND" /><category android:name="android.intent.category.DEFAULT" /><data android:mimeType="text/plain" /></intent-filter>
+        </activity>
         <activity android:name=".programcenter.ProgramUiActivity" android:exported="false" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:windowSoftInputMode="adjustResize" />
         <provider android:name=".UpdateFileProvider" android:authorities="${applicationId}.updates" android:exported="false" android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/update_file_paths" />

@@ -56,6 +56,14 @@ confirmation. You cannot do those steps and must not claim the program is runnin
 - `id`: lowercase letters, digits and `-`. Config types: string, number, boolean, enum (with `options`), package, secret (with `domains`).
 - `time.schedule` filters: `{"every": "PT15M".."P30D"}`, `{"at": "2026-10-24T09:00:00Z"}` or `{"daily": "09:00", "timezone": "Asia/Shanghai"}`, optional `"missed": "skip"|"once"`.
 - Domain scopes are exact hosts or `*.suffix`; HTTPS only unless `"insecureHttp": true`.
+- An event reaches a handler only through a `subscriptions` entry; requesting the capability alone delivers nothing.
+- Entry events, each requested in `permissions` and subscribed with `"filter": {}`, for example
+  `{"id": "shared", "event": "entry.share", "filter": {}, "handler": "onShare"}`.
+  `entry.share` receives text the user shares from another app and sends to this program, payload `{text, subject?}`
+  (text only, up to 32 KiB together; images and files cannot be shared yet). `entry.shortcut` receives a tap on the
+  program's home screen shortcut, payload `{}`; while subscribed, the tap runs the handler instead of opening the page,
+  so report the outcome with `notify.show`. A dry run can simulate both, e.g.
+  `{"handler": "onShare", "type": "entry.share", "payload": {"text": "https://example.com"}}`.
 
 ## Background logic (Node)
 
@@ -127,6 +135,7 @@ no direct network access (use `mobby.net.fetch`). External links open in the bro
   background as the `ui.message` handler, so dry-run every action a page sends, for example
   `{"handler": "ui.message", "payload": {"message": {"type": "export"}}}`.
 - The result lists the program's registered `handlers` and those this dry run did `notExercised`; dry-run them too.
+  `unsubscribed` lists simulated events that no subscription in manifest.json would deliver: fix those before finishing.
   Messages the background sent with `ui.post` are returned in `uiMessages` and are not shown on any open page.
 """.trimStart()
 }

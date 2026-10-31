@@ -233,6 +233,20 @@ class ProgramPlatform internal constructor(
 
     suspend fun stop(programId: String) = runs.stop(programId, "stopped_by_user")
 
+    /**
+     * Text the user shared from another app, for the program's `entry.share` subscriptions. False when none is active;
+     * blank text, or text and subject over [EntryCapability.MAX_SHARED_BYTES], is refused rather than cut.
+     */
+    suspend fun share(programId: String, text: String, subject: String?): Boolean {
+        val title = subject?.takeIf { it.isNotBlank() }
+        require(text.isNotBlank()) { "shared_text_blank" }
+        require(EntryCapability.fits(text, title)) { "shared_text_too_long" }
+        return router.entry(programId, EntryCapability.SHARE, buildJsonObject { put("text", text); title?.let { put("subject", it) } })
+    }
+
+    /** The user tapped the program's home screen shortcut; false when it has no active `entry.shortcut` subscription. */
+    suspend fun shortcut(programId: String): Boolean = router.entry(programId, EntryCapability.SHORTCUT, JsonObject(emptyMap()))
+
     suspend fun stopAll() = mutate("stop_all") {
         dao.setAllUserState(UserState.PAUSED.wire, clock())
         runs.stopAll("stop_all")
@@ -388,7 +402,7 @@ class ProgramPlatform internal constructor(
                 PHASE_ONE_DEVICE_CAPABILITIES.map { DeviceCapabilityHandler(it, AndroidDevicePort(app)) } + listOf(
                     KvCapability(dao, clock), FilesCapability(), sql, NetHttpCapability(secrets), SecretsCapability(secrets),
                     ConfigCapability(ConfigStore(dao, clock)), LogCapability(dao, clock), NotifyCapability(app, dao, openUi), ScheduleCapability(),
-                    AiCallCapability(models, ai),
+                    EntryCapability(EntryCapability.SHARE), EntryCapability(EntryCapability.SHORTCUT), AiCallCapability(models, ai),
                 ))
             return ProgramPlatform(app, database, ProgramLayout(File(app.filesDir, "programs")), workspacePrograms, launcher, registry, secrets,
                 WorkManagerSchedules(app), sql, CoroutineScope(SupervisorJob() + Dispatchers.Default), ai, models, clock)

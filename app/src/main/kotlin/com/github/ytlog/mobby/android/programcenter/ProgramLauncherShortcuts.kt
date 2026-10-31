@@ -15,6 +15,7 @@ import com.github.ytlog.mobby.android.MainActivity
 import com.github.ytlog.mobby.android.conversation.ui.MobbyColors
 import com.github.ytlog.mobby.android.conversation.ui.ProgramShortcut
 import com.github.ytlog.mobby.android.programs.ProgramView
+import com.github.ytlog.mobby.android.programs.event.EntryCapability
 import com.github.ytlog.mobby.android.programs.program.ProgramAvailability
 import com.github.ytlog.mobby.android.programs.program.UserState
 
@@ -25,12 +26,15 @@ private const val LAUNCHER_LIMIT = 4
 /** Where a launcher shortcut leads, decided when it is tapped because the program may have changed since it was made. */
 internal sealed interface ProgramLaunch {
     data class Page(val id: String) : ProgramLaunch
+    /** The program listens for its shortcut: the tap goes to its background logic and nothing opens. */
+    data class Run(val id: String, val name: String) : ProgramLaunch
     data class Details(val id: String) : ProgramLaunch
     data object List : ProgramLaunch
 }
 
 internal fun programLaunch(id: String, programs: List<ProgramView>): ProgramLaunch {
     val program = programs.firstOrNull { it.id == id } ?: return ProgramLaunch.List
+    if (program.subscriptions.any { it.event == EntryCapability.SHORTCUT && it.active }) return ProgramLaunch.Run(id, program.name)
     val opens = program.userState == UserState.ENABLED && program.availability == ProgramAvailability.WORKING && program.hasUi
     return if (opens) ProgramLaunch.Page(id) else ProgramLaunch.Details(id)
 }
@@ -39,9 +43,22 @@ internal fun programLaunch(id: String, programs: List<ProgramView>): ProgramLaun
 internal fun launcherShortcuts(programs: List<ProgramView>, opened: Map<String, Long>, systemLimit: Int): List<ProgramShortcut> =
     programShortcuts(programs, opened, minOf(LAUNCHER_LIMIT, systemLimit))
 
-/** Shortcuts open mobby itself with only the program id; [programLaunch] then picks the page or the details. */
-internal fun programShortcutIntent(context: Context, programId: String): Intent =
-    Intent(ACTION_OPEN_PROGRAM, Uri.parse("mobby-program://$programId"), context, MainActivity::class.java).putExtra(EXTRA_PROGRAM, programId)
+/** Programs offered text shared from another app: those whose `entry.share` subscription can receive it now. */
+internal fun shareTargets(programs: List<ProgramView>): List<ProgramView> = programs.filter { program ->
+    program.availability == ProgramAvailability.WORKING && program.subscriptions.any { it.event == EntryCapability.SHARE && it.active }
+}
+
+/**
+ * Shortcuts go to [ProgramShortcutActivity] with only the program id; [programLaunch] then decides. That activity is not
+ * exported, so no other app can send a program a shortcut tap.
+ */
+internal fun programShortcutIntent(context: Context, programId: String): Intent = programIntent(context, programId, ProgramShortcutActivity::class.java)
+
+/** Opens the program's details or the program list in mobby; also what shortcuts made before [ProgramShortcutActivity] still send. */
+internal fun programDetailsIntent(context: Context, programId: String): Intent = programIntent(context, programId, MainActivity::class.java)
+
+private fun programIntent(context: Context, programId: String, target: Class<*>) =
+    Intent(ACTION_OPEN_PROGRAM, Uri.parse("mobby-program://$programId"), context, target).putExtra(EXTRA_PROGRAM, programId)
 
 /** Reopening mobby from Recents replays the launching intent; that is not a new request to open the program. */
 internal fun requestedProgram(intent: Intent?): String? = intent
@@ -54,8 +71,12 @@ internal class ProgramLauncherShortcuts(context: Context) {
 
     val systemLimit: Int get() = ShortcutManagerCompat.getMaxShortcutCountPerActivity(context)
 
-    fun sync(shortcuts: List<ProgramShortcut>) {
+    /** [names] are all installed programs, so shortcuts already pinned to the home screen get the current name and target. */
+    fun sync(shortcuts: List<ProgramShortcut>, names: Map<String, String> = emptyMap()) {
         ShortcutManagerCompat.setDynamicShortcuts(context, shortcuts.map { info(it.id, it.name) })
+        val pinned = ShortcutManagerCompat.getShortcuts(context, ShortcutManagerCompat.FLAG_MATCH_PINNED)
+            .mapNotNull { shortcut -> shortcut.id.removePrefix("program:").takeIf { shortcut.id.startsWith("program:") }?.let { id -> names[id]?.let { info(id, it) } } }
+        if (pinned.isNotEmpty()) ShortcutManagerCompat.updateShortcuts(context, pinned)
     }
 
     fun pinSupported(): Boolean = ShortcutManagerCompat.isRequestPinShortcutSupported(context)

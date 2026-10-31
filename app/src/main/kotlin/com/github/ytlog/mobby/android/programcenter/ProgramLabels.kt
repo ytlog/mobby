@@ -42,6 +42,8 @@ internal fun runOutcomeLabel(outcome: String?) = when (outcome) {
 internal fun runTriggerLabel(trigger: String) = when (trigger) {
     "ui" -> AppStrings.triggerUi
     "schedule" -> AppStrings.triggerSchedule
+    "share" -> AppStrings.triggerShare
+    "shortcut" -> AppStrings.triggerShortcut
     "dry_run" -> AppStrings.triggerDryRun
     else -> trigger
 }

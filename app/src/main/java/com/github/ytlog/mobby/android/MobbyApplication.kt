@@ -22,9 +22,12 @@ import com.github.ytlog.mobby.android.conversation.ui.finishedRuns
 import com.github.ytlog.mobby.android.programcenter.ProgramLauncherShortcuts
 import com.github.ytlog.mobby.android.programcenter.ProgramOpenHistory
 import com.github.ytlog.mobby.android.programcenter.launcherShortcuts
+import com.github.ytlog.mobby.android.programcenter.shareTargets
+import com.github.ytlog.mobby.android.programcenter.syncShareEntry
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.distinctUntilChangedBy
 
 class MobbyApplication : Application() {
     private lateinit var graph: AppGraph
@@ -95,9 +98,15 @@ class MobbyApplication : Application() {
         } }
         val launcher = ProgramLauncherShortcuts(this)
         petScope.launch {
-            combine(programs.programs, ProgramOpenHistory(this@MobbyApplication).changes()) { list, opened -> launcherShortcuts(list, opened, launcher.systemLimit) }
+            combine(programs.programs, ProgramOpenHistory(this@MobbyApplication).changes()) { list, opened ->
+                launcherShortcuts(list, opened, launcher.systemLimit) to list.associate { it.id to it.name }
+            }
                 .distinctUntilChanged()
-                .collect { shortcuts -> withContext(Dispatchers.IO) { launcher.sync(shortcuts) } }
+                .collect { (shortcuts, names) -> withContext(Dispatchers.IO) { launcher.sync(shortcuts, names) } }
+        }
+        petScope.launch {
+            programs.programs.distinctUntilChangedBy { list -> shareTargets(list).map { it.id } }
+                .collect { list -> withContext(Dispatchers.IO) { syncShareEntry(this@MobbyApplication, list) } }
         }
         registerComponentCallbacks(object : ComponentCallbacks2 {
             override fun onConfigurationChanged(newConfig: Configuration) = syncPet()

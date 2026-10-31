@@ -177,6 +177,30 @@ class DevelopmentServiceTest {
         assertEquals(listOf("ui.message", "onExport"), report["notExercised"]!!.jsonArray.map { it.jsonPrimitive.content })
     }
 
+    /**
+     * On the tablet the AI requested entry.share and entry.shortcut but left `subscriptions` empty; validate and both dry runs
+     * passed, yet no real share or tap would ever have reached the handlers.
+     */
+    @Test fun `validate and dry runs say when an event handler has no subscription to deliver it`() = runBlocking {
+        platform = platform()
+        platform.start()
+        val dev = DevelopmentService(platform)
+        PackageBuilder(File(workspace, "price-watch")).apply {
+            ui = null; config = "[]"; subscriptions = "[]"
+            permissions = """[{"capability":"notes.write","required":true},{"capability":"storage.kv","required":true},{"capability":"time.schedule","required":true}]"""
+        }.write()
+        val warnings = dev.validate("price-watch")["warnings"]!!.jsonArray.map { it.jsonPrimitive.content }
+        assertTrue(warnings.toString(), warnings.any { "time.schedule" in it && "no subscription" in it })
+        val report = dev.dryRun("price-watch", """[{"handler":"onSchedule","type":"time.schedule","payload":{}},{"handler":"ui.message","type":"ui.message","payload":{}}]""",
+            10_000, emptyMap())
+        val unsubscribed = report["unsubscribed"]!!.jsonArray.map { it.jsonPrimitive.content }
+        assertEquals(1, unsubscribed.size)
+        assertTrue(unsubscribed.single(), "time.schedule" in unsubscribed.single() && "onSchedule" in unsubscribed.single())
+        write()
+        assertTrue(dev.validate("price-watch")["warnings"]!!.jsonArray.none { "no subscription" in it.jsonPrimitive.content })
+        assertEquals(JsonArray(emptyList()), dev.dryRun("price-watch", """[{"handler":"onSchedule","type":"time.schedule","payload":{}}]""", 10_000, emptyMap())["unsubscribed"])
+    }
+
     @Test fun `the catalog lists only registered capabilities`() {
         platform = platform()
         val catalog = DevelopmentService(platform).catalog()
