@@ -131,7 +131,7 @@ class WorkspacePickerTest {
         Assert.assertEquals(AgentId.CLAUDE_CODE, submitted?.agent)
         Assert.assertEquals("CLAUDE", submitted?.gatewayProfile)
         Assert.assertEquals("claude-fixture", submitted?.model)
-        compose.onNodeWithText("网关与 Agent").assertDoesNotExist()
+        compose.onNodeWithText("AI 服务与 Agent").assertDoesNotExist()
         compose.onNodeWithText("模型").assertDoesNotExist()
     }
     @Test fun `applied agent selection is remembered for new conversations after reopening`() {

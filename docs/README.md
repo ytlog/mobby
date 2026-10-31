@@ -38,6 +38,7 @@
 | [界面语言](localization.md) | 中英文切换、文案维护与测试边界 |
 | [网关接入](gateway.md) | 协议路径、限制和联调范围 |
 | [网关 Provider 配置引导](design/gateway-provider-onboarding.md) | 统一配置入口、语言与站点推荐、各服务注册/Key 引导、OpenRouter 授权与验证边界 |
+| [AI 服务的简化连接流程](design/gateway-simple-setup.md) | 选服务、粘贴 Key、一次连接；推荐默认模型、模型搜索与高级设置 |
 | [演示素材](media/) | 真机演示素材与剪辑脚本 |
 | [英文真机演示](media/en/README.md) | 英文界面的四项录屏、实际验证结果及商店语言限制 |
 | [英文旅行清单源码](examples/travel-checklist-en/) | 手机 Codex 生成的英文网页与 Node 服务 |

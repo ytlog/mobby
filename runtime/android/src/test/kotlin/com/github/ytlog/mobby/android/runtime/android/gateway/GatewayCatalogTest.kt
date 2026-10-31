@@ -97,7 +97,7 @@ class GatewayCatalogTest {
     @Test fun `missing catalog and oversized body do not expose the response`() {
         server({ exchange -> reply(exchange, 404, """{"error":"synthetic-secret-body"}""") }) { base ->
             val missing = runBlocking { GatewayCatalog().fetch(GatewayConfig(base, "m", "synthetic-secret")) } as CatalogResult.Unavailable
-            assertEquals("该网关没有模型列表接口", missing.message)
+            assertEquals("这个服务没有模型列表接口", missing.message)
             assertFalse(missing.message.contains("synthetic-secret"))
         }
         server({ exchange -> reply(exchange, 200, """{"data":[{"id":"too-big","name":"unused-secret-marker"}]}""") }) { base ->

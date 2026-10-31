@@ -50,17 +50,17 @@ class ConversationLinkNavigationTest {
         fun settings() {
             compose.onNodeWithContentDescription("打开会话抽屉").performClick()
             compose.onNodeWithContentDescription("设置").performClick()
-            compose.onNodeWithText("网关设置").assertExists()
+            compose.onNodeWithText("AI 服务设置").assertExists()
         }
         settings()
         compose.runOnIdle { request.value = "first-link" }
         compose.onNodeWithContentDescription("打开会话抽屉").assertExists()
-        compose.onNodeWithText("网关设置").assertDoesNotExist()
+        compose.onNodeWithText("AI 服务设置").assertDoesNotExist()
         settings()
         restore.emulateSavedInstanceStateRestore()
-        compose.onNodeWithText("网关设置").assertExists()
+        compose.onNodeWithText("AI 服务设置").assertExists()
         compose.runOnIdle { request.value = "second-link-to-same-conversation" }
         compose.onNodeWithContentDescription("打开会话抽屉").assertExists()
-        compose.onNodeWithText("网关设置").assertDoesNotExist()
+        compose.onNodeWithText("AI 服务设置").assertDoesNotExist()
     }
 }

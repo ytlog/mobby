@@ -20,10 +20,10 @@ class LauncherResumeTest {
         click("打开会话抽屉")
         await("设置")
         click("设置")
-        await("网关设置")
+        await("AI 服务设置")
         shell("input keyevent KEYCODE_HOME")
         shell("am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -f 0x10200000 -n ${context.packageName}/.MainActivity")
-        await("网关设置")
+        await("AI 服务设置")
     }
 
     private fun shell(command: String): String = ParcelFileDescriptor.AutoCloseInputStream(

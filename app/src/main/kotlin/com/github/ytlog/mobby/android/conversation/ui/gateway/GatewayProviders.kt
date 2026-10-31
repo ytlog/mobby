@@ -5,6 +5,7 @@ import com.github.ytlog.mobby.android.conversation.ui.UiStrings as AppStrings
 import com.github.ytlog.mobby.android.localization.AppLanguage
 import com.github.ytlog.mobby.android.conversation.domain.AgentId
 import com.github.ytlog.mobby.android.conversation.domain.gateway.GatewayAddresses
+import com.github.ytlog.mobby.android.conversation.domain.gateway.GatewayModel
 import com.github.ytlog.mobby.android.conversation.domain.gateway.GatewayProfile
 import com.github.ytlog.mobby.android.conversation.ui.LanguagePreferences
 
@@ -74,4 +75,14 @@ internal object GatewayProviders {
         value.trim().trimEnd('/').replace(SUFFIX, "").lowercase()
 
     private val SUFFIX = Regex("(?i)/(?:chat/completions|responses|messages)$")
+}
+
+/** A starting model for a preset, used only when the service itself lists it. Never a free route or a price filter. */
+internal object GatewayRecommendations {
+    fun pick(providerId: String, listed: List<GatewayModel>): String? = when (providerId) {
+        "deepseek" -> listed.firstOrNull { it.id == "deepseek-chat" }
+        "openai" -> listed.firstOrNull { it.id == "gpt-5" }
+        "anthropic" -> listed.firstOrNull { it.id.startsWith("claude-sonnet-") }
+        else -> null
+    }?.id
 }

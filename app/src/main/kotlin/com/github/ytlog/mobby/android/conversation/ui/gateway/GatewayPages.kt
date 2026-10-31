@@ -13,21 +13,18 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.github.ytlog.mobby.android.conversation.domain.*
 import com.github.ytlog.mobby.android.conversation.ui.*
 import kotlinx.coroutines.*
-import kotlin.math.roundToInt
 
 internal fun gatewayBaseAddress(value: String): String = value.trim().trimEnd('/')
     .replace(Regex("(?i)/(?:responses|messages|chat/completions)$"), "")
@@ -111,7 +108,17 @@ internal fun gatewayBaseAddress(value: String): String = value.trim().trimEnd('/
                         GroupDivider()
                         Text(AppStrings.model, Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
                             style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        models.forEach { item ->
+                        var search by rememberSaveable(representative.id) { mutableStateOf("") }
+                        // Services may list hundreds of models; past a handful, search and keep the selected one in view.
+                        val shown = if (models.size <= 8) models else {
+                            val matches = models.filter { search.isBlank() || it.id.contains(search, true) || it.name.contains(search, true) }.take(30)
+                            models.filter { it.id == selectedModel && it !in matches } + matches
+                        }
+                        if (models.size > 8) Box(Modifier.padding(horizontal = 16.dp)) {
+                            OutlinedTextField(search, { search = it }, Modifier.fillMaxWidth(), label = { Text(AppStrings.searchModels) },
+                                singleLine = true, shape = RoundedCornerShape(12.dp))
+                        }
+                        shown.forEach { item ->
                             ChoiceRow(if (item.name == item.id) item.id else "${item.name} · ${item.id}", selectedModel == item.id,
                                 { select(selectedProfile, item.id, null) }, enabled = current != null)
                         }
@@ -151,6 +158,7 @@ internal fun gatewayLabel(profile: GatewayProfile): String {
         ?: AppStrings.custom
 }
 
+
 @Composable private fun GatewayFormAction(label: String, busy: Boolean, enabled: Boolean, loadingTag: String, onClick: () -> Unit) {
     androidx.compose.material3.TextButton(onClick = onClick, enabled = enabled && !busy, modifier = Modifier.fillMaxWidth(),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
@@ -160,6 +168,40 @@ internal fun gatewayLabel(profile: GatewayProfile): String {
             if (busy) CircularProgressIndicator(Modifier.size(18.dp).testTag(loadingTag), strokeWidth = 2.dp)
             Text(label, style = MaterialTheme.typography.bodyLarge)
         }
+    }
+}
+
+/** Services as cards; the last one takes any address. Nothing is preselected for a new setup. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable private fun ServiceChoices(selectedId: String?, selectedSite: GatewaySite, enabled: Boolean, choose: (String, GatewaySite) -> Unit) {
+    val options = GatewayProviders.ordered(LanguagePreferences.current).map { Triple(it.id, it.site, it.label) } +
+        Triple(GatewayProviders.CUSTOM, GatewaySite.SHARED, AppStrings.otherGatewayService)
+    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        options.forEach { (id, site, label) ->
+            val selected = id == selectedId
+            Surface(shape = RoundedCornerShape(12.dp), color = cardColor(),
+                border = BorderStroke(if (selected) 2.dp else 0.5.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline),
+                modifier = Modifier.selectable(selected = selected, enabled = enabled, role = Role.RadioButton) { choose(id, if (selected) selectedSite else site) }) {
+                Text(label, Modifier.padding(horizontal = 14.dp, vertical = 10.dp), style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.38f))
+            }
+        }
+    }
+}
+
+/** A searchable list where one tap picks a model. */
+@Composable private fun ModelPicker(models: List<GatewayModel>, selected: String, enabled: Boolean, pick: (String) -> Unit, other: () -> Unit) {
+    var search by remember { mutableStateOf("") }
+    val matches = models.filter { search.isBlank() || it.id.contains(search, true) || it.name.contains(search, true) }
+    SettingsGroup {
+        SettingsField(search, { search = it }, AppStrings.searchModels, enabled = enabled)
+        matches.take(30).forEach { model ->
+            GroupDivider()
+            ChoiceRow(if (model.name == model.id) model.id else "${model.name} · ${model.id}", model.id == selected, { pick(model.id) }, enabled = enabled)
+        }
+        if (matches.size > 30) { GroupDivider(); SettingsCaption(AppStrings.moreResultsSearch(matches.size - 30)) }
+        GroupDivider()
+        SettingsAction(AppStrings.useAnotherModelId, enabled = enabled, onClick = other)
     }
 }
 
@@ -177,30 +219,26 @@ internal fun gatewayLabel(profile: GatewayProfile): String {
     val group = profiles.filter { it.id == editingId }
     val saved = group.firstOrNull()
     val uriHandler = LocalUriHandler.current
-    var providerId by remember { mutableStateOf(GatewayProviders.CUSTOM) }
+    val clipboard = LocalClipboardManager.current
+    var providerId by remember { mutableStateOf<String?>(null) }
     var providerSite by remember { mutableStateOf(GatewaySite.SHARED) }
     var baseEndpoint by remember { mutableStateOf("") }
     var model by remember { mutableStateOf("") }
     var key by remember { mutableStateOf("") }
     var keyEdited by remember { mutableStateOf(false) }
-    var catalog by remember { mutableStateOf<GatewayCatalogResult?>(null) }
-    var selectedModels by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var manualModels by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var modelSearch by remember { mutableStateOf("") }
-    var providerExpanded by remember { mutableStateOf(false) }
-    var modelExpanded by remember { mutableStateOf(false) }
-    var providerAnchor by remember { mutableStateOf(IntRect.Zero) }
-    var modelAnchor by remember { mutableStateOf(IntRect.Zero) }
-    var addModelDialog by remember { mutableStateOf(false) }
-    var newModelId by remember { mutableStateOf("") }
-    var modelError by remember { mutableStateOf("") }
+    var catalog by remember { mutableStateOf<List<GatewayModel>?>(null) }
+    var catalogError by remember { mutableStateOf<String?>(null) }
+    var manualId by remember { mutableStateOf("") }
+    var manualOpen by remember { mutableStateOf(false) }
+    var picking by remember { mutableStateOf(false) }
+    var pickToConnect by remember { mutableStateOf(false) }
+    var advanced by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf("") }
     var noticeError by remember { mutableStateOf(false) }
     var connectionError by remember { mutableStateOf(false) }
     var connectionNotice by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
-    var fetchingModels by remember { mutableStateOf(false) }
-    var savingGateway by remember { mutableStateOf(false) }
+    var connecting by remember { mutableStateOf(false) }
     var checking by remember { mutableStateOf(false) }
     var signingIn by remember { mutableStateOf(false) }
     var signInJob by remember { mutableStateOf<Job?>(null) }
@@ -209,30 +247,21 @@ internal fun gatewayLabel(profile: GatewayProfile): String {
     LaunchedEffect(editingId) {
         val first = group.firstOrNull()
         val provider = GatewayProviders.matchGroup(group)
-        providerId = provider?.id ?: GatewayProviders.CUSTOM
+        providerId = if (first == null) null else provider?.id ?: GatewayProviders.CUSTOM
         providerSite = provider?.site ?: GatewaySite.SHARED
         baseEndpoint = gatewayBaseAddress(provider?.candidates()?.responses ?: first?.endpoint.orEmpty())
         model = first?.model.orEmpty()
-        selectedModels = first?.models?.map { it.id }?.toSet().orEmpty()
-        manualModels = first?.models?.map { it.id }?.toSet().orEmpty()
-        key = ""; keyEdited = false; catalog = null
+        catalog = first?.models?.takeIf { it.isNotEmpty() }
+        key = ""; keyEdited = false
     }
-    fun candidates(): GatewayAddresses = GatewayProviders.find(providerId, providerSite)?.candidates()
+    val idle = !busy && !checking && !signingIn
+    fun candidates(): GatewayAddresses = providerId?.let { GatewayProviders.find(it, providerSite)?.candidates() }
         ?: gatewayBaseAddress(baseEndpoint).let { GatewayAddresses(it, it) }
-    fun edit() = GatewayEdit(editingId?.takeIf { it.isNotBlank() }, candidates(), model.trim(),
-        if (keyEdited) key.toCharArray() else null, selectedModels + listOfNotNull(model.takeIf { it.isNotBlank() }))
+    fun edit(defaultModel: String, models: Set<String> = emptySet()) = GatewayEdit(editingId?.takeIf { it.isNotBlank() }, candidates(), defaultModel,
+        if (keyEdited || saved == null) key.toCharArray() else null, models)
     fun changed() {
-        noticeError = false; catalog = null; connectionNotice = ""; notice = ""
-        modelExpanded = false; modelSearch = ""
-        if (saved == null) {
-            model = ""
-            selectedModels = emptySet(); manualModels = emptySet()
-        }
-    }
-    fun modelChanged(value: String) {
-        model = value
-        selectedModels = selectedModels + value
-        noticeError = false; connectionNotice = ""; notice = ""
+        noticeError = false; notice = ""; connectionNotice = ""
+        catalog = null; catalogError = null; picking = false; pickToConnect = false
     }
     val savedMatches = saved != null && model.trim() == saved.model && !keyEdited &&
         group.all { candidates().forAgent(it.agent) == it.endpoint }
@@ -241,230 +270,186 @@ internal fun gatewayLabel(profile: GatewayProfile): String {
         providerId = id; providerSite = site
         baseEndpoint = GatewayProviders.find(id, site)?.let { gatewayBaseAddress(it.candidates().responses) }.orEmpty()
         key = ""; keyEdited = true
+        if (saved == null) { model = ""; manualId = ""; manualOpen = false }
         changed()
     }
-    val provider = GatewayProviders.find(providerId, providerSite)
-    val guide = GatewayProviderGuides.find(providerId, providerSite)
     fun openOfficial(url: String) {
         try { if (openLink != null) openLink(url) else uriHandler.openUri(url) }
         catch (_: Exception) { noticeError = true; notice = AppStrings.cannotOpenThisLink }
     }
+    /** Fetch the list unless a tapped [chosen] model already came from it, settle the default, then probe and save. */
+    fun connect(chosen: String? = null) {
+        if (providerId == GatewayProviders.CUSTOM) baseEndpoint = gatewayBaseAddress(baseEndpoint)
+        noticeError = false; notice = ""; connectionNotice = ""; busy = true; connecting = true
+        submit {
+            var leave: String? = null
+            try {
+                if (chosen == null || catalog == null) {
+                    val request = edit(model.trim())
+                    val result = try { fetchModels(request) } finally { request.credential?.fill('\u0000') }
+                    when (result) {
+                        is DataResult.Failed -> { noticeError = true; notice = result.message; return@submit }
+                        is DataResult.Loaded -> { catalog = result.value.models; catalogError = result.value.catalogError }
+                    }
+                }
+                val listed = catalog.orEmpty()
+                val typed = manualId.trim().takeIf { manualOpen || listed.isEmpty() }.orEmpty()
+                if (typed.isNotEmpty() && (typed.length > 200 || typed.any { it.isISOControl() || it == ',' })) {
+                    noticeError = true; notice = AppStrings.enterValidModelId; return@submit
+                }
+                val target = chosen ?: typed.ifEmpty { null } ?: when {
+                    listed.isEmpty() -> null
+                    listed.any { it.id == model } -> model
+                    else -> providerId?.let { GatewayRecommendations.pick(it, listed) } ?: listed.singleOrNull()?.id
+                }
+                if (target == null) {
+                    if (listed.isEmpty()) manualOpen = true else { picking = true; pickToConnect = true }
+                    return@submit
+                }
+                model = target; picking = false; pickToConnect = false
+                val request = edit(target, listed.map { it.id }.toSet() + target)
+                val result = try { save(request) } finally { request.credential?.fill('\u0000') }
+                when (result) {
+                    is GatewaySaveResult.Saved -> {
+                        key = ""; keyEdited = false; refresh()
+                        leave = AppStrings.gatewayConnected(result.agents.sortedBy { it.ordinal }.joinToString("、") { it.label() })
+                    }
+                    is GatewaySaveResult.Failed -> { noticeError = true; notice = result.message }
+                }
+            } finally { connecting = false; busy = false }
+            leave?.let { if (onSaved != null) onSaved(it) else notice = it }
+        }
+    }
+    val guide = providerId?.let { GatewayProviderGuides.find(it, providerSite) }
     Column(Modifier.fillMaxSize()) {
         PageHeader(if (!editingId.isNullOrBlank()) AppStrings.editGateway else AppStrings.addGateway, back)
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
             SettingsCaption(AppStrings.gatewaySetupHelp)
-            SettingsGroup { Box(Modifier.fillMaxWidth().onGloballyPositioned { coordinates ->
-                val origin = coordinates.positionInWindow()
-                providerAnchor = IntRect(origin.x.roundToInt(), origin.y.roundToInt(),
-                    origin.x.roundToInt() + coordinates.size.width, origin.y.roundToInt() + coordinates.size.height)
-            }) {
-                SettingsAction(AppStrings.serviceLabel(provider?.label ?: AppStrings.custom), enabled = !busy && !checking && !signingIn) { providerExpanded = true }
-                FrostedMenu(providerExpanded, { providerExpanded = false }, providerAnchor) {
-                    Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState()).padding(bottom = 12.dp)) {
-                        MenuSection(AppStrings.selectService) {
-                            val options = GatewayProviders.ordered(LanguagePreferences.current)
-                            options.forEach { option ->
-                                MenuOption(option.label, option.id == providerId && option.site == providerSite) {
-                                    chooseProvider(option.id, option.site)
-                                    providerExpanded = false
-                                }
+            ServiceChoices(providerId, providerSite, idle) { id, site -> chooseProvider(id, site) }
+            val chosenId = providerId ?: return@Column
+            if (chosenId == "openrouter") SettingsGroup {
+                GatewayFormAction(if (signingIn) AppStrings.signingInGateway else AppStrings.signInOpenRouter, signingIn,
+                    enabled = idle, loadingTag = "gateway-sign-in-loading") {
+                    signingIn = true; notice = ""; noticeError = false
+                    signInJob = checkScope.launch {
+                        try {
+                            when (val result = signIn()) {
+                                is GatewaySignInResult.Credential -> try {
+                                    ensureActive()
+                                    key = result.value.concatToString(); keyEdited = true; changed()
+                                    notice = AppStrings.gatewayKeyReceived
+                                } finally { result.value.fill('\u0000') }
+                                is GatewaySignInResult.Failed -> { noticeError = true; notice = result.message }
                             }
-                            MenuOption(AppStrings.custom, providerId == GatewayProviders.CUSTOM) {
-                                chooseProvider(GatewayProviders.CUSTOM, GatewaySite.SHARED)
-                                providerExpanded = false
-                            }
-                        }
+                        } catch (e: CancellationException) { notice = AppStrings.gatewaySignInCancelled; throw e }
+                        catch (_: Exception) { noticeError = true; notice = AppStrings.gatewaySignInFailed }
+                        finally { signingIn = false; signInJob = null }
                     }
                 }
-            } }
-            val sites = GatewayProviders.sites(providerId)
-            if (sites.size > 1) {
-                SettingsCaption(AppStrings.gatewayProviderSiteHelp)
-                SettingsGroup {
-                    sites.sortedBy { it.site != (if (LanguagePreferences.current == com.github.ytlog.mobby.android.localization.AppLanguage.CHINESE) GatewaySite.CHINA else GatewaySite.INTERNATIONAL) }
-                        .forEachIndexed { index, option ->
-                            if (index > 0) GroupDivider()
-                            ChoiceRow(if (option.site == GatewaySite.CHINA) AppStrings.gatewayChinaSite else AppStrings.gatewayInternationalSite,
-                                option.site == providerSite, { chooseProvider(option.id, option.site) }, enabled = !busy && !checking && !signingIn)
-                        }
-                }
-            }
-            if (guide != null) {
-                SettingsCaption(guide.summary)
-                if (guide.keyUrl != null || guide.helpUrl != null) SettingsGroup {
-                    if (providerId == "openrouter") {
-                        GatewayFormAction(if (signingIn) AppStrings.signingInGateway else AppStrings.signInOpenRouter, signingIn,
-                            enabled = !busy && !checking && !signingIn, loadingTag = "gateway-sign-in-loading") {
-                            signingIn = true; notice = ""; noticeError = false
-                            signInJob = checkScope.launch {
-                                try {
-                                    when (val result = signIn()) {
-                                        is GatewaySignInResult.Credential -> try {
-                                            ensureActive()
-                                            key = result.value.concatToString(); keyEdited = true; changed()
-                                            notice = AppStrings.gatewayKeyReceived
-                                        } finally { result.value.fill('\u0000') }
-                                        is GatewaySignInResult.Failed -> { noticeError = true; notice = result.message }
-                                    }
-                                } catch (e: CancellationException) { notice = AppStrings.gatewaySignInCancelled; throw e }
-                                catch (_: Exception) { noticeError = true; notice = AppStrings.gatewaySignInFailed }
-                                finally { signingIn = false; signInJob = null }
-                            }
-                        }
-                        GroupDivider()
-                    }
-                    guide.keyUrl?.let { url ->
-                        SettingsAction(AppStrings.gatewayProviderKeyLink, enabled = !busy && !checking && !signingIn) { openOfficial(url) }
-                        if (guide.helpUrl != null) GroupDivider()
-                    }
-                    guide.helpUrl?.let { url ->
-                        SettingsAction(AppStrings.gatewayProviderHelpLink, enabled = !busy && !checking && !signingIn) { openOfficial(url) }
-                    }
-                    if (signingIn) { GroupDivider(); SettingsAction(AppStrings.cancelGatewaySignIn) { signInJob?.cancel() } }
-                }
+                if (signingIn) { GroupDivider(); SettingsAction(AppStrings.cancelGatewaySignIn) { signInJob?.cancel() } }
             }
             SettingsGroup {
-                SettingsField(baseEndpoint, { baseEndpoint = it; key = ""; keyEdited = true; changed() }, AppStrings.baseAddress, enabled = !busy && !checking && !signingIn && providerId == GatewayProviders.CUSTOM)
-                GroupDivider()
+                if (chosenId == GatewayProviders.CUSTOM) {
+                    SettingsField(baseEndpoint, { baseEndpoint = it; key = ""; keyEdited = true; changed() }, AppStrings.baseAddress, enabled = idle)
+                    GroupDivider()
+                }
                 SettingsField(key, { key = it; keyEdited = true; changed() },
-                    if (saved?.hasCredential == true && !keyEdited) AppStrings.keySavedEnterAReplacement else AppStrings.apiKeyOptionalWithoutAuthentication,
-                    enabled = !busy && !checking && !signingIn, visualTransformation = PasswordVisualTransformation())
+                    when {
+                        saved?.hasCredential == true && !keyEdited -> AppStrings.keySavedEnterAReplacement
+                        chosenId == GatewayProviders.CUSTOM -> AppStrings.apiKeyOptionalWithoutAuthentication
+                        else -> AppStrings.apiKey
+                    },
+                    enabled = idle, visualTransformation = PasswordVisualTransformation(),
+                    trailing = {
+                        androidx.compose.material3.TextButton(onClick = {
+                            val pasted = clipboard.getText()?.text?.trim().orEmpty()
+                            if (pasted.isEmpty()) { noticeError = true; notice = AppStrings.clipboardHasNoText }
+                            else { key = pasted; keyEdited = true; changed() }
+                        }, enabled = idle) { Text(AppStrings.pasteKey) }
+                    })
+                guide?.keyUrl?.let { url ->
+                    GroupDivider()
+                    SettingsAction(AppStrings.gatewayProviderKeyLink, enabled = idle) { openOfficial(url) }
+                }
                 if (saved?.hasCredential == true) {
                     GroupDivider()
-                    SettingsAction(AppStrings.removeSavedKey, enabled = !busy && !checking && !signingIn) { key = ""; keyEdited = true; changed() }
+                    SettingsAction(AppStrings.removeSavedKey, enabled = idle) { key = ""; keyEdited = true; changed() }
                 }
             }
+            guide?.let { SettingsCaption(it.summary) }
             val supported = group.map { it.agent }.toSet()
             if (supported.isNotEmpty()) SettingsCaption(AppStrings.agents(AppStrings.savedLabel, supported.joinToString("、") { it.label() }))
             if (listOf(candidates().responses, candidates().messages).any { it.startsWith("http://", ignoreCase = true) })
                 SettingsCaption(AppStrings.httpSendsKeysAndContentInPlainTextUse, error = true)
-            SettingsGroup { GatewayFormAction(AppStrings.fetchGatewayModels, fetchingModels,
-                enabled = !busy && !checking && !signingIn && candidates().responses.isNotBlank(), loadingTag = "gateway-fetch-loading") {
-                if (providerId == GatewayProviders.CUSTOM) baseEndpoint = gatewayBaseAddress(baseEndpoint)
-                noticeError = false; busy = true; fetchingModels = true; notice = ""
-                submit {
-                    val request = edit()
-                    try {
-                        when (val result = fetchModels(request)) {
-                            is DataResult.Loaded -> {
-                                catalog = result.value
-                                val available = result.value.models.map { it.id }.toSet()
-                                manualModels = (manualModels + selectedModels) - available
-                            }
-                            is DataResult.Failed -> { noticeError = true; notice = result.message }
-                        }
-                    } finally { request.credential?.fill('\u0000'); fetchingModels = false; busy = false }
-                }
-            } }
-            val fetchedCatalog = catalog
-            fetchedCatalog?.catalogError?.let { SettingsCaption(AppStrings.modelListUnavailableAddManually(it)) }
-            if (fetchedCatalog != null) {
-            val availableModels = fetchedCatalog.models.map { it.id to it.name } +
-                manualModels.map { it to it } + listOfNotNull(model.takeIf { it.isNotBlank() }?.let { it to it })
-            val modelOptions = availableModels.distinctBy { it.first }
-            SettingsGroup { Box(Modifier.fillMaxWidth().onGloballyPositioned { coordinates ->
-                val origin = coordinates.positionInWindow()
-                modelAnchor = IntRect(origin.x.roundToInt(), origin.y.roundToInt(),
-                    origin.x.roundToInt() + coordinates.size.width, origin.y.roundToInt() + coordinates.size.height)
-            }) {
-                SettingsAction(AppStrings.modelLabel(model.ifBlank { AppStrings.pleaseSelect }), enabled = !busy && !checking && !signingIn) { modelExpanded = true }
-                FrostedMenu(modelExpanded, { modelExpanded = false; addModelDialog = false }, modelAnchor) {
-                    Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()).padding(bottom = 12.dp)) {
-                    if (addModelDialog) {
-                        MenuSection(AppStrings.addModel) {
-                            OutlinedTextField(newModelId, { newModelId = it; modelError = "" },
-                                Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
-                                label = { Text(AppStrings.modelId) }, singleLine = true, shape = RoundedCornerShape(12.dp))
-                            if (modelError.isNotBlank()) MenuCaption(modelError)
-                            MenuAction(AppStrings.add) {
-                                val id = newModelId.trim()
-                                if (id.isBlank() || id.length > 200 || id.any { it.isISOControl() || it == ',' }) modelError = AppStrings.enterValidModelId
-                                else {
-                                    manualModels = manualModels + id
-                                    selectedModels = selectedModels + id
-                                    if (model.isBlank()) modelChanged(id)
-                                    addModelDialog = false; modelExpanded = false
-                                }
-                            }
-                            MenuAction(AppStrings.cancel) { addModelDialog = false; modelExpanded = false }
-                        }
-                    } else {
-                    MenuSection(AppStrings.selectModel) {
-                        OutlinedTextField(modelSearch, { modelSearch = it }, Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
-                            label = { Text(AppStrings.searchModels) }, singleLine = true, shape = RoundedCornerShape(12.dp))
-                        MenuAction(AppStrings.addModel) {
-                            newModelId = ""; modelError = ""; addModelDialog = true
-                        }
-                    }
-                    val matches = modelOptions.filter { (id, name) ->
-                        modelSearch.isBlank() || id.contains(modelSearch, true) || name.contains(modelSearch, true)
-                    }
-                    matches.take(30).forEach { (id, name) ->
-                        Row(Modifier.fillMaxWidth().heightIn(min = 56.dp)
-                            .clickable {
-                                if (id != model) selectedModels = if (id in selectedModels) selectedModels - id else selectedModels + id
-                            }.padding(start = 20.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
-                                Text(name, maxLines = 1, color = menuInk(), style = MaterialTheme.typography.bodyLarge)
-                                if (name != id) Text(id, maxLines = 1, color = menuMuted(), style = MaterialTheme.typography.bodySmall)
-                            }
-                            if (id == model) Text(AppStrings.default, color = menuMuted(), style = MaterialTheme.typography.labelMedium)
-                            else androidx.compose.material3.TextButton(onClick = { modelChanged(id); modelExpanded = false }) { Text(AppStrings.setAsDefault) }
-                            if (id == model || id in selectedModels) AppIcon(AppIcons.Check, null, Modifier.size(20.dp), tint = menuTick())
-                        }
-                    }
-                    if (matches.size > 30) MenuCaption(AppStrings.moreResultsSearch(matches.size - 30))
-                    }
-                    }
-                }
-            } }
-            SettingsCaption(AppStrings.selectedDiscoveredModels((selectedModels + model).count { it.isNotBlank() }, fetchedCatalog.models.size))
-            SettingsGroup { GatewayFormAction(AppStrings.saveGateway, savingGateway,
-                enabled = !busy && !checking && !signingIn && model.isNotBlank(), loadingTag = "gateway-save-loading") {
-                noticeError = false; busy = true; savingGateway = true; notice = ""
-                submit {
-                    val request = edit()
-                    var leave: String? = null
-                    try {
-                        when (val result = save(request)) {
-                            is GatewaySaveResult.Saved -> {
-                                key = ""; keyEdited = false; refresh()
-                                leave = AppStrings.gatewaySavedModelsKept(result.agents.joinToString("、") { it.label() }, result.models.size)
-                            }
-                            is GatewaySaveResult.Failed -> { noticeError = true; notice = result.message }
-                        }
-                    } finally { request.credential?.fill('\u0000'); savingGateway = false; busy = false }
-                    leave?.let { if (onSaved != null) onSaved(it) else notice = it }
-                }
-            } }
-            }
-            if (!editingId.isNullOrBlank()) SettingsGroup {
-                SettingsAction(AppStrings.deleteGateway, enabled = !busy && !checking && !signingIn) {
-                    busy = true
-                    submit { try { when (val result = delete(editingId)) {
-                        OperationResult.Done -> { refresh(); onSaved?.invoke(AppStrings.gatewayDeleted) ?: back() }
-                        is OperationResult.Failed -> { noticeError = true; notice = result.message }
-                    } } finally { busy = false } }
+            val listed = catalog.orEmpty()
+            if (model.isNotBlank() && !picking) SettingsGroup {
+                Row(Modifier.fillMaxWidth().clickable(enabled = idle && listed.isNotEmpty()) { picking = true; pickToConnect = false }
+                    .padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(AppStrings.modelLabel(model), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                    if (listed.isNotEmpty()) Text(AppStrings.changeModel, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
                 }
             }
+            if (picking && listed.isNotEmpty()) {
+                if (pickToConnect) SettingsCaption(AppStrings.chooseModelToConnect)
+                ModelPicker(listed, model, idle, pick = { id ->
+                    if (pickToConnect) connect(id) else { model = id; picking = false; connectionNotice = "" }
+                }, other = { manualOpen = true; picking = false; pickToConnect = false })
+            }
+            if (manualOpen || (catalog != null && listed.isEmpty())) {
+                catalogError?.takeIf { listed.isEmpty() }?.let { SettingsCaption(AppStrings.noModelListEnterModelId(it)) }
+                SettingsGroup { SettingsField(manualId, { manualId = it; notice = "" }, AppStrings.modelId, enabled = idle) }
+            }
+            SettingsGroup {
+                GatewayFormAction(if (connecting) AppStrings.connectingGateway else AppStrings.connectGateway, connecting,
+                    enabled = idle && candidates().responses.isNotBlank(), loadingTag = "gateway-connect-loading") { connect() }
+            }
+            SettingsCaption(AppStrings.connectUsesASmallRequest)
             if (notice.isNotBlank()) SettingsCaption(notice, error = noticeError)
-            if (saved != null) SettingsGroup {
-                SettingsAction(AppStrings.testSavedConnection, enabled = !busy && !checking && !signingIn && savedMatches) {
-                    connectionError = false; checking = true; connectionNotice = AppStrings.checkingSavedConfiguration
-                    checkJob = checkScope.launch {
-                        try { connectionNotice = when (val result = withTimeout(30_000) { check(saved) }) {
-                            is DataResult.Loaded -> { connectionError = !result.value.passed; result.value.message }
-                            is DataResult.Failed -> { connectionError = true; result.message }
-                        } } catch (_: TimeoutCancellationException) { connectionError = true; connectionNotice = AppStrings.checkTimedOutSuccessNotConfirmed }
-                        catch (e: CancellationException) { connectionError = true; connectionNotice = AppStrings.checkCancelledSuccessNotConfirmed; throw e }
-                        catch (_: Exception) { connectionError = true; connectionNotice = AppStrings.connectionCheckIncompleteRetryLater }
-                        finally { checking = false; checkJob = null }
+            val sites = GatewayProviders.sites(chosenId)
+            val hasAdvanced = sites.size > 1 || guide?.helpUrl != null || saved != null
+            if (hasAdvanced) {
+                SettingsGroup { SettingsAction(AppStrings.advancedSettings, enabled = !busy) { advanced = !advanced } }
+                if (advanced) {
+                    if (sites.size > 1) {
+                        SettingsCaption(AppStrings.gatewayProviderSiteHelp)
+                        SettingsGroup {
+                            sites.sortedBy { it.site != (if (LanguagePreferences.current == com.github.ytlog.mobby.android.localization.AppLanguage.CHINESE) GatewaySite.CHINA else GatewaySite.INTERNATIONAL) }
+                                .forEachIndexed { index, option ->
+                                    if (index > 0) GroupDivider()
+                                    ChoiceRow(if (option.site == GatewaySite.CHINA) AppStrings.gatewayChinaSite else AppStrings.gatewayInternationalSite,
+                                        option.site == providerSite, { chooseProvider(option.id, option.site) }, enabled = idle)
+                                }
+                        }
                     }
+                    guide?.helpUrl?.let { url -> SettingsGroup { SettingsAction(AppStrings.gatewayProviderHelpLink, enabled = idle) { openOfficial(url) } } }
+                    if (saved != null) SettingsGroup {
+                        SettingsAction(AppStrings.testSavedConnection, enabled = idle && savedMatches) {
+                            connectionError = false; checking = true; connectionNotice = AppStrings.checkingSavedConfiguration
+                            checkJob = checkScope.launch {
+                                try { connectionNotice = when (val result = withTimeout(30_000) { check(saved) }) {
+                                    is DataResult.Loaded -> { connectionError = !result.value.passed; result.value.message }
+                                    is DataResult.Failed -> { connectionError = true; result.message }
+                                } } catch (_: TimeoutCancellationException) { connectionError = true; connectionNotice = AppStrings.checkTimedOutSuccessNotConfirmed }
+                                catch (e: CancellationException) { connectionError = true; connectionNotice = AppStrings.checkCancelledSuccessNotConfirmed; throw e }
+                                catch (_: Exception) { connectionError = true; connectionNotice = AppStrings.connectionCheckIncompleteRetryLater }
+                                finally { checking = false; checkJob = null }
+                            }
+                        }
+                        if (checking) { GroupDivider(); SettingsAction(AppStrings.cancelCheck) { checkJob?.cancel() } }
+                        GroupDivider()
+                        SettingsAction(AppStrings.deleteGateway, enabled = idle) {
+                            val id = editingId ?: return@SettingsAction
+                            busy = true
+                            submit { try { when (val result = delete(id)) {
+                                OperationResult.Done -> { refresh(); onSaved?.invoke(AppStrings.gatewayDeleted) ?: back() }
+                                is OperationResult.Failed -> { noticeError = true; notice = result.message }
+                            } } finally { busy = false } }
+                        }
+                    }
+                    if (connectionNotice.isNotBlank()) SettingsCaption(connectionNotice, error = connectionError)
                 }
-                if (checking) { GroupDivider(); SettingsAction(AppStrings.cancelCheck) { checkJob?.cancel() } }
             }
-            if (connectionNotice.isNotBlank()) SettingsCaption(connectionNotice, error = connectionError)
         }
     }
 }

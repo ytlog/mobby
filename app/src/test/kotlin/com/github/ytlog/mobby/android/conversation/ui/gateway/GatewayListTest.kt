@@ -61,12 +61,12 @@ class GatewayListTest {
 
     @After fun cleanup() { compose.runOnIdle { store.clear() }; scope.cancel() }
 
-    @Test fun `first launch enters add gateway form directly`() {
+    @Test fun `first launch enters the add form directly`() {
         page(emptyList(), startAdding = true)
-        compose.onNodeWithText("服务：自定义").assertExists()
-        compose.onNodeWithText("添加网关").assertExists()
+        compose.onNodeWithText("其他服务（填写地址）").assertExists()
+        compose.onNodeWithText("添加 AI 服务").assertExists()
         compose.onNodeWithText("免费体验").assertDoesNotExist()
-        compose.onNodeWithText("还没有配置网关").assertDoesNotExist()
+        compose.onNodeWithText("还没有配置 AI 服务").assertDoesNotExist()
     }
 
     @Test fun `first configured remote gateway becomes default and repairs empty selected conversation`() {
@@ -85,18 +85,18 @@ class GatewayListTest {
         page(listOf(local))
         compose.onNodeWithText("本地模型服务 · qwen-test · 1 个模型").assertDoesNotExist()
         compose.onNodeWithText("临时 · 本地模型", substring = true).assertDoesNotExist()
-        compose.onAllNodesWithContentDescription("编辑网关").assertCountEquals(0)
+        compose.onAllNodesWithContentDescription("编辑 AI 服务").assertCountEquals(0)
     }
 
     @Test fun `gateway page lists a configured gateway and opens its editor`() {
         page(listOf(profile))
-        compose.onNodeWithText("服务：OpenRouter").assertDoesNotExist()
+        compose.onNodeWithText("OpenRouter").assertDoesNotExist()
         compose.onNodeWithText("OpenRouter · openai/gpt-test · 2 个模型").assertExists()
-        compose.onNodeWithContentDescription("编辑网关").performClick()
-        compose.onNodeWithText("编辑网关").assertExists()
-        compose.onNodeWithText("服务：OpenRouter").assertExists()
+        compose.onNodeWithContentDescription("编辑 AI 服务").performClick()
+        compose.onNodeWithText("编辑 AI 服务").assertExists()
+        compose.onNodeWithText("OpenRouter").assertExists()
         compose.onNodeWithContentDescription("返回").performClick()
-        compose.onNodeWithText("服务：OpenRouter").assertDoesNotExist()
+        compose.onNodeWithText("OpenRouter").assertDoesNotExist()
         compose.onNodeWithText("已配置").assertExists()
     }
 
@@ -107,7 +107,7 @@ class GatewayListTest {
         var selectedDefault: GatewayProfile? = null
         val vm = page(listOf(profile, claude), current, configured = { configured = it }, selectedDefault = { selectedDefault = it })
         compose.waitUntil(5_000) { vm.state.value.selected != null }
-        compose.onNodeWithContentDescription("选择网关 CLAUDE").performClick()
+        compose.onNodeWithContentDescription("选择 AI 服务 CLAUDE").performClick()
         compose.waitUntil(5_000) { configured != null && selectedDefault != null }
         Assert.assertEquals(AgentId.CLAUDE_CODE, configured?.agent)
         Assert.assertEquals("claude-model", configured?.model)
@@ -125,19 +125,19 @@ class GatewayListTest {
         var configured: NextTurnConfig? = null
         var selected: GatewayProfile? = null
         page(listOf(profile, second), current, configured = { configured = it }, selectedDefault = { selected = it })
-        compose.onNodeWithContentDescription("选择网关 second-gateway").performClick()
+        compose.onNodeWithContentDescription("选择 AI 服务 second-gateway").performClick()
         compose.waitUntil(5_000) { configured?.gatewayProfile == second.id && selected?.id == second.id }
         Assert.assertEquals("other-model", configured?.model)
     }
 
     @Test fun `empty gateway page offers add and a failed catalog stays visible on the row`() {
         page(emptyList())
-        compose.onNodeWithText("还没有配置网关").assertExists()
+        compose.onNodeWithText("还没有配置 AI 服务").assertExists()
         compose.onNodeWithText("免费体验").assertDoesNotExist()
-        compose.onNodeWithText("添加网关").performClick()
-        compose.onNodeWithText("添加网关").assertExists()
-        compose.onNodeWithText("服务：自定义").assertExists()
-        compose.onNodeWithText("选择服务，在官网获取 Key。", substring = true).assertExists()
+        compose.onNodeWithText("添加 AI 服务").performClick()
+        compose.onNodeWithText("添加 AI 服务").assertExists()
+        compose.onNodeWithText("其他服务（填写地址）").assertExists()
+        compose.onNodeWithText("选一个服务，粘贴它的 API Key", substring = true).assertExists()
     }
 
     @Test fun `one gateway is selected once and keeps the current agent when supported`() {
@@ -147,12 +147,12 @@ class GatewayListTest {
         var configured: NextTurnConfig? = null
         var selected: GatewayProfile? = null
         page(listOf(profile, newCodex, newClaude), current, configured = { configured = it }, selectedDefault = { selected = it })
-        compose.onNodeWithContentDescription("选择网关 shared").performClick()
+        compose.onNodeWithContentDescription("选择 AI 服务 shared").performClick()
         compose.waitUntil(5_000) { configured != null && selected != null }
         Assert.assertEquals(AgentId.CODEX, configured?.agent)
         Assert.assertEquals("shared", configured?.gatewayProfile)
         Assert.assertEquals(AgentId.CODEX, selected?.agent)
-        compose.onAllNodesWithContentDescription("选择网关 shared").assertCountEquals(1)
+        compose.onAllNodesWithContentDescription("选择 AI 服务 shared").assertCountEquals(1)
     }
 
     @Test fun `selected gateway exposes its models and supported reasoning levels`() {
@@ -161,7 +161,7 @@ class GatewayListTest {
         var configured: NextTurnConfig? = null
         page(listOf(profile), current, listOf(agent), configured = { configured = it })
         compose.onNodeWithText("Other · other").assertDoesNotExist()
-        compose.onNodeWithContentDescription("选择网关 CODEX").performClick()
+        compose.onNodeWithContentDescription("选择 AI 服务 CODEX").performClick()
         compose.onNodeWithText("Other · other").performClick()
         compose.waitUntil(5_000) { configured?.model == "other" }
         compose.onNodeWithText("思考程度").assertExists()
@@ -174,16 +174,27 @@ class GatewayListTest {
         val current = Conversation(ConversationId("current"), NextTurnConfig(AgentId.CODEX, profile.model, null, "workspace", profile.id, profile.version))
         page(listOf(profile), current)
         compose.onNodeWithText("Other · other").assertDoesNotExist()
-        compose.onNodeWithContentDescription("选择网关 CODEX").performClick()
+        compose.onNodeWithContentDescription("选择 AI 服务 CODEX").performClick()
         compose.onNodeWithText("Other · other").assertExists()
-        compose.onNodeWithContentDescription("选择网关 CODEX").performClick()
+        compose.onNodeWithContentDescription("选择 AI 服务 CODEX").performClick()
         compose.onNodeWithText("Other · other").assertDoesNotExist()
+    }
+
+    @Test fun `a long model list is searchable and keeps the selected model in view`() {
+        val many = profile.copy(models = listOf(GatewayModel("openai/gpt-test", "GPT Test")) + (1..40).map { GatewayModel("model-$it", "Model $it") })
+        val current = Conversation(ConversationId("current"), NextTurnConfig(AgentId.CODEX, profile.model, null, "workspace", profile.id, profile.version))
+        page(listOf(many), current)
+        compose.onNodeWithContentDescription("选择 AI 服务 CODEX").performClick()
+        compose.onNodeWithText("Model 40 · model-40").assertDoesNotExist()
+        compose.onNode(hasSetTextAction() and hasText("搜索模型")).performTextReplacement("model-40")
+        compose.onNodeWithText("Model 40 · model-40").assertExists()
+        compose.onNodeWithText("GPT Test · openai/gpt-test").assertExists()
     }
 
     @Test fun `catalog failure is shown on the configured row`() {
         page(listOf(profile.copy(catalogError = "该网关没有模型列表接口", models = listOf(GatewayModel("openai/gpt-test", "GPT Test")))))
         compose.onNodeWithText("OpenRouter · openai/gpt-test · 模型列表未更新").assertExists()
-        compose.onNodeWithText("添加网关").assertExists()
+        compose.onNodeWithText("添加 AI 服务").assertExists()
     }
 
     @Test fun `model menu prefers a unique display name`() {

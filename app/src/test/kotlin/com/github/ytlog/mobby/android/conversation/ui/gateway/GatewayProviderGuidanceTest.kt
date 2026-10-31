@@ -26,10 +26,7 @@ class GatewayProviderGuidanceTest {
     @After fun reset() { prefs.edit().clear().commit(); LanguagePreferences.restore(prefs) }
     private fun language(value: AppLanguage) { LanguagePreferences.select(prefs, value) }
     private fun field(label: String) = compose.onNode(hasSetTextAction() and hasText(label))
-    private fun selectOpenRouter() {
-        compose.onNodeWithText("Service: Custom").performScrollTo().performClick()
-        compose.onNodeWithText("OpenRouter").performScrollTo().performClick()
-    }
+    private fun selectOpenRouter() = compose.onNodeWithText("OpenRouter").performScrollTo().performClick()
     private val catalog = GatewayCatalogResult(listOf(GatewayModel("openrouter/free", "Free router"), GatewayModel("openai/paid", "Paid model")), null)
     private fun form(
         fetch: suspend (GatewayEdit) -> DataResult<GatewayCatalogResult> = { DataResult.Loaded(catalog) },
@@ -44,43 +41,39 @@ class GatewayProviderGuidanceTest {
                 {}, {}, { DataResult.Failed("unused") }, editingId = profiles.firstOrNull()?.id ?: "", signIn = signIn, openLink = open)
         } }
     }
-    @Test fun `Chinese new gateway defaults to custom and saves the entered address`() {
+    @Test fun `Chinese new setup preselects nothing and saves the entered address`() {
         language(AppLanguage.CHINESE)
         var saved: GatewayEdit? = null
         form(fetch = { DataResult.Loaded(GatewayCatalogResult(listOf(GatewayModel("selected-model", "Selected model")), null)) },
             save = { saved = it; GatewaySaveResult.Failed("test saved") })
-        compose.onNodeWithText("添加网关").assertExists()
+        compose.onNodeWithText("添加 AI 服务").assertExists()
         compose.onNodeWithText("免费体验").assertDoesNotExist()
-        compose.onNodeWithText("服务：自定义").assertExists()
-        field("Base 地址").assertIsEnabled()
-        assertEquals("", field("Base 地址").fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
-        compose.onNodeWithText("获取模型").assertIsNotEnabled()
-        field("Base 地址").performScrollTo().performTextReplacement("https://gateway.invalid/v1")
-        compose.onNodeWithText("获取模型").performScrollTo().performClick()
-        compose.onNodeWithText("模型：请选择").performScrollTo().performClick()
-        compose.onAllNodesWithText("设为默认")[0].performClick()
-        compose.onNodeWithText("我已确认所选模型有免费额度，并已设置额度用完停止调用").assertDoesNotExist()
-        compose.onNodeWithText("保存网关").performScrollTo().assertIsEnabled().performClick()
+        compose.onNodeWithText("其他服务（填写地址）").assertIsNotSelected().performScrollTo().performClick()
+        field("服务地址").assertIsEnabled()
+        assertEquals("", field("服务地址").fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
+        compose.onNodeWithText("连接").assertIsNotEnabled()
+        field("服务地址").performScrollTo().performTextReplacement("https://gateway.invalid/v1")
+        compose.onNodeWithText("连接").performScrollTo().performClick()
         compose.waitUntil(5_000) { saved != null }
         assertEquals("https://gateway.invalid/v1", saved!!.addresses.responses)
         assertEquals("https://gateway.invalid/v1", saved!!.addresses.messages)
         assertEquals("selected-model", saved!!.model)
+        compose.onNodeWithText("test saved").assertExists()
     }
-    @Test fun `English new gateway defaults to custom with an editable empty address`() {
+    @Test fun `English other service has an editable empty address`() {
         language(AppLanguage.ENGLISH)
         var fetched: GatewayEdit? = null
         form(fetch = { fetched = it; DataResult.Loaded(catalog) })
-        compose.onNodeWithText("Service: Custom").assertExists()
-        field("Base address").assertIsEnabled()
-        assertEquals("", field("Base address").fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
-        compose.onNodeWithText("Fetch models").assertIsNotEnabled()
-        field("Base address").performScrollTo().performTextReplacement("https://gateway.invalid/v1")
-        compose.onNodeWithText("Fetch models").performScrollTo().performClick()
+        compose.onNodeWithText("Other service (enter address)").performScrollTo().performClick()
+        assertEquals("", field("Service address").fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
+        compose.onNodeWithText("Connect").assertIsNotEnabled()
+        field("Service address").performScrollTo().performTextReplacement("https://gateway.invalid/v1")
+        compose.onNodeWithText("Connect").performScrollTo().performClick()
         compose.waitUntil(5_000) { fetched != null }
         assertEquals("https://gateway.invalid/v1", fetched!!.addresses.responses)
         assertEquals("https://gateway.invalid/v1", fetched!!.addresses.messages)
     }
-    @Test fun `English sign in preserves full model catalog and manual model choice`() {
+    @Test fun `English sign in keeps the full catalog, never picks the free route and accepts a typed model`() {
         language(AppLanguage.ENGLISH)
         val secret = "synthetic-authorized-key".toCharArray()
         var fetchedKey = ""
@@ -88,37 +81,34 @@ class GatewayProviderGuidanceTest {
         form(fetch = { fetchedKey = it.credential!!.concatToString(); DataResult.Loaded(catalog) },
             save = { saved = it; GatewaySaveResult.Failed("test saved") }, signIn = { GatewaySignInResult.Credential(secret) })
         selectOpenRouter()
-        compose.onNodeWithText("Service: OpenRouter").assertExists()
         compose.onNodeWithText("Sign in with OpenRouter").performScrollTo().performClick()
         compose.waitUntil(5_000) { secret.all { it == '\u0000' } }
-        compose.onNodeWithText("Fetch models").performScrollTo().performClick()
+        compose.onNodeWithText("Connect").performScrollTo().performClick()
         compose.waitUntil(5_000) { fetchedKey.isNotEmpty() }
         assertEquals("synthetic-authorized-key", fetchedKey)
-        compose.onNodeWithText("Model: Select").performScrollTo().performClick()
-        compose.onNodeWithText("Paid model").assertExists()
-        compose.onAllNodesWithText("Set as default")[1].performClick()
-        compose.onNodeWithText("Model: openai/paid").performScrollTo().performClick()
-        compose.onNodeWithText("Add model").performClick()
-        field("Model ID").performTextReplacement("openai/manual")
-        compose.onNodeWithText("Add", useUnmergedTree = true).performClick()
-        compose.onNodeWithText("Save gateway").performScrollTo().performClick()
+        assertNull(saved)
+        compose.onNodeWithText("Choose a model to finish connecting").assertExists()
+        compose.onNodeWithText("Free router · openrouter/free").assertExists()
+        compose.onNodeWithText("Paid model · openai/paid").assertExists()
+        compose.onNodeWithText("Enter another model ID").performScrollTo().performClick()
+        field("Model ID").performScrollTo().performTextReplacement("openai/manual")
+        compose.onNodeWithText("Connect").performScrollTo().performClick()
         compose.waitUntil(5_000) { saved != null }
-        assertEquals("openai/paid", saved!!.model)
-        assertEquals(setOf("openai/paid", "openai/manual"), saved!!.selectedModels)
+        assertEquals("openai/manual", saved!!.model)
+        assertEquals(setOf("openrouter/free", "openai/paid", "openai/manual"), saved!!.selectedModels)
     }
-    @Test fun `every old and new provider opens its own official guide and key page`() {
+    @Test fun `every provider opens its own key page and, under advanced settings, its guide`() {
         language(AppLanguage.CHINESE)
         var opened = ""
         form(open = { opened = it })
-        var selected = "自定义"
         for (provider in GatewayProviders.ordered(AppLanguage.CHINESE)) {
-            compose.onNodeWithText("服务：$selected").performScrollTo().performClick()
             compose.onNodeWithText(provider.label).performScrollTo().performClick()
-            selected = provider.label
             val guide = GatewayProviderGuides.find(provider.id)!!
             compose.onNodeWithText(guide.summary).assertExists()
-            compose.onNodeWithText("前往官网注册 / 获取 Key").performScrollTo().performClick()
+            compose.onNodeWithText("还没有 Key？去官网领取").performScrollTo().performClick()
             assertEquals(provider.id, guide.keyUrl, opened)
+            if (compose.onAllNodesWithText("查看官方使用说明").fetchSemanticsNodes().isEmpty())
+                compose.onNodeWithText("高级设置").performScrollTo().performClick()
             compose.onNodeWithText("查看官方使用说明").performScrollTo().performClick()
             assertEquals(provider.id, guide.helpUrl, opened)
         }
@@ -133,8 +123,8 @@ class GatewayProviderGuidanceTest {
         compose.onNodeWithText("Sign in with OpenRouter").performScrollTo().performClick()
         compose.onNodeWithText("Cancel sign-in").performScrollTo().performClick()
         compose.waitUntil(5_000) { cancelled }
-        compose.onNodeWithText("Sign-in cancelled. No gateway was saved.").assertExists()
-        compose.onNodeWithText("Service: OpenRouter").assertIsEnabled()
+        compose.onNodeWithText("Sign-in cancelled. No AI service was saved.").assertExists()
+        compose.onNodeWithText("OpenRouter").assertIsEnabled()
         assertEquals(0, saves)
     }
     @Test fun `same provider retains pending key and changing provider clears it`() {
@@ -144,16 +134,14 @@ class GatewayProviderGuidanceTest {
             signIn = { GatewaySignInResult.Credential("synthetic-key".toCharArray()) })
         selectOpenRouter()
         compose.onNodeWithText("Sign in with OpenRouter").performScrollTo().performClick()
-        compose.onNodeWithText("Service: OpenRouter").performScrollTo().performClick()
-        compose.onNodeWithText("OpenRouter").performClick()
-        compose.onNodeWithText("Fetch models").performScrollTo().performClick()
+        selectOpenRouter()
+        compose.onNodeWithText("Connect").performScrollTo().performClick()
         compose.waitUntil(5_000) { fetchedKey != null }
         assertEquals("synthetic-key", fetchedKey)
-        compose.onNodeWithText("Service: OpenRouter").performScrollTo().performClick()
         compose.onNodeWithText("Requesty").performScrollTo().performClick()
-        compose.onNodeWithText("Fetch models").performScrollTo().performClick()
+        compose.onNodeWithText("Connect").performScrollTo().performClick()
         compose.waitUntil(5_000) { fetchedKey == "" }
-        compose.onNodeWithText("Model: Select").assertExists()
+        compose.onNodeWithText("Choose a model to finish connecting").assertExists()
     }
     @Test fun `saved international Kimi keeps its site until the user selects China`() {
         language(AppLanguage.CHINESE)
@@ -161,13 +149,14 @@ class GatewayProviderGuidanceTest {
         var opened = ""
         var fetched: GatewayEdit? = null
         form(profiles = listOf(profile), open = { opened = it }, fetch = { fetched = it; DataResult.Loaded(catalog) })
+        compose.onNodeWithText("高级设置").performScrollTo().performClick()
         compose.onNodeWithText("国际站").performScrollTo().assertIsSelected()
-        compose.onNodeWithText("前往官网注册 / 获取 Key").performScrollTo().performClick()
+        compose.onNodeWithText("还没有 Key？去官网领取").performScrollTo().performClick()
         assertEquals("https://platform.kimi.ai/console/api-keys", opened)
         compose.onNodeWithText("国内站").performScrollTo().performClick()
-        compose.onNodeWithText("前往官网注册 / 获取 Key").performScrollTo().performClick()
+        compose.onNodeWithText("还没有 Key？去官网领取").performScrollTo().performClick()
         assertEquals("https://platform.kimi.com/console/api-keys", opened)
-        compose.onNodeWithText("获取模型").performScrollTo().performClick()
+        compose.onNodeWithText("连接").performScrollTo().performClick()
         compose.waitUntil(5_000) { fetched != null }
         assertEquals("https://api.moonshot.cn/v1", fetched!!.addresses.responses)
         assertEquals("https://api.moonshot.cn/anthropic/v1", fetched!!.addresses.messages)
@@ -180,10 +169,10 @@ class GatewayProviderGuidanceTest {
         val profile = GatewayProfile(AgentId.CODEX, "saved", 2, "https://api.moonshot.ai/v1", "kept-model", "RESPONSES", true)
         var fetched: GatewayEdit? = null
         form(profiles = listOf(profile), fetch = { fetched = it; DataResult.Loaded(catalog) })
-        compose.onNodeWithText("编辑网关").assertExists()
-        compose.onNodeWithText("服务：Kimi").assertExists()
+        compose.onNodeWithText("编辑 AI 服务").assertExists()
+        compose.onNodeWithText("Kimi").assertIsSelected()
         compose.onNodeWithText(GatewayProviderGuides.find("kimi")!!.summary).assertExists()
-        compose.onNodeWithText("获取模型").performScrollTo().performClick()
+        compose.onNodeWithText("连接").performScrollTo().performClick()
         compose.waitUntil(5_000) { fetched != null }
         assertNull(fetched!!.credential)
         assertEquals(profile.model, fetched!!.model)
