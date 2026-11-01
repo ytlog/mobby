@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 import zipfile
 
 from release_sources import download_source, validate_inventory
@@ -47,6 +48,29 @@ class ReleaseSourcesTest(unittest.TestCase):
             (cache / (hashlib.sha256(url.encode()).hexdigest()[:12] + '-source.tar.gz')).write_bytes(b'tampered')
             with self.assertRaisesRegex(ValueError, 'integrity mismatch'):
                 download_source({'name': 'source', 'url': url, 'sha256': 'a' * 64}, cache)
+
+    def download_with(self, bodies, cache):
+        """Each curl call writes the next body, as a server that cuts some responses short would."""
+        calls = []
+        def run(command, check):
+            calls.append(command)
+            Path(command[command.index('-o') + 1]).write_bytes(bodies[min(len(calls), len(bodies)) - 1])
+        with mock.patch('release_sources.subprocess.run', side_effect=run):
+            item = {'name': 'source', 'url': 'https://example.invalid/source.tar.gz', 'sha256': hashlib.sha256(b'complete').hexdigest()}
+            return download_source(item, cache), calls
+
+    # salsa.debian.org cut the dpkg archive short on the release runner and here, yet a complete download matched the lock.
+    def test_a_truncated_download_is_fetched_again_and_still_verified(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path, calls = self.download_with([b'compl', b'complete'], Path(directory))
+            self.assertEqual(b'complete', path.read_bytes())
+            self.assertEqual(2, len(calls))
+
+    def test_a_source_that_never_matches_still_blocks_release(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(ValueError, 'integrity mismatch'):
+                self.download_with([b'other'], Path(directory))
+            self.assertEqual([], [p for p in Path(directory).iterdir() if not p.name.startswith('.')])
 
     def test_insecure_source_url_is_rejected_before_network(self):
         with tempfile.TemporaryDirectory() as directory:

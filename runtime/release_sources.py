@@ -50,15 +50,19 @@ def download_source(item, cache):
     name = hashlib.sha256(url.encode()).hexdigest()[:12] + '-' + urlsplit(url).path.rsplit('/', 1)[-1]
     target = cache / name
     cache.mkdir(parents=True, exist_ok=True)
-    if not target.exists():
+    # Some hosts cut generated archives short without an error, so a mismatch is fetched again; it never passes unverified.
+    for attempt in range(3):
+        if target.exists():
+            break
         with tempfile.NamedTemporaryFile(dir=cache, delete=False) as stream:
             temporary = Path(stream.name)
         try:
             subprocess.run(['curl', '-fL', '--proto', '=https', '--proto-redir', '=https', '--retry', '2',
                             '--max-time', '1800', url, '-o', str(temporary)], check=True)
-            if hashlib.sha256(temporary.read_bytes()).hexdigest() != item['sha256']:
+            if hashlib.sha256(temporary.read_bytes()).hexdigest() == item['sha256']:
+                temporary.replace(target)
+            elif attempt == 2:
                 raise ValueError('Source integrity mismatch: ' + item['name'])
-            temporary.replace(target)
         finally:
             temporary.unlink(missing_ok=True)
     if hashlib.sha256(target.read_bytes()).hexdigest() != item['sha256']:
