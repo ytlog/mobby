@@ -542,6 +542,7 @@ internal fun configKeyboard(type: ConfigType?) = when (type) {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable internal fun ProgramIdeas(pick: (String) -> Unit) {
     val ideas = listOf(
+        AppStrings.programIdeaSplashAsk to AppStrings.programIdeaSplashRequest,
         AppStrings.programIdeaExpensesAsk to AppStrings.programIdeaExpensesRequest,
         AppStrings.programIdeaReminderAsk to AppStrings.programIdeaReminderRequest,
         AppStrings.programIdeaWatchAsk to AppStrings.programIdeaWatchRequest,
