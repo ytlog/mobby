@@ -252,6 +252,8 @@ data class ScreenChange(val packageName: String, val className: String?, val pre
 object ScreenEvents {
     const val CONTENT_GAP_MILLIS = 500L
     @Volatile var listener: ((ScreenChange) -> Unit)? = null
+    /** Told when the screen service connects or goes away, so programs that need it can be re-evaluated. */
+    @Volatile var access: ((Boolean) -> Unit)? = null
     @Volatile var wantContent = false
         set(value) { field = value; ScreenAccessService.instance?.reportContent(value) }
     private val classes = java.util.concurrent.ConcurrentHashMap<String, String>()

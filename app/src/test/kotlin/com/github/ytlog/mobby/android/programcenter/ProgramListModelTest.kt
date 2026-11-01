@@ -75,6 +75,18 @@ class ProgramListModelTest {
         assertEquals("screen.swipe", capabilityName("screen.swipe"))
     }
 
+    /** On the phone, swiping mobby away from Recents force-stopped it and the system switched the screen service off. */
+    @Test fun `only an enabled program that needs the switched-off screen service asks for it back`() {
+        fun screen(state: com.github.ytlog.mobby.android.programs.permission.PermissionState) =
+            com.github.ytlog.mobby.android.programs.PermissionView("screen.tap", true, true, state, Scope(), Scope(), null, null)
+        val missing = com.github.ytlog.mobby.android.programs.permission.PermissionState.SYSTEM_MISSING
+        val granted = com.github.ytlog.mobby.android.programs.permission.PermissionState.GRANTED
+        assertTrue(screenAccessMissing(listOf(program().copy(permissions = listOf(screen(missing))))))
+        assertFalse(screenAccessMissing(listOf(program(UserState.PAUSED).copy(permissions = listOf(screen(missing))))))
+        assertFalse(screenAccessMissing(listOf(program().copy(permissions = listOf(screen(granted))))))
+        assertFalse(screenAccessMissing(listOf(program().copy(permissions = listOf(screen(missing).copy(capability = "notify.show"))))))
+    }
+
     @Test fun `pending programs say whether they are new, updated or broken`() {
         assertEquals(StatusLine(AppStrings.pendingNew), readyStatus(null, 3))
         assertEquals(StatusLine(AppStrings.pendingUpdateAsks(1)), readyStatus("1.0.0", 1))

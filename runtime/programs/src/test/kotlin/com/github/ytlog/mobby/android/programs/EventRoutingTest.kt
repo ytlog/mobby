@@ -51,6 +51,14 @@ class EventRoutingTest {
         var content = false
         override fun listen(listener: ((com.github.ytlog.mobby.android.device.ScreenChange) -> Unit)?) { this.listener = listener }
         override fun wantContent(wanted: Boolean) { content = wanted }
+        var access: ((Boolean) -> Unit)? = null
+        override fun onAccessChanged(listener: ((Boolean) -> Unit)?) { access = listener }
+    }
+    /** The screen service is switched off by the system, for example when MIUI force-stops mobby from Recents. */
+    @Volatile private var screenOn = false
+    private inner class ScreenRead : FakeHandler("screen.read", scope = ScopeKind.PACKAGES) {
+        override fun availability() = if (screenOn) Availability.Available
+            else Availability.Unavailable(com.github.ytlog.mobby.android.programs.capability.AvailabilityReason.SYSTEM_PERMISSION_MISSING)
     }
     private val screenEvents = FakeScreenEvents()
     private val launched = mutableListOf<ProcessSpec>()
@@ -62,7 +70,7 @@ class EventRoutingTest {
             override fun launch(spec: ProcessSpec): ProgramProcess { launched += spec; return Process().also { processes += it } }
         } }, CapabilityRegistry(listOf(FakeHandler("net.http", scope = ScopeKind.DOMAINS), FakeHandler("storage.sql"), ScheduleCapability(),
             EntryCapability(EntryCapability.SHARE), EntryCapability(EntryCapability.SHORTCUT),
-            com.github.ytlog.mobby.android.programs.screen.ScreenWindowCapability())),
+            com.github.ytlog.mobby.android.programs.screen.ScreenWindowCapability(), ScreenRead())),
         com.github.ytlog.mobby.android.programs.base.secrets.SecretStore(database.dao(), object : com.github.ytlog.mobby.android.programs.base.secrets.SecretCipher {
             override fun encrypt(plain: ByteArray) = plain to byteArrayOf(0)
             override fun decrypt(ciphertext: ByteArray, iv: ByteArray) = ciphertext
@@ -208,6 +216,29 @@ class EventRoutingTest {
         assertTrue(platform.router.isActive("skip-wait/front"))
         assertEquals(listOf("package com.other is not in the scope requested for screen.window", "content must be true or false"),
             com.github.ytlog.mobby.android.programs.screen.ScreenWindowCapability().validateFilter(json("""{"packages":["com.other"],"content":"yes"}"""), Scope(packages = setOf("com.shop"))).sorted().reversed())
+    }
+
+    @Test fun `screen programs resume when the screen service comes back, with no other change`() = runBlocking {
+        platform.start()
+        platform.install(PackageBuilder(File(root, "workspace/programs/typer")).apply {
+            id = "typer"; ui = null; config = "[]"
+            permissions = """[{"capability":"screen.window","required":true,"scope":{"packages":["*"]}},
+                {"capability":"screen.read","required":true,"scope":{"packages":["*"]}}]"""
+            subscriptions = """[{"id":"front","event":"screen.window","filter":{},"handler":"onWindow"}]"""
+        }.write())
+        platform.setEnabled("typer", true)
+        for (capability in listOf("screen.window", "screen.read")) platform.setGrant("typer", capability, true, null, null)
+        assertFalse(platform.router.isActive("typer/front"))
+        assertEquals(com.github.ytlog.mobby.android.programs.program.ProgramAvailability.NEEDS_SYSTEM_PERMISSION,
+            platform.programs.first().single { it.id == "typer" }.availability)
+        screenOn = true
+        screenEvents.access!!(true)
+        withTimeout(5_000) { while (!platform.router.isActive("typer/front")) delay(10) }
+        withTimeout(5_000) { while (platform.programs.first().single { it.id == "typer" }.availability !=
+            com.github.ytlog.mobby.android.programs.program.ProgramAvailability.WORKING) delay(10) }
+        screenOn = false
+        screenEvents.access!!(false)
+        withTimeout(5_000) { while (platform.router.isActive("typer/front")) delay(10) }
     }
 
     @Test fun `shared text must fit and entry subscriptions take no filter`() = runBlocking {

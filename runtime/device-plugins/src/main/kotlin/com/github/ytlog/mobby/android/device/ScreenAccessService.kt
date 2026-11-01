@@ -40,6 +40,7 @@ class ScreenAccessService : AccessibilityService() {
     override fun onServiceConnected() {
         instance = this
         reportContent(ScreenEvents.wantContent)
+        ScreenEvents.access?.invoke(true)
     }
     override fun onAccessibilityEvent(event: android.view.accessibility.AccessibilityEvent?) {
         event ?: return
@@ -56,7 +57,7 @@ class ScreenAccessService : AccessibilityService() {
     override fun onInterrupt() = Unit
     override fun onDestroy() {
         stay.drop()
-        if (instance === this) instance = null
+        if (instance === this) { instance = null; ScreenEvents.access?.invoke(false) }
         super.onDestroy()
     }
 

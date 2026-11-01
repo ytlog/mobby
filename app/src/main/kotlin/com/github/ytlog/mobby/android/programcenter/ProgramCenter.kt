@@ -35,6 +35,7 @@ import com.github.ytlog.mobby.android.programs.*
 import com.github.ytlog.mobby.android.programs.base.ai.AiBinding
 import com.github.ytlog.mobby.android.programs.base.ai.ModelGatewayPort
 import com.github.ytlog.mobby.android.programs.capability.Availability
+import com.github.ytlog.mobby.android.programs.permission.PermissionState
 import com.github.ytlog.mobby.android.programs.permission.Scope
 import com.github.ytlog.mobby.android.programs.program.ConfigType
 import com.github.ytlog.mobby.android.programs.program.PackageChanged
@@ -148,6 +149,8 @@ private fun shortTime(millis: Long): String {
             // The system asks the user; mobby never changes the setting itself.
             context.startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, android.net.Uri.parse("package:${context.packageName}")))
         }
+        // The user switches the service on in system settings; mobby only opens the page.
+        ScreenAccessStatus(screenAccessMissing(programs)) { context.startActivity(screenAccessSettingsIntent(context)) }
         SettingsGroup {
             SettingsItem(AppStrings.writeNewProgram, { writeNew(null) }, AppStrings.writeNewProgramSummary, icon = AppIcons.Terminal)
             ProgramIdeas(writeNew)
@@ -198,6 +201,26 @@ private fun shortTime(millis: Long): String {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(AppStrings.backgroundRestrictedShort, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
             Text(AppStrings.allowShort, style = MaterialTheme.typography.labelLarge)
+        }
+    }
+}
+
+/** Enabled programs need the screen service while it is off, for example after the system force-stopped mobby. */
+internal fun screenAccessMissing(programs: List<ProgramView>): Boolean = programs.any { program ->
+    program.userState == UserState.ENABLED &&
+        program.permissions.any { it.capability.startsWith("screen.") && it.state == PermissionState.SYSTEM_MISSING }
+}
+
+@Composable internal fun ScreenAccessStatus(missing: Boolean, open: () -> Unit) {
+    if (!missing) return
+    Surface(onClick = open, shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.errorContainer,
+        contentColor = MaterialTheme.colorScheme.onErrorContainer) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(AppStrings.screenAccessOff, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                Text(AppStrings.turnOnShort, style = MaterialTheme.typography.labelLarge)
+            }
+            Text(AppStrings.screenAccessOffHint, style = MaterialTheme.typography.bodySmall)
         }
     }
 }

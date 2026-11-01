@@ -47,11 +47,14 @@ class AndroidScreenPort(private val context: Context) : ScreenPort {
 interface ScreenEventSource {
     fun listen(listener: ((ScreenChange) -> Unit)?)
     fun wantContent(wanted: Boolean)
+    /** The screen service connected (true) or went away (false), for example when the user or the system switched it off. */
+    fun onAccessChanged(listener: ((Boolean) -> Unit)?)
 }
 
 object AndroidScreenEvents : ScreenEventSource {
     override fun listen(listener: ((ScreenChange) -> Unit)?) { ScreenEvents.listener = listener }
     override fun wantContent(wanted: Boolean) { ScreenEvents.wantContent = wanted }
+    override fun onAccessChanged(listener: ((Boolean) -> Unit)?) { ScreenEvents.access = listener }
 }
 
 /**

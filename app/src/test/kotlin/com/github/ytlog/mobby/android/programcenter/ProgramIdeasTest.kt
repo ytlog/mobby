@@ -41,6 +41,15 @@ class ProgramIdeasTest {
         compose.onAllNodesWithText("记一笔支出，按月汇总，导出 CSV").assertCountEquals(0)
     }
 
+    @Test fun `the screen banner says why programs stopped and opens the setting`() {
+        var opened = 0
+        compose.setContent { MaterialTheme { ScreenAccessStatus(true) { opened++ } } }
+        compose.onNodeWithText(UiStrings.screenAccessOff).assertExists()
+        compose.onNodeWithText(UiStrings.screenAccessOffHint).assertExists()
+        compose.onNodeWithText(UiStrings.turnOnShort).performClick()
+        assertEquals(1, opened)
+    }
+
     @Test fun `an idea fills an empty draft and is added after text already typed`() {
         assertEquals("写一个记账程序", withIdea("", "写一个记账程序"))
         assertEquals("先看看\n写一个记账程序", withIdea("先看看  ", "写一个记账程序"))

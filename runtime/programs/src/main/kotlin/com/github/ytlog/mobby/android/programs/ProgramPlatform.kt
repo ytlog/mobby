@@ -157,6 +157,8 @@ class ProgramPlatform internal constructor(
             val changes = kotlinx.coroutines.channels.Channel<com.github.ytlog.mobby.android.device.ScreenChange>(64, kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST)
             scope.launch { for (change in changes) router.screen(change) }
             source.listen { change -> changes.trySend(change) }
+            // Programs that need the screen service start or stop working with it; nothing else changes to trigger that.
+            source.onAccessChanged { scope.launch { refresh("screen_access_changed") } }
         }
         scheduleExpiry()
     }
@@ -167,7 +169,7 @@ class ProgramPlatform internal constructor(
             dataJson = buildJsonObject { put("message", message) }.toString()))
     }
 
-    internal fun stopServer() { screenEvents?.listen(null); if (::server.isInitialized) server.stop() }
+    internal fun stopServer() { screenEvents?.listen(null); screenEvents?.onAccessChanged(null); if (::server.isInitialized) server.stop() }
 
 
     val programs: Flow<List<ProgramView>> = combine(
