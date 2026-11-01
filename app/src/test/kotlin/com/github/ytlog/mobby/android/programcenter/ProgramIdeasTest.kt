@@ -2,7 +2,7 @@ package com.github.ytlog.mobby.android.programcenter
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.onAllNodesWithText
@@ -25,17 +25,18 @@ class ProgramIdeasTest {
     @Test fun `each idea hands its request to the conversation`() {
         val picked = mutableListOf<String>()
         compose.setContent { MaterialTheme { ProgramIdeas { picked += it } } }
-        compose.onNodeWithContentDescription(UiStrings.writeIdea(UiStrings.programIdeaExpenses)).performClick()
-        compose.onNodeWithContentDescription(UiStrings.writeIdea(UiStrings.programIdeaReminder)).performClick()
-        compose.onNodeWithContentDescription(UiStrings.writeIdea(UiStrings.programIdeaWatch)).performClick()
+        compose.onNodeWithText(UiStrings.programIdeaExpensesAsk).performClick()
+        compose.onNodeWithText(UiStrings.programIdeaReminderAsk).performClick()
+        compose.onNodeWithText(UiStrings.programIdeaWatchAsk).performClick()
         assertEquals(listOf(UiStrings.programIdeaExpensesRequest, UiStrings.programIdeaReminderRequest, UiStrings.programIdeaWatchRequest), picked)
     }
 
     /** On the phone the ideas were rows like installed programs, each with a subtitle and a chevron. */
-    @Test fun `ideas read as requests for the AI rather than as programs`() {
+    @Test fun `ideas read as requests for the AI as message bubbles rather than as programs`() {
         compose.setContent { MaterialTheme { ProgramIdeas {} } }
-        for (idea in listOf(UiStrings.programIdeaExpenses, UiStrings.programIdeaReminder, UiStrings.programIdeaWatch))
-            compose.onNodeWithContentDescription(UiStrings.writeIdea(idea)).assertHasClickAction()
+        for (idea in listOf(UiStrings.programIdeaExpensesAsk, UiStrings.programIdeaReminderAsk, UiStrings.programIdeaWatchAsk))
+            compose.onNodeWithText(idea).assertHasClickAction()
+        compose.onAllNodesWithTag("program-idea-bubble").assertCountEquals(3)
         compose.onAllNodesWithText("记一笔支出，按月汇总，导出 CSV").assertCountEquals(0)
     }
 

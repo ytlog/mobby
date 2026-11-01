@@ -15,7 +15,6 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
-import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -24,11 +23,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.onClick
-import androidx.compose.ui.semantics.role
+import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -541,23 +536,24 @@ internal fun configKeyboard(type: ConfigType?) = when (type) {
 }
 
 /**
- * Starting points for a first program, shown as requests inside the write card so they never read as installed programs.
- * Picking one only fills the request, which the user can change before sending.
+ * Starting points for a first program, drawn as the message bubbles the user sends so they never read as installed
+ * programs. Picking one only fills the request, which the user can change before sending.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable internal fun ProgramIdeas(pick: (String) -> Unit) {
     val ideas = listOf(
-        AppStrings.programIdeaExpenses to AppStrings.programIdeaExpensesRequest,
-        AppStrings.programIdeaReminder to AppStrings.programIdeaReminderRequest,
-        AppStrings.programIdeaWatch to AppStrings.programIdeaWatchRequest,
+        AppStrings.programIdeaExpensesAsk to AppStrings.programIdeaExpensesRequest,
+        AppStrings.programIdeaReminderAsk to AppStrings.programIdeaReminderRequest,
+        AppStrings.programIdeaWatchAsk to AppStrings.programIdeaWatchRequest,
     )
-    Column(Modifier.fillMaxWidth().padding(start = 48.dp, end = 16.dp, bottom = 14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(Modifier.fillMaxWidth().padding(start = 48.dp, end = 16.dp, bottom = 14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(AppStrings.programIdeas, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ideas.forEach { (title, request) ->
-                SuggestionChip(onClick = { pick(request) }, label = { Text(title) },
-                    icon = { AppIcon(AppIcons.Edit, null, Modifier.size(16.dp)) },
-                    modifier = Modifier.clearAndSetSemantics { contentDescription = AppStrings.writeIdea(title); role = Role.Button; onClick { pick(request); true } })
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            ideas.forEach { (ask, request) ->
+                Surface(onClick = { pick(request) }, shape = RoundedCornerShape(18.dp, 18.dp, 18.dp, 5.dp),
+                    color = userBubbleColor(), contentColor = userBubbleInk(), modifier = Modifier.testTag("program-idea-bubble")) {
+                    Text(ask, Modifier.padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.bodyMedium)
+                }
             }
         }
     }
