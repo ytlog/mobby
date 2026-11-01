@@ -36,7 +36,8 @@ internal class DeviceActions(private val context: Context, private val inbox: Fi
     /** Device actions this chat run allows; dry runs may only query within them. */
     private val allow: Map<String, Set<String>> = emptyMap(),
     /** Programs the user attached to this chat; records are readable only for these. */
-    private val attachedPrograms: Set<String> = emptySet()) {
+    private val attachedPrograms: Set<String> = emptySet(),
+    private val screenSession: ScreenSession? = null) {
     fun perform(plugin: String, action: String, args: Map<String, String>, execution: DeviceExecution): DeviceResult {
         gate.checkActive()
         val spec = DeviceCatalog.all.first { it.id == plugin }
@@ -60,8 +61,10 @@ internal class DeviceActions(private val context: Context, private val inbox: Fi
     }
 
     private fun screen(action: String, args: Map<String, String>): DeviceResult {
-        val service = ScreenAccessService.instance ?: error(AppStrings.accessibilityIsOffEnableMobbySScreenServiceIn)
-        val observation = service.operate(action, args, gate::checkActive)
+        val observation = if (screenSession != null) screenSession.operate(action, args, gate::checkActive)
+            else selectScreenBackend(ScreenControl.state.value.mode,
+                { (ScreenAccessService.instance ?: error(AppStrings.accessibilityIsOffEnableMobbySScreenServiceIn)).operate(action, args, gate::checkActive) },
+                { error(AppStrings.connectScreenBackend) })
         val screenshot = observation.screenshot
         var status = screenshot.status
         val ref = screenshot.jpeg?.let { bytes ->
@@ -405,7 +408,8 @@ internal class DeviceActions(private val context: Context, private val inbox: Fi
 internal fun screenObservationResult(action: String, observation: ScreenAccessService.Observation,
     screenshotRef: String?, screenshotStatus: String): DeviceResult = deviceResult("screen_observation",
     fields("packageName" to observation.packageName, "observedAtEpochMillis" to observation.observedAtEpochMillis,
+        "backend" to observation.backend, "displayId" to observation.displayId,
         "observationRef" to screenshotRef, "screenshotStatus" to screenshotStatus,
-        "actionConfirmed" to (action != "snapshot"), "text" to observation.text),
-    if (action == "snapshot") EffectState.NONE else EffectState.CONFIRMED,
+        "actionConfirmed" to (action !in setOf("snapshot", "apps")), "text" to observation.text),
+    if (action in setOf("snapshot", "apps")) EffectState.NONE else EffectState.CONFIRMED,
     listOfNotNull(screenshotRef))

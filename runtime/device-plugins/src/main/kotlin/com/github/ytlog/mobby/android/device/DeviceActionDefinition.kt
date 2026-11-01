@@ -10,7 +10,7 @@ internal class DeviceActionDefinition(val plugin: String, val action: String) {
         ?: deviceFailure(DeviceErrorCode.UNSUPPORTED_CAPABILITY)
     private val command = spec.commands.firstOrNull { it.action == action }
         ?: deviceFailure(DeviceErrorCode.UNSUPPORTED_CAPABILITY)
-    val writes = (plugin == "screen" && action != "snapshot") || command.grant || (plugin == "storage" && action == "export")
+    val writes = (plugin == "screen" && action !in setOf("snapshot", "apps")) || command.grant || (plugin == "storage" && action == "export")
     val displayType = when (plugin) {
         "screen" -> "screen_control"
         "sms" -> if (action == "send") "message_send" else "message_list"
@@ -26,6 +26,8 @@ internal class DeviceActionDefinition(val plugin: String, val action: String) {
         "screen.click" -> mapOf("query" to 200)
         "screen.type" -> mapOf("text" to 2000)
         "screen.tap" -> mapOf("x" to 24, "y" to 24)
+        "screen.swipe" -> mapOf("x" to 24, "y" to 24, "toX" to 24, "toY" to 24)
+        "screen.launch" -> mapOf("package" to 255)
         "sms.send" -> mapOf("to" to 23, "body" to 500)
         "contacts.create" -> mapOf("name" to 80, "phone" to 40)
         "contacts.update" -> mapOf("id" to 20, "name" to 80)
@@ -51,7 +53,7 @@ internal class DeviceActionDefinition(val plugin: String, val action: String) {
     }
     /** Refusals name the argument and the expected form, never the value, so the caller can correct itself without leaking input. */
     fun validate(args: JsonObject): Map<String, String> {
-        val tap = plugin == "screen" && action == "tap"
+        val tap = plugin == "screen" && action in setOf("tap", "swipe")
         fun invalid(message: String): Nothing = deviceFailure(DeviceErrorCode.INVALID_ARGUMENT, message)
         args.keys.firstOrNull { it !in fields }?.let {
             invalid(if (fields.isEmpty()) "$plugin.$action takes no arguments, got $it"
@@ -71,6 +73,8 @@ internal class DeviceActionDefinition(val plugin: String, val action: String) {
         if ("id" in result && (result["id"]?.toLongOrNull()?.let { it >= 0 } != true)) invalid("Argument id must be a non-negative integer")
         if (tap && result.values.any { it.toDoubleOrNull()?.let { n -> n.isFinite() && n in 0.0..1.0 } != true })
             invalid("Arguments x and y must be numbers from 0 to 1")
+        if (plugin == "screen" && action == "launch" && !result.getValue("package").matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+")))
+            invalid("Argument package must be an Android package name")
         if (plugin == "sms" && action == "send" && !result.getValue("to").matches(Regex("[+0-9][0-9\\- ]{2,20}")))
             invalid("Argument to must be a phone number of digits, spaces or dashes, optionally starting with +")
         if (plugin == "calendar" && action == "create") {

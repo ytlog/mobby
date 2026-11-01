@@ -385,6 +385,7 @@ class ConversationHostActions(
         ConversationToolbar(state.selected?.conversation, vm,
             modifier = Modifier.fillMaxWidth().testTag("conversation-toolbar"),
             onMenu = onMenu, onNew = onNew, onMore = onMore, onAnchor = onAnchor, showMenu = showMenu, menuLabel = menuLabel)
+        VirtualScreenPreview()
         if (!system.connected || !system.ready) Text(
             system.message,
             Modifier.padding(horizontal = 20.dp, vertical = 4.dp).align(Alignment.CenterHorizontally),

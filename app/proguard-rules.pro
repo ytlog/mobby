@@ -18,3 +18,5 @@
 # SLF4J 1.7.36 explicitly falls back to its bundled NOP logger without a binding.
 # This app does not supply an SLF4J backend; allow only that optional binding class.
 -dontwarn org.slf4j.impl.StaticLoggerBinder
+-keep class com.github.ytlog.mobby.android.device.privileged.ScreenUserService { *; }
+-keep class com.github.ytlog.mobby.android.device.privileged.RootScreenMain { public static void main(java.lang.String[]); }

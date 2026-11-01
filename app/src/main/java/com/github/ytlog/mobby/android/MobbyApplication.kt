@@ -65,6 +65,7 @@ class MobbyApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         if (isLocalModelProcess()) return
+        com.github.ytlog.mobby.android.conversation.ui.ScreenUi.controller = com.github.ytlog.mobby.android.graph.AndroidScreenControl(this)
         updates = AppUpdateManager(this)
         com.github.ytlog.mobby.android.conversation.ui.LanguagePreferences.initialize(this)
         graph = AppGraph(this) {

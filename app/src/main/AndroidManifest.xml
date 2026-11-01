@@ -14,6 +14,7 @@
             <intent-filter><action android:name="android.intent.action.SEND" /><category android:name="android.intent.category.DEFAULT" /><data android:mimeType="text/plain" /></intent-filter>
         </activity>
         <activity android:name=".programcenter.ProgramUiActivity" android:exported="false" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".conversation.ui.ScreenControlSettingsActivity" android:exported="false" android:theme="@android:style/Theme.Material.Light.NoActionBar" />
         <provider android:name=".UpdateFileProvider" android:authorities="${applicationId}.updates" android:exported="false" android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/update_file_paths" />
         </provider>

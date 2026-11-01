@@ -44,6 +44,7 @@ object DeviceForeground : Application.ActivityLifecycleCallbacks {
 
 class DeviceInitProvider : ContentProvider() {
     override fun onCreate(): Boolean {
+        context?.let(ScreenControl::initialize)
         (context?.applicationContext as? Application)?.registerActivityLifecycleCallbacks(DeviceForeground)
         return true
     }

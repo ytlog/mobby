@@ -45,20 +45,13 @@ object DeviceHost {
         val spec = DeviceCatalog.all.firstOrNull { it.ref == ref || it.grantRef == ref } ?: return false
         if (spec.grantRef == ref) return spec.grant!!.permissions.all { allowed(context, it) }
         return when (spec.id) {
-            "screen" -> screenPermissionEnabled(context) && screenNotificationsEnabled(context)
+            "screen" -> ScreenControl.available(context) && screenNotificationsEnabled(context)
             "media" -> mediaGranted(context)
             "storage" -> DeviceStorage.tree(context) != null
             "programs" -> ProgramDevelopment.port != null
             "location" -> allowed(context, Manifest.permission.ACCESS_COARSE_LOCATION) || allowed(context, Manifest.permission.ACCESS_FINE_LOCATION)
             else -> spec.permissions.all { allowed(context, it) }
         }
-    }
-    private fun screenPermissionEnabled(context: Context): Boolean {
-        // Admission checks the user's grant; a service rebind must not reject a whole turn.
-        if (Settings.Secure.getInt(context.contentResolver, Settings.Secure.ACCESSIBILITY_ENABLED, 0) != 1) return false
-        val expected = ComponentName(context, ScreenAccessService::class.java)
-        return Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
-            .orEmpty().split(':').mapNotNull(ComponentName::unflattenFromString).any { it == expected }
     }
     private fun screenNotificationsEnabled(context: Context): Boolean {
         val manager = context.getSystemService(NotificationManager::class.java)
@@ -71,7 +64,7 @@ object DeviceHost {
         return when {
             spec.grantRef == ref -> AppStrings.allowForFirst(spec.name, spec.grant!!.label)
             spec.id == "screen" && !screenNotificationsEnabled(context) -> AppStrings.enableMobbyNotificationsForScreenTasks
-            spec.id == "screen" -> AppStrings.enableMobbySScreenAccessibilityServiceInSystemSettings
+            spec.id == "screen" -> ScreenControl.reason(context)
             spec.id == "storage" -> AppStrings.selectADirectoryToAllowAccess
             spec.id == "media" -> AppStrings.allowAccessToPhotosVideosOrAudioInYour
             else -> AppStrings.allowAccessToFirst(spec.name)
@@ -94,15 +87,21 @@ object DeviceHost {
     private fun allowed(context: Context, permission: String) =
         context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
 
-    fun start(context: Context, root: File, inbox: File, workspace: File, node: String, refs: Set<String>, operations: DeviceOperationPort, registerResource: (File, String) -> String, registerCachedResource: (File, String) -> String, exportResource: (String) -> String, isCancelled: () -> Boolean = { false }, attachedPrograms: Set<String> = emptySet()): DeviceSession =
-        openDeviceSession(refs, ::chatScreenSession) {
+    fun start(context: Context, root: File, inbox: File, workspace: File, node: String, refs: Set<String>, operations: DeviceOperationPort, registerResource: (File, String) -> String, registerCachedResource: (File, String) -> String, exportResource: (String) -> String, isCancelled: () -> Boolean = { false }, attachedPrograms: Set<String> = emptySet()): DeviceSession {
+        var screen: ScreenSession? = null
+        return openDeviceSession(refs, {
+            val chat = ScreenCoordinator.chatSession()
+            val session = try { ScreenControl.open(context) } catch (failure: Throwable) { chat.close(); throw failure }
+            screen = session
+            AutoCloseable { try { session.close() } finally { chat.close() } }
+        }) {
             val token = DeviceCommands.token()
             val allow = DeviceCatalog.allow(refs)
             val gate = DeviceActionGate(isCancelled)
-            val actions = DeviceActions(context, inbox, workspace, gate, DeviceResourceRegistrar(registerResource), DeviceResourceRegistrar(registerCachedResource), allow, attachedPrograms)
+            val actions = DeviceActions(context, inbox, workspace, gate, DeviceResourceRegistrar(registerResource), DeviceResourceRegistrar(registerCachedResource), allow, attachedPrograms, screen)
             val workflow = DeviceWorkflowManager(context) { query, input ->
                 gate.checkActive()
-                (ScreenAccessService.instance ?: deviceFailure(DeviceErrorCode.UNAVAILABLE)).inspect(query, input)
+                (screen ?: deviceFailure(DeviceErrorCode.UNAVAILABLE)).inspect(query, input)
             }
             val bridge = DeviceBridge(gate::close, workflow::close) { line ->
                 workflow.handle(line, token, allow) { request ->
@@ -112,19 +111,13 @@ object DeviceHost {
                 }
             }
             try {
-                bridge to DeviceSkillPack.write(root, node, bridge.port, token, refs)
+                bridge to DeviceSkillPack.write(root, node, bridge.port, token, refs, ScreenControl.state.value.mode)
             } catch (error: Throwable) {
                 bridge.close()
                 throw error
             }
         }
-}
-
-/** A chat run with the screen plugin keeps the screen on and, while it lasts, programs may read but not act on screen. */
-private fun chatScreenSession(): AutoCloseable {
-    val chat = ScreenCoordinator.chatSession()
-    val stay = try { ScreenAccessService.stay() } catch (error: Throwable) { chat.close(); throw error }
-    return AutoCloseable { try { stay.close() } finally { chat.close() } }
+    }
 }
 
 internal fun openDeviceSession(

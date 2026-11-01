@@ -31,13 +31,16 @@ object DeviceCatalog {
     val all get() = listOf(
         DevicePluginSpec(
             "screen", AppStrings.screen, AppStrings.readAndInteractWithTheCurrentScreen, CatalogIds.PHONE,
-            "Use this skill to read or control the current phone. The display stays on for this run and the previous screen timeout returns when the run ends. Always snapshot first. Password fields appear as [secure]. Each successful screen action attempts a screenshot. When result.data.observationRef is present, use the resource command to export its JPEG and inspect it; screenshotStatus reports capture failure without changing the action outcome. Report failures; do not invent controls or success. Do not change the system screen timeout.",
+            "Use this skill to read or control the selected screen. Follow the backend instructions below. In current-screen mode the display stays on for this run and the previous screen timeout returns when the run ends. Snapshot the target app before interacting; in virtual mode use apps and launch first if no app is open. Password fields appear as [secure]. Each successful screen action attempts a screenshot. When result.data.observationRef is present, use the resource command to export its JPEG and inspect it; screenshotStatus reports capture failure without changing the action outcome. Report failures; do not invent controls or success. Do not change the system screen timeout.",
             DeviceAccess.ACCESSIBILITY,
             commands = listOf(
                 DeviceCommand("snapshot", "snapshot", "Read the current window before other actions."),
+                DeviceCommand("apps", "apps", "List launchable application packages."),
+                DeviceCommand("launch", """launch {"package":"com.example.app"}""", "Launch on the selected screen; virtual mode never launches on the main display."),
                 DeviceCommand("click", """click {"query":"visible text"}""", "query is at most 200 characters."),
                 DeviceCommand("type", """type {"text":"text"}""", "text is at most 2000 characters."),
                 DeviceCommand("tap", """tap {"x":"0.5","y":"0.5"}""", "x and y are fractions from 0 to 1."),
+                DeviceCommand("swipe", """swipe {"x":"0.5","y":"0.8","toX":"0.5","toY":"0.2"}""", "Coordinates are fractions from 0 to 1 on the selected display."),
                 DeviceCommand("back", "back"),
                 DeviceCommand("home", "home"),
                 DeviceCommand("recents", "recents"),

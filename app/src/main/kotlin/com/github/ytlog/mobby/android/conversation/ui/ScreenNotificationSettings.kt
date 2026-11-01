@@ -9,6 +9,9 @@ internal fun screenAccessSettingsIntent(context: Context): Intent {
     val notifications = context.getSystemService(NotificationManager::class.java)
     val enabled = notifications.areNotificationsEnabled() &&
         notifications.getNotificationChannel("runtime")?.importance != NotificationManager.IMPORTANCE_NONE
-    return if (enabled) Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+    return if (enabled && (ScreenUi.controller?.state?.value?.mode
+            ?: com.github.ytlog.mobby.android.runtime.api.device.ScreenMode.CURRENT) != com.github.ytlog.mobby.android.runtime.api.device.ScreenMode.CURRENT)
+        Intent(context, ScreenControlSettingsActivity::class.java)
+    else if (enabled) Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
     else Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
 }

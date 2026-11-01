@@ -62,7 +62,7 @@ class ScreenAccessService : AccessibilityService() {
     }
 
     internal data class Observation(val text: String, val packageName: String, val observedAtEpochMillis: Long,
-        val screenshot: ScreenScreenshot)
+        val screenshot: ScreenScreenshot, val backend: String = "current", val displayId: Int = Display.DEFAULT_DISPLAY)
 
     /** Fresh, text-free page evidence for workflow matching. The full node tree is never retained. */
     internal fun inspect(query: String? = null, expectedInput: String? = null): ScreenEvidence = ScreenOperation.run {
@@ -106,9 +106,20 @@ class ScreenAccessService : AccessibilityService() {
             // Each operation obtains fresh nodes only after the application overlay is detached.
             val text = when (action) {
                 "snapshot" -> snapshot()
+                "apps" -> packageManager.queryIntentActivities(android.content.Intent(android.content.Intent.ACTION_MAIN)
+                    .addCategory(android.content.Intent.CATEGORY_LAUNCHER), 0)
+                    .map { it.activityInfo.packageName }.distinct().sorted().joinToString("\n")
+                "launch" -> {
+                    val name = args.getValue("package")
+                    require(name != packageName)
+                    val intent = packageManager.getLaunchIntentForPackage(name) ?: error("Application has no launcher")
+                    startActivity(intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                    "Launch requested for $name"
+                }
                 "click" -> click(args["query"].orEmpty())
                 "type" -> type(args["text"].orEmpty())
                 "tap" -> tap(args["x"]?.toFloatOrNull(), args["y"]?.toFloatOrNull())
+                "swipe" -> tap(args["x"]?.toFloatOrNull(), args["y"]?.toFloatOrNull(), args["toX"]?.toFloatOrNull(), args["toY"]?.toFloatOrNull())
                 "back" -> global(GLOBAL_ACTION_BACK, AppStrings.wentBack, AppStrings.couldNotGoBack)
                 "home" -> global(GLOBAL_ACTION_HOME, AppStrings.returnedToHomeScreen, AppStrings.couldNotReturnToHomeScreen)
                 "recents" -> global(GLOBAL_ACTION_RECENTS, AppStrings.openedRecentApps, AppStrings.couldNotOpenRecentApps)
@@ -229,7 +240,7 @@ class ScreenAccessService : AccessibilityService() {
         return AppStrings.enteredCharacters(text.length)
     }
 
-    private suspend fun tap(x: Float?, y: Float?): String {
+    private suspend fun tap(x: Float?, y: Float?, toX: Float? = null, toY: Float? = null): String {
         if (x == null || y == null || !x.isFinite() || !y.isFinite() || x !in 0f..1f || y !in 0f..1f)
             throw IllegalArgumentException(AppStrings.coordinatesMustBeProportionsBetweenAnd)
         // Refresh the active window after detach; never retain accessibility nodes across actions.
@@ -240,7 +251,11 @@ class ScreenAccessService : AccessibilityService() {
         val width = resources.displayMetrics.widthPixels.toFloat()
         val height = resources.displayMetrics.heightPixels.toFloat()
         val path = Path().apply { moveTo((x * width).coerceAtMost(width - 1), (y * height).coerceAtMost(height - 1)) }
-        val gesture = GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, 80)).build()
+        if (toX != null || toY != null) {
+            require(toX != null && toY != null && toX.isFinite() && toY.isFinite() && toX in 0f..1f && toY in 0f..1f)
+            path.lineTo((toX * width).coerceAtMost(width - 1), (toY * height).coerceAtMost(height - 1))
+        }
+        val gesture = GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, if (toX == null) 80 else 350)).build()
         val ok = withTimeout(2_000) {
             suspendCancellableCoroutine<Boolean> { continuation ->
                 val accepted = dispatchGesture(gesture, object : GestureResultCallback() {
@@ -255,7 +270,7 @@ class ScreenAccessService : AccessibilityService() {
             }
         }
         check(ok) { AppStrings.gestureDidNotComplete }
-        return AppStrings.tappedScreenPosition
+        return if (toX == null) AppStrings.tappedScreenPosition else AppStrings.swipedScreenPosition
     }
 
     private fun findTargets(root: AccessibilityNodeInfo, query: String): List<AccessibilityNodeInfo> {

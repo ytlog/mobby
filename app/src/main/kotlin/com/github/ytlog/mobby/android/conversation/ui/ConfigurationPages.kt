@@ -365,6 +365,9 @@ private fun pluginCatalogTabs(tablet: Boolean) = listOf(if (tablet) AppStrings.t
                                 else -> AppStrings.allow(grant.label)
                             }) }
                         }
+                        if (plugin.ref == "plugin:device:screen") TextButton(onClick = {
+                            context.startActivity(Intent(context, ScreenControlSettingsActivity::class.java))
+                        }) { Text(AppStrings.screenModeTitle) }
                     }
                 }
             }

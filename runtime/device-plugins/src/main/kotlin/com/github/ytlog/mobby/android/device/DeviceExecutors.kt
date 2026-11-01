@@ -23,7 +23,7 @@ data class DeviceArguments(val maxLengths: Map<String, Int>, val optional: Set<S
 object DeviceExecutors {
     fun arguments(plugin: String, action: String): DeviceArguments {
         val definition = DeviceActionDefinition(plugin, action)
-        return DeviceArguments(definition.arguments, definition.optionalArguments, plugin == "screen" && action == "tap")
+        return DeviceArguments(definition.arguments, definition.optionalArguments, plugin == "screen" && action in setOf("tap", "swipe"))
     }
 
     /** Same validation the chat bridge applies; throws a device failure on invalid input. */

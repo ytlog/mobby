@@ -86,6 +86,8 @@ def generate(artifacts, cache, output):
             documents.extend((name, (PROJECT / 'third_party/onnxruntime' / name).read_text()) for name in ('LICENSE', 'ThirdPartyNotices.txt'))
         if override:
             documents.append((override, (PROJECT / 'third_party/maven' / override).read_text()))
+        if artifact['group'] == 'dev.rikka.shizuku' and artifact['version'] == '13.1.5':
+            documents.append(('Shizuku-API LICENSE', (PROJECT / 'third_party/maven/shizuku-api-13.1.5-LICENSE').read_text()))
         if 'Apache-2.0' in licenses:
             documents.append(('Apache-2.0', (PROJECT / 'third_party/codex/LICENSE').read_text()))
         if not documents or ('Apache-2.0' not in licenses and not any('Copyright' in text or 'copyright' in text for _, text in documents)):
