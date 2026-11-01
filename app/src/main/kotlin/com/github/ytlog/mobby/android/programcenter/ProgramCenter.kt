@@ -15,6 +15,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -23,6 +24,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -147,8 +153,10 @@ private fun shortTime(millis: Long): String {
             // The system asks the user; mobby never changes the setting itself.
             context.startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, android.net.Uri.parse("package:${context.packageName}")))
         }
-        SettingsGroup { SettingsItem(AppStrings.writeNewProgram, { writeNew(null) }, AppStrings.writeNewProgramSummary, icon = AppIcons.Terminal) }
-        ProgramIdeas(writeNew)
+        SettingsGroup {
+            SettingsItem(AppStrings.writeNewProgram, { writeNew(null) }, AppStrings.writeNewProgramSummary, icon = AppIcons.Terminal)
+            ProgramIdeas(writeNew)
+        }
         if (pending.isNotEmpty()) SettingsGroup(AppStrings.pendingPrograms(pending.size)) {
             pending.forEachIndexed { index, item ->
                 if (index > 0) GroupDivider()
@@ -532,17 +540,25 @@ internal fun configKeyboard(type: ConfigType?) = when (type) {
     }
 }
 
-/** Starting points for a first program; picking one only fills the request, which the user can change before sending. */
+/**
+ * Starting points for a first program, shown as requests inside the write card so they never read as installed programs.
+ * Picking one only fills the request, which the user can change before sending.
+ */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable internal fun ProgramIdeas(pick: (String) -> Unit) {
     val ideas = listOf(
-        Triple(AppStrings.programIdeaExpenses, AppStrings.programIdeaExpensesDetail, AppStrings.programIdeaExpensesRequest),
-        Triple(AppStrings.programIdeaReminder, AppStrings.programIdeaReminderDetail, AppStrings.programIdeaReminderRequest),
-        Triple(AppStrings.programIdeaWatch, AppStrings.programIdeaWatchDetail, AppStrings.programIdeaWatchRequest),
+        AppStrings.programIdeaExpenses to AppStrings.programIdeaExpensesRequest,
+        AppStrings.programIdeaReminder to AppStrings.programIdeaReminderRequest,
+        AppStrings.programIdeaWatch to AppStrings.programIdeaWatchRequest,
     )
-    SettingsGroup(AppStrings.programIdeas) {
-        ideas.forEachIndexed { index, (title, detail, request) ->
-            if (index > 0) GroupDivider()
-            SettingsItem(title, { pick(request) }, detail)
+    Column(Modifier.fillMaxWidth().padding(start = 48.dp, end = 16.dp, bottom = 14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(AppStrings.programIdeas, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ideas.forEach { (title, request) ->
+                SuggestionChip(onClick = { pick(request) }, label = { Text(title) },
+                    icon = { AppIcon(AppIcons.Edit, null, Modifier.size(16.dp)) },
+                    modifier = Modifier.clearAndSetSemantics { contentDescription = AppStrings.writeIdea(title); role = Role.Button; onClick { pick(request); true } })
+            }
         }
     }
 }
