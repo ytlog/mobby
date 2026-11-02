@@ -53,4 +53,6 @@ python3 runtime/device-plugins/probe_screen.py \
 
 本机 Library 中的 GraalVM 17.0.12 编译 Java/Kotlin 可用，但标准 AGP jlink 转换报 `Module jdk.internal.vm.ci not found`。本轮本地验证使用临时 Gradle init 脚本移除 `JdkImageInput` 参数提供器并设置 `options.release=17`；不修改仓库构建配置、不跳过编译或测试。这是本地工具链限制，不能描述为标准命令无条件通过。
 
-最终本地检查：JDK 17 配合上述本地初始化脚本，Debug APK、App lint、App 278 项、设备插件 57 项、Termux 32 项单元测试、本地化 3 项测试通过；Python 46 项、Node 网关/程序 SDK 30 项通过。当前屏幕模式的快捷无障碍设置入口与原回归保留。APK 未覆盖安装到手机，不能把 shell 探针当作 App 内完整验收。
+初次本地检查：JDK 17 配合上述本地初始化脚本，Debug APK、App lint、App 278 项、设备插件 57 项、Termux 32 项单元测试、本地化 3 项测试通过；Python 46 项、Node 网关/程序 SDK 30 项通过。当前屏幕模式的快捷无障碍设置入口与原回归保留。APK 未覆盖安装到手机，不能把 shell 探针当作 App 内完整验收。
+
+2026-11-02 补充标准构建验证：按用户授权，使用本机已有 JBR 21.0.11，未加载临时 Gradle init 脚本，执行 `:app:assembleDebug :app:testDebugUnitTest :termux-core:testDebugUnitTest :device-plugins:testDebugUnitTest :localization:test :app:lintDebug`，全部通过。App 278 项、设备插件 57 项、Termux 32 项、本地化 3 项测试合计 370 项，无失败或错误；lint 无错误。确认权限工作进程的 Java class major version 为 61，编译目标仍为 Java 17。无需为此修改项目构建配置或下载新的 JDK。此结果补齐标准 AGP jlink 路径验证，不改变前述真机验收限制。
