@@ -70,3 +70,5 @@ adb shell am instrument -w \
 ```
 
 Shizuku 已安装、shell 服务已启动并授权 mobby 后，使用同一测试类的 `shizukuVirtualScreenKeepsMobbyVisibleAndReleasesDisplay` 方法并增加 `-e shizuku true`。这些设备桥接回归不等同于真实 Agent/网关完整任务验收。
+
+用户随后明确选择先跳过 Shizuku 验收，本轮不再执行安装或启动流程。mobby 98 与测试包的覆盖更新保留。继续检查现有屏幕模式时，设备仍锁屏，且所需的 mobby 屏幕无障碍服务未启用，未运行新设备用例，也未自动修改系统权限。当前结论仍为构建、lint 与前述本地测试通过；Shizuku/root 完整实机验收、现有模式新增设备回归均待相应前置条件满足后进行。
