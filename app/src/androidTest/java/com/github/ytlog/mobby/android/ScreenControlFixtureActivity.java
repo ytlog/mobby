@@ -25,7 +25,9 @@ public final class ScreenControlFixtureActivity extends Activity {
             geometry.setText("Button center: " + (location[0] + increment.getWidth() / 2) + "," +
                 (location[1] + increment.getHeight() / 2) + "/" + metrics.widthPixels + "," + metrics.heightPixels);
         });
+        TextView scrollPosition = new TextView(this); scrollPosition.setText("Scroll position: 0"); content.addView(scrollPosition);
         ScrollView scroll = new ScrollView(this);
+        scroll.setOnScrollChangeListener((view, x, y, oldX, oldY) -> scrollPosition.setText("Scroll position: " + y));
         LinearLayout rows = new LinearLayout(this); rows.setOrientation(LinearLayout.VERTICAL);
         for (int i = 0; i < 60; i++) { TextView row = new TextView(this); row.setText("Probe row " + i); row.setPadding(0, 16, 0, 16); rows.addView(row); }
         scroll.addView(rows); content.addView(scroll);

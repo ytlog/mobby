@@ -120,8 +120,10 @@ class ScreenControlDeviceTest {
                 perform("type", mapOf("text" to "虚拟屏中文输入"))
                 val before = perform("snapshot").getString("text")
                 assertTrue(before.contains("虚拟屏中文输入"))
+                fun scrollPosition(text: String) = Regex("Scroll position: (\\d+)").find(text)!!.groupValues[1].toInt()
+                assertEquals(0, scrollPosition(before))
                 perform("swipe", mapOf("x" to "0.5", "y" to "0.85", "toX" to "0.5", "toY" to "0.4"))
-                assertNotEquals("Scrolling must change visible rows", before, perform("snapshot").getString("text"))
+                assertTrue("Swipe must move the actual scroll container", scrollPosition(perform("snapshot").getString("text")) > 0)
                 if (mode != ScreenMode.CURRENT) {
                     assertTrue(ScreenControl.state.value.active)
                     assertNotNull(ScreenControl.state.value.jpeg)

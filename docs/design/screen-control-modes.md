@@ -64,6 +64,7 @@ python3 runtime/device-plugins/probe_screen.py \
 定向执行现有屏幕模式回归（前置：更新 App/test APK、启用原无障碍服务与通知、手机解锁）：
 
 ```sh
+adb shell am start -n com.github.ytlog.mobby.android/.MainActivity -f 0x24000000
 adb shell am instrument -w \
   -e class com.github.ytlog.mobby.android.ScreenControlDeviceTest#currentScreenRetainsClickCoordinatesTextAndSwipe \
   com.github.ytlog.mobby.android.test/androidx.test.runner.AndroidJUnitRunner
@@ -72,3 +73,11 @@ adb shell am instrument -w \
 Shizuku 已安装、shell 服务已启动并授权 mobby 后，使用同一测试类的 `shizukuVirtualScreenKeepsMobbyVisibleAndReleasesDisplay` 方法并增加 `-e shizuku true`。这些设备桥接回归不等同于真实 Agent/网关完整任务验收。
 
 用户随后明确选择先跳过 Shizuku 验收，本轮不再执行安装或启动流程。mobby 98 与测试包的覆盖更新保留。继续检查现有屏幕模式时，设备仍锁屏，且所需的 mobby 屏幕无障碍服务未启用，未运行新设备用例，也未自动修改系统权限。当前结论仍为构建、lint 与前述本地测试通过；Shizuku/root 完整实机验收、现有模式新增设备回归均待相应前置条件满足后进行。
+
+2026-11-02 恢复 Shizuku 验收：用户解锁并要求重试。流式 ADB 安装仍被拒绝，标准 `adb install --no-streaming -r` 成功安装同一官方签名 APK（13.6.0.r1086.2650830c），未改变系统安装设置。按官方 v13.6 源码的启动方式执行已安装 APK 的 `lib/arm64/libshizuku.so`，启动 shell 服务；通过 mobby 的屏幕模式页面请求授权、确认允许并连接，真实 UserService 连接成功。
+
+首轮设备测试通过启动、截图、语义点击、坐标点击与中文输入，在滚动判断处失败：测试错误地假设滚动会改变节点树的文本集合，而实际树中包含屏幕外行。将测试界面改为展示由 `OnScrollChangeListener` 更新的实际滚动位置，断言从 0 变为正数，直接验证真实滚动。未修改生产屏幕操作实现。另一次从后台直接启动测试未能让 mobby Activity 进入 RESUMED；执行上面的前台启动命令后重跑通过，未修改后台启动权限。
+
+修正后使用现有 JBR 21 执行 `:app:assembleDebugAndroidTest :app:lintDebug -Pmobby.versionCode=98`，全部通过。覆盖更新测试包后，`shizukuVirtualScreenKeepsMobbyVisibleAndReleasesDisplay` 连续两次通过（16.705 秒、16.907 秒）。实际经过正式 DeviceHost 协议，验证 `apps`、系统设置启动到副屏、截图、语义点击与坐标点击计数到 2、中文输入、实际滚动、App 内预览与保持亮屏、`home/recents` 明确拒绝、`back` 和关闭。第二次主屏截图可见 mobby 内副屏预览、Count: 2、中文文本和 Scroll position: 863；Activity 状态同时显示 mobby 在 display 0、测试界面在 display 7。关闭后通过 `dumpsys display` 确认不存在 mobby-agent 副屏。
+
+此结果完成该 Android 13 小米手机上的 Shizuku 设备桥接与 App 内预览验收，不等同于真实模型/Agent 完整任务验收。root 后端未验收；当前屏幕的新增设备回归仍待用户启用 mobby 无障碍服务。未更改四个 CLI、Shell、Node 的执行身份或任何系统权限设置。
