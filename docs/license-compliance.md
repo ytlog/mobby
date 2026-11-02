@@ -26,7 +26,7 @@
 
 ## Android 与运行依赖
 
-当前 release 解析结果是 116 个产物，按重复坐标归并为 **115 个 Maven 依赖**，包含传递依赖：107 个 Apache-2.0、5 个 BSD-2-Clause、3 个 MIT。新增的 AndroidX WindowManager 两个坐标已核对其 POM 与 Apache-2.0 许可并写入锁定清单。构建读取实际 releaseRuntimeClasspath、Maven POM 及父 POM，保留 JAR/AAR（含 classes.jar）里的许可与 NOTICE；缺少原文的 autolink、SLF4J 使用固定版本的官方原文。新增依赖、版本或许可变化须审查清单，不能自动以项目 MIT 填充。
+当前 release 解析结果是 123 个产物，按重复坐标归并为 **122 个 Maven 依赖**，包含传递依赖：109 个 Apache-2.0、5 个 BSD-2-Clause、8 个 MIT；另有两项随源码构建的 ADB/SPAKE2 组件，其原文通知也随 App 展示。新增的 AndroidX WindowManager 两个坐标已核对其 POM 与 Apache-2.0 许可并写入锁定清单。构建读取实际 releaseRuntimeClasspath、Maven POM 及父 POM，保留 JAR/AAR（含 classes.jar）里的许可与 NOTICE；缺少原文的 autolink、SLF4J 使用固定版本的官方原文。新增依赖、版本或许可变化须审查清单，不能自动以项目 MIT 填充。
 
 Sherpa-ONNX AAR 另外包含 ONNX Runtime 1.28.2。其版本与 Sherpa 固定版本的 Android 构建配方及实际 ELF 字符串一致；MIT 原文和完整 ThirdPartyNotices 随 App 保留。Eigen 的 MPL 覆盖源码按 ONNX 1.28.2 deps.txt 的固定提交与校验和提供。当前 ARM64 JNI 没有检出 espeak/piper 符号，上游也已移除该依赖；不凭名称把它误判为旧版 GPL TTS 组合。
 
@@ -45,5 +45,7 @@ Bun 材料见 `third_party/bun/dependency-notices.json`，包括 Linux ARM64 构
 OpenCode 的 `third_party/opencode-termux/dependency-notices.json` 根据固定源码提交的 bun.lock，保留普通 workspace 依赖闭包和 Linux ARM64 musl 原生辅助包的声明；排除开发依赖、@types、其他平台包，type-fest 等纯类型材料及不要求保留通知的 0BSD/CC0 不额外展示。DOMPurify 的多选许可采用 Apache-2.0，json-schema 采用 BSD-3-Clause。npm 归档缺少独立许可证时，恢复发布者原文并记录不可变 Git blob，或对明确的 package.json 授权提供标准副本；不把没有授权的依赖默认归为项目 MIT。CC-BY 数据保留原作者声明、原材料及许可地址，依据 [CC-BY 3.0](https://creativecommons.org/licenses/by/3.0/legalcode) 和 [CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/legalcode.en) 的署名条件。
 
 App JNI 使用的 Android NDK r27c libc++/ABI/展开运行库保留其实际工具链 NOTICE 中的对应 LLVM 许可段落，排除编译器工具等未再分发部分。llama.cpp 的 ARM64 KleidiAI v1.24.0 核心使用 Apache-2.0，保留原许可证与原 Arm 文件版权声明；BSD 测试/示例组件没有纳入 App，不额外列入。
+
+内置 ADB 屏幕模式新增两个固定 Maven 依赖：Bouncy Castle 1.81 与 Conscrypt 2.5.3。前者原始 HTML 许可单独保留；后者保留同版本 NOTICE、Netty/Harmony 许可和其 AAR 元数据指定 BoringSSL 提交的完整 LICENSE。`third_party/libadb-android` 3.1.1 采用 Apache-2.0 分支并保留 BSD/MIT 归属；`third_party/spake2-java` 2.2.1 及固定 C 子模块按 LGPL-3.0 和所含文件条款处理。实际使用的 Android/原生源码、修改说明及 mobby 构建脚本已随仓库提供，同版本完整源码包可用于修改库、重新链接 App 与调试修改；App 未额外禁止这些行为。两项源码组件亦出现在离线许可页面。使用与源码边界见 [内置 ADB 屏幕服务](design/builtin-adb-screen.md)。
 
 发布流水线必须通过 APK 检查、完整源码附件打包和下载校验后才进入签名发布；源码清单或下载校验失败会阻止发布。本轮未在手机上重新验收许可证页面，也未完整重编全部上游原生程序。

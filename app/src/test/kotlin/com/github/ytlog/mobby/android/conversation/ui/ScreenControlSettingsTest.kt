@@ -5,6 +5,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import com.github.ytlog.mobby.android.device.ScreenControl
 import com.github.ytlog.mobby.android.runtime.api.device.ScreenMode
 import org.junit.After
@@ -29,15 +30,20 @@ class ScreenControlSettingsTest {
     @Test fun `all modes remain selectable and virtual selection requires its own connection`() {
         compose.setContent { MaterialTheme { ScreenControlSettings(com.github.ytlog.mobby.android.graph.AndroidScreenControl(RuntimeEnvironment.getApplication()), onBack = {}) } }
         compose.onNodeWithText("当前屏幕（无障碍）").assertIsDisplayed()
+        compose.onNodeWithText("虚拟屏幕（内置 ADB）").performClick()
+        compose.waitUntil { ScreenControl.state.value.mode == ScreenMode.ADB }
+        compose.onNodeWithText("通过通知配对").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("连接端口（留空自动发现）").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("虚拟屏幕（Shizuku）").performScrollTo()
         compose.onNodeWithText("虚拟屏幕（Shizuku）").performClick()
         compose.waitUntil { ScreenControl.state.value.mode == ScreenMode.SHIZUKU }
-        compose.onNodeWithText("授予 Shizuku 权限").assertIsDisplayed()
-        compose.onNodeWithText("权限后端未连接").assertIsDisplayed()
+        compose.onNodeWithText("授予 Shizuku 权限").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("权限后端未连接").performScrollTo().assertIsDisplayed()
         compose.runOnIdle { assertEquals(ScreenMode.SHIZUKU, ScreenControl.state.value.mode) }
-        compose.onNodeWithText("虚拟屏幕（root）").performClick()
+        compose.onNodeWithText("虚拟屏幕（root）").performScrollTo().performClick()
         compose.waitUntil { ScreenControl.state.value.mode == ScreenMode.ROOT }
         compose.runOnIdle { assertEquals(ScreenMode.ROOT, ScreenControl.state.value.mode) }
-        compose.onNodeWithText("当前屏幕（无障碍）").performClick()
+        compose.onNodeWithText("当前屏幕（无障碍）").performScrollTo().performClick()
         compose.waitUntil { ScreenControl.state.value.mode == ScreenMode.CURRENT }
         compose.onNodeWithText("打开无障碍设置").assertIsDisplayed()
         compose.runOnIdle { assertEquals(ScreenMode.CURRENT, ScreenControl.state.value.mode) }

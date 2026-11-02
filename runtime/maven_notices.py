@@ -27,6 +27,9 @@ def pom_licenses(cache, group, name, version, seen=None):
         repository = 'https://dl.google.com/dl/android/maven2/' if group.startswith('androidx.') else 'https://repo.maven.apache.org/maven2/'
         with urllib.request.urlopen(repository + relative, timeout=30) as response:
             root = ET.fromstring(response.read(2 * 1024 * 1024))
+    if root.tag == 'project':
+        for element in root.iter():
+            element.tag = '{' + NS['p'] + '}' + element.tag
     licenses = [entry.findtext('p:name', default='', namespaces=NS) for entry in root.findall('p:licenses/p:license', NS)]
     if licenses:
         return licenses
@@ -43,6 +46,8 @@ def spdx(names):
             result.append('Apache-2.0')
         elif 'MIT' in name:
             result.append('MIT')
+        elif name == 'Bouncy Castle Licence':
+            result.append('MIT')
         elif name == 'BSD-2-Clause':
             result.append(name)
         else:
@@ -56,7 +61,7 @@ def archive_notices(path):
         with zipfile.ZipFile(stream) as archive:
             for entry in archive.infolist():
                 leaf = entry.filename.rsplit('/', 1)[-1]
-                if re.match(r'(?i)^(LICENSE|NOTICE|COPYING|COPYRIGHT)(\..*|[-_].*)?$', leaf) and not entry.is_dir():
+                if re.match(r'(?i)^(LICENSE|NOTICE|COPYING|COPYRIGHT)(\..*|[-_].*)?$', leaf) and not entry.is_dir() and not leaf.endswith('.class'):
                     if entry.file_size > 2 * 1024 * 1024:
                         raise ValueError('Oversized license notice')
                     text = archive.read(entry).decode('utf-8')
@@ -81,6 +86,7 @@ def generate(artifacts, cache, output):
             raise ValueError('Dependency license must be reviewed: ' + coordinate)
         documents = [document for variant in variants for document in archive_notices(variant['file'])]
         override = {'org.nibor.autolink:autolink:0.12.0': 'autolink-0.12.0-LICENSE',
+                    'org.bouncycastle:bcprov-jdk15to18:1.81': 'bcprov-1.81-LICENSE.html',
                     'org.slf4j:slf4j-api:1.7.36': 'slf4j-1.7.36-LICENSE'}.get(coordinate)
         if coordinate == 'com.github.k2-fsa.sherpa-onnx:sherpa-onnx:v1.13.8':
             documents.extend((name, (PROJECT / 'third_party/onnxruntime' / name).read_text()) for name in ('LICENSE', 'ThirdPartyNotices.txt'))
@@ -88,6 +94,10 @@ def generate(artifacts, cache, output):
             documents.append((override, (PROJECT / 'third_party/maven' / override).read_text()))
         if artifact['group'] == 'dev.rikka.shizuku' and artifact['version'] == '13.1.5':
             documents.append(('Shizuku-API LICENSE', (PROJECT / 'third_party/maven/shizuku-api-13.1.5-LICENSE').read_text()))
+        if coordinate == 'org.conscrypt:conscrypt-android:2.5.3':
+            for suffix in ('NOTICE', 'boringssl-LICENSE', 'netty-LICENSE', 'harmony-LICENSE'):
+                name = 'conscrypt-2.5.3-' + suffix
+                documents.append((name, (PROJECT / 'third_party/maven' / name).read_text()))
         if 'Apache-2.0' in licenses:
             documents.append(('Apache-2.0', (PROJECT / 'third_party/codex/LICENSE').read_text()))
         if not documents or ('Apache-2.0' not in licenses and not any('Copyright' in text or 'copyright' in text for _, text in documents)):
@@ -97,6 +107,22 @@ def generate(artifacts, cache, output):
                      'text': '\n\n'.join('--- ' + title + ' ---\n' + text for title, text in unique)})
     if set(approved) != {row['title'] for row in rows}:
         raise ValueError('Dependency graph drift: review the license inventory')
+    if 'org.conscrypt:conscrypt-android:2.5.3' in groups:
+        for directory, version, license_name in [('libadb-android', '3.1.1', 'Apache-2.0, BSD-3-Clause, MIT'),
+                                                  ('spake2-java', '2.2.1', 'LGPL-3.0-only, ISC, MIT, Apache-2.0')]:
+            root = PROJECT / 'third_party' / directory
+            paths = sorted((root / 'LICENSES').glob('*')) if directory == 'libadb-android' else [root / 'LICENSE', PROJECT / 'third_party/libadb-android/LICENSES/GPL-3.0-or-later']
+            paths += [root / 'README.md']
+            source = root / ('libadb/src/main/java' if directory == 'libadb-android' else 'android/src/main/java')
+            headers = list(dict.fromkeys(p.read_text().split('\npackage ')[0] for p in sorted(source.rglob('*.java'))))
+            headers += list(dict.fromkeys(line.strip() for p in sorted(source.rglob('*.java')) for line in p.read_text().splitlines() if 'copyright' in line.lower()))
+            if directory == 'spake2-java':
+                native = root / 'android/src/main/cpp'
+                paths += [native / 'spake2-c/README.md', native / 'spake2-c/LICENSE']
+                headers += list(dict.fromkeys(p.read_text().split('#include')[0] for p in sorted(native.rglob('*')) if p.suffix in ('.c', '.h', '.cpp')))
+            text = '\n\n'.join(p.name + '\n' + p.read_text() for p in paths) + '\n\n' + '\n\n'.join(headers)
+            text += '\n\nCorresponding source and rebuild scripts are included under third_party/' + directory + ' in the matching mobby source release. You may modify and rebuild this library, including for debugging those modifications.\n'
+            rows.append({'id': 'source:' + directory, 'title': directory + ' ' + version, 'license': license_name, 'text': text})
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(rows, ensure_ascii=False, indent=2) + '\n')
     print('Offline Maven notices:', len(rows))

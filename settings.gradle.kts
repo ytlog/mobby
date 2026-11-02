@@ -19,6 +19,11 @@ include(":runtime-engine", ":runtime-android")
 include(":conversation-data", ":speech", ":device-plugins", ":program-platform")
 
 include(":localization")
+include(":screen-adb-transport", ":screen-adb-spake2")
+project(":screen-adb-transport").projectDir = file("third_party/libadb-android")
+project(":screen-adb-transport").buildFileName = "mobby.gradle.kts"
+project(":screen-adb-spake2").projectDir = file("third_party/spake2-java")
+project(":screen-adb-spake2").buildFileName = "mobby.gradle.kts"
 
 include(":local-model", ":local-model-backend-llama")
 

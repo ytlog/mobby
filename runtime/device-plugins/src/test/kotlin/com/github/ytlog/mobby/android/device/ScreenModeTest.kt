@@ -14,7 +14,7 @@ class ScreenModeTest {
     @Test fun `virtual backend failures never dispatch to the current screen`() {
         var current = 0
         val failure = IllegalStateException("virtual display disconnected")
-        for (mode in listOf(ScreenMode.SHIZUKU, ScreenMode.ROOT)) {
+        for (mode in ScreenMode.entries.filter { it != ScreenMode.CURRENT }) {
             val result = runCatching {
                 selectScreenBackend(mode, { current++; "main" }, { throw failure })
             }

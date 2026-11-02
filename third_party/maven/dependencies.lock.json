@@ -293,6 +293,9 @@
   "org.apache.commons:commons-lang3:3.16.0": [
     "Apache-2.0"
   ],
+  "org.bouncycastle:bcprov-jdk15to18:1.81": [
+    "MIT"
+  ],
   "org.checkerframework:checker-qual:3.33.0": [
     "MIT"
   ],
@@ -310,6 +313,9 @@
   ],
   "org.commonmark:commonmark:0.30.0": [
     "BSD-2-Clause"
+  ],
+  "org.conscrypt:conscrypt-android:2.5.3": [
+    "Apache-2.0"
   ],
   "org.fusesource.jansi:jansi:2.4.1": [
     "Apache-2.0"

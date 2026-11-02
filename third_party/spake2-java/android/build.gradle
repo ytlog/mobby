@@ -1,0 +1,74 @@
+/*
+ * Copyright (C) 2021 Muntashir Al-Islam
+ *
+ * Licensed according to the LICENSE file in this repository.
+ */
+
+plugins {
+    id 'com.android.library'
+    id 'maven-publish'
+}
+
+group = 'io.github.muntashirakon'
+version = '2.2.0'
+
+android {
+    namespace "io.github.muntashirakon.crypto.spake2"
+    compileSdkVersion 35
+    buildToolsVersion "35.0.0"
+
+    defaultConfig {
+        minSdkVersion 1
+        targetSdkVersion 35
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            externalNativeBuild {
+                cmake {
+                    cppFlags "-Wl,-z,max-page-size=16384"
+                }
+            }
+        }
+    }
+    externalNativeBuild {
+        cmake {
+            path 'src/main/cpp/CMakeLists.txt'
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+    publishing {
+        singleVariant("release") {
+            withSourcesJar()
+            withJavadocJar()
+        }
+    }
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging true
+        }
+    }
+}
+
+
+publishing {
+    publications {
+        release(MavenPublication) {
+            artifactId = 'spake2-android'
+            afterEvaluate {
+                from components.release
+            }
+        }
+    }
+}
+
+dependencies {
+    implementation "androidx.annotation:annotation:1.9.1"
+
+    testImplementation 'junit:junit:4.13.2'
+//    testImplementation 'org.robolectric:robolectric:4.6.1'
+}

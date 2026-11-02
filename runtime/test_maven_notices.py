@@ -9,6 +9,22 @@ import maven_notices
 
 
 class MavenNoticesTest(unittest.TestCase):
+    def test_pom_without_namespace_preserves_license_metadata(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cache = Path(directory)
+            folder = cache / 'example' / 'library' / '1'
+            folder.mkdir(parents=True)
+            (folder / 'library.pom').write_text('<project><licenses><license><name>Bouncy Castle Licence</name></license></licenses></project>')
+            self.assertEqual(['Bouncy Castle Licence'], maven_notices.pom_licenses(cache, 'example', 'library', '1'))
+
+    def test_a_class_named_license_is_not_a_notice_document(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'library.jar'
+            with zipfile.ZipFile(path, 'w') as archive:
+                archive.writestr('example/LICENSE.class', b'\xca\xfe\xba\xbe')
+                archive.writestr('META-INF/LICENSE', 'Original license')
+            self.assertEqual([('META-INF/LICENSE', 'Original license')], maven_notices.archive_notices(path))
+
     def fixture(self, root):
         notices = root / 'third_party/maven'
         notices.mkdir(parents=True)

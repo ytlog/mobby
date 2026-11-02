@@ -23,6 +23,12 @@ val generateLicenseNotices by tasks.registering(Exec::class) {
     inputs.file(rootProject.file("runtime/maven_notices.py"))
     inputs.dir(rootProject.file("third_party/maven"))
     inputs.dir(rootProject.file("third_party/onnxruntime"))
+    inputs.files(rootProject.fileTree("third_party/libadb-android") {
+        include("LICENSES/**", "COPYING", "README.md", "libadb/src/main/java/**")
+    })
+    inputs.files(rootProject.fileTree("third_party/spake2-java") {
+        include("LICENSE", "README.md", "android/src/main/java/**", "android/src/main/cpp/**")
+    })
     inputs.file(rootProject.file("third_party/codex/LICENSE"))
     outputs.file(layout.buildDirectory.file("generated/license-assets/third-party/maven.json"))
     commandLine("python3", rootProject.file("runtime/maven_notices.py"), "--artifacts", licenseMetadata.get().asFile,

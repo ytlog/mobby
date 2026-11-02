@@ -46,6 +46,11 @@ class ScreenControlDeviceTest {
         exercise(ScreenMode.SHIZUKU)
     }
 
+    @Test fun builtinAdbVirtualScreenKeepsMobbyVisibleAndReleasesDisplay() {
+        assumeTrue("Requires explicit built-in ADB device opt-in", InstrumentationRegistry.getArguments().getString("adb") == "true")
+        exercise(ScreenMode.ADB)
+    }
+
     private fun exercise(mode: ScreenMode) = runBlocking {
         assertTrue("Keep phone awake for screen acceptance", target.getSystemService(android.os.PowerManager::class.java).isInteractive)
         assertFalse("Unlock phone before screen acceptance", target.getSystemService(android.app.KeyguardManager::class.java).isKeyguardLocked)
@@ -63,7 +68,10 @@ class ScreenControlDeviceTest {
         val main = foregroundMobby()
         try {
             ScreenControl.select(context, mode)
-            if (mode == ScreenMode.SHIZUKU) ScreenControl.connect(context)
+            if (mode != ScreenMode.CURRENT) {
+                if (mode == ScreenMode.ADB) ScreenControl.setAdbPort(context, InstrumentationRegistry.getArguments().getString("adbPort").orEmpty())
+                ScreenControl.connect(context)
+            }
             else waitFor("existing accessibility service") { ScreenAccessService.connected() }
             assertTrue("Screen permission and task notifications must already be enabled", DeviceHost.granted(context, "plugin:device:screen"))
             fun register(file: File, type: String): String {
@@ -160,6 +168,9 @@ class ScreenControlDeviceTest {
     private fun foregroundMobby(): MainActivity {
         instrumentation.runOnMainSync {
             target.startActivity(Intent(target, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
+        if (InstrumentationRegistry.getArguments().getString("hostForeground") == "true") {
+            instrumentation.sendStatus(0, Bundle().apply { putString("screen_probe_phase", "foreground_required") })
         }
         var main: MainActivity? = null
         waitFor("mobby Activity must be resumed") {

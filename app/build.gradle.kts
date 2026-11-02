@@ -84,6 +84,7 @@ dependencies {
     implementation(project(":device-plugins"))
     implementation(project(":program-platform"))
     androidTestImplementation(project(":runtime-engine"))
+    androidTestImplementation(project(":screen-adb-spake2"))
     androidTestImplementation("androidx.appfunctions:appfunctions:1.0.0-alpha08")
     implementation(project(":runtime-android"))
     androidTestImplementation(project(":termux-core"))

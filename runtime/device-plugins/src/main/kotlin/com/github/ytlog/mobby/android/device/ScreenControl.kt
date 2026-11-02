@@ -40,19 +40,20 @@ object ScreenControl {
     private var channel: ScreenChannel? = null
     private var release: (() -> Unit)? = null
     private var leases = 0
+    private var connecting = false
     private var heartbeat: Job? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     fun initialize(context: Context) {
         val saved = context.getSharedPreferences("screen-control", Context.MODE_PRIVATE).getString("mode", null)
-        changes.value = ScreenControlState(mode = ScreenMode.restore(saved))
+        changes.value = ScreenControlState(mode = ScreenMode.restore(saved), adbPaired = EmbeddedAdb.paired(context))
     }
 
     @Synchronized fun select(context: Context, mode: ScreenMode) {
-        check(leases == 0) { AppStrings.screenModeBusy }
+        check(leases == 0 && !connecting && !state.value.adbPairing) { AppStrings.screenModeBusy }
         check(context.getSharedPreferences("screen-control", Context.MODE_PRIVATE).edit().putString("mode", mode.name).commit())
         disconnect()
-        changes.value = ScreenControlState(mode)
+        changes.value = ScreenControlState(mode, adbPaired = EmbeddedAdb.paired(context))
     }
 
     fun available(context: Context): Boolean = when (state.value.mode) {
@@ -78,13 +79,26 @@ object ScreenControl {
     }
 
     suspend fun connect(context: Context) = withContext(Dispatchers.IO) {
-        synchronized(this@ScreenControl) {
-            check(leases == 0) { AppStrings.screenModeBusy }
+        val mode = synchronized(this@ScreenControl) {
+            check(leases == 0 && !connecting && !state.value.adbPairing) { AppStrings.screenModeBusy }
             check(state.value.mode != ScreenMode.CURRENT)
             check(Build.VERSION.SDK_INT >= 33) { AppStrings.virtualScreenAndroidVersion }
             disconnect()
-            try {
-                val connected = if (state.value.mode == ScreenMode.ROOT) rootChannel(context) else shizukuChannel(context)
+            connecting = true
+            state.value.mode
+        }
+        try {
+            val connected = when (mode) {
+                ScreenMode.ADB -> EmbeddedAdb.connect(context)
+                ScreenMode.ROOT -> rootChannel(context)
+                ScreenMode.SHIZUKU -> shizukuChannel(context)
+                ScreenMode.CURRENT -> error("current_screen_has_no_backend")
+            }
+            if (!kotlinx.coroutines.currentCoroutineContext().isActive) {
+                connected.close()
+                throw kotlinx.coroutines.CancellationException("screen_connection_cancelled")
+            }
+            synchronized(this@ScreenControl) {
                 channel = connected
                 changes.value = state.value.copy(connected = true, error = null)
                 heartbeat = scope.launch {
@@ -93,20 +107,64 @@ object ScreenControl {
                         try { request(connected, "ping") } catch (_: Exception) { break }
                     }
                 }
-            } catch (failure: Exception) {
-                disconnect()
-                changes.value = state.value.copy(error = AppStrings.screenBackendConnectionFailed)
-                throw IllegalStateException(AppStrings.screenBackendConnectionFailed, failure)
+                connecting = false
             }
+        } catch (failure: Exception) {
+            synchronized(this@ScreenControl) {
+                connecting = false
+                disconnect()
+                changes.value = state.value.copy(error = when {
+                    failure is kotlinx.coroutines.CancellationException -> null
+                    mode == ScreenMode.ADB -> AppStrings.adbConnectionFailed
+                    else -> AppStrings.screenBackendConnectionFailed
+                })
+            }
+            if (failure is kotlinx.coroutines.CancellationException) throw failure
+            throw IllegalStateException(if (mode == ScreenMode.ADB) AppStrings.adbConnectionFailed else AppStrings.screenBackendConnectionFailed, failure)
         }
     }
 
+    internal suspend fun pairAdb(context: Context, port: String, code: String) {
+        synchronized(this) {
+            check(Build.VERSION.SDK_INT >= 33) { AppStrings.virtualScreenAndroidVersion }
+            check(leases == 0 && !connecting && state.value.mode == ScreenMode.ADB) { AppStrings.screenModeBusy }
+            disconnect(); connecting = true
+        }
+        try {
+            EmbeddedAdb.pair(context, port, code)
+            changes.value = state.value.copy(adbPaired = true, error = null)
+        } catch (failure: Exception) {
+            if (failure is kotlinx.coroutines.CancellationException) throw failure
+            // Diagnostic types only: never log the pairing code, keys, addresses or exception messages.
+            android.util.Log.w("ScreenAdb", generateSequence<Throwable>(failure) { it.cause }.take(8).joinToString(" -> ") { it.javaClass.name })
+            throw IllegalStateException(AppStrings.adbPairingFailed, failure)
+        } finally { synchronized(this) { connecting = false } }
+    }
+
+    @Synchronized fun setAdbPort(context: Context, value: String) {
+        check(leases == 0 && !connecting && state.value.mode == ScreenMode.ADB) { AppStrings.screenModeBusy }
+        try { EmbeddedAdb.setPort(value) } catch (_: IllegalArgumentException) { error(AppStrings.adbInvalidPort) }
+    }
+
+    @Synchronized fun startAdbPairing(context: Context) {
+        check(Build.VERSION.SDK_INT >= 33) { AppStrings.virtualScreenAndroidVersion }
+        check(state.value.mode == ScreenMode.ADB && leases == 0 && !connecting && !state.value.adbPairing) { AppStrings.screenModeBusy }
+        check(context.getSystemService(android.app.NotificationManager::class.java).areNotificationsEnabled()) { AppStrings.adbPairingNotifications }
+        disconnect()
+        changes.value = state.value.copy(adbPairing = true, error = null)
+        try { context.startForegroundService(android.content.Intent(context, AdbPairingService::class.java)) }
+        catch (failure: Exception) { pairingFinished(AppStrings.adbPairingFailed); throw failure }
+    }
+
+    fun cancelAdbPairing(context: Context) { context.stopService(android.content.Intent(context, AdbPairingService::class.java)) }
+    @Synchronized internal fun pairingFinished(error: String? = null) { changes.value = state.value.copy(adbPairing = false, error = error) }
+
     @Synchronized fun disconnect() {
-        check(leases == 0) { AppStrings.screenModeBusy }
+        check(leases == 0 && !connecting) { AppStrings.screenModeBusy }
         heartbeat?.cancel(); heartbeat = null
         channel?.close(); channel = null
         release?.invoke(); release = null
-        changes.value = ScreenControlState(mode = state.value.mode)
+        changes.value = ScreenControlState(mode = state.value.mode, adbPaired = state.value.adbPaired, adbPairing = state.value.adbPairing)
     }
 
     @Synchronized internal fun open(context: Context): ScreenSession {

@@ -24,7 +24,7 @@ class ScreenControlTest {
             ComponentName(context, ScreenAccessService::class.java).flattenToString())
         ScreenControl.select(context, ScreenMode.CURRENT)
         assertTrue(DeviceHost.granted(context, "plugin:device:screen"))
-        for (mode in listOf(ScreenMode.SHIZUKU, ScreenMode.ROOT)) {
+        for (mode in ScreenMode.entries.filter { it != ScreenMode.CURRENT }) {
             ScreenControl.select(context, mode)
             ScreenControl.initialize(context)
             assertEquals(mode, ScreenControl.state.value.mode)

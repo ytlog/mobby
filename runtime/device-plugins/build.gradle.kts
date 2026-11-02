@@ -11,6 +11,8 @@ android {
     }
 }
 dependencies {
+    implementation(project(":screen-adb-transport"))
+    implementation("org.bouncycastle:bcprov-jdk15to18:1.81")
     implementation("dev.rikka.shizuku:api:13.1.5")
     implementation("dev.rikka.shizuku:provider:13.1.5")
     implementation("androidx.appfunctions:appfunctions:1.0.0-alpha08")

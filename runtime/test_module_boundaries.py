@@ -10,7 +10,7 @@ ALLOWED = {
     "runtime-api": set(),
     "runtime-engine": {"runtime-api", "localization"},
     "runtime-android": {"runtime-api", "runtime-engine", "termux-core", "bootstrap-arm64", "device-plugins", "program-platform", "localization"},
-    "device-plugins": {"runtime-api", "localization"},
+    "device-plugins": {"runtime-api", "localization", "screen-adb-transport"},
     "program-platform": {"device-plugins", "runtime-api", "localization"},
     "conversation-domain": {"runtime-api", "localization"},
     "conversation-data": {"conversation-domain", "runtime-api", "localization"},
@@ -34,6 +34,10 @@ MODULE_DIRS = {
     "localization": "shared/localization",
 }
 REMOVED = {"interaction-ui", "device-operation", "device-operation-ui", "plugin:appfunction"}
+SCREEN_LIBRARIES = {
+    "screen-adb-transport": ("third_party/libadb-android", {"screen-adb-spake2"}),
+    "screen-adb-spake2": ("third_party/spake2-java", set()),
+}
 
 
 def project_references(source):
@@ -52,11 +56,16 @@ class ModuleBoundaryTests(unittest.TestCase):
         settings = (ROOT / "settings.gradle.kts").read_text()
         includes = re.findall(r"include\(([^)]*)\)", settings)
         modules = set(re.findall(r'":([^"]+)"', " ".join(includes)))
-        self.assertEqual(set(ALLOWED) | {"termux-core", "bootstrap-arm64"}, modules)
+        self.assertEqual(set(ALLOWED) | set(SCREEN_LIBRARIES) | {"termux-core", "bootstrap-arm64"}, modules)
         mappings = dict(re.findall(r'project\(":([^"\n]+)"\)\.projectDir = file\("([^"\n]+)"\)', settings))
         for module, directory in MODULE_DIRS.items():
             self.assertEqual(directory, mappings.get(module, module), module)
             self.assertTrue((ROOT / directory / "src/main").is_dir(), module)
+        for module, (directory, allowed) in SCREEN_LIBRARIES.items():
+            self.assertEqual(directory, mappings[module])
+            build = (ROOT / directory / 'mobby.gradle.kts').read_text()
+            edges = set(re.findall(r'(?:implementation|api)\(project\(":([^"]+)"\)\)', build))
+            self.assertEqual(allowed, edges)
         for directory in ("interaction-ui", "device-operation", "device-operation-ui", "app-functions"):
             self.assertFalse((ROOT / directory / "src").exists(), f"Old source tree remains: {directory}")
 
@@ -79,6 +88,8 @@ class ModuleBoundaryTests(unittest.TestCase):
         for module in ALLOWED:
             for source in (ROOT / MODULE_DIRS[module] / "src/main").rglob("*.kt"):
                 text = source.read_text()
+                if module != 'device-plugins':
+                    self.assertNotRegex(text, r'(?m)^import io\.github\.muntashirakon\.', str(source))
                 if module.startswith("runtime-"):
                     self.assertFalse(any(ref.startswith(BASE + "conversation.") for ref in project_references(text)), str(source))
                 if module in {"runtime-api", "runtime-engine", "conversation-domain", "localization"}:

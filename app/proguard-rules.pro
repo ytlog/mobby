@@ -20,3 +20,6 @@
 -dontwarn org.slf4j.impl.StaticLoggerBinder
 -keep class com.github.ytlog.mobby.android.device.privileged.ScreenUserService { *; }
 -keep class com.github.ytlog.mobby.android.device.privileged.RootScreenMain { public static void main(java.lang.String[]); }
+-keep class com.github.ytlog.mobby.android.device.privileged.AdbScreenMain { public static void main(java.lang.String[]); }
+# The bundled ADB transport locates the TLS provider by class name during pairing.
+-keep class org.conscrypt.** { *; }

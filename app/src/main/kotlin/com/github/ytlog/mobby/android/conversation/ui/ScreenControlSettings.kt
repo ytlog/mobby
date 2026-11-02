@@ -10,6 +10,8 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -25,6 +27,7 @@ import com.github.ytlog.mobby.android.conversation.ui.UiStrings as AppStrings
 
 internal fun screenModeLabel(mode: ScreenMode): String = when (mode) {
     ScreenMode.CURRENT -> AppStrings.currentScreenMode
+    ScreenMode.ADB -> AppStrings.adbScreenMode
     ScreenMode.SHIZUKU -> AppStrings.shizukuScreenMode
     ScreenMode.ROOT -> AppStrings.rootScreenMode
 }
@@ -51,6 +54,7 @@ class ScreenControlSettingsActivity : ComponentActivity() {
     val scope = rememberCoroutineScope()
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var connectionPort by remember(state.mode) { mutableStateOf("") }
     fun execute(block: suspend () -> Unit) {
         busy = true; error = null
         scope.launch {
@@ -65,10 +69,10 @@ class ScreenControlSettingsActivity : ComponentActivity() {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             ScreenMode.entries.forEach { mode ->
                 Row {
-                    RadioButton(selected = state.mode == mode, enabled = !busy && !state.active, onClick = {
+                    RadioButton(selected = state.mode == mode, enabled = !busy && !state.active && !state.adbPairing, onClick = {
                         execute { controller.select(mode) }
                     })
-                    TextButton(enabled = !busy && !state.active, onClick = { execute { controller.select(mode) } }) { Text(screenModeLabel(mode)) }
+                    TextButton(enabled = !busy && !state.active && !state.adbPairing, onClick = { execute { controller.select(mode) } }) { Text(screenModeLabel(mode)) }
                 }
             }
             Text(if (state.mode == ScreenMode.CURRENT) AppStrings.currentScreenModeHelp else AppStrings.virtualScreenModeHelp)
@@ -76,11 +80,29 @@ class ScreenControlSettingsActivity : ComponentActivity() {
                 OutlinedButton(onClick = { context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }) { Text(AppStrings.openAccessibilitySettings) }
             } else {
                 Text(if (state.connected) AppStrings.screenBackendReady else AppStrings.screenBackendDisconnected)
+                if (state.mode == ScreenMode.ADB) {
+                    Text(AppStrings.adbScreenHelp)
+                    OutlinedButton(enabled = !busy && !state.active, onClick = {
+                        execute { if (state.adbPairing) controller.cancelAdbPairing() else controller.startAdbPairing() }
+                    }) { Text(if (state.adbPairing) AppStrings.adbCancelPairing else AppStrings.adbStartPairing) }
+                    OutlinedButton(onClick = { context.startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)) }, enabled = !busy && !state.active) {
+                        Text(AppStrings.openWirelessDebugging)
+                    }
+                    if (state.adbPaired) Text(AppStrings.adbPaired)
+                    OutlinedTextField(connectionPort, { connectionPort = it }, label = { Text(AppStrings.adbConnectionPort) },
+                        enabled = !busy && !state.active && !state.connected && !state.adbPairing, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                    Text(AppStrings.adbConnectionPortHelp)
+                }
                 if (state.mode == ScreenMode.SHIZUKU) OutlinedButton(enabled = !busy && !state.active, onClick = {
                     execute { controller.authorizeShizuku() }
                 }) { Text(AppStrings.authorizeShizuku) }
-                Button(enabled = !busy && !state.active, onClick = {
-                    execute { if (state.connected) controller.disconnect() else controller.connect() }
+                Button(enabled = !busy && !state.active && !state.adbPairing, onClick = {
+                    execute {
+                        if (state.connected) controller.disconnect() else {
+                            if (state.mode == ScreenMode.ADB) controller.setAdbPort(connectionPort)
+                            controller.connect()
+                        }
+                    }
                 }) { Text(if (state.connected) AppStrings.disconnectScreen else AppStrings.connectScreen) }
                 if (android.os.Build.VERSION.SDK_INT < 33) Text(AppStrings.virtualScreenAndroidVersion)
             }
