@@ -56,3 +56,17 @@ python3 runtime/device-plugins/probe_screen.py \
 初次本地检查：JDK 17 配合上述本地初始化脚本，Debug APK、App lint、App 278 项、设备插件 57 项、Termux 32 项单元测试、本地化 3 项测试通过；Python 46 项、Node 网关/程序 SDK 30 项通过。当前屏幕模式的快捷无障碍设置入口与原回归保留。APK 未覆盖安装到手机，不能把 shell 探针当作 App 内完整验收。
 
 2026-11-02 补充标准构建验证：按用户授权，使用本机已有 JBR 21.0.11，未加载临时 Gradle init 脚本，执行 `:app:assembleDebug :app:testDebugUnitTest :termux-core:testDebugUnitTest :device-plugins:testDebugUnitTest :localization:test :app:lintDebug`，全部通过。App 278 项、设备插件 57 项、Termux 32 项、本地化 3 项测试合计 370 项，无失败或错误；lint 无错误。确认权限工作进程的 Java class major version 为 61，编译目标仍为 Java 17。无需为此修改项目构建配置或下载新的 JDK。此结果补齐标准 AGP jlink 路径验证，不改变前述真机验收限制。
+
+2026-11-02 继续真机验收：手机原应用版本号为 97，默认版本号 1 的 APK 被拒绝降级；通过 `-Pmobby.versionCode=98` 构建并成功覆盖更新为 98，未卸载或清除数据。手机已有测试包也已成功覆盖更新。补充 `ScreenControlDeviceTest` 和测试包内独立界面，通过正式 DeviceHost/设备桥接协议验证真实屏幕动作；操作回执保存在测试内存，工作流数据库隔离到临时 cache 目录，不调用网关或模型。测试前明确要求亮屏解锁，Shizuku 测试另需 `-e shizuku true` 显式启用。新测试 APK 编译与 App lint 通过，但尚未执行这些新用例。
+
+用户已允许安装并启动官方 Shizuku。已从官方 GitHub Release 下载 v13.6.0 并通过 APK 签名校验，手机仍以 `INSTALL_FAILED_USER_RESTRICTED` 拒绝新应用的 ADB 安装；官方 APK 已放在手机 `Download/mobby-shizuku-v13.6.0-test.apk` 并打开系统安装界面，等待手机端手动完成安装。手机随后重新锁屏，未绕过安装限制或锁屏。等待安装并解锁后继续实际授权连接和屏幕回归。
+
+定向执行现有屏幕模式回归（前置：更新 App/test APK、启用原无障碍服务与通知、手机解锁）：
+
+```sh
+adb shell am instrument -w \
+  -e class com.github.ytlog.mobby.android.ScreenControlDeviceTest#currentScreenRetainsClickCoordinatesTextAndSwipe \
+  com.github.ytlog.mobby.android.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+Shizuku 已安装、shell 服务已启动并授权 mobby 后，使用同一测试类的 `shizukuVirtualScreenKeepsMobbyVisibleAndReleasesDisplay` 方法并增加 `-e shizuku true`。这些设备桥接回归不等同于真实 Agent/网关完整任务验收。
