@@ -8,6 +8,8 @@ import org.junit.Test
 class ScreenModeTest {
     @Test fun `existing installs use current screen and unknown modes are rejected`() {
         assertEquals(ScreenMode.CURRENT, ScreenMode.restore(null))
+        assertEquals(listOf(ScreenMode.CURRENT, ScreenMode.ADB, ScreenMode.ROOT), ScreenMode.entries)
+        assertThrows(IllegalArgumentException::class.java) { ScreenMode.restore("SHIZUKU") }
         assertThrows(IllegalArgumentException::class.java) { ScreenMode.restore("invalid") }
     }
 

@@ -9,7 +9,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--adb', default='adb')
     parser.add_argument('--serial')
-    parser.add_argument('--mode', required=True, choices=('current', 'adb', 'shizuku'))
+    parser.add_argument('--mode', required=True, choices=('current', 'adb'))
     parser.add_argument('--preview', type=Path)
     parser.add_argument('--port', type=int, help='Optional local wireless-debugging connection port')
     args = parser.parse_args()
@@ -18,8 +18,7 @@ def main():
     if version < 33:
         raise SystemExit('This acceptance suite requires an unlocked Android 13+ device.')
     methods = {'current': 'currentScreenRetainsClickCoordinatesTextAndSwipe',
-               'adb': 'builtinAdbVirtualScreenKeepsMobbyVisibleAndReleasesDisplay',
-               'shizuku': 'shizukuVirtualScreenKeepsMobbyVisibleAndReleasesDisplay'}
+               'adb': 'builtinAdbVirtualScreenKeepsMobbyVisibleAndReleasesDisplay'}
     command = adb + ['shell', 'am', 'instrument', '-w', '-e', 'hostForeground', 'true']
     if args.mode != 'current':
         command += ['-e', args.mode, 'true']

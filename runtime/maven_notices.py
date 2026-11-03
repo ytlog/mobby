@@ -92,8 +92,6 @@ def generate(artifacts, cache, output):
             documents.extend((name, (PROJECT / 'third_party/onnxruntime' / name).read_text()) for name in ('LICENSE', 'ThirdPartyNotices.txt'))
         if override:
             documents.append((override, (PROJECT / 'third_party/maven' / override).read_text()))
-        if artifact['group'] == 'dev.rikka.shizuku' and artifact['version'] == '13.1.5':
-            documents.append(('Shizuku-API LICENSE', (PROJECT / 'third_party/maven/shizuku-api-13.1.5-LICENSE').read_text()))
         if coordinate == 'org.conscrypt:conscrypt-android:2.5.3':
             for suffix in ('NOTICE', 'boringssl-LICENSE', 'netty-LICENSE', 'harmony-LICENSE'):
                 name = 'conscrypt-2.5.3-' + suffix

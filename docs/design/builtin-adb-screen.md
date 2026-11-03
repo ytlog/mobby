@@ -1,6 +1,6 @@
 # 内置 ADB 屏幕服务
 
-在“添加内容与能力 → 设备插件 → 屏幕操作模式”选择“虚拟屏幕（内置 ADB）”。屏幕实现和启动入口随 mobby 打包，无需下载或安装 Shizuku。原无障碍、外部 Shizuku 和已有 root 模式继续保留；原安装默认模式不变。
+在“添加内容与能力 → 设备插件 → 屏幕操作模式”选择“虚拟屏幕（内置 ADB）”。屏幕实现和启动入口随 mobby 打包，无需安装其他 App。保留原无障碍和已有 root 模式，默认使用无障碍模式；外部 Shizuku 模式已移除。
 
 ## 使用
 
@@ -46,7 +46,7 @@ ADB 身份私钥由软件 RSA 生成，以独立 Android Keystore AES 密钥 `mo
 python3 runtime/device-plugins/accept_screen.py --adb "$ANDROID_HOME/platform-tools/adb" --mode adb
 ```
 
-连接端口没有广播时增加 `--port <系统显示的连接端口>`；可用 `--preview /tmp/mobby-preview.png` 保存测试阶段主屏预览。脚本通过显式 instrumentation 状态与主机 `am start` 完成前台握手，处理实测 MIUI 后台启动限制，不修改应用或系统权限。传入 `--mode current` 或 `--mode shizuku` 可执行保留模式的相应用例。
+连接端口没有广播时增加 `--port <系统显示的连接端口>`；可用 `--preview /tmp/mobby-preview.png` 保存测试阶段主屏预览。脚本通过显式 instrumentation 状态与主机 `am start` 完成前台握手，处理实测 MIUI 后台启动限制，不修改应用或系统权限。传入 `--mode current` 可执行无障碍模式的相应用例。
 
 本轮尚未覆盖真实模型/Agent 完整任务、root 后端或新无障碍设备回归；原有无障碍服务仍未启用，不自动授予。模拟连接、算法自测和启动探针均未替代正式手机验收结论。
 

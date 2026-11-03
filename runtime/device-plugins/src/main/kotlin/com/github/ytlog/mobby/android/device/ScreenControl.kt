@@ -5,13 +5,8 @@ import com.github.ytlog.mobby.android.runtime.api.device.ScreenMode
 import com.github.ytlog.mobby.android.runtime.api.device.ScreenControlState
 import android.content.ComponentName
 import android.content.Context
-import android.content.ServiceConnection
-import android.content.pm.PackageManager
 import android.os.Build
-import android.os.IBinder
-import android.os.Parcel
 import android.util.Base64
-import com.github.ytlog.mobby.android.device.privileged.ScreenUserService
 import com.github.ytlog.mobby.android.localization.AppStrings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CoroutineScope
@@ -24,7 +19,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
-import rikka.shizuku.Shizuku
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.net.InetSocketAddress
@@ -73,11 +67,6 @@ object ScreenControl {
             .orEmpty().split(':').mapNotNull(ComponentName::unflattenFromString).any { it == expected }
     }
 
-    fun requestShizukuPermission() {
-        check(Shizuku.pingBinder()) { AppStrings.startShizukuFirst }
-        Shizuku.requestPermission(4601)
-    }
-
     suspend fun connect(context: Context) = withContext(Dispatchers.IO) {
         val mode = synchronized(this@ScreenControl) {
             check(leases == 0 && !connecting && !state.value.adbPairing) { AppStrings.screenModeBusy }
@@ -91,7 +80,6 @@ object ScreenControl {
             val connected = when (mode) {
                 ScreenMode.ADB -> EmbeddedAdb.connect(context)
                 ScreenMode.ROOT -> rootChannel(context)
-                ScreenMode.SHIZUKU -> shizukuChannel(context)
                 ScreenMode.CURRENT -> error("current_screen_has_no_backend")
             }
             if (!kotlinx.coroutines.currentCoroutineContext().isActive) {
@@ -269,31 +257,6 @@ object ScreenControl {
         val endpoint = CompletableFuture.supplyAsync { process.inputStream.bufferedReader().readLine() }
             .get(30, TimeUnit.SECONDS) ?: error("root_start_failed")
         return ScreenChannel(JSONObject(endpoint), root = true)
-    }
-
-    private fun shizukuChannel(context: Context): ScreenChannel {
-        check(Shizuku.pingBinder() && Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) { AppStrings.startShizukuFirst }
-        check(Shizuku.getUid() in setOf(0, 2000))
-        val ready = CompletableFuture<IBinder>()
-        val args = Shizuku.UserServiceArgs(ComponentName(context.packageName, ScreenUserService::class.java.name))
-            .daemon(false).processNameSuffix("screen-control").debuggable(false).version(1)
-        val connection = object : ServiceConnection {
-            override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-                if (service == null) ready.completeExceptionally(IllegalStateException("no_user_service")) else ready.complete(service)
-            }
-            override fun onServiceDisconnected(name: ComponentName?) {
-                changes.value = state.value.copy(connected = false, error = AppStrings.screenBackendConnectionFailed)
-            }
-        }
-        release = { runCatching { Shizuku.unbindUserService(args, connection, true) } }
-        Shizuku.bindUserService(args, connection)
-        val binder = ready.get(15, TimeUnit.SECONDS)
-        val data = Parcel.obtain(); val reply = Parcel.obtain()
-        try {
-            check(binder.transact(1, data, reply, 0))
-            reply.readException()
-            return ScreenChannel(JSONObject(reply.readString() ?: error("missing_endpoint")), root = false)
-        } finally { data.recycle(); reply.recycle() }
     }
 }
 

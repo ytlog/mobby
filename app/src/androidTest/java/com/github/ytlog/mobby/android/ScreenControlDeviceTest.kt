@@ -41,11 +41,6 @@ class ScreenControlDeviceTest {
 
     @Test fun currentScreenRetainsClickCoordinatesTextAndSwipe() = exercise(ScreenMode.CURRENT)
 
-    @Test fun shizukuVirtualScreenKeepsMobbyVisibleAndReleasesDisplay() {
-        assumeTrue("Requires explicit Shizuku device opt-in", InstrumentationRegistry.getArguments().getString("shizuku") == "true")
-        exercise(ScreenMode.SHIZUKU)
-    }
-
     @Test fun builtinAdbVirtualScreenKeepsMobbyVisibleAndReleasesDisplay() {
         assumeTrue("Requires explicit built-in ADB device opt-in", InstrumentationRegistry.getArguments().getString("adb") == "true")
         exercise(ScreenMode.ADB)

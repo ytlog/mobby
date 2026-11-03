@@ -28,7 +28,6 @@ import com.github.ytlog.mobby.android.conversation.ui.UiStrings as AppStrings
 internal fun screenModeLabel(mode: ScreenMode): String = when (mode) {
     ScreenMode.CURRENT -> AppStrings.currentScreenMode
     ScreenMode.ADB -> AppStrings.adbScreenMode
-    ScreenMode.SHIZUKU -> AppStrings.shizukuScreenMode
     ScreenMode.ROOT -> AppStrings.rootScreenMode
 }
 
@@ -93,9 +92,6 @@ class ScreenControlSettingsActivity : ComponentActivity() {
                         enabled = !busy && !state.active && !state.connected && !state.adbPairing, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                     Text(AppStrings.adbConnectionPortHelp)
                 }
-                if (state.mode == ScreenMode.SHIZUKU) OutlinedButton(enabled = !busy && !state.active, onClick = {
-                    execute { controller.authorizeShizuku() }
-                }) { Text(AppStrings.authorizeShizuku) }
                 Button(enabled = !busy && !state.active && !state.adbPairing, onClick = {
                     execute {
                         if (state.connected) controller.disconnect() else {

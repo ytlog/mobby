@@ -5,7 +5,7 @@ import com.github.ytlog.mobby.android.runtime.api.device.ScreenMode
 internal fun <T> selectScreenBackend(mode: ScreenMode, current: () -> T, virtual: () -> T): T =
     when (mode) {
         ScreenMode.CURRENT -> current()
-        ScreenMode.ADB, ScreenMode.SHIZUKU, ScreenMode.ROOT -> virtual()
+        ScreenMode.ADB, ScreenMode.ROOT -> virtual()
     }
 
 internal interface ScreenSession : AutoCloseable {

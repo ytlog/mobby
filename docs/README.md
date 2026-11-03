@@ -28,8 +28,8 @@
 | [模型匹配与多源下载](design/local-model-downloads.md) | 按引擎选择 Hugging Face 模型、官方备用源与镜像、版本和文件校验、断点续传与下载 API |
 | [设备交互卡片实施](device-operation-implementation.md) | 独立协议与 Compose 模块、真实动作卡、取消恢复、资源归属与验收边界 |
 | [设备插件方案](design/device-plugins.md) | 设备能力插件：模块、引用、技能通道与权限隔离。旧的「使用当前手机」已替换 |
-| [屏幕操作模式](design/screen-control-modes.md) | 当前屏幕、内置 ADB、Shizuku/root 虚拟屏、权限边界、预览与真机验收范围 |
-| [内置 ADB 屏幕服务](design/builtin-adb-screen.md) | 免装 Shizuku 的本机配对、通知输入、Keystore 身份、启动与源码构建 |
+| [屏幕操作模式](design/screen-control-modes.md) | 当前屏幕、内置 ADB/root 虚拟屏、权限边界、预览与真机验收范围 |
+| [内置 ADB 屏幕服务](design/builtin-adb-screen.md) | 内置服务的本机配对、通知输入、Keystore 身份、启动与源码构建 |
 | [Android 能力底座与用户程序平台](design/android-capability-platform.md) | 用户让手机 AI 编写程序：WebView 界面与后台 Node 逻辑、平台基础能力与手机能力、事件、四层权限、开发插件与分阶段验收；设计提案 |
 | [用户程序平台技术架构](design/program-platform-architecture.md) | 模块与依赖、进程线程、调用管线、权限、程序包、运行管理、WebView 界面宿主、事件、基础能力实现、协议与 SDK、数据模型、时序、安全、测试与实施拆分；尚未实现 |
 | [用户程序平台实施记录](program-platform-implementation.md) | 第一阶段实际实现、验证证据、修复的缺陷与尚未验证的范围 |

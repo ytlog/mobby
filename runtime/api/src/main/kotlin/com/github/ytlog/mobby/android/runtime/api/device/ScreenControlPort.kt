@@ -3,7 +3,7 @@ package com.github.ytlog.mobby.android.runtime.api.device
 import kotlinx.coroutines.flow.StateFlow
 
 enum class ScreenMode {
-    CURRENT, ADB, SHIZUKU, ROOT;
+    CURRENT, ADB, ROOT;
     companion object {
         fun restore(value: String?): ScreenMode = if (value == null) CURRENT else valueOf(value)
     }
@@ -19,7 +19,6 @@ interface ScreenControlPort {
     suspend fun select(mode: ScreenMode)
     suspend fun connect()
     suspend fun disconnect()
-    fun authorizeShizuku()
     suspend fun setAdbPort(port: String)
     fun startAdbPairing()
     fun cancelAdbPairing()

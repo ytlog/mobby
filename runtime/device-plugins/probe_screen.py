@@ -1,4 +1,4 @@
-"""ADB-shell smoke probe for the production privileged worker; never grants root or installs Shizuku.
+"""ADB-shell smoke probe for the production privileged worker; never grants root or installs another app.
 
 Pass a D8-built jar containing the privileged Java sources and androidTest ScreenProbeMain.
 Only a temporary jar in /data/local/tmp is written; the tested app opens on a new display.

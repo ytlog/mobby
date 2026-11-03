@@ -13,7 +13,6 @@ class AndroidScreenControl(context: Context) : ScreenControlPort {
     override suspend fun select(mode: ScreenMode) = withContext(Dispatchers.IO) { ScreenControl.select(context, mode) }
     override suspend fun connect() = ScreenControl.connect(context)
     override suspend fun disconnect() = withContext(Dispatchers.IO) { ScreenControl.disconnect() }
-    override fun authorizeShizuku() = ScreenControl.requestShizukuPermission()
     override suspend fun setAdbPort(port: String) = ScreenControl.setAdbPort(context, port)
     override fun startAdbPairing() = ScreenControl.startAdbPairing(context)
     override fun cancelAdbPairing() = ScreenControl.cancelAdbPairing(context)
