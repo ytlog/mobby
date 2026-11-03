@@ -70,7 +70,7 @@ object AgentSessions {
         val session: AgentSession = when (request.agentId) {
             AgentId.PI -> PiRpcSession(request.sessionRef?.value)
             AgentId.CLAUDE_CODE -> ClaudeControlSession()
-            AgentId.CODEX -> CodexAppServerSession(cwd, request.modelId, request.sessionRef?.value)
+            AgentId.CODEX -> CodexAppServerSession(cwd, request.modelId, request.sessionRef?.value, if (NativeConnectionRef.agent(request.gatewayProfileRef.id) != null) "openai" else "mobby")
             AgentId.OPEN_CODE -> OpenCodeServerSession(request.modelId, request.sessionRef?.value)
         }
         session.submit(turn)

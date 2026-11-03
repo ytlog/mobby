@@ -13,6 +13,7 @@
 
 - 使用内置 libtermux-android 和 Compose，保留 Shell、Pi、Claude Code、Codex、OpenCode 的执行能力。
 - 按当前用户决定，现有 App 内 Agent 的模型请求统一走本地 Node 桥接，由 Android 网络栈联网；Pi、Codex 与 OpenCode 仅使用 Responses，Claude Code 仅使用 Messages。现有 App 的远端网关保持原生协议透传。另有由现有 App 依赖、但功能与代码独立的本地模型服务设计，可在它自己的 `:local_model` 进程内提供 Responses、Chat Completions、Messages、Gemini、Ollama HTTP 协议适配，见 `docs/design/local-model-runtime.md`；该服务随宿主打包但宿主与服务进程的业务通信统一使用鉴权 HTTP API；Android Intent 只负责启动组件，不使用 Binder/AIDL 或跨进程直接 Kotlin 调用。服务不依赖 Node 桥接/Agent 功能，也不修改原有执行路径。协议适配不得静默丢弃字段，不支持的语义须明确拒绝；该设计不代表已经实现。
+- 按用户后续决定，支持各 Agent 自带的原生登录，默认原生登录优先、API 网关兜底；每个 Agent 可设置自动、仅原生或仅 API。原生登录与刷新交给各 Agent，mobby 负责 Android 加密持久化和独立凭据目录。原生模式通过 Android Node 的本机 HTTPS 传输隧道联网，API 模式保留现有网关桥接和协议边界。发送前固定来源，执行失败不得自动跨来源重试；退出或切换账号不得删除网关配置和聊天记录。详见 `docs/design/agent-native-login.md`。
 - 网关选项必须有实际执行路径；保留但拒绝执行旧的不匹配协议配置，不静默改写用户配置，不丢弃工具、图片、推理或未知消息字段。
 - 按用户明确授权，Pi、Codex、Claude Code 与 OpenCode 都以 Android 应用 UID/SELinux 沙箱为执行边界，不获取 root、不修改系统权限。Codex 使用 danger-full-access 与 approval_policy=never。Claude Code 仍走 stdio 审批协议，但应用对格式正确的 can_use_tool 立即按原始参数允许一次，不再弹出确认卡；否则使用当前手机时每次操作都会停住。OpenCode 使用当次 `--auto`，不写持久权限规则。Pi 使用 RPC 和内置工具，无逐次确认；四者都不使用 bypass 参数。取消、错误和超时必须如实传递，不能显示为成功。
 - 按用户后续授权，屏幕插件另提供内置 ADB 或 root 虚拟屏模式：仅独立屏幕工作进程使用所选权限，用户停留在 mobby 内操作副屏；保留原无障碍当前屏幕模式。内置 ADB 由用户开启系统无线调试并配对，只连接本机、只启动固定屏幕入口，凭据由 Android Keystore 保护。此授权不改变四个 CLI、Shell、Node 桥接与本地模型服务的执行身份，不安装 root、不修改系统权限，不在权限失败时回退到主屏。

@@ -55,6 +55,7 @@ class ConversationDrawerPageTest {
             "getStatus" -> flowOf(SystemStatus(true, true))
             "getDiagnostic" -> flowOf(DiagnosticOutput(null, emptyList()))
             "agents" -> emptyList<AgentOption>()
+            "nativeAccounts", "connectionSettings" -> emptyList<Any>()
             "gateways" -> emptyList<GatewayProfile>()
             "defaultGateway" -> null
             "capture" -> DataResult.Loaded<CameraCapture?>(null)
@@ -66,14 +67,14 @@ class ConversationDrawerPageTest {
         } }
         val actions = ConversationUseCases(repository, stub<ExecutionPort> { error(it) }, system, { "fixture" }, scope, preferences)
         compose.setContent { ConversationEntry(actions, ConversationHostActions({}, {})) }
-        compose.onNodeWithText("先连接 AI 服务").assertExists()
-        compose.onNodeWithText("去连接").performClick()
+        compose.onNodeWithText("连接你的 Agent").assertExists()
+        compose.onNodeWithText("配置 API 网关").performClick()
         compose.onNodeWithText("添加 AI 服务").assertExists()
         compose.onNodeWithText("免费体验").assertDoesNotExist()
         compose.onNodeWithText("其他服务（填写地址）").assertExists()
         compose.onNodeWithContentDescription("返回").performClick()
         compose.onNodeWithContentDescription("返回").performClick()
-        compose.onNodeWithText("先连接 AI 服务").assertDoesNotExist()
+        compose.onNodeWithText("连接你的 Agent").assertDoesNotExist()
         compose.onNodeWithContentDescription("打开会话抽屉").performClick()
         compose.onNodeWithContentDescription("设置").performClick()
         compose.onNodeWithText("AI 服务设置").assertExists()
@@ -99,6 +100,7 @@ class ConversationDrawerPageTest {
             "getStatus" -> flowOf(SystemStatus(true, true))
             "getDiagnostic" -> flowOf(DiagnosticOutput(null, emptyList()))
             "agents" -> emptyList<AgentOption>()
+            "nativeAccounts", "connectionSettings" -> emptyList<Any>()
             "gateways" -> emptyList<GatewayProfile>()
             "defaultGateway" -> null
             "capture" -> DataResult.Loaded<CameraCapture?>(null)
@@ -130,6 +132,7 @@ class ConversationDrawerPageTest {
             "getStatus" -> flowOf(SystemStatus(true, true))
             "getDiagnostic" -> flowOf(DiagnosticOutput(null, emptyList()))
             "agents" -> emptyList<AgentOption>()
+            "nativeAccounts", "connectionSettings" -> emptyList<Any>()
             "gateways" -> emptyList<GatewayProfile>()
             "defaultGateway" -> null
             "capture" -> DataResult.Loaded<CameraCapture?>(null)

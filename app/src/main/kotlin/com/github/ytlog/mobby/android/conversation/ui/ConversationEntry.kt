@@ -104,7 +104,7 @@ class ConversationHostActions(
     val system by vm.status.collectAsStateWithLifecycle()
     val programShortcuts by remember(hostActions) { hostActions.programShortcuts }.collectAsStateWithLifecycle(emptyList())
     val agentOptions by vm.agents.collectAsStateWithLifecycle()
-    val gateways by vm.gateways.collectAsStateWithLifecycle()
+    val gateways by vm.connections.collectAsStateWithLifecycle()
     val gatewaysLoaded by vm.gatewaysLoaded.collectAsStateWithLifecycle()
     var fileTarget by rememberSaveable { mutableStateOf<String?>(null) }
     var fileWorkspace by rememberSaveable { mutableStateOf<String?>(null) }
@@ -125,9 +125,12 @@ class ConversationHostActions(
     val conversationListScroll = rememberLazyListState()
     val appearance by actions.appearance.collectAsStateWithLifecycle()
     var dialog by rememberSaveable { mutableStateOf<String?>(null) }
-    var gatewayIntroSeen by rememberSaveable { mutableStateOf(false) }
+    val introPreferences = LocalContext.current.getSharedPreferences("mobby.connection-intro", android.content.Context.MODE_PRIVATE)
+    var gatewayIntroSeen by rememberSaveable { mutableStateOf(introPreferences.getBoolean("seen", false)) }
     var gatewayStartAdding by rememberSaveable { mutableStateOf(false) }
     var gatewayFromIntro by rememberSaveable { mutableStateOf(false) }
+    var gatewayFromConnections by rememberSaveable { mutableStateOf(false) }
+    var loginAgent by rememberSaveable { mutableStateOf<AgentId?>(null) }
     var toolbarAnchor by remember { mutableStateOf(IntRect.Zero) }
     val skillProposal by vm.skillProposal.collectAsStateWithLifecycle()
     val skillProposalSaved by vm.skillProposalSaved.collectAsStateWithLifecycle()
@@ -165,6 +168,7 @@ class ConversationHostActions(
     LaunchedEffect(navigation.page, system.ready, gatewaysLoaded, gateways.isEmpty(), dialog) {
         if (!gatewayIntroSeen && navigation.page == AppPage.CONVERSATION && system.ready && gatewaysLoaded && gateways.isEmpty() && dialog == null) {
             gatewayIntroSeen = true
+            introPreferences.edit().putBoolean("seen", true).apply()
             dialog = "gateway-intro"
         }
     }
@@ -181,7 +185,9 @@ class ConversationHostActions(
     fun navigateProjects(from: AppPage) { keyboard?.hide(); focus.clearFocus(); drawer = false; navigation = navigation.openProjects(from) }
     fun showAddSheet() { keyboard?.hide(); focus.clearFocus(); drawer = false; navigation = navigation.openAddSheet() }
     BackHandler(navigation.page != AppPage.CONVERSATION || navigation.addSheetOpen) {
-        navigation = navigation.back(gatewayFromIntro)
+        navigation = if (navigation.page == AppPage.GATEWAY && gatewayFromConnections) navigation.open(AppPage.CONNECTIONS)
+            else if (navigation.page == AppPage.CONNECTIONS && gatewayFromIntro) navigation.open(AppPage.CONVERSATION)
+            else navigation.back(gatewayFromIntro)
     }
     MaterialTheme(colorScheme = colors) {
         if (updates?.state?.phase == AppUpdateManager.Phase.READY && updates.dismissedVersion != updates.state.version) {
@@ -250,10 +256,14 @@ class ConversationHostActions(
                             openedNewConversation = { navigation = navigation.open(AppPage.CONVERSATION) }) }
                         AppPage.SETTINGS -> SettingsPage(system, appearance, { value -> vm.enqueue { vm.report(actions.setAppearance(value)) } }, { next ->
                             val page = AppPage.fromSettingsRoute(next)
-                            if (page == AppPage.GATEWAY) { gatewayStartAdding = false; gatewayFromIntro = false }
+                            if (page == AppPage.GATEWAY || page == AppPage.CONNECTIONS) { gatewayStartAdding = false; gatewayFromIntro = false; gatewayFromConnections = false; loginAgent = null }
                             navigate(page)
                         }, { navigation = navigation.open(AppPage.CONVERSATION) }, vm, petEnabled, petPermitted, hostActions.pet)
-                        AppPage.GATEWAY -> GatewayPage(vm, startAdding = gatewayStartAdding, signIn = hostActions.gatewaySignIn) { navigation = navigation.open(if (gatewayFromIntro) AppPage.CONVERSATION else AppPage.SETTINGS) }
+                        AppPage.CONNECTIONS -> AgentConnectionsPage(vm, initialAgent = loginAgent,
+                            back = { navigation = navigation.open(if (gatewayFromIntro) AppPage.CONVERSATION else AppPage.SETTINGS) },
+                            gateway = { gatewayStartAdding = false; gatewayFromConnections = true; navigate(AppPage.GATEWAY) },
+                            connected = { loginAgent = null; if (gatewayFromIntro) navigation = navigation.open(AppPage.CONVERSATION) })
+                        AppPage.GATEWAY -> GatewayPage(vm, startAdding = gatewayStartAdding, signIn = hostActions.gatewaySignIn) { navigation = navigation.open(if (gatewayFromConnections) AppPage.CONNECTIONS else if (gatewayFromIntro) AppPage.CONVERSATION else AppPage.SETTINGS) }
                         AppPage.HISTORY_LIMITS -> EventHistoryPage(actions::eventHistoryLimits, actions::saveEventHistoryLimits) { navigation = navigation.open(AppPage.SETTINGS) }
                         AppPage.DIAGNOSTIC -> DiagnosticPage(vm) { navigation = navigation.open(AppPage.SETTINGS) }
                         AppPage.LICENSES -> LicensePage { navigation = navigation.open(AppPage.SETTINGS) }
@@ -278,7 +288,7 @@ class ConversationHostActions(
                             showMenu = !showSidebar,
                             menuLabel = if (wide) AppStrings.expandConversationSidebar else AppStrings.openConversationDrawer,
                             onMenu = { keyboard?.hide(); focus.clearFocus(); if (wide) sidebarExpanded = true else drawer = true },
-                            onNew = { dialog = "new" }, onMore = { dialog = it },
+                            onNew = { dialog = if (gateways.isEmpty()) "gateway-intro" else "new" }, onMore = { if (it == "connections") { loginAgent = null; gatewayFromIntro = false; navigate(AppPage.CONNECTIONS) } else dialog = it },
                             onAnchor = { toolbarAnchor = it }, onAdd = { showAddSheet() },
                             onRead = { title, value -> reading = title to value },
                         )
@@ -287,7 +297,7 @@ class ConversationHostActions(
                 if (!wide && drawer) Box(Modifier.offset { IntOffset(x + (pixels * progress).roundToInt(), y) }.requiredWidth(contentWidth).height(availableHeight).then(swipe).clickable { drawer = false })
                 if (showSidebar || (!wide && (drawer || progress > 0f))) ConversationListPane(state, conversationQuery, { conversationQuery = it }, conversationListScroll,
                     onSelect = { c -> vm.enqueue { actions.select(c.id) }; drawer = false; navigation = navigation.open(AppPage.CONVERSATION) },
-                    onNew = { drawer = false; dialog = "new" }, onSettings = { navigate(AppPage.SETTINGS) }, onProjects = { navigateProjects(AppPage.CONVERSATION) },
+                    onNew = { drawer = false; dialog = if (gateways.isEmpty()) "gateway-intro" else "new" }, onSettings = { navigate(AppPage.SETTINGS) }, onProjects = { navigateProjects(AppPage.CONVERSATION) },
                     onProject = { name -> drawer = false; navigation = navigation.openProject(name) },
                     programs = programShortcuts, onProgramPage = { id -> drawer = false; hostActions.openProgram(id) },
                     onProgramDetails = { id -> drawer = false; navigation = navigation.openPrograms(program = id, fromSheet = false) },
@@ -343,14 +353,19 @@ class ConversationHostActions(
                 val c = state.selected?.conversation
                 if (dialog == "gateway-intro") AlertDialog(
                     onDismissRequest = { dialog = null }, containerColor = raisedColor(), shape = RoundedCornerShape(24.dp),
-                    title = { Text(AppStrings.configureAGatewayFirst) },
-                    text = { Text(AppStrings.addAModelGatewayBeforeStartingAConversationThe) },
-                    confirmButton = { TextButton(onClick = {
-                        dialog = null; gatewayStartAdding = true; gatewayFromIntro = true; navigate(AppPage.GATEWAY)
-                    }) { Text(AppStrings.setUpGateway) } },
+                    title = { Text(AppStrings.connectAgentsTitle) },
+                    text = { Column {
+                        Text(AppStrings.connectAgentsBody)
+                        listOf(AgentId.CODEX, AgentId.CLAUDE_CODE, AgentId.PI, AgentId.OPEN_CODE).forEach { value ->
+                            TextButton(onClick = { dialog = null; loginAgent = value; gatewayFromIntro = true; navigate(AppPage.CONNECTIONS) }, modifier = Modifier.fillMaxWidth()) { Text("${value.label()} · ${AppStrings.signInAgent}") }
+                        }
+                        HorizontalDivider()
+                        TextButton(onClick = { dialog = null; gatewayStartAdding = true; gatewayFromIntro = true; gatewayFromConnections = false; navigate(AppPage.GATEWAY) }, modifier = Modifier.fillMaxWidth()) { Text(AppStrings.configureApiGateway) }
+                    } },
+                    confirmButton = {},
                     dismissButton = { TextButton(onClick = { dialog = null }) { Text(AppStrings.later) } },
                 )
-                if (dialog == "new") ConfigDialog(vm, c, onDismiss = { dialog = null }, onApply = { config, project -> vm.enqueue { actions.create(config, project) }; navigation = navigation.open(AppPage.CONVERSATION); dialog = null }, anchor = toolbarAnchor)
+                if (dialog == "new") ConfigDialog(vm, c, onDismiss = { dialog = null }, onApply = { config, project -> vm.enqueue { actions.create(config, project) }; navigation = navigation.open(AppPage.CONVERSATION); dialog = null }, anchor = toolbarAnchor, manageConnections = { loginAgent = null; gatewayFromIntro = false; navigate(AppPage.CONNECTIONS) })
                 if (c != null) when (dialog) {
                     "rename" -> TextEditDialog(AppStrings.rename, c.title, { dialog = null }) { value -> vm.enqueue { vm.report(actions.rename(c.id, value)) }; dialog = null }
                     "project" -> ProjectGroupDialog(c, state.projects, { dialog = null }) { project -> vm.enqueue { vm.report(actions.project(c.id, project)) }; dialog = null }
@@ -381,10 +396,19 @@ class ConversationHostActions(
     showMenu: Boolean, menuLabel: String, onMenu: () -> Unit, onNew: () -> Unit, onMore: (String) -> Unit,
     onAnchor: (IntRect) -> Unit, onAdd: () -> Unit, onRead: (String, String) -> Unit,
 ) {
+    val connections by vm.connections.collectAsStateWithLifecycle()
     Column(modifier) {
+        Column(Modifier.fillMaxWidth().testTag("conversation-toolbar")) {
         ConversationToolbar(state.selected?.conversation, vm,
-            modifier = Modifier.fillMaxWidth().testTag("conversation-toolbar"),
+            modifier = Modifier.fillMaxWidth(),
             onMenu = onMenu, onNew = onNew, onMore = onMore, onAnchor = onAnchor, showMenu = showMenu, menuLabel = menuLabel)
+        state.selected?.conversation?.let { current ->
+            val route = connections.firstOrNull { it.agent == current.config.agent && it.id == current.config.gatewayProfile }
+            Text(route?.let(::connectionLabel) ?: AppStrings.noAvailableConnection,
+                Modifier.align(Alignment.CenterHorizontally).clickable { onMore("connections") }.padding(horizontal = 16.dp, vertical = 3.dp),
+                style = MaterialTheme.typography.labelSmall)
+        }
+        }
         VirtualScreenPreview()
         if (!system.connected || !system.ready) Text(
             system.message,
@@ -417,7 +441,7 @@ class ConversationHostActions(
         if (state.selected != null && state.error == null && !state.loading) {
             Composer(state.selected!!, state, system, vm,
                 modifier = Modifier.align(Alignment.CenterHorizontally).widthIn(max = 760.dp).fillMaxWidth().testTag("conversation-composer"),
-                onAdd = onAdd)
+                onAdd = onAdd, onConnect = { onMore("connections") })
         }
     }
 }
@@ -602,7 +626,7 @@ internal fun LazyListScope.programSection(shortcuts: List<ProgramShortcut>, quer
                     }
                     }
                 }
-                if (c != null) AgentConfigMenu(config, { config = false }, c, vm, chip)
+                if (c != null) AgentConfigMenu(config, { config = false }, c, vm, chip, manageConnections = { onMore("connections") })
             }
             Spacer(Modifier.weight(1f))
             Box(Modifier.onGloballyPositioned { coordinates ->
@@ -641,7 +665,7 @@ internal fun LazyListScope.programSection(shortcuts: List<ProgramShortcut>, quer
         }
 }
 
-@Composable private fun Composer(detail: ConversationDetail, state: ConversationState, system: SystemStatus, vm: ConversationViewModel, onAdd: () -> Unit, modifier: Modifier = Modifier) {
+@Composable private fun Composer(detail: ConversationDetail, state: ConversationState, system: SystemStatus, vm: ConversationViewModel, onAdd: () -> Unit, modifier: Modifier = Modifier, onConnect: () -> Unit = {}) {
     val composer by vm.composer.collectAsStateWithLifecycle()
     val active = detail.turns.lastOrNull { it.occupied }
     val unavailable = detail.conversation.archived || detail.conversation.deleted
@@ -711,6 +735,7 @@ internal fun LazyListScope.programSection(shortcuts: List<ProgramShortcut>, quer
         } else snapshot.value = null
     }
     fun sendAndDismiss(mode: MessageDeliveryMode = MessageDeliveryMode.QUEUE) {
+        if (vm.connections.value.none { it.agent == detail.conversation.config.agent }) { onConnect(); return }
         vm.send(mode)
         keyboard?.hide()
         focus.clearFocus()

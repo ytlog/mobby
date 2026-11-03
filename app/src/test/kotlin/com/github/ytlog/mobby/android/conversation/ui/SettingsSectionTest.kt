@@ -47,6 +47,7 @@ class SettingsSectionTest {
             "getStatus" -> flowOf(SystemStatus(true, true, "运行环境已就绪"))
             "getDiagnostic" -> flowOf(DiagnosticOutput(null, emptyList()))
             "agents" -> emptyList<AgentOption>()
+            "nativeAccounts", "connectionSettings" -> emptyList<Any>()
             "gateways" -> emptyList<GatewayProfile>()
             "defaultGateway" -> null
             else -> error(name)
@@ -124,6 +125,7 @@ class SettingsSectionTest {
             "getStatus" -> flowOf(SystemStatus(true, true, "运行环境已就绪"))
             "getDiagnostic" -> flowOf(DiagnosticOutput(null, emptyList()))
             "agents" -> emptyList<AgentOption>()
+            "nativeAccounts", "connectionSettings" -> emptyList<Any>()
             "gateways" -> emptyList<GatewayProfile>()
             "defaultGateway" -> null
             else -> error(name)

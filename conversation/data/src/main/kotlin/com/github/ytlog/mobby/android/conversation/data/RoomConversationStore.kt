@@ -127,7 +127,10 @@ internal class RoomConversationStore(
                 system.retainAttachmentGrants(dao.allConversations().mapNotNull { it.domain().draft.pendingAttachment?.location }.toSet())
                 importRecovery.complete(Unit)
                 if (dao.allConversations().isEmpty()) {
-                    val profiles = runCatching { system.gateways() }.getOrDefault(emptyList())
+                    val profiles = runCatching {
+                        AgentConnectionResolver.available(system.gateways(),
+                            system.nativeAccounts().filterNot { it.expired }.map { it.route() }, system.connectionSettings())
+                    }.getOrDefault(emptyList())
                     val selected = runCatching { system.defaultGateway() }.getOrNull()
                     val profile = ConversationGatewayResolver.preferred(profiles, selected)
                     create(NextTurnConfig(profile?.agent ?: DomainAgent.CODEX, profile?.model.orEmpty(), null, "default",

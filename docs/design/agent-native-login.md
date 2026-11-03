@@ -1,0 +1,54 @@
+# Agent 原生登录与 API 兜底
+
+2026-11-04 按用户确认的交互接入四个 Agent 自带的认证能力。默认使用方式是“原生登录优先，未登录或明确失效时使用已配置的 API”。用户可为每个 Agent 改为“仅原生登录”或“仅 API”，并指定兜底网关。已有网关密文、Keystore 别名、聊天数据库结构、HOME 和工作区不变；不清库、不迁移和不删除历史会话。
+
+## 交互
+
+没有可用连接时，首次进入对话弹出“连接你的 Agent”：Codex、Claude Code、Pi、OpenCode 的登录入口，最后一项“配置 API 网关”，以及“稍后设置”。引导展示状态独立保存，不在每次冷启动重复弹出。没有连接时再次新建对话仍可打开引导；已有会话发送时可进入连接管理。
+
+设置新增“Agent 登录与 API”，列出全部 Agent 的原生登录状态和当前实际来源。每个 Agent 可以登录、切换账号、退出，选择自动/仅原生/仅 API，并从现有兼容网关中指定 API 来源。“配置 API 网关”继续进入现有 AI 服务页面。设置改变从下一轮生效，当前执行和已冻结的排队消息保持已选来源。
+
+空聊天库的默认会话也按实际可用连接初始化，避免只有 Claude 登录时创建不可用的 Codex 占位会话。会话菜单与新建菜单只展示当前有可执行连接的 Agent。只登录 Codex 且没有网关时，只能选择 Codex；连接了兼容网关后，其他 Agent 可通过该网关使用。每个 Agent 只出现一次，并在会话工具栏和来源菜单展示原生登录/API 来源。模型随来源切换；登录方式由各 Agent 的原生接口提供。
+
+登录界面展示原生认证返回的浏览器地址、设备码或输入提示，可以取消。账号密码留在系统浏览器；mobby 不重建 OAuth、令牌交换、授权回调或刷新协议。打开页面不算登录成功；只有原生认证检查和模型枚举完成才保存新登录。失败和取消保留旧登录。
+
+## 原生能力接入
+
+| Agent | 使用的原生能力 | 模型与协议 |
+| --- | --- | --- |
+| Codex 0.155.1 | app-server `account/login/start` 的 ChatGPT 浏览器/设备码方式，`account/read` 检查，`model/list` 分页 | 使用原生 OpenAI provider，Responses；切换来源后 `thread/start`/`thread/resume` 明确选择 provider |
+| Claude Code 2.1.112 | `claude auth login --claudeai` 与 `claude auth status --json` | Messages；提供 CLI 原生 `sonnet`、`opus`、`haiku` 别名，实际账号访问权限由服务端确定 |
+| Pi 0.87.1 | 内置 `ModelRuntime` 的 provider OAuth、交互回调与认证存储 | 只枚举实际提供 `openai-responses`/`openai-codex-responses` 模型的 OAuth provider，并筛选这两种协议的模型 |
+| OpenCode 1.18.32-0 | 本机带随机密码的原生 server：`/provider/auth`、OAuth authorize/callback、`/provider` | 当前接入内置 OpenAI provider 的原生 OAuth 方式，使用其 Responses 路径；保留内置认证插件 |
+
+Pi、OpenCode 只展示满足当前 Responses 边界的原生能力，不能把其他 provider 的 Messages、Gemini 或 Chat Completions 登录显示成已支持。每个 Agent 独立持有凭据；登录一个 Agent 不会复用该凭据启用另一个 Agent。
+
+原生模式保留 CLI 自己的认证、刷新、TLS 验证和协议请求，通过带随机认证的本机 Node CONNECT 隧道连接 HTTPS，由 Android Node 解析 DNS 和建立网络连接。隧道不解密 TLS、不改模型字段、不转换请求或返回。API 模式沿用原来的本机 Node 模型桥接和原生协议透传。原生模式清除网关注入的 API 环境变量；API 和原生两条路径在启动前明确选择，执行时不能互相回退。
+
+## 凭据与原生会话文件
+
+独立的 `native-agent-connections` 存储使用 Android Keystore `mobby.native-agents` 的 AES-GCM 加密。保存原生凭据文件的完整 JSON，不转换令牌结构，不丢弃未知字段；同时保存非敏感的 provider、模型列表、登录代次、失效状态和使用方式。Claude 的原生账号配置文件也保留原格式并加密。
+
+每个原生进程取得单独的私有临时凭据目录，使用对应 Agent 自己支持的目录变量。Agent 按自己的格式读取、刷新凭据，文件变更及每轮结束检查点会更新加密存储。已轮换的令牌继续加入该执行的输出脱敏集合。临时目录在关闭时删除；进程重启时先恢复并终止遗留的执行/登录进程，再删除遗留目录。当前应用已经禁用云备份和设备迁移，不备份凭据。
+
+原生会话目录与技能目录指向现有 HOME，清理临时目录时不跟随符号链接，因此不会删除原生会话或 App 聊天记录。凭据目录不作为另一套 HOME。退出登录只删除目标 Agent 的加密登录记录，保留使用方式和 API 选择。登录代次用于拒绝过期引用，并防止旧进程在退出或切换账号后通过刷新恢复旧凭据。
+
+## 来源固定和失效
+
+发送前解析当前 Agent 的有效来源，然后把来源引用与代次/网关版本冻结进原有执行请求。原生引用使用 `native:AGENT`，作为执行路由投影，不写入 `GatewayStore`，不伪造网关配置。运行中的持久进程也校验相同来源，跨来源会启动正确的进程。
+
+只有协议错误字段里明确报告认证失效（例如 HTTP 401、invalid_grant、过期刷新令牌）才把原生登录标记为失效。普通回复中谈论 401 不影响登录；429、403、断网和超时不等同于退出登录。自动模式可以为后续发送选择 API；刚失败的执行保持失败，绝不自动换来源重发。相同请求 ID 的结果查询/去重沿用原有机制。
+
+已有会话失去某个 Agent 的所有连接时，保留 Agent 与历史会话，提示重新连接。不会为了恢复可用状态自动改成另一个 Agent。切换来源时保留工作区并选择新来源实际提供的模型。
+
+## 验证与尚未验收
+
+自动测试覆盖来源优先级、严格模式、原生连接只启用对应 Agent、切换来源保留工作区、失联会话保留 Agent、失败执行不跨来源重试、原生凭据原格式和未知字段保留、加密重开、刷新保存、退出后旧执行不能复活账号、原会话文件保留、令牌脱敏、认证失效识别、只显示可用 Agent、API 模式保留登录状态，以及 CONNECT 认证和字节透传。
+
+控制器协议测试使用隔离的假 CLI 与虚假凭据，验证确实调用原生接口且不转发原始认证诊断。另用项目锁定的真实 Pi 包在隔离 HOME 中验证了原生 OAuth 登录方式枚举。以上不代表真实账号授权、套餐权限或真机模型调用验收。
+
+当前未连接 Android 手机，尚未完成四个 Agent 的真实账号浏览器回调、设备码、令牌自动刷新、Android CONNECT 联网，以及跨来源多轮/工具/图片的真机验收。不自动读取桌面账号或使用真实密钥代替用户完成授权。
+
+本机 GraalVM JDK 17 的 Android jlink 因 `jdk.internal.vm.ci` 缺失失败；领域和执行协议测试可在 JDK 17 运行，Android 验证使用已安装的 JBR 21，源码编译目标保持 Java/Kotlin 17。未改项目 JDK 配置。
+
+最终本地验证：615 项 JUnit 检查中 614 项通过、1 项既有测试跳过；37 项 Node 测试通过；49 项 Python 检查通过。`assembleDebug` 与 `lintDebug` 通过。APK 位于 `app/build/outputs/apk/debug/app-debug.apk`，构建产物不提交。真实账号与真机验收范围仍以上述说明为准。

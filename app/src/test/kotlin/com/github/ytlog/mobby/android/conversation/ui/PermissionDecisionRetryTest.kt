@@ -37,6 +37,7 @@ class PermissionDecisionRetryTest {
             "getStatus" -> flowOf(SystemStatus(true, true))
             "getDiagnostic" -> flowOf(DiagnosticOutput(null, emptyList()))
             "agents" -> emptyList<AgentOption>()
+            "nativeAccounts", "connectionSettings" -> emptyList<Any>()
             "gateways" -> emptyList<GatewayProfile>()
             else -> error(it)
         } }

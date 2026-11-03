@@ -9,6 +9,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.assertIsDisplayed
 import com.github.ytlog.mobby.android.conversation.domain.*
+import com.github.ytlog.mobby.android.conversation.domain.gateway.GatewayDefault
 import com.github.ytlog.mobby.android.conversation.domain.gateway.GatewayProfile
 import com.github.ytlog.mobby.android.localization.FloatingStrings
 import kotlinx.coroutines.*
@@ -221,8 +222,9 @@ class QuickConversationTest {
         private val system = stub<SystemPort> { name, args -> when (name) {
             "getStatus" -> flowOf(SystemStatus(ready = true, connected = true, message = ""))
             "getDiagnostic" -> emptyFlow<DiagnosticOutput>()
-            "gateways" -> emptyList<GatewayProfile>()
-            "defaultGateway" -> null
+            "nativeAccounts", "connectionSettings" -> emptyList<Any>()
+            "gateways" -> listOf(GatewayProfile(AgentId.PI, "test", 0, "https://example.invalid/v1", "model", "RESPONSES", true))
+            "defaultGateway" -> GatewayDefault(AgentId.PI, "test", 0)
             "agents" -> emptyList<AgentOption>()
             "plugins" -> {
                 val result = DataResult.Loaded(listOf(Plugin("plugin:device:screen", "屏幕", "", available,

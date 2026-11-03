@@ -232,6 +232,26 @@ internal class RuntimeSystemAdapter(private val context: android.content.Context
             diagnostic.phase?.let { !it.terminal || it == RunPhase.OUTCOME_UNKNOWN } == true)
     }
     override val diagnostic = diagnostics.state.map { DiagnosticOutput(it.phase?.domain(), it.output) }
+    override suspend fun nativeAccounts(): List<AgentLogin> = when (val result = admin.nativeAccounts()) {
+        is AdminResult.Success -> result.value.map { value -> AgentLogin(DomainAgent.valueOf(value.agent.name), value.provider, value.label, value.version, value.models.map { GatewayModel(it.id, it.name) }, value.expired) }
+        is AdminResult.Failed -> throw IllegalStateException(result.error.message())
+    }
+    override suspend fun connectionSettings(): List<AgentConnectionPreference> = when (val result = admin.connectionSettings()) {
+        is AdminResult.Success -> result.value.map { AgentConnectionPreference(DomainAgent.valueOf(it.agent.name), ConnectionMode.valueOf(it.mode.name), it.gatewayId) }
+        is AdminResult.Failed -> throw IllegalStateException(result.error.message())
+    }
+    override suspend fun saveConnectionSetting(setting: AgentConnectionPreference) = admin.saveConnectionSetting(AgentConnectionSetting(RuntimeAgent.valueOf(setting.agent.name), AgentConnectionMode.valueOf(setting.mode.name), setting.gatewayId)).operation()
+    override suspend fun nativeLoginMethods(agent: DomainAgent) = when (val result = admin.nativeLoginMethods(RuntimeAgent.valueOf(agent.name))) {
+        is AdminResult.Success -> DataResult.Loaded(result.value.map { AgentLoginMethod(it.id, it.label) })
+        is AdminResult.Failed -> DataResult.Failed(if (result.error.code == ErrorCode.INVALID_CONFIG) AppStrings.nativeMethodsUnavailable else result.error.message())
+    }
+    override suspend fun loginAgent(agent: DomainAgent, method: String, updates: (AgentLoginUpdate) -> Unit, input: Flow<String>) = when (val result = admin.loginAgent(RuntimeAgent.valueOf(agent.name), method, { value ->
+            updates(AgentLoginUpdate(value.url, value.code, value.prompt, value.options.map { AgentLoginMethod(it.id, it.label) }, value.instructions))
+        }, input)) {
+        is AdminResult.Success -> OperationResult.Done
+        is AdminResult.Failed -> OperationResult.Failed(if (result.error.code == ErrorCode.INVALID_CONFIG) AppStrings.nativeLoginFailed else result.error.message())
+    }
+    override suspend fun logoutAgent(agent: DomainAgent) = admin.logoutAgent(RuntimeAgent.valueOf(agent.name)).operation()
     override suspend fun agents(): List<AgentOption> = when (val result = client.capabilities()) {
         is CapabilityResult.Unavailable -> DomainAgent.values().map { AgentOption(it, emptyMap(), result.error.message(), false, emptySet()) }
         is CapabilityResult.Available -> result.capabilities.agents.map { AgentOption(DomainAgent.valueOf(it.agentId.name), it.models.associate { m -> m.id to m.reasoningLevels }, it.unavailableReason?.message(), it.supportsResume, it.skillCapabilities.map { ref -> ref.value }.toSet(), it.supportsResources, it.supportsImages, it.supportsApproval, it.models.associate { m -> m.id to m.name }) }

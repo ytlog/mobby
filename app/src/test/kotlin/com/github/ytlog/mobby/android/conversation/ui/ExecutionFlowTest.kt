@@ -33,6 +33,7 @@ class ExecutionFlowTest {
                 "getStatus" -> flowOf(SystemStatus())
                 "getDiagnostic" -> emptyFlow<DiagnosticOutput>()
                 "agents" -> emptyList<AgentOption>()
+                "nativeAccounts", "connectionSettings" -> emptyList<Any>()
                 "gateways" -> emptyList<GatewayProfile>()
                 else -> error(it)
             } },

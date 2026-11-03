@@ -10,7 +10,7 @@ import kotlinx.serialization.json.*
  * Outbound lines use the same events as `exec --json`, so the runtime has one decoder.
  * `thread/resume` is used only when this process is created for a saved session.
  */
-class CodexAppServerSession(private val cwd: String, private val model: String, private val resumeThreadId: String?) : AgentSession {
+class CodexAppServerSession(private val cwd: String, private val model: String, private val resumeThreadId: String?, private val provider: String = "mobby") : AgentSession {
     override val supportsInsertion = true
     override val supportsNewSession = true
     private val queue = Channel<ByteArray>(18)
@@ -164,7 +164,7 @@ class CodexAppServerSession(private val cwd: String, private val model: String, 
         val resume = resumeId != null
         send(id(), if (resume) "thread/resume" else "thread/start", buildJsonObject {
             if (resume) put("threadId", resumeId)
-            put("cwd", cwd); put("model", model); put("approvalPolicy", "never"); put("sandbox", "danger-full-access")
+            put("cwd", cwd); put("model", model); put("modelProvider", provider); put("approvalPolicy", "never"); put("sandbox", "danger-full-access")
         })
         step = Step.THREAD
     }
@@ -175,7 +175,7 @@ class CodexAppServerSession(private val cwd: String, private val model: String, 
         turnOpen = true
         turnEnded = false
         send(id(), "turn/start", buildJsonObject {
-            put("threadId", threadId); put("cwd", cwd); put("model", model); put("approvalPolicy", "never")
+            put("threadId", threadId); put("cwd", cwd); put("model", model); put("modelProvider", provider); put("approvalPolicy", "never")
             putJsonObject("sandboxPolicy") { put("type", "dangerFullAccess") }
             putJsonArray("input") {
                 add(buildJsonObject { put("type", "text"); put("text", turn.prompt) })

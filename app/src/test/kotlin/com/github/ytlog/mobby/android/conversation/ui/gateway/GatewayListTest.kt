@@ -47,6 +47,7 @@ class GatewayListTest {
             "getStatus" -> flowOf(SystemStatus(true, true))
             "getDiagnostic" -> flowOf(DiagnosticOutput(null, emptyList()))
             "agents" -> modelOptions
+            "nativeAccounts", "connectionSettings" -> emptyList<Any>()
             "gateways" -> profiles
             "defaultGateway" -> defaultChoice
             "selectDefaultGateway" -> { selectedDefault(args!![0] as GatewayProfile); OperationResult.Done }

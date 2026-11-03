@@ -45,6 +45,7 @@ class SkillEditorLifecycleTest {
             "getStatus" -> flowOf(SystemStatus(true, true))
             "getDiagnostic" -> flowOf(DiagnosticOutput(null, emptyList()))
             "agents" -> emptyList<AgentOption>()
+            "nativeAccounts", "connectionSettings" -> emptyList<Any>()
             "gateways" -> emptyList<GatewayProfile>()
             "skills" -> DataResult.Loaded(emptyList<Skill>())
             "previewManualSkill" -> {

@@ -32,6 +32,8 @@ class RoomConversationStoreTest {
     private var retainedGrants = emptySet<String>()
     private val importStarted = CompletableDeferred<Unit>()
     private val importedProposals = mutableListOf<String>()
+    private var logins = emptyList<AgentLogin>()
+    private var apiProfiles = listOf(GatewayProfile(DomainAgent.CODEX, "CODEX", 0, "", "test-model", "RESPONSES", false))
     private val system = object : SystemPort {
         override suspend fun saveDeviceDirectory(location: String): OperationResult = error("unused")
         override suspend fun fetchGatewayModels(edit: GatewayEdit): DataResult<GatewayCatalogResult> = DataResult.Failed("unused")
@@ -58,7 +60,8 @@ class RoomConversationStoreTest {
         override val status = flowOf(SystemStatus(true, true, "ready"))
         override val diagnostic = flowOf(DiagnosticOutput(null, emptyList()))
         override suspend fun agents() = emptyList<AgentOption>()
-        override suspend fun gateways() = listOf(GatewayProfile(DomainAgent.CODEX, "CODEX", 0, "", "test-model", "RESPONSES", false))
+        override suspend fun gateways() = apiProfiles
+        override suspend fun nativeAccounts() = logins
         override suspend fun saveGateway(edit: GatewayEdit) = GatewaySaveResult.Saved(emptyList(), null)
         override suspend fun defaultGateway() = GatewayDefault(DomainAgent.CODEX, "CODEX", 0)
         override suspend fun selectDefaultGateway(profile: GatewayProfile) = OperationResult.Done
@@ -86,6 +89,20 @@ class RoomConversationStoreTest {
         val persisted = selected?.let { db.dao().conversation(it.id.value)?.domain() }
         throw AssertionError("State never matched: selected=${selected?.id}, agent=${selected?.config?.agent}, workspace=${selected?.config?.workspace}, project=${selected?.project}, session=${selected?.session}, sessions=${selected?.sessions}, persistedSession=${persisted?.session}, persistedSessions=${persisted?.sessions}, turns=${rows?.map { it.id to Triple(storageJson.decodeFromString<StoredConversation>(it.frozen).agent, storageJson.decodeFromString<StoredConversation>(it.frozen).workspace, it.snapshot?.let { value -> storageJson.decodeFromString<RunSnapshot>(value).sessionRef?.value }) }}, error=${latest.error}", e)
     }
+    @Test fun `an empty chat store starts with the natively signed in agent when no API gateway exists`() = runBlocking {
+        state()
+        scope.coroutineContext[Job]!!.cancelAndJoin()
+        withContext(Dispatchers.IO) { db.clearAllTables() }; db.close()
+        apiProfiles = emptyList()
+        logins = listOf(AgentLogin(DomainAgent.CLAUDE_CODE, "anthropic", "Claude", 1,
+            listOf(GatewayModel("sonnet", "Sonnet"))))
+        start()
+        val created = state().selected!!.conversation
+        assertEquals(DomainAgent.CLAUDE_CODE, created.config.agent)
+        assertEquals("native:CLAUDE_CODE", created.config.gatewayProfile)
+        assertEquals("sonnet", created.config.model)
+    }
+
     @Test fun `first turn names an untouched conversation after a language change`() = runBlocking {
         val language = com.github.ytlog.mobby.android.localization.AppLanguage
         language.current = com.github.ytlog.mobby.android.localization.AppLanguage.CHINESE

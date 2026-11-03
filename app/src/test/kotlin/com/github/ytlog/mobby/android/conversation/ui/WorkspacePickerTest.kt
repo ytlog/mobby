@@ -43,6 +43,7 @@ class WorkspacePickerTest {
             "getStatus" -> flowOf(SystemStatus(true, true))
             "getDiagnostic" -> flowOf(DiagnosticOutput(null, emptyList()))
             "agents" -> listOf(AgentOption(AgentId.CLAUDE_CODE, mapOf("claude-fixture" to emptySet()), null, true, emptySet()))
+            "nativeAccounts", "connectionSettings" -> emptyList<Any>()
             "gateways" -> {
                 gatewayReads++
                 gatewayReadGate?.let { gate ->
@@ -248,7 +249,7 @@ class WorkspacePickerTest {
         val vm = vm()
         val conversation = Conversation(ConversationId("c"), NextTurnConfig(AgentId.CODEX, "model", null, "default", "CODEX"))
         compose.setContent { MaterialTheme { AgentConfigMenu(true, {}, conversation, vm) } }
-        compose.onNodeWithText("example.test").assertExists()
+        compose.onNodeWithText("API · example.test").assertExists()
         compose.onNodeWithText("example.test · model · 1 个模型").assertDoesNotExist()
         compose.onNodeWithText("model").assertExists()
     }

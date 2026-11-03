@@ -14,6 +14,12 @@ data class EventHistorySettings(val retentionDays: Int = 30, val budgetMiB: Int 
 }
 data class WorkspaceSummary(val ref: WorkspaceRef, val name: String)
 interface RuntimeAdminClient {
+    suspend fun nativeAccounts(): AdminResult<List<NativeAccountSummary>> = AdminResult.Success(emptyList())
+    suspend fun connectionSettings(): AdminResult<List<AgentConnectionSetting>> = AdminResult.Success(emptyList())
+    suspend fun saveConnectionSetting(setting: AgentConnectionSetting): AdminResult<Unit> = AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
+    suspend fun nativeLoginMethods(agent: AgentId): AdminResult<List<NativeLoginMethod>> = AdminResult.Success(emptyList())
+    suspend fun loginAgent(agent: AgentId, method: String, updates: (NativeLoginUpdate) -> Unit, input: kotlinx.coroutines.flow.Flow<String>): AdminResult<Unit> = AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
+    suspend fun logoutAgent(agent: AgentId): AdminResult<Unit> = AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
     suspend fun listWorkspaces(): AdminResult<List<WorkspaceSummary>> = AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
     suspend fun createWorkspace(name: String): AdminResult<WorkspaceSummary> = AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
     suspend fun eventHistorySettings(): AdminResult<EventHistorySettings> = AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))

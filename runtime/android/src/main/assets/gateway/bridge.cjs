@@ -157,13 +157,15 @@ async function main() {
   const config = JSON.parse(process.env.MOBBY_GATEWAY_CONFIG);
   delete process.env.MOBBY_GATEWAY_CONFIG;
   const [mode, executable, ...args] = process.argv.slice(2);
-  const bridge = await createBridge(config);
+  const native = config.source === 'native';
+  const prepared = native ? await require('./native-network.cjs').nativeLaunch(mode, args, config, process.env) : null;
+  const bridge = native ? prepared.proxy : await createBridge(config);
   let launch;
   let input;
   let child;
   try {
-    launch = agentLaunch(mode, args, config, process.env, bridge);
-    if (mode === 'PI') {
+    launch = prepared || agentLaunch(mode, args, config, process.env, bridge);
+    if (mode === 'PI' && !native) {
       process.exitCode = await require('./pi-live.cjs').runPi(executable, launch.args, launch.env);
       bridge.close();
       return;

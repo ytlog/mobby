@@ -35,6 +35,7 @@ class SkillProposalRetentionTest {
             "getStatus" -> flowOf(SystemStatus(true, true))
             "getDiagnostic" -> flowOf(DiagnosticOutput(null, emptyList()))
             "agents" -> emptyList<AgentOption>()
+            "nativeAccounts", "connectionSettings" -> emptyList<Any>()
             "gateways" -> emptyList<GatewayProfile>()
             "previewSkill" -> DataResult.Loaded(SkillContent("fixture", "fixture", "body", "body", emptyList()))
             else -> error(it)
@@ -89,6 +90,7 @@ class SkillProposalRetentionTest {
             "getStatus" -> flowOf(SystemStatus(true, true))
             "getDiagnostic" -> flowOf(DiagnosticOutput(null, emptyList()))
             "agents" -> emptyList<AgentOption>()
+            "nativeAccounts", "connectionSettings" -> emptyList<Any>()
             "gateways" -> emptyList<GatewayProfile>()
             "previewSkill" -> {
                 previews++

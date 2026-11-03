@@ -34,6 +34,7 @@ class ConversationLinkNavigationTest {
             "getStatus" -> flowOf(SystemStatus(true, true))
             "getDiagnostic" -> flowOf(DiagnosticOutput(null, emptyList()))
             "agents" -> emptyList<AgentOption>()
+            "nativeAccounts", "connectionSettings" -> emptyList<Any>()
             "gateways" -> emptyList<GatewayProfile>()
             "defaultGateway" -> null
             "capture" -> DataResult.Loaded<CameraCapture?>(null)

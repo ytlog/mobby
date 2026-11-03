@@ -4,11 +4,12 @@ import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.listSaver
 
 internal enum class AppPage {
-    CONVERSATION, PROJECTS, PROJECT_DETAIL, SETTINGS, GATEWAY,
+    CONVERSATION, PROJECTS, PROJECT_DETAIL, SETTINGS, GATEWAY, CONNECTIONS,
     HISTORY_LIMITS, DIAGNOSTIC, LICENSES, ARCHIVED, UPDATES, PROGRAMS, SKILLS, PLUGINS, APP_FUNCTIONS;
 
     companion object {
         fun fromSettingsRoute(route: String): AppPage = when (route) {
+            "connections" -> CONNECTIONS
             "gateway" -> GATEWAY
             "history-limits" -> HISTORY_LIMITS
             "diagnostic" -> DIAGNOSTIC
@@ -41,7 +42,7 @@ internal data class AppNavigationState(
     fun back(gatewayFromIntro: Boolean): AppNavigationState = when {
         addSheetOpen -> closeAddSheet()
         page == AppPage.GATEWAY -> open(if (gatewayFromIntro) AppPage.CONVERSATION else AppPage.SETTINGS)
-        page in setOf(AppPage.HISTORY_LIMITS, AppPage.DIAGNOSTIC, AppPage.ARCHIVED, AppPage.LICENSES, AppPage.UPDATES) -> open(AppPage.SETTINGS)
+        page in setOf(AppPage.CONNECTIONS, AppPage.HISTORY_LIMITS, AppPage.DIAGNOSTIC, AppPage.ARCHIVED, AppPage.LICENSES, AppPage.UPDATES) -> open(AppPage.SETTINGS)
         page in setOf(AppPage.SKILLS, AppPage.PLUGINS, AppPage.APP_FUNCTIONS) -> openAddSheet()
         page == AppPage.PROGRAMS -> if (programsBackToSheet) openAddSheet() else open(AppPage.CONVERSATION)
         page == AppPage.PROJECTS -> open(projectsBackPage)

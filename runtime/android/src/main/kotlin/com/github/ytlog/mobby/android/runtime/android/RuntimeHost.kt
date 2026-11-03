@@ -68,6 +68,13 @@ class RuntimeHost(context: Context, notification: () -> PendingIntent) {
         override suspend fun stopShell() = connected()?.stopShell() ?: CommandResult.Rejected(RuntimeError(ErrorCode.DISCONNECTED, true))
     }
     val admin: RuntimeAdminClient = object : RuntimeAdminClient {
+        override suspend fun nativeAccounts() = connected()?.nativeAccounts() ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
+        override suspend fun connectionSettings() = connected()?.connectionSettings() ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
+        override suspend fun saveConnectionSetting(setting: AgentConnectionSetting) = connected()?.saveConnectionSetting(setting) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
+        override suspend fun nativeLoginMethods(agent: AgentId) = connected()?.nativeLoginMethods(agent) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
+        override suspend fun loginAgent(agent: AgentId, method: String, updates: (NativeLoginUpdate) -> Unit, input: Flow<String>) = connected()?.loginAgent(agent, method, updates, input) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
+        override suspend fun logoutAgent(agent: AgentId) = connected()?.logoutAgent(agent) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
+
         override suspend fun saveDeviceDirectory(location: String) = connected()?.saveDeviceDirectory(location) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
         override suspend fun eventHistorySettings() = connected()?.eventHistorySettings() ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
         override suspend fun saveEventHistorySettings(settings: EventHistorySettings) = connected()?.saveEventHistorySettings(settings) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))

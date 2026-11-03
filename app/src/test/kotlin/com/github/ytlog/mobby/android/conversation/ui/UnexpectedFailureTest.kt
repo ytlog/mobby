@@ -32,6 +32,7 @@ class UnexpectedFailureTest {
                 "getStatus" -> flowOf(SystemStatus())
                 "getDiagnostic" -> emptyFlow<DiagnosticOutput>()
                 "agents" -> emptyList<AgentOption>()
+                "nativeAccounts", "connectionSettings" -> emptyList<Any>()
                 "gateways" -> emptyList<GatewayProfile>()
                 "defaultGateway" -> null
                 else -> error(it)

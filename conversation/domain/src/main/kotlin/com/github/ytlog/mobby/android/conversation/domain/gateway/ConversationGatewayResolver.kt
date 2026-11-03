@@ -15,7 +15,8 @@ object ConversationGatewayResolver {
     /** Preserve a usable conversation choice; repair only missing, stale, or invalid references. */
     fun repair(config: NextTurnConfig, profiles: List<GatewayProfile>, selected: GatewayDefault?): NextTurnConfig? {
         val same = profiles.firstOrNull { it.id == config.gatewayProfile && it.agent == config.agent && it.model.isNotBlank() }
-        val target = same ?: preferred(profiles, selected) ?: return null
+        // A lost connection must not silently change the engine of an existing conversation.
+        val target = same ?: profiles.firstOrNull { it.agent == config.agent && it.model.isNotBlank() } ?: return null
         val model = config.model.takeIf { same != null && target.offers(it) } ?: target.model
         val updated = config.copy(agent = target.agent, model = model,
             reasoning = config.reasoning.takeIf { target.agent == config.agent && model == config.model },

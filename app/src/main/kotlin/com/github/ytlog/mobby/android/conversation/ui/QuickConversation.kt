@@ -11,7 +11,8 @@ internal fun ConversationViewModel.openQuickConversation(id: ConversationId?, re
         actions.select(id)
         ready(id)
     } else {
-        val profiles = actions.gateways()
+        refresh()
+        val profiles = connections.value
         val preferred = actions.defaultGateway()
         val agent = ConversationGatewayResolver.preferred(profiles, preferred)?.agent ?: AgentId.PI
         val config = ConversationGatewayResolver.newConversation(agent, state.value.selected?.conversation,

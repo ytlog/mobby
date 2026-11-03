@@ -33,6 +33,7 @@ class SkillsPageTest {
             "getStatus" -> flowOf(SystemStatus(true, true))
             "getDiagnostic" -> flowOf(DiagnosticOutput(null, emptyList()))
             "agents" -> emptyList<AgentOption>()
+            "nativeAccounts", "connectionSettings" -> emptyList<Any>()
             "gateways" -> emptyList<GatewayProfile>()
             "skills" -> DataResult.Loaded(listOf(user, builtin))
             "readSkill" -> DataResult.Loaded(SkillContent(user.name, user.description, "body", "markdown", emptyList()))

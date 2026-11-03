@@ -21,6 +21,8 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
     inner class LocalBinder : Binder() { val service get() = this@RuntimeService }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val submission = Mutex()
+    private val authenticating = MutableStateFlow(false)
+    private var authenticationJob: Job? = null
     private val mutableEnvironment = MutableStateFlow(EnvironmentSnapshot(EnvironmentPhase.INITIALIZING, AppStrings.initializingRuntime))
     override val environment = mutableEnvironment.asStateFlow()
     private lateinit var runtime: RuntimeEnvironment
@@ -66,10 +68,11 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
         outputStore = OutputStore(this, journal::outputExpired, EventHistorySettingsStore(this)::outputPolicy)
         coordinator = RunCoordinator(scope, ports, ports, journal, outputStore)
         RuntimeTaskNotification.createChannel(this)
-        scope.launch { combine(coordinator.active, ports.live) { _, _ -> Unit }.collect { submission.withLock {
+        scope.launch { combine(coordinator.active, ports.live, authenticating) { _, _, _ -> Unit }.collect { submission.withLock {
             val running = coordinator.active.value != null
             val holding = ports.live.value
             when {
+                authenticating.value && !running -> withContext(Dispatchers.Main) { showForeground(AppStrings.waitingNativeLogin) }
                 running -> withContext(Dispatchers.Main) { showForeground(AppStrings.returnToTheAppToViewProgressOrStop) }
                 holding -> withContext(Dispatchers.Main) { showForeground(AppStrings.conversationIsStillRunningReturnToTheAppTo) }
                 else -> {
@@ -98,7 +101,7 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
         coordinator.requestStop(runId, StopCause.USER)
     }
     private fun startInitialization() {
-        if (initialization?.isActive == true || coordinator.active.value != null) return
+        if (initialization?.isActive == true || coordinator.active.value != null || authenticating.value) return
         // Reserve readiness before releasing admission; initialization uses the same boundary
         // as submissions and idle cleanup, so maintenance cannot overlap a new run.
         mutableEnvironment.value = EnvironmentSnapshot(EnvironmentPhase.INITIALIZING, AppStrings.verifyingLocalRuntime)
@@ -106,6 +109,10 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
             try {
                 withTimeout(120_000) {
                     registry.recover()
+                    if (!recovered) {
+                        ProcessRegistry(this@RuntimeService, namespace = "native-agent-login-process").recover()
+                        NativeAuthStore(this@RuntimeService).clearAbandonedLeases()
+                    }
                     if (!recovered) { coordinator.recover(); recovered = coordinator.connection.value == ConnectionState.CONNECTED }
                     check(recovered)
                     journal.compact()
@@ -229,12 +236,54 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
             catch (_: Exception) { return AdminResult.Failed(RuntimeError(ErrorCode.INVALID_CONFIG)) }
         return importSkill(request.agent, preview.markdown)
     }
+    private val nativeAdmin by lazy { NativeAgentAdmin(this, runtime, environment) }
+    override suspend fun nativeAccounts() = nativeAdmin.accounts()
+    override suspend fun connectionSettings() = nativeAdmin.settings()
+    override suspend fun saveConnectionSetting(setting: AgentConnectionSetting) = nativeAdmin.save(setting)
+    override suspend fun nativeLoginMethods(agent: AgentId) = nativeAdmin.methods(agent)
+    override suspend fun loginAgent(agent: AgentId, method: String, updates: (NativeLoginUpdate) -> Unit, input: Flow<String>): AdminResult<Unit> {
+        if (!authenticating.compareAndSet(false, true)) return AdminResult.Failed(RuntimeError(ErrorCode.BUSY, true))
+        authenticationJob = currentCoroutineContext()[Job]
+        return try {
+            try { withContext(Dispatchers.Main) { beginForeground() } }
+            catch (error: CancellationException) { throw error }
+            catch (_: Exception) { return AdminResult.Failed(RuntimeError(ErrorCode.PERMISSION_DENIED, true)) }
+            nativeAdmin.login(agent, method, updates, input)
+        } finally { authenticating.value = false; authenticationJob = null }
+    }
+    override suspend fun logoutAgent(agent: AgentId) = nativeAdmin.logout(agent)
     private val gatewayAdmin by lazy { GatewayAdmin(this) }
     override suspend fun validateGateway(profile: GatewayProfileRef, agent: AgentId) = gatewayAdmin.validateGateway(profile, agent)
     override suspend fun listGatewayProfiles() = gatewayAdmin.listGatewayProfiles()
     override suspend fun fetchGatewayModels(request: FetchGatewayModelsRequest) = gatewayAdmin.fetchGatewayModels(request)
-    override suspend fun defaultGateway() = gatewayAdmin.defaultGateway()
-    override suspend fun selectDefaultGateway(selection: GatewaySelection) = gatewayAdmin.selectDefaultGateway(selection)
+    override suspend fun defaultGateway(): AdminResult<GatewaySelection?> = withContext(Dispatchers.IO) {
+        val original = gatewayAdmin.defaultGateway()
+        if (original is AdminResult.Failed) return@withContext original
+        val saved = (original as AdminResult.Success).value
+        val agent = nativeAdmin.store.preferredAgent() ?: saved?.agent ?: return@withContext original
+        val setting = nativeAdmin.store.settings().first { it.agent == agent }
+        val account = nativeAdmin.store.accounts().firstOrNull { it.agent == agent && !it.expired }
+        if (account != null && setting.mode != AgentConnectionMode.API_ONLY)
+            return@withContext AdminResult.Success(GatewaySelection(agent, GatewayProfileRef(NativeConnectionRef.id(agent), account.version)))
+        if (setting.mode == AgentConnectionMode.NATIVE_ONLY) return@withContext AdminResult.Success(null)
+        val profiles = gatewayAdmin.listGatewayProfiles()
+        if (profiles is AdminResult.Failed) return@withContext profiles
+        val candidates = (profiles as AdminResult.Success).value.filter { it.agent == agent && (setting.gatewayId == null || it.ref.id == setting.gatewayId) }
+        val target = candidates.firstOrNull { it.ref.id == saved?.profile?.id } ?: candidates.firstOrNull()
+        return@withContext AdminResult.Success(target?.let { GatewaySelection(agent, it.ref) })
+    }
+    override suspend fun selectDefaultGateway(selection: GatewaySelection): AdminResult<Unit> = withContext(Dispatchers.IO) {
+        val native = NativeConnectionRef.agent(selection.profile.id)
+        if (native != null) {
+            if (native != selection.agent || nativeAdmin.store.accounts().none { it.agent == native && it.version == selection.profile.version && !it.expired })
+                return@withContext AdminResult.Failed(RuntimeError(ErrorCode.INVALID_CONFIG))
+        } else {
+            val result = gatewayAdmin.selectDefaultGateway(selection)
+            if (result is AdminResult.Failed) return@withContext result
+        }
+        return@withContext try { nativeAdmin.store.prefer(selection.agent); AdminResult.Success(Unit) }
+        catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.STORAGE_FULL)) }
+    }
     override suspend fun saveGatewayProfile(request: SaveGatewayRequest) = gatewayAdmin.saveGatewayProfile(request)
     override suspend fun deleteGatewayProfile(id: String) = gatewayAdmin.deleteGatewayProfile(id)
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -254,6 +303,8 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
                 var error: ErrorCode? = null
                 try {
                     val secrets = GatewayStore(this@RuntimeService).list().map { it.key }.filter { it.isNotEmpty() }
+                    val nativeStore = NativeAuthStore(this@RuntimeService)
+                    val nativeRedactors = nativeStore.accounts().map { nativeStore.redactor(it.agent) }
                     runtime.runShell(command,
                         onStarted = { started = true; registry.started(it) }, onTerminated = { exit = it; registry.terminated(it) }).collect { line ->
                         val text = when (line) {
@@ -262,7 +313,8 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
                             is com.libtermux.executor.OutputLine.Exit -> { exit = line.code; null }
                         }
                         if (text != null) {
-                            val redacted = secrets.fold(text) { value, key -> value.replace(key, "[redacted]") }
+                            val apiRedacted = secrets.fold(text) { value, key -> value.replace(key, "[redacted]") }
+                            val redacted = nativeRedactors.fold(apiRedacted) { value, redactor -> redactor.redact(value) }
                             diagnosticState.update { it.copy(output = (it.output + redacted.take(4096)).takeLast(200)) }
                         }
                     }
@@ -341,6 +393,7 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
         scope.launch { finishHostStop(StopCause.TIMEOUT) }
     }
     override fun onDestroy() {
+        authenticationJob?.cancel()
         initialization?.cancel()
         val cause = hostStopCause ?: StopCause.HOST_STOP
         mutableEnvironment.value = EnvironmentSnapshot(EnvironmentPhase.FAILED, AppStrings.runtimeServiceStoppedCheckingTaskStatus, RuntimeError(if (cause == StopCause.TIMEOUT) ErrorCode.TIMEOUT else ErrorCode.INTERRUPTED, true))

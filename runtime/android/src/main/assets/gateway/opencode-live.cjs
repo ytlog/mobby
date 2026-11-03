@@ -79,7 +79,7 @@ async function runOpenCodeLive(executable, serverArguments, environment, bridge)
     const selectedSession = command.newSession === true ? null : command.sessionId || sessionId;
     if (command.newSession === true) sessionId = null;
     const args = ['run', '--attach', address, '--format', 'json', '--pure', '--auto',
-      '-m', `openai/${command.model}`];
+      '-m', `${environment.MOBBY_NATIVE_PROVIDER || 'openai'}/${command.model}`];
     if (selectedSession) args.push('--session', selectedSession);
     for (const image of command.images) {
       if (typeof image.path !== 'string' || !image.path.startsWith('/') || image.path.includes('\0')) {

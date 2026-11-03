@@ -13,8 +13,9 @@ internal class ProcessRegistry(
         runCatching { File("/proc/$pid/stat").readText().substringAfterLast(") ").split(' ')[19] }.getOrNull()
     },
     private val pause: () -> Unit = { Thread.sleep(10) },
+    namespace: String = "runtime-process",
 ) {
-    private val prefs = context.getSharedPreferences("runtime-process", Context.MODE_PRIVATE)
+    private val prefs = context.getSharedPreferences(namespace, Context.MODE_PRIVATE)
     private fun startTime(pid: Int): String? = readStartTime(pid)
     fun started(pid: Int) {
         // spawn returns immediately after fork. Android may briefly hide /proc until

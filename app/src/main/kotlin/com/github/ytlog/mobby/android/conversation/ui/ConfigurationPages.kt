@@ -43,10 +43,10 @@ import kotlinx.coroutines.*
     AlertDialog(onDismissRequest = dismiss, containerColor = raisedColor(), shape = RoundedCornerShape(24.dp), title = { Text(title) }, text = { OutlinedTextField(value, { value = it }, singleLine = true) },
         confirmButton = { TextButton(onClick = { save(value) }) { Text(AppStrings.save) } }, dismissButton = { TextButton(onClick = dismiss) { Text(AppStrings.cancel) } })
 }
-@Composable internal fun AgentConfigMenu(expanded: Boolean, dismiss: () -> Unit, c: Conversation, vm: ConversationViewModel, anchor: IntRect = IntRect.Zero) {
+@Composable internal fun AgentConfigMenu(expanded: Boolean, dismiss: () -> Unit, c: Conversation, vm: ConversationViewModel, anchor: IntRect = IntRect.Zero, manageConnections: () -> Unit = {}) {
     if (!expanded) return
     val agents by vm.agents.collectAsStateWithLifecycle()
-    val profiles by vm.gateways.collectAsStateWithLifecycle()
+    val profiles by vm.connections.collectAsStateWithLifecycle()
     var agent by rememberSaveable(c.id.value) { mutableStateOf(c.config.agent) }
     var gatewayId by rememberSaveable(c.id.value) { mutableStateOf(c.config.gatewayProfile) }
     var model by rememberSaveable(c.id.value) { mutableStateOf(c.config.model) }
@@ -56,17 +56,17 @@ import kotlinx.coroutines.*
     FrostedMenu(true, dismiss, anchor) {
         Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()).padding(bottom = 12.dp)) {
             MenuSection(AppStrings.agentLabel) {
-                AgentId.values().forEach { value -> MenuOption(value.label(), agent == value, icon = value.glyph()) {
+                AgentId.values().filter { value -> profiles.any { it.agent == value } && agents.none { it.agent == value && it.unavailable != null } }.forEach { value -> MenuOption(value.label(), agent == value, icon = value.glyph()) {
                     agent = value
                     val gateway = profiles.firstOrNull { it.agent == value && it.id == gatewayId } ?: profiles.firstOrNull { it.agent == value }
                     gatewayId = gateway?.id.orEmpty(); model = gateway?.model.orEmpty(); reasoning = null
                 } }
             }
-            MenuSection(AppStrings.gateway) {
+            MenuSection(AppStrings.connectionSource) {
                 profiles.filter { it.agent == agent }.forEach { gateway ->
-                    MenuOption(gatewayLabel(gateway), gatewayId == gateway.id) { gatewayId = gateway.id; model = gateway.model; reasoning = null }
+                    MenuOption(connectionLabel(gateway), gatewayId == gateway.id) { gatewayId = gateway.id; model = gateway.model; reasoning = null }
                 }
-                if (profiles.none { it.agent == agent }) MenuCaption(AppStrings.noGatewayAvailableOpenGatewaySettings)
+                if (profiles.none { it.agent == agent }) MenuCaption(AppStrings.connectAgentFirst)
             }
             MenuSection(AppStrings.model) {
                 val gateway = profiles.firstOrNull { it.agent == agent && it.id == gatewayId }
@@ -83,6 +83,7 @@ import kotlinx.coroutines.*
                     levels.forEach { level -> MenuOption(level, reasoning == level) { reasoning = level } }
                 }
             }
+            MenuSection(AppStrings.manageAgentConnections) { MenuOption(AppStrings.manageAgentConnections, false) { dismiss(); manageConnections() } }
             MenuCaption(AppStrings.changesApplyToTheNextTurnTheCurrentExecution)
             if (agent != c.config.agent && c.hasTurns)
                 MenuCaption(AppStrings.continueInThisConversationCodexClaudeCodeAndOpencode)
@@ -107,10 +108,10 @@ import kotlinx.coroutines.*
         ) { Text(AppStrings.apply, fontWeight = FontWeight.SemiBold) }
     }
 }
-@Composable internal fun ConfigDialog(vm: ConversationViewModel, c: Conversation?, onDismiss: () -> Unit, onApply: (NextTurnConfig, String?) -> Unit, anchor: IntRect = IntRect.Zero) {
+@Composable internal fun ConfigDialog(vm: ConversationViewModel, c: Conversation?, onDismiss: () -> Unit, onApply: (NextTurnConfig, String?) -> Unit, anchor: IntRect = IntRect.Zero, manageConnections: () -> Unit = {}) {
     val state by vm.state.collectAsStateWithLifecycle()
     var project by rememberSaveable { mutableStateOf(c?.project) }
-    val profiles by vm.gateways.collectAsStateWithLifecycle()
+    val profiles by vm.connections.collectAsStateWithLifecycle()
     val defaultGateway by vm.defaultGateway.collectAsStateWithLifecycle()
     var agent by rememberSaveable { mutableStateOf(ConversationGatewayResolver.preferred(profiles, defaultGateway)?.agent ?: AgentId.PI) }
     var agentChosen by rememberSaveable { mutableStateOf(false) }
@@ -136,10 +137,11 @@ import kotlinx.coroutines.*
                 if (state.projects.isEmpty()) MenuCaption(AppStrings.createProjectsInProjectManagementInTheConversationDrawer)
             }
             MenuSection(AppStrings.agentLabel) {
-                AgentId.values().forEach { value ->
-                    MenuOption(value.label(), agent == value, icon = value.glyph(), enabled = profiles.any { it.agent == value }) { agent = value; agentChosen = true }
+                AgentId.values().filter { value -> profiles.any { it.agent == value } }.forEach { value ->
+                    MenuOption(value.label(), agent == value, icon = value.glyph()) { agent = value; agentChosen = true }
                 }
-                if (profiles.none { it.agent == agent }) MenuCaption(AppStrings.noGatewayAvailableOpenGatewaySettings)
+                if (profiles.none { it.agent == agent }) MenuCaption(AppStrings.connectAgentFirst)
+                MenuOption(AppStrings.manageAgentConnections, false) { onDismiss(); manageConnections() }
             }
         }
         Button(
@@ -173,6 +175,8 @@ import kotlinx.coroutines.*
         PageHeader(AppStrings.settings, back)
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             SettingsGroup {
+                SettingsItem(AppStrings.agentConnectionsTitle, { navigate("connections") }, AppStrings.agentConnectionsSummary)
+                GroupDivider()
                 SettingsItem(AppStrings.gatewaySettings, { navigate("gateway") }, AppStrings.configuredGatewaysAndModels)
                 GroupDivider()
                 SettingsItem(AppStrings.storageRetention, { navigate("history-limits") }, AppStrings.conversationAndAttachmentRetention)

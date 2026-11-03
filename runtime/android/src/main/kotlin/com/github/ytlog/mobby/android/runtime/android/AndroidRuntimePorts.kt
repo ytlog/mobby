@@ -52,22 +52,48 @@ internal class AndroidRuntimePorts(
     private val skills get() = SkillStore(runtime.sdk.vfs.homeDir)
     private val resources get() = PersistentResourceStore(File(context.filesDir, "input-resources"), fallbackRoot = File(context.filesDir, "resource-cache"))
     private val gateways = GatewayStore(context)
+    private val nativeStore = NativeAuthStore(context)
+    private data class Route(val gateway: GatewayConfig? = null, val native: NativeAccountSummary? = null, val model: String, var redactor: NativeCredentialRedactor = NativeCredentialRedactor()) {
+        var authenticationFailed: Boolean = false
+        fun json(): String = gateway?.json() ?: kotlinx.serialization.json.buildJsonObject {
+            put("source", kotlinx.serialization.json.JsonPrimitive("native"))
+            put("provider", kotlinx.serialization.json.JsonPrimitive(requireNotNull(native).provider))
+            put("model", kotlinx.serialization.json.JsonPrimitive(model))
+        }.toString()
+    }
+    private fun route(request: RunRequest): Route {
+        val nativeAgent = NativeConnectionRef.agent(request.gatewayProfileRef.id)
+        if (nativeAgent != null) {
+            require(nativeAgent == request.agentId)
+            val account = nativeStore.accounts().first { it.agent == nativeAgent && it.version == request.gatewayProfileRef.version && !it.expired }
+            require(account.models.any { it.id == request.modelId })
+            return Route(native = account, model = request.modelId, redactor = nativeStore.redactor(account.agent))
+        }
+        val stored = gateways.load(request.gatewayProfileRef.id, request.gatewayProfileRef.version).config(mode(request.agentId))
+        stored.validateFor(mode(request.agentId)); require(stored.accepts(request.modelId))
+        return Route(gateway = stored.forRun(request.modelId), model = request.modelId)
+    }
     private fun mode(agent: AgentId) = agent.launchMode()
     override suspend fun capabilities(): CapabilityResult = withContext(Dispatchers.IO) {
         // Skills live in the runtime HOME, which exists only once the environment is ready; until then every agent is NOT_READY.
         val ready = state.value.phase == EnvironmentPhase.READY
+        val accounts = nativeStore.accounts()
+        val settings = nativeStore.settings()
         CapabilityResult.Available(RuntimeCapabilities("mobby-local-1", AgentId.values().map { agent ->
-            val configs = gateways.list().mapNotNull { record -> runCatching { record.config(mode(agent)).also { it.validateFor(mode(agent)) } }.getOrNull() }
-            val models = configs.flatMap { config ->
+            val setting = settings.firstOrNull { it.agent == agent } ?: AgentConnectionSetting(agent)
+            val native = accounts.firstOrNull { it.agent == agent && !it.expired && setting.mode != AgentConnectionMode.API_ONLY }
+            val configs = if (native != null || setting.mode == AgentConnectionMode.NATIVE_ONLY) emptyList() else
+                gateways.list().filter { setting.gatewayId == null || it.id == setting.gatewayId }.mapNotNull { record -> runCatching { record.config(mode(agent)).also { it.validateFor(mode(agent)) } }.getOrNull() }
+            val models = (native?.models.orEmpty().map { ModelCapability(it.id, emptySet(), it.name) } + configs.flatMap { config ->
                 if (config.models.isNotEmpty()) config.models.map { ModelCapability(it.id, emptySet(), it.name) }
                 else listOf(ModelCapability(config.model, emptySet()))
-            }.distinctBy { it.id }
+            }).distinctBy { it.id }
             AgentCapability(agent, models,
                 unavailableReason = when {
                     !ready -> RuntimeError(ErrorCode.NOT_READY, true)
                     agent == AgentId.CLAUDE_CODE && !runtime.claudeReady -> RuntimeError(ErrorCode.NOT_READY, true)
                     agent == AgentId.OPEN_CODE && !runtime.opencodeReady -> RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY)
-                    configs.isEmpty() -> RuntimeError(ErrorCode.INVALID_CONFIG)
+                    configs.isEmpty() && native == null -> RuntimeError(ErrorCode.INVALID_CONFIG)
                     else -> null
                 },
                 supportsResume = true, supportsApproval = agent == AgentId.CLAUDE_CODE, supportsResources = true, supportsImages = true, supportsDeviceCards = true, skillCapabilities = if (ready) skills.list(agent).filter { it.available }.map { it.ref }.toSet() else emptySet())
@@ -121,24 +147,20 @@ internal class AndroidRuntimePorts(
         if (request.sessionRef?.value?.matches(AgentSessionId) == false) return@withContext RuntimeError(ErrorCode.INVALID_CONFIG)
         val valid = runCatching {
             runtime.executable(mode)
-            gateways.load(request.gatewayProfileRef.id, request.gatewayProfileRef.version).config(mode).also {
-                it.validateFor(mode); require(it.accepts(request.modelId))
-            }
+            route(request)
         }.isSuccess
         if (valid) null else RuntimeError(ErrorCode.INVALID_CONFIG)
     }
     override suspend fun execute(request: RunRequest, stop: StateFlow<StopCause?>, devices: DeviceOperationPort, output: suspend (String, Boolean) -> Unit): ProcessResult {
         val config = withContext(Dispatchers.IO) {
-            val stored = gateways.load(request.gatewayProfileRef.id, request.gatewayProfileRef.version).config(mode(request.agentId))
-            stored.validateFor(mode(request.agentId))
-            require(stored.accepts(request.modelId))
-            stored.forRun(request.modelId)
+            route(request)
         }
         val reusable = gate.withLock { held?.takeIf { it.accepts(request) } }
         val watcher = scope.launch { stop.filterNotNull().first(); gate.withLock { held }?.shutdown(force = true) }
         var files: AgentInputFiles? = null
         return try {
             if (reusable != null) {
+                config.redactor = reusable.redactor
                 val prepared = assemble(request, reusable.extras)
                 files = prepared.files
                 activeInput = request.requestId
@@ -159,7 +181,10 @@ internal class AndroidRuntimePorts(
         } catch (_: Exception) {
             held?.shutdown(force = true)
             ProcessResult(null, false, ErrorCode.PROTOCOL_ERROR)
-        } finally { watcher.cancel(); files?.close() }
+        } finally {
+            watcher.cancel(); files?.close()
+            if (config.authenticationFailed && stop.value == null) config.native?.let { account -> nativeStore.expire(account.agent, account.version) }
+        }
     }
     private fun assemble(request: RunRequest, extras: List<Pair<String, File>>): PreparedTurn {
         val prepared = resources.prepare(request.inputParts, request.workspaceRef)
@@ -174,11 +199,12 @@ internal class AndroidRuntimePorts(
         val schema = if (structured) Json.parseToJsonElement(SkillGeneration.schema) else null
         return PreparedTurn(AgentTurn(request.requestId, prompt, images, schema), files)
     }
-    private suspend fun start(request: RunRequest, config: GatewayConfig, stop: StateFlow<StopCause?>, devices: DeviceOperationPort, output: suspend (String, Boolean) -> Unit): ProcessResult {
+    private suspend fun start(request: RunRequest, config: Route, stop: StateFlow<StopCause?>, devices: DeviceOperationPort, output: suspend (String, Boolean) -> Unit): ProcessResult {
         val workingDirectory = requireNotNull(runtime.workspaces.resolve(request.workspaceRef))
         val deviceStop = AtomicReference<StateFlow<StopCause?>?>(stop)
         var session: DeviceSession? = null
         var appFunctionSession: AppFunctionHost.AppFunctionSession? = null
+        var nativeLease: NativeAuthStore.Lease? = null
         var bridgeDir: File? = null
         var inbox: File? = null
         val extras = mutableListOf<Pair<String, File>>()
@@ -193,6 +219,7 @@ internal class AndroidRuntimePorts(
             staged.forEach { skills.unstage(request.agentId, it) }
             bridgeDir?.deleteRecursively()
             inbox?.deleteRecursively()
+            nativeLease?.close()
         }
         var prepared: PreparedTurn? = null
         var launched = false
@@ -235,21 +262,25 @@ internal class AndroidRuntimePorts(
                     extras += name to installed
                 }
             }
+            config.native?.let { account ->
+                nativeLease = nativeStore.open(account.agent, runtime.sdk.vfs.homeDir, expectedGeneration = account.version)
+                config.redactor = nativeLease!!.redactor
+            }
             val ready = assemble(request, extras)
             prepared = ready
             val connection = AgentSessions.connect(request, runtime.executable(mode(request.agentId)), workingDirectory.absolutePath, ready.turn)
-            val agent = LiveAgent(request, connection.session, extras, deviceStop, session, appFunctionSession)
+            val agent = LiveAgent(request, connection.session, extras, deviceStop, session, appFunctionSession, config.redactor) { nativeLease?.flush() }
             control = connection.session
             val exit = AtomicReference<Int?>(null)
             agent.job = scope.launch(Dispatchers.IO) {
                 try {
                     runtime.sdk.executor.executeArgsStreaming(listOf(File(runtime.sdk.vfs.binDir, "node").absolutePath,
                         File(context.filesDir, "gateway.cjs").absolutePath, mode(request.agentId).name) + connection.arguments,
-                        workingDirectory, mapOf("MOBBY_GATEWAY_CONFIG" to config.json(), "MOBBY_LANGUAGE" to com.github.ytlog.mobby.android.localization.AppLanguage.current.tag),
+                        workingDirectory, nativeLease?.environment.orEmpty() + mapOf("MOBBY_GATEWAY_CONFIG" to config.json(), "MOBBY_LANGUAGE" to com.github.ytlog.mobby.android.localization.AppLanguage.current.tag),
                         onStarted = { pid -> agent.started = true; liveState.value = true; registry.started(pid) },
                         onTerminated = { code -> exit.set(code); registry.terminated(code) },
                         input = connection.session.input, timeoutMs = 0,
-                    ).collect { agent.inbox.send(it) }
+                    ).collect { nativeLease?.check(); agent.inbox.send(it) }
                 } finally {
                     withContext(NonCancellable) {
                         agent.alive = false
@@ -278,9 +309,11 @@ internal class AndroidRuntimePorts(
             throw e
         }
     }
-    private fun sanitize(text: String, config: GatewayConfig): String {
-        var value = text
-        if (config.key.isNotEmpty()) {
+    private fun sanitize(text: String, route: Route): String {
+        val config = route.gateway
+        if (route.native != null) NativeAuthenticationFailure.terminalState(text)?.let { route.authenticationFailed = it }
+        var value = route.redactor.redact(text)
+        if (config != null && config.key.isNotEmpty()) {
             value = value.replace(config.key, "[redacted]")
             val escaped = kotlinx.serialization.json.JsonPrimitive(config.key).toString().removeSurrounding("\"")
             value = value.replace(escaped, "[redacted]")
@@ -301,6 +334,8 @@ private class LiveAgent(
     private val deviceStop: AtomicReference<StateFlow<StopCause?>?>,
     private val deviceSession: DeviceSession?,
     private val appFunctionSession: AppFunctionHost.AppFunctionSession?,
+    val redactor: NativeCredentialRedactor,
+    private val checkpoint: () -> Unit,
 ) {
     val inbox = kotlinx.coroutines.channels.Channel<OutputLine>(kotlinx.coroutines.channels.Channel.UNLIMITED)
     lateinit var job: Job
@@ -346,6 +381,7 @@ private class LiveAgent(
     private suspend fun finish(retain: Boolean, force: Boolean, acceptProtocolExit: Boolean = false): ProcessResult {
         val id = session.sessionId()
         if (retain && alive && job.isActive && id != null) {
+            checkpoint()
             binding = LiveSessionBinding(anchor.agentId, anchor.workspaceRef, anchor.modelId, anchor.gatewayProfileRef, anchor.capabilityRefs, anchor.requestedOutput, id)
             return ProcessResult(null, true, retained = true)
         }

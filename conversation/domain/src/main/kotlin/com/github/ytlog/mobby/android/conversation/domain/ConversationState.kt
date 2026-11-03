@@ -142,6 +142,12 @@ interface SystemPort {
     suspend fun saveManualSkill(agent: AgentId, name: String, description: String, body: String): DataResult<Skill>
     val status: Flow<SystemStatus>
     val diagnostic: Flow<DiagnosticOutput>
+    suspend fun nativeAccounts(): List<AgentLogin> = emptyList()
+    suspend fun connectionSettings(): List<AgentConnectionPreference> = emptyList()
+    suspend fun saveConnectionSetting(setting: AgentConnectionPreference): OperationResult = OperationResult.Failed(AppStrings.unsupportedOperation)
+    suspend fun nativeLoginMethods(agent: AgentId): DataResult<List<AgentLoginMethod>> = DataResult.Loaded(emptyList())
+    suspend fun loginAgent(agent: AgentId, method: String, updates: (AgentLoginUpdate) -> Unit, input: Flow<String>): OperationResult = OperationResult.Failed(AppStrings.unsupportedOperation)
+    suspend fun logoutAgent(agent: AgentId): OperationResult = OperationResult.Failed(AppStrings.unsupportedOperation)
     suspend fun agents(): List<AgentOption>
     suspend fun checkGateway(profile: GatewayProfile): DataResult<GatewayCheckReport>
     suspend fun gateways(): List<GatewayProfile>
@@ -369,6 +375,12 @@ class ConversationUseCases(
     suspend fun attachment(workspace: String, ref: String) = system.attachment(workspace, ref)
     suspend fun restoreDraft(id: ConversationId, turn: Turn) = repository.restoreDraft(id, turn.userText, turn.attachments)
     suspend fun removeAttachment(id: ConversationId, ref: String) = repository.setAttachment(id, ref, false)
+    suspend fun nativeAccounts() = system.nativeAccounts()
+    suspend fun connectionSettings() = system.connectionSettings()
+    suspend fun saveConnectionSetting(setting: AgentConnectionPreference) = system.saveConnectionSetting(setting)
+    suspend fun nativeLoginMethods(agent: AgentId) = system.nativeLoginMethods(agent)
+    suspend fun loginAgent(agent: AgentId, method: String, updates: (AgentLoginUpdate) -> Unit, input: Flow<String>) = system.loginAgent(agent, method, updates, input)
+    suspend fun logoutAgent(agent: AgentId) = system.logoutAgent(agent)
     suspend fun agents() = system.agents()
     suspend fun checkGateway(profile: GatewayProfile) = system.checkGateway(profile)
     suspend fun gateways() = system.gateways()

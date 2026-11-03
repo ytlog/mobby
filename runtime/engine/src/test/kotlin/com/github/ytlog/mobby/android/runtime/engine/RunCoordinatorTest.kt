@@ -16,6 +16,28 @@ class RunCoordinatorTest {
         override suspend fun capabilities() = CapabilityResult.Available(RuntimeCapabilities("test", emptyList()))
         override suspend fun validate(request: RunRequest): RuntimeError? = null
     }
+    @Test fun `failed native execution is never retried on an API route`() = runTest {
+        val launched = mutableListOf<GatewayProfileRef>()
+        val journal = MemoryJournal()
+        val process = object : ProcessPort {
+            override suspend fun execute(request: RunRequest, stop: StateFlow<StopCause?>, devices: DeviceOperationPort,
+                output: suspend (String, Boolean) -> Unit): ProcessResult {
+                launched += request.gatewayProfileRef
+                output("""{"type":"turn.failed","error":{"message":"HTTP 401"}}""", false)
+                return ProcessResult(1, true, ErrorCode.PROTOCOL_ERROR)
+            }
+        }
+        val runtime = RunCoordinator(this, environment, process, journal, MemoryOutput())
+        runtime.recover()
+        val request = request().copy(gatewayProfileRef = GatewayProfileRef(NativeConnectionRef.id(AgentId.CODEX), 1))
+        val result = runtime.submit(request) as SubmitResult.Accepted
+        advanceUntilIdle()
+        assertEquals(listOf(request.gatewayProfileRef), launched)
+        assertEquals(RunPhase.FAILED, journal.states.getValue(result.runId).phase)
+        runtime.submit(request)
+        advanceUntilIdle()
+        assertEquals(listOf(request.gatewayProfileRef), launched)
+    }
     private class MemoryJournal : JournalPort {
         val requests = mutableMapOf<RequestId, RequestRecord>()
         val states = mutableMapOf<RunId, RunSnapshot>()
