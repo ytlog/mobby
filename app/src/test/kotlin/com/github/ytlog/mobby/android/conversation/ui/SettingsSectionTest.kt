@@ -38,7 +38,7 @@ class SettingsSectionTest {
 
     @After fun cleanup() { compose.runOnIdle { store.clear() }; scope.cancel() }
 
-    @Test fun `shell diagnostic and environment check share one section below storage`() {
+    @Test fun `screen control shell diagnostic and environment check share the runtime section`() {
         val repository = stub<ConversationStore> { name -> when (name) {
             "getState" -> MutableStateFlow(ConversationState(loading = false))
             else -> error(name)
@@ -64,11 +64,16 @@ class SettingsSectionTest {
         }
         val storage = compose.onNodeWithText("存储与保留").fetchSemanticsNode().boundsInRoot
         compose.onNodeWithText("本地模型服务").assertDoesNotExist()
+        val screen = compose.onNodeWithText("屏幕操作模式").fetchSemanticsNode().boundsInRoot
         val shell = compose.onNodeWithText("Shell 诊断").fetchSemanticsNode().boundsInRoot
         val check = compose.onNodeWithText("重新检查运行环境").fetchSemanticsNode().boundsInRoot
-        assertTrue(storage.bottom < shell.top)
+        assertTrue(storage.bottom < screen.top)
+        assertTrue(screen.bottom < shell.top)
         assertTrue(shell.bottom < check.top)
-        assertTrue(check.top - shell.bottom < shell.top - storage.bottom)
+        assertTrue(check.top - shell.bottom < screen.top - storage.bottom)
+        compose.onNodeWithText("屏幕操作模式").performClick()
+        val application = org.robolectric.Shadows.shadowOf(org.robolectric.RuntimeEnvironment.getApplication())
+        assertEquals(ScreenControlSettingsActivity::class.java.name, application.nextStartedActivity.component?.className)
     }
 
     @Test fun `desktop pet switch reports the requested value`() {

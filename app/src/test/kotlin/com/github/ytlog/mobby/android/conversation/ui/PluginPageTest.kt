@@ -54,6 +54,7 @@ class PluginPageTest {
         compose.onNodeWithText("屏幕").assertIsDisplayed()
         compose.onNodeWithText("手机").assertIsDisplayed()
         compose.onNodeWithText("开启").assertIsDisplayed()
+        compose.onNodeWithText("屏幕操作模式").assertDoesNotExist()
         compose.onNodeWithText("使用").assertDoesNotExist()
         compose.onNodeWithText("沟通").performClick()
         compose.waitUntil(5_000) { compose.onAllNodesWithText("这个分类还没有插件").fetchSemanticsNodes().isNotEmpty() }

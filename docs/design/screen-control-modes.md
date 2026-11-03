@@ -2,7 +2,7 @@
 
 ## 用户行为
 
-在「设置 → 插件 → 屏幕 → 屏幕操作模式」选择：
+在「设置 → 运行环境 → 屏幕操作模式」选择：
 
 - **当前屏幕（无障碍）**：保留原有模式，操作手机当前窗口，执行期间隐藏应用悬浮层、保持亮屏；需启用无障碍与任务通知。
 - **虚拟屏幕（内置 ADB）**：无需安装其他 App；用户开启系统无线调试并在 mobby 内配对，由本机 ADB 启动同一屏幕工作进程。详情见 [内置 ADB 屏幕服务](builtin-adb-screen.md)。
@@ -58,3 +58,5 @@ python3 runtime/device-plugins/probe_screen.py \
 2026-11-03 按用户要求删除外部 Shizuku 模式、授权入口、UserService、Provider 与 Maven 依赖，仅保留无障碍、内置 ADB 和 root。不保留开发期旧模式配置的迁移分支，旧的无效模式按未知值拒绝。
 
 本轮删除后的验证：使用现有 JBR 21 执行 Debug APK、Android 测试 APK、App/设备插件/Termux/本地化 374 项单元测试及 lint，全部通过（lint 0 错误、59 警告）；Python 49 项通过；Release R8 通过。实际 release 依赖清单、Debug 合并 Manifest 与 APK DEX 均无外部 Shizuku 依赖、Provider 或 UserService。mobby 100 与测试包覆盖安装后，内置 ADB 真机回归 18.725 秒通过，复用现有加密配对身份，验证点击、中文输入、滑动、预览与副屏释放。root 仍未在有 su 的设备上验收。
+
+配置入口统一放在「设置 → 运行环境 → 屏幕操作模式」，从设备插件列表移除重复入口。该调整的 Debug 构建、278 项 App 测试及 lint 通过；mobby 101 覆盖安装后，通过手机实际界面验证设置入口、三种模式和返回设置页。

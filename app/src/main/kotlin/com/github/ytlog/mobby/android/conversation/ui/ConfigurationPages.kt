@@ -167,7 +167,7 @@ import kotlinx.coroutines.*
     system: SystemStatus, appearance: Appearance, setAppearance: (Appearance) -> Unit, navigate: (String) -> Unit, back: () -> Unit, vm: ConversationViewModel,
     petEnabled: Boolean = false, petPermitted: Boolean = false, setPet: (Boolean) -> Unit = {},
 ) {
-    val languageContext = LocalContext.current
+    val context = LocalContext.current
     var languageError by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize()) {
         PageHeader(AppStrings.settings, back)
@@ -180,6 +180,10 @@ import kotlinx.coroutines.*
                 SettingsItem(AppStrings.appUpdates, { navigate("updates") }, AppStrings.updateSettingSummary)
             }
             SettingsGroup(AppStrings.runtime) {
+                SettingsItem(AppStrings.screenModeTitle, {
+                    context.startActivity(Intent(context, ScreenControlSettingsActivity::class.java))
+                })
+                GroupDivider()
                 SettingsItem(AppStrings.shellDiagnostics, { navigate("diagnostic") })
                 GroupDivider()
                 SettingsAction(AppStrings.recheckRuntime) { vm.enqueue { vm.report(vm.actions.initialize()) } }
@@ -189,7 +193,7 @@ import kotlinx.coroutines.*
                 com.github.ytlog.mobby.android.localization.AppLanguage.values().forEachIndexed { index, language ->
                     if (index > 0) GroupDivider()
                     ChoiceRow(language.nativeName, LanguagePreferences.current == language, {
-                        languageError = !LanguagePreferences.select(languageContext, language)
+                        languageError = !LanguagePreferences.select(context, language)
                     })
                 }
             }
@@ -365,9 +369,6 @@ private fun pluginCatalogTabs(tablet: Boolean) = listOf(if (tablet) AppStrings.t
                                 else -> AppStrings.allow(grant.label)
                             }) }
                         }
-                        if (plugin.ref == "plugin:device:screen") TextButton(onClick = {
-                            context.startActivity(Intent(context, ScreenControlSettingsActivity::class.java))
-                        }) { Text(AppStrings.screenModeTitle) }
                     }
                 }
             }
