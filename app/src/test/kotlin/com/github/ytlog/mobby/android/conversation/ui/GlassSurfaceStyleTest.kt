@@ -100,4 +100,24 @@ class GlassSurfaceStyleTest {
         assertTrue("glass must retain coarse tones while protecting controls: $transmittedContrast", transmittedContrast in 0.25f..0.55f)
     }
 
+    @Test fun `light neutral glass transmits broad tones without a milky fill`() {
+        compose.setContent {
+            val host = LocalView.current
+            SideEffect { view = host }
+            androidx.compose.foundation.Canvas(Modifier.size(240.dp, 80.dp).testTag("light-transmission")) {
+                drawRect(Color.Black)
+                drawRect(Color.White, topLeft = androidx.compose.ui.geometry.Offset(size.width / 2f, 0f))
+                drawGlassLighting(Color(0xFFE3E9F1), dark = false, accented = false)
+            }
+        }
+        val bounds = compose.onNodeWithTag("light-transmission").fetchSemanticsNode().boundsInRoot
+        val pixels = compose.runOnIdle {
+            val bitmap = Bitmap.createBitmap(bounds.width.toInt(), bounds.height.toInt(), Bitmap.Config.ARGB_8888)
+            view.draw(Canvas(bitmap).apply { translate(-bounds.left, -bounds.top) })
+            bitmap.asImageBitmap().toPixelMap()
+        }
+        val contrast = pixels[180, 40].luminance() - pixels[60, 40].luminance()
+        assertTrue("light glass must keep broad backdrop contrast: $contrast", contrast > 0.85f)
+    }
+
 }

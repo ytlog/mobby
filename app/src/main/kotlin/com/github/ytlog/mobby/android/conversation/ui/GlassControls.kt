@@ -50,21 +50,21 @@ internal fun GlassSurface(
         backdrop = backdrop,
         shape = { shape },
         effects = {
-            blur(12.dp.toPx())
+            blur((if (neutralLight) 3.dp else 12.dp).toPx())
             lens(6.dp.toPx(), 20.dp.toPx())
         },
-        highlight = { Highlight(width = 0.4.dp, blurRadius = 0.5.dp,
-            style = HighlightStyle.Default(intensity = if (dark) 0.36f else 0.40f, falloff = 6f)) },
-        shadow = { Shadow(radius = 12.dp, offset = DpOffset(0.dp, 4.dp), color = Color.Black.copy(alpha = if (dark) 0.10f else if (neutralLight) 0.12f else 0.07f)) },
+        highlight = { Highlight(width = if (neutralLight) 0.85.dp else 0.4.dp, blurRadius = if (neutralLight) 0.25.dp else 0.5.dp,
+            style = HighlightStyle.Default(intensity = if (dark) 0.36f else if (neutralLight) 0.80f else 0.40f, falloff = 6f)) },
+        shadow = { Shadow(radius = 12.dp, offset = DpOffset(0.dp, 4.dp), color = Color.Black.copy(alpha = if (dark) 0.10f else if (neutralLight) 0.09f else 0.07f)) },
         onDrawSurface = surface,
-    ) else Modifier.background(base, shape).clip(shape).drawBehind(surface)
+    ) else Modifier.background(if (neutralLight) base.copy(alpha = 0.14f) else base, shape).clip(shape).drawBehind(surface)
     // The library already draws a directional highlight. A second border turns it into chrome.
     val fallbackRim = if (opticalGlass) Modifier else Modifier.border(
-        0.5.dp,
+        if (neutralLight) 0.85.dp else 0.5.dp,
         Brush.linearGradient(listOf(
-            Color.White.copy(alpha = if (dark) 0.18f else 0.40f),
+            Color.White.copy(alpha = if (dark) 0.18f else if (neutralLight) 0.90f else 0.40f),
             Color.Transparent,
-            Color.White.copy(alpha = if (dark) 0.025f else 0.06f),
+            Color.White.copy(alpha = if (dark) 0.025f else if (neutralLight) 0.35f else 0.06f),
         )),
         shape,
     )
@@ -75,7 +75,7 @@ internal fun GlassSurface(
 
 /** Lighting over the sampled image; kept separate so transmission can be pixel-tested without AGSL. */
 internal fun DrawScope.drawGlassLighting(base: Color, dark: Boolean, accented: Boolean) {
-    drawRect(base.copy(alpha = if (accented) 0.94f else if (dark) 0.32f else 0.42f))
+    drawRect(base.copy(alpha = if (accented) 0.94f else if (dark) 0.32f else 0.14f))
     if (!accented) {
         drawRect(Brush.verticalGradient(
             0f to Color.White.copy(alpha = if (dark) 0.012f else 0.18f),
