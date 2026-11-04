@@ -45,6 +45,9 @@ class GlassTransmissionDeviceTest {
         val popupVisible = mutableStateOf(false)
         val optionSelected = mutableStateOf(false)
         val clicks = java.util.concurrent.atomic.AtomicInteger()
+        val contextVisible = mutableStateOf(false)
+        val contextBounds = AtomicReference<Rect>()
+        val contextClicks = java.util.concurrent.atomic.AtomicInteger()
         // Launch via the test shell: some devices block instrumentation's background activity start.
         val monitor = instrumentation.addMonitor(ComponentActivity::class.java.name, null, false)
         var fixture: ComponentActivity? = null
@@ -74,11 +77,21 @@ class GlassTransmissionDeviceTest {
                                     topLeft = Offset(size.width / 2f, 0f))
                             }
                             CompositionLocalProvider(LocalConversationBackdrop provides backdrop) {
-                                GlassSurface(Modifier.align(Alignment.Center).size(240.dp, 80.dp)
-                                    .onGloballyPositioned {
-                                        val r = it.boundsInWindow()
-                                        bounds.set(Rect(r.left.roundToInt(), r.top.roundToInt(), r.right.roundToInt(), r.bottom.roundToInt()))
-                                    }) {}
+                                Box(Modifier.align(Alignment.Center).size(240.dp, 80.dp).onGloballyPositioned {
+                                    val r = it.boundsInWindow()
+                                    bounds.set(Rect(r.left.roundToInt(), r.top.roundToInt(), r.right.roundToInt(), r.bottom.roundToInt()))
+                                }) {
+                                    GlassSurface(Modifier.fillMaxSize()) {}
+                                    if (contextVisible.value) ComposerContextBubbles(maxWidth = 240.dp, visible = true) {
+                                        androidx.compose.material3.InputChip(selected = true,
+                                            onClick = { contextClicks.incrementAndGet(); contextVisible.value = false },
+                                            modifier = Modifier.onGloballyPositioned {
+                                                val origin = it.positionOnScreen()
+                                                contextBounds.set(Rect(origin.x.roundToInt(), origin.y.roundToInt(),
+                                                    origin.x.roundToInt() + it.size.width, origin.y.roundToInt() + it.size.height))
+                                            }, label = { androidx.compose.material3.Text("GPU context ×") })
+                                    }
+                                }
                             }
                             FrostedMenu(popupVisible.value, { popupVisible.value = false }) {
                                 Column(Modifier.onGloballyPositioned {
@@ -142,6 +155,26 @@ class GlassTransmissionDeviceTest {
             waitForContrast(1)
             instrumentation.runOnMainSync { backgroundMode.value = 2 }
             waitForContrast(-1)
+            instrumentation.runOnMainSync { contextVisible.value = true }
+            val contextDeadline = SystemClock.uptimeMillis() + 5_000
+            while (contextBounds.get() == null && SystemClock.uptimeMillis() < contextDeadline) {
+                instrumentation.waitForIdleSync()
+                SystemClock.sleep(50)
+            }
+            val context = contextBounds.get() ?: error("floating context did not lay out")
+            val input = bounds.get() ?: error("input anchor did not lay out")
+            assertTrue("context must stay outside and above the input: $context / $input", context.bottom <= input.top)
+            assertTrue("floating context must retain input window focus", activity.hasWindowFocus())
+            val contextDown = SystemClock.uptimeMillis()
+            for (action in listOf(android.view.MotionEvent.ACTION_DOWN, android.view.MotionEvent.ACTION_UP)) {
+                val event = android.view.MotionEvent.obtain(contextDown, SystemClock.uptimeMillis(), action,
+                    context.exactCenterX(), context.exactCenterY(), 0)
+                instrumentation.uiAutomation.injectInputEvent(event, true)
+                event.recycle()
+            }
+            instrumentation.waitForIdleSync()
+            assertEquals("floating context must remain clickable", 1, contextClicks.get())
+            assertFalse(contextVisible.value)
             instrumentation.runOnMainSync { popupVisible.value = true }
             val menuDeadline = SystemClock.uptimeMillis() + 5_000
             while (popupBounds.get() == null && SystemClock.uptimeMillis() < menuDeadline) {

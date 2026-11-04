@@ -220,7 +220,7 @@ private suspend fun captureWindow(view: View): Bitmap? {
     }
 }
 
-private fun clearPopupChrome(view: View) {
+internal fun clearPopupChrome(view: View) {
     val transparent = ColorDrawable(android.graphics.Color.TRANSPARENT)
     view.background = transparent
     view.setBackgroundColor(android.graphics.Color.TRANSPARENT)

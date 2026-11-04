@@ -332,6 +332,7 @@ class ConversationHostActions(
                             onNew = { dialog = if (gateways.isEmpty()) "gateway-intro" else "new" }, onMore = { if (it == "connections") { loginAgent = null; gatewayFromIntro = false; connectionFromSetup = false; navigate(AppPage.CONNECTIONS) } else dialog = it },
                             onAnchor = { toolbarAnchor = it }, onAdd = { showAddSheet() },
                             onRead = { title, value -> reading = title to value },
+                            contextBubblesVisible = wide || (!drawer && progress == 0f),
                         )
                     }
                 }
@@ -439,6 +440,7 @@ class ConversationHostActions(
     hostActions: ConversationHostActions, onSelectPlugin: (String) -> Unit, modifier: Modifier, programs: EmptyPagePrograms?,
     showMenu: Boolean, menuLabel: String, onMenu: () -> Unit, onNew: () -> Unit, onMore: (String) -> Unit,
     onAnchor: (IntRect) -> Unit, onAdd: () -> Unit, onRead: (String, String) -> Unit,
+    contextBubblesVisible: Boolean,
 ) {
     val canvas = conversationCanvas()
     val backdrop = rememberCanvasBackdrop { drawRect(canvas) }
@@ -470,7 +472,9 @@ class ConversationHostActions(
                             else -> {
                                 val detail = state.selected!!
                                 key(detail.conversation.id) {
-                                    Timeline(detail, vm, Modifier.fillMaxSize(), read = onRead,
+                                    Timeline(detail, vm, Modifier.fillMaxSize(),
+                                        bottomContentClearance = if (detail.conversation.draft.capabilities.isNotEmpty() || detail.conversation.creator != null) 56.dp else 0.dp,
+                                        read = onRead,
                                         hostActions = hostActions, proposal = vm::openSkillProposal, onSelectPlugin = onSelectPlugin, programs = programs)
                                 }
                             }
@@ -481,8 +485,8 @@ class ConversationHostActions(
             if (state.selected != null && state.error == null && !state.loading) {
                 Composer(state.selected!!, state, system, vm,
                     modifier = Modifier.align(Alignment.CenterHorizontally).widthIn(max = 760.dp).fillMaxWidth()
-                        .background(canvas).testTag("conversation-composer"),
-                    onAdd = onAdd, onConnect = { onMore("connections") })
+                        .testTag("conversation-composer"),
+                    onAdd = onAdd, onConnect = { onMore("connections") }, contextBubblesVisible = contextBubblesVisible)
             }
         }
     }
@@ -709,7 +713,7 @@ internal fun LazyListScope.programSection(shortcuts: List<ProgramShortcut>, quer
         }
 }
 
-@Composable private fun Composer(detail: ConversationDetail, state: ConversationState, system: SystemStatus, vm: ConversationViewModel, onAdd: () -> Unit, modifier: Modifier = Modifier, onConnect: () -> Unit = {}) {
+@Composable private fun Composer(detail: ConversationDetail, state: ConversationState, system: SystemStatus, vm: ConversationViewModel, onAdd: () -> Unit, modifier: Modifier = Modifier, onConnect: () -> Unit = {}, contextBubblesVisible: Boolean = true) {
     val composer by vm.composer.collectAsStateWithLifecycle()
     val active = detail.turns.lastOrNull { it.occupied }
     val unavailable = detail.conversation.archived || detail.conversation.deleted
@@ -789,83 +793,86 @@ internal fun LazyListScope.programSection(shortcuts: List<ProgramShortcut>, quer
     val micAvailable = !stop && composer.value.text.isEmpty() && detail.conversation.draft.attachments.isEmpty()
     LaunchedEffect(detail.conversation.id) { capture.error = null }
     LaunchedEffect(micAvailable, stop) { if (!micAvailable || stop) voiceMode = false }
-    Column(modifier.fillMaxWidth()) {
-        Column(Modifier.padding(horizontal = 12.dp)) {
-            if (unavailable) Text(AppStrings.thisConversationIsArchivedOrDeletedRestoreItIn, style = MaterialTheme.typography.bodySmall)
-            if (state.occupied != null && active == null) Text(AppStrings.isRunningYouCanKeepEditingThisDraft(state.occupied!!.conversation.title), style = MaterialTheme.typography.bodySmall)
-            if (system.diagnosticBusy) Text(AppStrings.shellDiagnosticsIsUsingTheRuntime, style = MaterialTheme.typography.bodySmall)
-            val selectedCapabilities = detail.conversation.draft.capabilities + listOfNotNull(detail.conversation.creator)
-            if (selectedCapabilities.isNotEmpty()) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                selectedCapabilities.forEach { ref -> InputChip(selected = true,
-                    onClick = { vm.enqueue { vm.actions.removeSkill(detail.conversation.id, ref) } },
-                    label = { Text("${if (ref == detail.conversation.creator) AppStrings.skillCreatorChip else capabilityLabel(ref)} ×") }) }
-            }
-            Column(Modifier.heightIn(max = 160.dp).verticalScroll(rememberScrollState())) {
-                AttachmentList(detail.conversation.draft.attachments, detail.conversation.config.workspace, vm) { ref -> vm.enqueue { vm.actions.removeAttachment(detail.conversation.id, ref) } }
-            }
-            detail.conversation.draft.pendingAttachment?.let { pending ->
-                Text(pending.error ?: AppStrings.importingAttachmentsYouCanSendWhenFinished, style = MaterialTheme.typography.bodySmall)
-                if (pending.error != null) Row {
-                    TextButton(onClick = { vm.importAttachment(detail.conversation.id, pending.workspace, pending.location) }) { Text(AppStrings.retry) }
-                    TextButton(onClick = { vm.enqueue { vm.actions.discardAttachment(detail.conversation.id, pending.id) } }) { Text(AppStrings.removePendingAttachment) }
+    val selectedCapabilities = detail.conversation.draft.capabilities + listOfNotNull(detail.conversation.creator)
+    BoxWithConstraints(modifier.fillMaxWidth()) {
+        Column(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(horizontal = 12.dp)) {
+                if (unavailable) Text(AppStrings.thisConversationIsArchivedOrDeletedRestoreItIn, style = MaterialTheme.typography.bodySmall)
+                if (state.occupied != null && active == null) Text(AppStrings.isRunningYouCanKeepEditingThisDraft(state.occupied!!.conversation.title), style = MaterialTheme.typography.bodySmall)
+                if (system.diagnosticBusy) Text(AppStrings.shellDiagnosticsIsUsingTheRuntime, style = MaterialTheme.typography.bodySmall)
+                Column(Modifier.heightIn(max = 160.dp).verticalScroll(rememberScrollState())) {
+                    AttachmentList(detail.conversation.draft.attachments, detail.conversation.config.workspace, vm) { ref -> vm.enqueue { vm.actions.removeAttachment(detail.conversation.id, ref) } }
                 }
+                detail.conversation.draft.pendingAttachment?.let { pending ->
+                    Text(pending.error ?: AppStrings.importingAttachmentsYouCanSendWhenFinished, style = MaterialTheme.typography.bodySmall)
+                    if (pending.error != null) Row {
+                        TextButton(onClick = { vm.importAttachment(detail.conversation.id, pending.workspace, pending.location) }) { Text(AppStrings.retry) }
+                        TextButton(onClick = { vm.enqueue { vm.actions.discardAttachment(detail.conversation.id, pending.id) } }) { Text(AppStrings.removePendingAttachment) }
+                    }
+                }
+                capture.transfer?.let { VoiceModelProgress(it, Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 8.dp)) }
+                val notice = capture.error ?: hint
+                if (notice != null) Text(notice, color = if (capture.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                if (capture.phase == "transcribing" && !holding) Text(AppStrings.transcribing, style = MaterialTheme.typography.bodySmall)
             }
-            capture.transfer?.let { VoiceModelProgress(it, Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 8.dp)) }
-            val notice = capture.error ?: hint
-            if (notice != null) Text(notice, color = if (capture.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-            if (capture.phase == "transcribing" && !holding) Text(AppStrings.transcribing, style = MaterialTheme.typography.bodySmall)
+            VoiceComposerBar(
+                voiceMode = voiceMode,
+                recording = holding && capture.phase == "recording",
+                cancelArmed = cancelArmed,
+                level = capture.level,
+                transcript = capture.liveTranscript,
+                enabled = !unavailable,
+                micAvailable = micAvailable,
+                stop = stop,
+                stopEnabled = active?.phase != ExecutionPhase.CANCELLING,
+                hasDraftContent = hasDraftContent,
+                sendEnabled = !unavailable && system.ready && system.connected && !system.diagnosticBusy && detail.conversation.draft.pendingAttachment == null && hasDraftContent,
+                onAdd = onAdd,
+                onStop = { active?.execution?.let(vm::stop) },
+                onSend = { sendAndDismiss() },
+                onInsert = { sendAndDismiss(MessageDeliveryMode.INSERT) },
+                onEnterVoice = {
+                    hint = null
+                    capture.error = null
+                    voiceMode = true
+                    keyboard?.hide()
+                    focus.clearFocus()
+                },
+                onExitVoice = { hint = null; voiceMode = false; openKeyboard = true },
+                onHoldTap = { hint = AppStrings.holdToSpeak },
+                onHoldStart = ::beginHold,
+                onHoldMove = { cancelArmed = it },
+                onHoldEnd = { cancelled ->
+                    val activeHold = holding
+                    holding = false
+                    cancelArmed = false
+                    if (activeHold) {
+                        if (cancelled) {
+                            snapshot.value = null
+                            capture.cancel()
+                        } else capture.finish()
+                    }
+                },
+                textField = {
+                    androidx.compose.foundation.text.BasicTextField(
+                        composer.value, vm::edit,
+                        Modifier.weight(1f).heightIn(min = ToolbarControl).padding(vertical = 10.dp).focusRequester(focusRequester),
+                        enabled = !unavailable, maxLines = 5,
+                        textStyle = MaterialTheme.typography.bodyLarge.copy(color = onButtonColor()),
+                        cursorBrush = SolidColor(onButtonColor()),
+                        decorationBox = { inner -> Box { if (composer.value.text.isEmpty()) Text(AppStrings.describeATaskOrAddContext, color = MaterialTheme.colorScheme.onSurfaceVariant); inner() } },
+                    )
+                },
+            )
+            if (active?.pending == true) TextButton(onClick = { vm.enqueue { vm.actions.reconcile(detail.conversation.id) } }, modifier = Modifier.padding(horizontal = 12.dp)) { Text(AppStrings.checkPendingRequest) }
         }
-        VoiceComposerBar(
-            voiceMode = voiceMode,
-            recording = holding && capture.phase == "recording",
-            cancelArmed = cancelArmed,
-            level = capture.level,
-            transcript = capture.liveTranscript,
-            enabled = !unavailable,
-            micAvailable = micAvailable,
-            stop = stop,
-            stopEnabled = active?.phase != ExecutionPhase.CANCELLING,
-            hasDraftContent = hasDraftContent,
-            sendEnabled = !unavailable && system.ready && system.connected && !system.diagnosticBusy && detail.conversation.draft.pendingAttachment == null && hasDraftContent,
-            onAdd = onAdd,
-            onStop = { active?.execution?.let(vm::stop) },
-            onSend = { sendAndDismiss() },
-            onInsert = { sendAndDismiss(MessageDeliveryMode.INSERT) },
-            onEnterVoice = {
-                hint = null
-                capture.error = null
-                voiceMode = true
-                keyboard?.hide()
-                focus.clearFocus()
-            },
-            onExitVoice = { hint = null; voiceMode = false; openKeyboard = true },
-            onHoldTap = { hint = AppStrings.holdToSpeak },
-            onHoldStart = ::beginHold,
-            onHoldMove = { cancelArmed = it },
-            onHoldEnd = { cancelled ->
-                val activeHold = holding
-                holding = false
-                cancelArmed = false
-                if (activeHold) {
-                    if (cancelled) {
-                        snapshot.value = null
-                        capture.cancel()
-                    } else capture.finish()
-                }
-            },
-            textField = {
-                androidx.compose.foundation.text.BasicTextField(
-                    composer.value, vm::edit,
-                    Modifier.weight(1f).heightIn(min = ToolbarControl).padding(vertical = 10.dp).focusRequester(focusRequester),
-                    enabled = !unavailable, maxLines = 5,
-                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = onButtonColor()),
-                    cursorBrush = SolidColor(onButtonColor()),
-                    decorationBox = { inner -> Box { if (composer.value.text.isEmpty()) Text(AppStrings.describeATaskOrAddContext, color = MaterialTheme.colorScheme.onSurfaceVariant); inner() } },
-                )
-            },
-        )
-        if (active?.pending == true) TextButton(onClick = { vm.enqueue { vm.actions.reconcile(detail.conversation.id) } }, modifier = Modifier.padding(horizontal = 12.dp)) { Text(AppStrings.checkPendingRequest) }
+        if (selectedCapabilities.isNotEmpty()) ComposerContextBubbles(maxWidth = maxWidth, visible = contextBubblesVisible) {
+            selectedCapabilities.forEach { ref -> InputChip(selected = true,
+                onClick = { vm.enqueue { vm.actions.removeSkill(detail.conversation.id, ref) } },
+                label = { Text("${if (ref == detail.conversation.creator) AppStrings.skillCreatorChip else capabilityLabel(ref)} ×") }) }
+        }
     }
+
 }
 
 @OptIn(FlowPreview::class)
@@ -894,10 +901,10 @@ internal fun Turn.showsSeparateActivity(): Boolean = occupied || pending
     }
 }
 
-@Composable internal fun Timeline(detail: ConversationDetail, vm: ConversationViewModel, modifier: Modifier, followPadding: PaddingValues? = null, read: (String, String) -> Unit, hostActions: ConversationHostActions, proposal: (SkillProposal) -> Unit, onSelectPlugin: (String) -> Unit, initialFollow: Boolean? = null, onFollowChanged: (Boolean) -> Unit = {}, programs: EmptyPagePrograms? = null) {
+@Composable internal fun Timeline(detail: ConversationDetail, vm: ConversationViewModel, modifier: Modifier, followPadding: PaddingValues? = null, read: (String, String) -> Unit, hostActions: ConversationHostActions, proposal: (SkillProposal) -> Unit, onSelectPlugin: (String) -> Unit, initialFollow: Boolean? = null, onFollowChanged: (Boolean) -> Unit = {}, programs: EmptyPagePrograms? = null, bottomContentClearance: Dp = 0.dp) {
     val topFade = ConversationTopFade
     val bottomFade = if (darkChrome()) ConversationEdgeFade else LightConversationBottomFade
-    val contentPadding = PaddingValues(start = 16.dp, top = topFade, end = 16.dp, bottom = bottomFade)
+    val contentPadding = PaddingValues(start = 16.dp, top = topFade, end = 16.dp, bottom = maxOf(bottomFade, bottomContentClearance))
     val activityTurn = detail.turns.lastOrNull { it.occupied } ?: detail.turns.lastOrNull { it.showsSeparateActivity() }
     val keys = buildList {
         if (detail.hasEarlier) add("earlier")

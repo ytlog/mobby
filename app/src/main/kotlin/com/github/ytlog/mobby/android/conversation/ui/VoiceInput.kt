@@ -16,6 +16,8 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -39,6 +41,8 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.testTag
@@ -51,7 +55,15 @@ import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.window.PopupProperties
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import kotlin.coroutines.cancellation.CancellationException
@@ -506,7 +518,7 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectVo
 
 @Composable internal fun ComposerShell(modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
     GlassSurface(
-        modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 10.dp),
+        modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 10.dp).testTag("composer-input-surface"),
         shape = RoundedCornerShape(28.dp),
         tint = buttonColor(),
     ) {
@@ -533,5 +545,32 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectVo
         contentAlignment = Alignment.Center,
     ) {
         AppIcon(icon, null, Modifier.size(22.dp), tint = onButtonColor().copy(alpha = if (enabled) 1f else 0.38f))
+    }
+}
+
+/** Non-focusable, content-sized metadata; it never contributes a full row to the input layout. */
+@Composable internal fun ComposerContextBubbles(maxWidth: Dp, visible: Boolean, content: @Composable RowScope.() -> Unit) {
+    if (!visible || !LocalWindowInfo.current.isWindowFocused) return
+    val margin = with(LocalDensity.current) { 12.dp.roundToPx() }
+    // Keep the trailing jump-to-latest action accessible even with many selected capabilities.
+    val contextWidth = (maxWidth - 24.dp - 60.dp).coerceAtLeast(1.dp)
+    val position = remember(margin) {
+        object : PopupPositionProvider {
+            override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize,
+                layoutDirection: LayoutDirection, popupContentSize: IntSize): IntOffset {
+                val x = if (layoutDirection == LayoutDirection.Ltr) anchorBounds.left + margin
+                    else anchorBounds.right - margin - popupContentSize.width
+                return IntOffset(x.coerceIn(0, (windowSize.width - popupContentSize.width).coerceAtLeast(0)),
+                    (anchorBounds.top - popupContentSize.height).coerceAtLeast(0))
+            }
+        }
+    }
+    Popup(popupPositionProvider = position,
+        properties = PopupProperties(focusable = false,
+            dismissOnBackPress = false, dismissOnClickOutside = false)) {
+        val view = LocalView.current
+        SideEffect { clearPopupChrome(view) }
+        Row(Modifier.widthIn(max = contextWidth).horizontalScroll(rememberScrollState())
+            .testTag("composer-context-bubbles"), horizontalArrangement = Arrangement.spacedBy(6.dp), content = content)
     }
 }

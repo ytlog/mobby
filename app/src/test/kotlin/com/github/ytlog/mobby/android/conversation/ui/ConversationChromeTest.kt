@@ -65,7 +65,10 @@ class ConversationChromeTest {
         val finalParsingStarted = CountDownLatch(1)
         val releaseFinalReply = CountDownLatch(1)
         compose.setContent {
-            CompositionLocalProvider(LocalReplyParser provides { source ->
+            val window = androidx.compose.ui.platform.LocalWindowInfo.current
+            CompositionLocalProvider(androidx.compose.ui.platform.LocalWindowInfo provides object : androidx.compose.ui.platform.WindowInfo by window {
+                override val isWindowFocused = true
+            }, LocalReplyParser provides { source ->
                 if (source.startsWith("transcript-line reply 12")) {
                     finalParsingStarted.countDown()
                     releaseFinalReply.await(30, TimeUnit.SECONDS)
@@ -76,6 +79,27 @@ class ConversationChromeTest {
         compose.waitForIdle()
 
         assertAgentChipHasNoArrow("Claude Code")
+        compose.onNodeWithText("程序开发 ×").assertIsDisplayed()
+        val withContext = compose.onNodeWithTag("conversation-composer").getBoundsInRoot()
+        compose.runOnIdle {
+            val current = conversations.value.selected!!
+            conversations.value = conversations.value.copy(selected = current.copy(conversation = current.conversation.copy(
+                draft = current.conversation.draft.copy(capabilities = emptySet()),
+            )))
+        }
+        compose.waitForIdle()
+        compose.onNodeWithText("程序开发 ×").assertDoesNotExist()
+        val withoutContext = compose.onNodeWithTag("conversation-composer").getBoundsInRoot()
+        assertEquals("context bubbles must not allocate a full-width background strip",
+            (withContext.bottom - withContext.top).value, (withoutContext.bottom - withoutContext.top).value, 0.5f)
+        compose.runOnIdle {
+            val current = conversations.value.selected!!
+            conversations.value = conversations.value.copy(selected = current.copy(conversation = current.conversation.copy(
+                draft = current.conversation.draft.copy(capabilities = setOf(PROGRAM_DEVELOPMENT)),
+            )))
+        }
+        compose.waitForIdle()
+        compose.onNodeWithText("程序开发 ×").assertIsDisplayed()
         compose.runOnIdle {
             val current = conversations.value.selected!!
             conversations.value = conversations.value.copy(selected = current.copy(conversation = current.conversation.copy(
@@ -152,6 +176,7 @@ class ConversationChromeTest {
             Conversation(
                 ConversationId("c"),
                 NextTurnConfig(agent, "model", null, "default", "fixture-gateway"),
+                draft = Draft(capabilities = setOf(PROGRAM_DEVELOPMENT)),
                 anchor = "user:t1",
             ),
             turns,
