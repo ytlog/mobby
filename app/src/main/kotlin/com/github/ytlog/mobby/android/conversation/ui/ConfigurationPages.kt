@@ -90,22 +90,24 @@ import kotlinx.coroutines.*
             if (agent != c.config.agent && c.draft.capabilities.any { !it.startsWith("plugin:") })
                 MenuCaption(AppStrings.selectedSkillsBelongToTheAgentSelectThemAgain)
         }
-        Button(
-            onClick = {
-                val p = profiles.firstOrNull { it.agent == agent && it.id == gatewayId }
-                if (p != null) vm.enqueue {
-                    val config = NextTurnConfig(agent, model, reasoning, c.config.workspace, p.id, p.version)
-                    vm.actions.configure(c.id, config)
-                    vm.rememberAgentSelection(config)
-                }
-                dismiss()
-            },
-            enabled = profiles.any { it.agent == agent && it.id == gatewayId },
-            modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 20.dp).heightIn(min = 48.dp),
-            shape = RoundedCornerShape(22.dp),
-            colors = filledButtonColors(if (darkChrome()) MobbyColors.Dark.button else menuAccent(), if (darkChrome()) MobbyColors.Dark.onButton else MobbyColors.onAccent),
-            elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp, pressedElevation = 0.dp, focusedElevation = 0.dp, hoveredElevation = 0.dp),
-        ) { Text(AppStrings.apply, fontWeight = FontWeight.SemiBold) }
+        CompositionLocalProvider(LocalGlassControls provides true) {
+            Button(
+                onClick = {
+                    val p = profiles.firstOrNull { it.agent == agent && it.id == gatewayId }
+                    if (p != null) vm.enqueue {
+                        val config = NextTurnConfig(agent, model, reasoning, c.config.workspace, p.id, p.version)
+                        vm.actions.configure(c.id, config)
+                        vm.rememberAgentSelection(config)
+                    }
+                    dismiss()
+                },
+                enabled = profiles.any { it.agent == agent && it.id == gatewayId },
+                modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 20.dp).heightIn(min = 48.dp),
+                shape = RoundedCornerShape(22.dp),
+                colors = filledButtonColors(if (darkChrome()) MobbyColors.Dark.button else menuAccent(), if (darkChrome()) MobbyColors.Dark.onButton else MobbyColors.onAccent),
+                elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp, pressedElevation = 0.dp, focusedElevation = 0.dp, hoveredElevation = 0.dp),
+            ) { Text(AppStrings.apply, fontWeight = FontWeight.SemiBold) }
+        }
     }
 }
 @Composable internal fun ConfigDialog(vm: ConversationViewModel, c: Conversation?, onDismiss: () -> Unit, onApply: (NextTurnConfig, String?) -> Unit, anchor: IntRect = IntRect.Zero, manageConnections: () -> Unit = {}) {
