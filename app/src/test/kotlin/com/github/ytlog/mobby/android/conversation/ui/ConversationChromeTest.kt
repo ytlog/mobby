@@ -41,7 +41,7 @@ class ConversationChromeTest {
 
     @After fun cleanup() { scope.cancel() }
 
-    @Test fun `transcript supplies glass backdrop while latest jump and final reply stay above composer`() {
+    @Test fun `transcript stays between colored chrome while latest jump and final reply remain accessible`() {
         val system = stub<SystemPort> { name -> when (name) {
             "getStatus" -> flowOf(SystemStatus(true, true))
             "getDiagnostic" -> flowOf(DiagnosticOutput(null, emptyList()))
@@ -86,7 +86,7 @@ class ConversationChromeTest {
         assertAgentChipHasNoArrow("Codex")
         compose.onNodeWithText("最新消息").assertDoesNotExist()
         val jump = compose.onNodeWithContentDescription("最新消息").assertIsDisplayed().getBoundsInRoot()
-        assertTranscriptBehindGlass()
+        assertTranscriptClearOfChrome()
         assertTrue("latest jump overlaps the composer", jump.bottom <= composerBounds().top + 1.dp)
         assertTrue("latest jump overlaps the toolbar", jump.top + 1.dp >= toolbarBounds().bottom)
 
@@ -106,7 +106,7 @@ class ConversationChromeTest {
         compose.onNodeWithContentDescription("最新消息").assertIsDisplayed()
         compose.onNode(hasScrollToIndexAction()).performScrollToIndex(10)
         compose.waitForIdle()
-        assertTranscriptBehindGlass()
+        assertTranscriptClearOfChrome()
     }
 
     private fun assertAgentChipHasNoArrow(label: String) {
@@ -116,19 +116,21 @@ class ConversationChromeTest {
         assertTrue("$label chip keeps a trailing arrow ($trailing)", trailing < 32.dp)
     }
 
-    private fun assertTranscriptBehindGlass() {
+    private fun assertTranscriptClearOfChrome() {
         val toolbar = toolbarBounds()
         val composer = composerBounds()
         val transcript = compose.onNodeWithTag("conversation-transcript").getBoundsInRoot()
-        assertTrue("transcript must extend behind toolbar glass", transcript.top <= toolbar.top)
-        assertTrue("transcript must extend behind composer glass", transcript.bottom >= composer.bottom)
+        assertEquals("toolbar must occupy layout space", toolbar.bottom.value, transcript.top.value, 0.5f)
+        assertEquals("composer must occupy layout space", transcript.bottom.value, composer.top.value, 0.5f)
         val lines = compose.onAllNodesWithText("transcript-line", substring = true)
         val count = lines.fetchSemanticsNodes().size
         var visible = 0
         repeat(count) { index ->
             val bounds = lines[index].getBoundsInRoot()
             if (bounds.right <= bounds.left || bounds.bottom <= bounds.top) return@repeat
-            if (bounds.top >= toolbar.bottom && bounds.bottom <= composer.top) visible++
+            visible++
+            assertTrue("transcript overlaps toolbar", bounds.top + 1.dp >= toolbar.bottom)
+            assertTrue("transcript overlaps composer", bounds.bottom <= composer.top + 1.dp)
         }
         assertTrue("expected visible transcript", visible > 0)
     }

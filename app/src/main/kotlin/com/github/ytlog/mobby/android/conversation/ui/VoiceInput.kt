@@ -508,6 +508,7 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectVo
     GlassSurface(
         modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 10.dp),
         shape = RoundedCornerShape(28.dp),
+        tint = buttonColor(),
     ) {
         Row(Modifier.fillMaxWidth().padding(4.dp), verticalAlignment = Alignment.Bottom, content = content)
     }
