@@ -24,7 +24,6 @@ import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.highlight.Highlight
 import com.kyant.backdrop.highlight.HighlightStyle
-import com.kyant.backdrop.shadow.InnerShadow
 import com.kyant.backdrop.shadow.Shadow
 
 internal val LocalConversationBackdrop = staticCompositionLocalOf<Backdrop?> { null }
@@ -42,35 +41,17 @@ internal fun GlassSurface(
     val base = if (tint == Color.Unspecified) buttonColor() else tint
     val accented = tint != Color.Unspecified
     val opticalGlass = Build.VERSION.SDK_INT >= 31 && backdrop != null
-    // A clear lens needs a visible rim even over the conversation's plain canvas.
-    // Keep this lighting separate from the sampled content and the crisp foreground.
-    val surface: DrawScope.() -> Unit = {
-        drawRect(base.copy(alpha = if (accented) 0.94f else if (dark) 0.38f else 0.18f))
-        if (!accented) {
-            drawRect(Brush.verticalGradient(
-                0f to Color.White.copy(alpha = if (dark) 0.035f else 0.48f),
-                0.35f to Color.White.copy(alpha = if (dark) 0.008f else 0.02f),
-                1f to Color.Black.copy(alpha = if (dark) 0.025f else 0.065f),
-                endY = size.height,
-            ))
-            drawRect(Brush.linearGradient(
-                listOf(Color.White.copy(alpha = if (dark) 0.02f else 0.22f), Color.Transparent),
-                start = Offset.Zero,
-                end = Offset(size.width * 0.65f, size.height),
-            ))
-        }
-    }
+    val surface: DrawScope.() -> Unit = { drawGlassLighting(base, dark, accented) }
     val glass = if (opticalGlass) Modifier.drawBackdrop(
         backdrop = backdrop,
         shape = { shape },
         effects = {
-            blur(4.dp.toPx())
-            lens(8.dp.toPx(), 16.dp.toPx())
+            blur(1.5.dp.toPx())
+            lens(6.dp.toPx(), 20.dp.toPx())
         },
-        highlight = { Highlight(width = 0.5.dp, blurRadius = 0.75.dp,
-            style = HighlightStyle.Default(intensity = if (dark) 0.28f else 0.42f, falloff = 4f)) },
-        shadow = { Shadow(radius = 12.dp, offset = DpOffset(0.dp, 4.dp), color = Color.Black.copy(alpha = if (dark) 0.18f else 0.10f)) },
-        innerShadow = { InnerShadow(radius = 2.dp, offset = DpOffset(0.dp, 1.dp), color = Color.Black.copy(alpha = if (dark) 0.06f else 0.08f)) },
+        highlight = { Highlight(width = 0.4.dp, blurRadius = 0.5.dp,
+            style = HighlightStyle.Default(intensity = if (dark) 0.36f else 0.40f, falloff = 6f)) },
+        shadow = { Shadow(radius = 12.dp, offset = DpOffset(0.dp, 4.dp), color = Color.Black.copy(alpha = if (dark) 0.10f else 0.07f)) },
         onDrawSurface = surface,
     ) else Modifier.background(base, shape).clip(shape).drawBehind(surface)
     // The library already draws a directional highlight. A second border turns it into chrome.
@@ -85,5 +66,23 @@ internal fun GlassSurface(
     )
     Box(modifier.then(glass).then(fallbackRim).clip(shape)) {
         CompositionLocalProvider(LocalContentColor provides onButtonColor(), content = content)
+    }
+}
+
+/** Lighting over the sampled image; kept separate so transmission can be pixel-tested without AGSL. */
+internal fun DrawScope.drawGlassLighting(base: Color, dark: Boolean, accented: Boolean) {
+    drawRect(base.copy(alpha = if (accented) 0.94f else if (dark) 0.08f else 0.10f))
+    if (!accented) {
+        drawRect(Brush.verticalGradient(
+            0f to Color.White.copy(alpha = if (dark) 0.012f else 0.18f),
+            0.35f to Color.White.copy(alpha = if (dark) 0.004f else 0.008f),
+            1f to Color.Black.copy(alpha = if (dark) 0.008f else 0.025f),
+            endY = size.height,
+        ))
+        drawRect(Brush.linearGradient(
+            listOf(Color.White.copy(alpha = if (dark) 0.008f else 0.06f), Color.Transparent),
+            start = Offset.Zero,
+            end = Offset(size.width * 0.65f, size.height),
+        ))
     }
 }

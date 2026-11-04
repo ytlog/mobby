@@ -80,4 +80,24 @@ class GlassSurfaceStyleTest {
         assertTrue("dark rim should not look like a bright continuous outline: $rim", rim < 0.12f)
     }
 
+    @Test fun `clear material transmits high contrast background instead of covering it with a frosted surface`() {
+        compose.setContent {
+            val host = LocalView.current
+            SideEffect { view = host }
+            androidx.compose.foundation.Canvas(Modifier.size(240.dp, 80.dp).testTag("transmission")) {
+                drawRect(Color.Black)
+                drawRect(Color.White, topLeft = androidx.compose.ui.geometry.Offset(size.width / 2f, 0f))
+                drawGlassLighting(MobbyColors.Dark.button, dark = true, accented = false)
+            }
+        }
+        val bounds = compose.onNodeWithTag("transmission").fetchSemanticsNode().boundsInRoot
+        val pixels = compose.runOnIdle {
+            val bitmap = Bitmap.createBitmap(bounds.width.toInt(), bounds.height.toInt(), Bitmap.Config.ARGB_8888)
+            view.draw(Canvas(bitmap).apply { translate(-bounds.left, -bounds.top) })
+            bitmap.asImageBitmap().toPixelMap()
+        }
+        val transmittedContrast = pixels[180, 40].luminance() - pixels[60, 40].luminance()
+        assertTrue("clear glass must preserve background contrast: $transmittedContrast", transmittedContrast > 0.65f)
+    }
+
 }
