@@ -899,6 +899,9 @@ internal fun Turn.showsSeparateActivity(): Boolean = occupied || pending
     val topFade = ConversationTopFade
     val bottomFade = if (darkChrome()) ConversationEdgeFade else LightConversationBottomFade
     val contentPadding = PaddingValues(start = 16.dp, top = topFade + glassInsets.calculateTopPadding(), end = 16.dp, bottom = bottomFade + glassInsets.calculateBottomPadding())
+    // Glass samples the actual transcript. The old opaque edge fade washed out its backdrop.
+    val edgeFade = if (glassInsets.calculateTopPadding() > 0.dp || glassInsets.calculateBottomPadding() > 0.dp) Modifier
+        else Modifier.conversationEdgeFade(conversationCanvas(), topFade, bottomFade)
     val activityTurn = detail.turns.lastOrNull { it.occupied } ?: detail.turns.lastOrNull { it.showsSeparateActivity() }
     val keys = buildList {
         if (detail.hasEarlier) add("earlier")
@@ -955,7 +958,7 @@ internal fun Turn.showsSeparateActivity(): Boolean = occupied || pending
         }
     }
     Box(modifier.fillMaxWidth()) {
-        LazyColumn(state = list, modifier = Modifier.fillMaxSize().conversationEdgeFade(conversationCanvas(), topFade, bottomFade), contentPadding = contentPadding, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        LazyColumn(state = list, modifier = Modifier.fillMaxSize().then(edgeFade), contentPadding = contentPadding, verticalArrangement = Arrangement.spacedBy(16.dp)) {
             if (detail.hasEarlier) item(key = "earlier") {
                 TextButton(onClick = { follow = false; vm.enqueue { vm.actions.loadEarlier(detail.conversation.id) } }, modifier = Modifier.fillMaxWidth()) { Text(AppStrings.loadEarlierMessages) }
             }
