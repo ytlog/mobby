@@ -1,8 +1,6 @@
 package com.github.ytlog.mobby.android.conversation.ui
 
-import android.content.Intent
 import android.os.Bundle
-import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
@@ -60,13 +58,42 @@ class ScreenControlSettingsActivity : ComponentActivity() {
     }
 }
 
-@Composable internal fun ScreenControlSettings(controller: ScreenControlPort, onBack: () -> Unit) {
+@Composable internal fun ScreenControlSettings(controller: ScreenControlPort, onBack: () -> Unit,
+    statusOverride: ScreenSetupStatus? = null, settingsOverride: ((ScreenSettingsTarget) -> Unit)? = null) {
     val state by controller.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var connectionPort by remember(state.mode) { mutableStateOf("") }
+    var manualPort by remember(state.mode) { mutableStateOf(false) }
+    // A live user-started pairing may connect once on return. Never restore or re-arm this after failure.
+    var connectAfterPairing by remember { mutableStateOf(false) }
+    var pairingSuccessAtStart by remember { mutableLongStateOf(0) }
+    var permissionRefresh by remember { mutableIntStateOf(0) }
+    val status = statusOverride ?: rememberScreenSetupStatus(permissionRefresh, pairing = state.mode == ScreenMode.ADB)
+    var afterNotificationPermission by remember { mutableStateOf<(() -> Unit)?>(null) }
+    val permission = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        permissionRefresh++
+        val next = afterNotificationPermission
+        afterNotificationPermission = null
+        if (!granted) error = AppStrings.adbPairingNotifications
+        else if (ScreenSetupStatus.read(context, pairing = state.mode == ScreenMode.ADB).notificationsAllowed) next?.invoke()
+        else if (!openScreenSettings(context, ScreenSettingsTarget.NOTIFICATIONS, pairing = state.mode == ScreenMode.ADB)) error = AppStrings.screenSettingsUnavailable
+    }
+    fun open(target: ScreenSettingsTarget) {
+        if (settingsOverride != null) settingsOverride(target)
+        else if (!openScreenSettings(context, target, pairing = state.mode == ScreenMode.ADB)) error = AppStrings.screenSettingsUnavailable
+    }
+    fun notifications(next: () -> Unit = {}) {
+        if (status.sdk >= 33 && context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            afterNotificationPermission = next
+            permission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        } else if (!status.notificationsAllowed) open(ScreenSettingsTarget.NOTIFICATIONS)
+        else next()
+    }
     fun execute(block: suspend () -> Unit) {
         busy = true; error = null
         scope.launch {
@@ -74,6 +101,38 @@ class ScreenControlSettingsActivity : ComponentActivity() {
             catch (cancelled: CancellationException) { throw cancelled }
             catch (failure: Exception) { error = failure.message ?: AppStrings.screenBackendConnectionFailed }
             finally { busy = false }
+        }
+    }
+    fun connect() = execute {
+        try {
+            if (state.mode == ScreenMode.ADB) controller.setAdbPort(connectionPort)
+            controller.connect()
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (failure: Exception) { if (state.mode == ScreenMode.ADB) manualPort = true; throw failure }
+    }
+    fun pair() {
+        if (state.adbPairing) {
+            connectAfterPairing = false
+            execute { controller.cancelAdbPairing() }
+        } else notifications {
+            execute {
+                controller.startAdbPairing()
+                pairingSuccessAtStart = controller.state.value.adbPairingSuccess
+                connectAfterPairing = true
+                open(ScreenSettingsTarget.WIRELESS)
+            }
+        }
+    }
+    LaunchedEffect(state.adbPairing, state.adbPairingSuccess, state.error, state.mode, state.connected, state.active, status.resumed, busy, connectAfterPairing) {
+        if (connectAfterPairing) {
+            val current = controller.state.value
+            if (!current.adbPairing) {
+                if (current.error != null || current.mode != ScreenMode.ADB || current.connected || current.active || current.adbPairingSuccess <= pairingSuccessAtStart) connectAfterPairing = false
+                else if (current.adbPaired && status.resumed && !busy) {
+                    connectAfterPairing = false
+                    connect()
+                }
+            }
         }
     }
     Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
@@ -86,47 +145,46 @@ class ScreenControlSettingsActivity : ComponentActivity() {
                         enabled = !busy && !state.active && !state.adbPairing)
                 }
             }
-            SettingsCaption(if (state.mode == ScreenMode.CURRENT) AppStrings.currentScreenModeHelp else AppStrings.virtualScreenModeHelp)
             if (state.mode == ScreenMode.CURRENT) {
+                SettingsCaption(AppStrings.currentScreenQuickHelp)
+                if (status.accessibilityEnabled) SettingsCaption(AppStrings.screenAccessReady)
                 SettingsGroup {
-                    SettingsItem(AppStrings.openAccessibilitySettings, { context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) })
+                    SettingsItem(AppStrings.openAccessibilitySettings, { open(ScreenSettingsTarget.ACCESSIBILITY) },
+                        if (status.accessibilityEnabled) AppStrings.stepCompleted else AppStrings.currentScreenModeHelp)
                 }
             } else {
+                SettingsCaption(AppStrings.virtualScreenModeHelp)
                 SettingsCaption(if (state.connected) AppStrings.screenBackendReady else AppStrings.screenBackendDisconnected)
-                if (state.mode == ScreenMode.ADB) {
-                    SettingsGroup {
-                        SettingsAction(if (state.adbPairing) AppStrings.adbCancelPairing else AppStrings.adbStartPairing, enabled = !busy && !state.active) {
-                            execute { if (state.adbPairing) controller.cancelAdbPairing() else controller.startAdbPairing() }
-                        }
-                        GroupDivider()
-                        SettingsAction(AppStrings.openWirelessDebugging, enabled = !busy && !state.active) {
-                            context.startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS))
-                        }
-                    }
-                    SettingsCaption(AppStrings.adbScreenHelp)
-                    if (state.adbPaired) SettingsCaption(AppStrings.adbPaired)
-                    SettingsGroup {
-                        SettingsField(connectionPort, { connectionPort = it }, AppStrings.adbConnectionPort,
-                            enabled = !busy && !state.active && !state.connected && !state.adbPairing,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-                    }
-                    SettingsCaption(AppStrings.adbConnectionPortHelp)
-                }
+                val savedPairReady = state.mode == ScreenMode.ADB && state.adbPaired && !state.adbPairing && status.notificationsAllowed &&
+                    status.wifiConnected && status.developerEnabled != false && status.wirelessEnabled != false
+                if (status.sdk < 33) SettingsCaption(AppStrings.virtualScreenAndroidVersion, error = true)
+                else if (state.mode == ScreenMode.ADB && !savedPairReady) {
+                    AdbSetupGuide(state, status, enabled = !busy && !state.active, open = ::open, notifications = { notifications() }, pair = ::pair)
+                } else if (state.mode == ScreenMode.ROOT) SettingsCaption(AppStrings.screenRootGuide)
                 Button(modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp), shape = RoundedCornerShape(22.dp),
-                    enabled = !busy && !state.active && !state.adbPairing, onClick = {
-                    execute {
-                        if (state.connected) controller.disconnect() else {
-                            if (state.mode == ScreenMode.ADB) controller.setAdbPort(connectionPort)
-                            controller.connect()
+                    enabled = !busy && !state.active && !state.adbPairing && status.sdk >= 33, onClick = {
+                        connectAfterPairing = false
+                        if (state.connected) execute { controller.disconnect() } else connect()
+                    }) { Text(if (state.connected) AppStrings.disconnectScreen else AppStrings.connectScreen) }
+                if (state.mode == ScreenMode.ADB && status.sdk >= 33) {
+                    SettingsGroup {
+                        SettingsItem(AppStrings.screenManualPort, { manualPort = !manualPort }, AppStrings.screenAutomaticPortHelp)
+                        if (manualPort) {
+                            GroupDivider()
+                            SettingsField(connectionPort, { connectionPort = it }, AppStrings.adbConnectionPort,
+                                enabled = !busy && !state.active && !state.connected && !state.adbPairing,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                         }
                     }
-                }) { Text(if (state.connected) AppStrings.disconnectScreen else AppStrings.connectScreen) }
-                if (android.os.Build.VERSION.SDK_INT < 33) SettingsCaption(AppStrings.virtualScreenAndroidVersion)
+                    if (manualPort) SettingsCaption(AppStrings.adbConnectionPortHelp)
+                    if (savedPairReady) AdbSetupGuide(state, status, enabled = !busy && !state.active,
+                        open = ::open, notifications = { notifications() }, pair = ::pair, compact = true)
+                }
             }
             SettingsGroup {
-                SettingsItem(AppStrings.openNotificationSettings, {
-                    context.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName))
-                })
+                SettingsItem(if (status.notificationsAllowed) AppStrings.openNotificationSettings else AppStrings.screenAllowNotifications,
+                    { if (status.notificationsAllowed) open(ScreenSettingsTarget.NOTIFICATIONS) else notifications() },
+                    if (status.notificationsAllowed) AppStrings.screenNotificationsReady else AppStrings.screenNotificationHelp)
             }
             if (busy) LinearProgressIndicator(Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.primary, trackColor = MaterialTheme.colorScheme.surfaceVariant)
             (error ?: state.error)?.let { SettingsCaption(it, error = true) }

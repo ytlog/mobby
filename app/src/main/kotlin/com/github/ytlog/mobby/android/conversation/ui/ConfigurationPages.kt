@@ -175,6 +175,8 @@ import kotlinx.coroutines.*
         PageHeader(AppStrings.settings, back)
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             SettingsGroup {
+                SettingsItem(AppStrings.setupGuide, { navigate("setup") }, AppStrings.setupGuideSummary)
+                GroupDivider()
                 SettingsItem(AppStrings.agentConnectionsTitle, { navigate("connections") }, AppStrings.agentConnectionsSummary)
                 GroupDivider()
                 SettingsItem(AppStrings.storageRetention, { navigate("history-limits") }, AppStrings.conversationAndAttachmentRetention)

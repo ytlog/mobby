@@ -11,7 +11,9 @@ enum class ScreenMode {
 
 data class ScreenControlState(val mode: ScreenMode = ScreenMode.CURRENT, val connected: Boolean = false,
     val active: Boolean = false, val displayId: Int? = null, val jpeg: ByteArray? = null,
-    val packageName: String = "", val error: String? = null, val adbPaired: Boolean = false, val adbPairing: Boolean = false)
+    val packageName: String = "", val error: String? = null, val adbPaired: Boolean = false, val adbPairing: Boolean = false,
+    /** Live successful pairing sequence; never inferred from a previously saved identity or persisted. */
+    val adbPairingSuccess: Long = 0)
 
 /** UI contract. Privilege acquisition and Android display APIs belong to the host implementation. */
 interface ScreenControlPort {

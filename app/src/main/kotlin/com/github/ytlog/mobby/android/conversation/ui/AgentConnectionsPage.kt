@@ -30,7 +30,7 @@ internal fun connectionLabel(profile: GatewayProfile): String = if (profile.sour
     "${AppStrings.nativeSignIn} · ${profile.connectionLabel}" else "API · ${gatewayLabel(profile)}"
 
 @Composable internal fun AgentConnectionsPage(vm: ConversationViewModel, initialAgent: AgentId? = null,
-    back: () -> Unit, gateway: () -> Unit, connected: () -> Unit = {}) {
+    back: () -> Unit, gateway: () -> Unit, connected: () -> Unit = {}, loginDismissed: (() -> Unit)? = null) {
     val logins by vm.nativeAccounts.collectAsStateWithLifecycle()
     val settings by vm.connectionSettings.collectAsStateWithLifecycle()
     val routes by vm.connections.collectAsStateWithLifecycle()
@@ -101,7 +101,7 @@ internal fun connectionLabel(profile: GatewayProfile): String = if (profile.sour
             }
         }
     }
-    if (showLogin && selected != null) NativeLoginDialog(vm, selected!!, { showLogin = false }, {
+    if (showLogin && selected != null) NativeLoginDialog(vm, selected!!, { showLogin = false; loginDismissed?.invoke() }, {
         notice = AppStrings.nativeLoginSucceeded
         showLogin = false
         scope.launch {

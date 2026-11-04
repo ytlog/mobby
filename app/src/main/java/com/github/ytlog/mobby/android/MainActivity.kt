@@ -46,9 +46,6 @@ class MainActivity : ComponentActivity() {
     private var petPermitted by mutableStateOf(false)
     private var gatewayRefresh by mutableStateOf(0)
     private var pendingPet = false
-    private val taskNotificationPermission = registerForActivityResult(
-        androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
-    ) { }
 
     private val actions get() = (application as MobbyApplication).conversations
     private val app get() = application as MobbyApplication
@@ -103,14 +100,6 @@ class MainActivity : ComponentActivity() {
             }
         } })
         setContent { ConversationEntry(actions, host, conversationNavigation, petEnabled, petPermitted, gatewayRefresh = gatewayRefresh, updates = app.updates, programNavigation = programNavigation) }
-        if (android.os.Build.VERSION.SDK_INT >= 33) {
-            val notice = getPreferences(MODE_PRIVATE)
-            if (!notice.getBoolean("task-notification-requested", false) &&
-                checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                notice.edit().putBoolean("task-notification-requested", true).apply()
-                taskNotificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-            }
-        }
     }
     override fun onStart() {
         super.onStart()

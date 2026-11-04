@@ -4,11 +4,12 @@ import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.listSaver
 
 internal enum class AppPage {
-    CONVERSATION, PROJECTS, PROJECT_DETAIL, SETTINGS, GATEWAY, CONNECTIONS,
+    CONVERSATION, PROJECTS, PROJECT_DETAIL, SETTINGS, GATEWAY, CONNECTIONS, SETUP,
     HISTORY_LIMITS, DIAGNOSTIC, LICENSES, ARCHIVED, UPDATES, PROGRAMS, SKILLS, PLUGINS, APP_FUNCTIONS;
 
     companion object {
         fun fromSettingsRoute(route: String): AppPage = when (route) {
+            "setup" -> SETUP
             "connections" -> CONNECTIONS
             "history-limits" -> HISTORY_LIMITS
             "diagnostic" -> DIAGNOSTIC

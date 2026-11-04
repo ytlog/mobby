@@ -118,15 +118,19 @@ class ConversationHostActions(
         fileTarget = null; fileWorkspace = null
         if (uri != null && id != null && workspace != null) vm.importAttachment(ConversationId(id), workspace, uri.toString())
     }
-    var navigation by rememberSaveable(stateSaver = AppNavigationState.Saver) { mutableStateOf(AppNavigationState()) }
+    val context = LocalContext.current
+    val setupProgress = remember(context) { SetupProgress(context) }
+    var setupStep by rememberSaveable { mutableStateOf(setupProgress.read()) }
+    var connectionFromSetup by rememberSaveable { mutableStateOf(false) }
+    var navigation by rememberSaveable(stateSaver = AppNavigationState.Saver) {
+        mutableStateOf(AppNavigationState(page = if (setupStep == SetupStep.DONE) AppPage.CONVERSATION else AppPage.SETUP))
+    }
     var drawer by rememberSaveable { mutableStateOf(false) }
     var sidebarExpanded by rememberSaveable { mutableStateOf(true) }
     var conversationQuery by rememberSaveable { mutableStateOf("") }
     val conversationListScroll = rememberLazyListState()
     val appearance by actions.appearance.collectAsStateWithLifecycle()
     var dialog by rememberSaveable { mutableStateOf<String?>(null) }
-    val introPreferences = LocalContext.current.getSharedPreferences("mobby.connection-intro", android.content.Context.MODE_PRIVATE)
-    var gatewayIntroSeen by rememberSaveable { mutableStateOf(introPreferences.getBoolean("seen", false)) }
     var gatewayStartAdding by rememberSaveable { mutableStateOf(false) }
     var gatewayFromIntro by rememberSaveable { mutableStateOf(false) }
     var gatewayFromConnections by rememberSaveable { mutableStateOf(false) }
@@ -165,13 +169,6 @@ class ConversationHostActions(
             consumedProgramNavigation = programNavigation.token
         }
     }
-    LaunchedEffect(navigation.page, system.ready, gatewaysLoaded, gateways.isEmpty(), dialog) {
-        if (!gatewayIntroSeen && navigation.page == AppPage.CONVERSATION && system.ready && gatewaysLoaded && gateways.isEmpty() && dialog == null) {
-            gatewayIntroSeen = true
-            introPreferences.edit().putBoolean("seen", true).apply()
-            dialog = "gateway-intro"
-        }
-    }
     val dark = appearance == Appearance.DARK || appearance == Appearance.SYSTEM && isSystemInDarkTheme()
     LaunchedEffect(dark) { hostActions.appearance(dark) }
     val colors = if (dark) MobbyDarkScheme else MobbyLightScheme
@@ -184,10 +181,35 @@ class ConversationHostActions(
     fun navigate(next: AppPage) { keyboard?.hide(); focus.clearFocus(); drawer = false; navigation = navigation.open(next) }
     fun navigateProjects(from: AppPage) { keyboard?.hide(); focus.clearFocus(); drawer = false; navigation = navigation.openProjects(from) }
     fun showAddSheet() { keyboard?.hide(); focus.clearFocus(); drawer = false; navigation = navigation.openAddSheet() }
+    fun showSetup(step: SetupStep) {
+        setupStep = step
+        setupProgress.save(step)
+        loginAgent = null
+        navigate(AppPage.SETUP)
+    }
+    fun finishSetup() {
+        setupStep = SetupStep.DONE
+        setupProgress.save(SetupStep.DONE)
+        connectionFromSetup = false
+        navigation = navigation.open(AppPage.CONVERSATION)
+    }
+    fun connectionsBack() {
+        loginAgent = null
+        navigation = navigation.open(if (connectionFromSetup) AppPage.SETUP else if (gatewayFromIntro) AppPage.CONVERSATION else AppPage.SETTINGS)
+    }
+    fun gatewayBack() {
+        if (gatewayFromConnections) navigation = navigation.open(AppPage.CONNECTIONS)
+        else if (connectionFromSetup) {
+            if (gateways.isNotEmpty()) showSetup(SetupStep.SCREEN) else navigation = navigation.open(AppPage.SETUP)
+        } else navigation = navigation.open(if (gatewayFromIntro) AppPage.CONVERSATION else AppPage.SETTINGS)
+    }
     BackHandler(navigation.page != AppPage.CONVERSATION || navigation.addSheetOpen) {
-        navigation = if (navigation.page == AppPage.GATEWAY && gatewayFromConnections) navigation.open(AppPage.CONNECTIONS)
-            else if (navigation.page == AppPage.CONNECTIONS && gatewayFromIntro) navigation.open(AppPage.CONVERSATION)
-            else navigation.back(gatewayFromIntro)
+        when {
+            navigation.page == AppPage.SETUP -> if (setupStep == SetupStep.SCREEN) showSetup(SetupStep.AGENTS) else finishSetup()
+            navigation.page == AppPage.GATEWAY -> gatewayBack()
+            navigation.page == AppPage.CONNECTIONS -> connectionsBack()
+            else -> navigation = navigation.back(gatewayFromIntro)
+        }
     }
     MaterialTheme(colorScheme = colors) {
         if (updates?.state?.phase == AppUpdateManager.Phase.READY && updates.dismissedVersion != updates.state.version) {
@@ -256,14 +278,21 @@ class ConversationHostActions(
                             openedNewConversation = { navigation = navigation.open(AppPage.CONVERSATION) }) }
                         AppPage.SETTINGS -> SettingsPage(system, appearance, { value -> vm.enqueue { vm.report(actions.setAppearance(value)) } }, { next ->
                             val page = AppPage.fromSettingsRoute(next)
-                            if (page == AppPage.CONNECTIONS) { gatewayStartAdding = false; gatewayFromIntro = false; gatewayFromConnections = false; loginAgent = null }
+                            if (page == AppPage.CONNECTIONS) { gatewayStartAdding = false; gatewayFromIntro = false; gatewayFromConnections = false; loginAgent = null; connectionFromSetup = false }
+                            if (page == AppPage.SETUP) { setupStep = setupProgress.read().takeUnless { it == SetupStep.DONE } ?: SetupStep.AGENTS; connectionFromSetup = false }
                             navigate(page)
                         }, { navigation = navigation.open(AppPage.CONVERSATION) }, vm, petEnabled, petPermitted, hostActions.pet)
+                        AppPage.SETUP -> SetupGuidePage(vm, setupStep,
+                            signIn = { agent -> loginAgent = agent; connectionFromSetup = true; gatewayFromIntro = true; gatewayFromConnections = false; navigate(AppPage.CONNECTIONS) },
+                            api = { gatewayStartAdding = true; connectionFromSetup = true; gatewayFromIntro = true; gatewayFromConnections = false; navigate(AppPage.GATEWAY) },
+                            next = { showSetup(SetupStep.SCREEN) }, agents = { showSetup(SetupStep.AGENTS) },
+                            screen = { context.startActivity(android.content.Intent(context, ScreenControlSettingsActivity::class.java)) }, finish = ::finishSetup)
                         AppPage.CONNECTIONS -> AgentConnectionsPage(vm, initialAgent = loginAgent,
-                            back = { navigation = navigation.open(if (gatewayFromIntro) AppPage.CONVERSATION else AppPage.SETTINGS) },
+                            back = ::connectionsBack,
                             gateway = { gatewayStartAdding = false; gatewayFromConnections = true; navigate(AppPage.GATEWAY) },
-                            connected = { loginAgent = null; if (gatewayFromIntro) navigation = navigation.open(AppPage.CONVERSATION) })
-                        AppPage.GATEWAY -> GatewayPage(vm, startAdding = gatewayStartAdding, signIn = hostActions.gatewaySignIn) { navigation = navigation.open(if (gatewayFromConnections) AppPage.CONNECTIONS else if (gatewayFromIntro) AppPage.CONVERSATION else AppPage.SETTINGS) }
+                            connected = { loginAgent = null; if (connectionFromSetup) showSetup(SetupStep.SCREEN) else if (gatewayFromIntro) navigation = navigation.open(AppPage.CONVERSATION) },
+                            loginDismissed = if (connectionFromSetup) ::connectionsBack else null)
+                        AppPage.GATEWAY -> GatewayPage(vm, startAdding = gatewayStartAdding, signIn = hostActions.gatewaySignIn, back = ::gatewayBack)
                         AppPage.HISTORY_LIMITS -> EventHistoryPage(actions::eventHistoryLimits, actions::saveEventHistoryLimits) { navigation = navigation.open(AppPage.SETTINGS) }
                         AppPage.DIAGNOSTIC -> DiagnosticPage(vm) { navigation = navigation.open(AppPage.SETTINGS) }
                         AppPage.LICENSES -> LicensePage { navigation = navigation.open(AppPage.SETTINGS) }
@@ -288,7 +317,7 @@ class ConversationHostActions(
                             showMenu = !showSidebar,
                             menuLabel = if (wide) AppStrings.expandConversationSidebar else AppStrings.openConversationDrawer,
                             onMenu = { keyboard?.hide(); focus.clearFocus(); if (wide) sidebarExpanded = true else drawer = true },
-                            onNew = { dialog = if (gateways.isEmpty()) "gateway-intro" else "new" }, onMore = { if (it == "connections") { loginAgent = null; gatewayFromIntro = false; navigate(AppPage.CONNECTIONS) } else dialog = it },
+                            onNew = { dialog = if (gateways.isEmpty()) "gateway-intro" else "new" }, onMore = { if (it == "connections") { loginAgent = null; gatewayFromIntro = false; connectionFromSetup = false; navigate(AppPage.CONNECTIONS) } else dialog = it },
                             onAnchor = { toolbarAnchor = it }, onAdd = { showAddSheet() },
                             onRead = { title, value -> reading = title to value },
                         )
@@ -354,18 +383,17 @@ class ConversationHostActions(
                 if (dialog == "gateway-intro") AlertDialog(
                     onDismissRequest = { dialog = null }, containerColor = raisedColor(), shape = RoundedCornerShape(24.dp),
                     title = { Text(AppStrings.connectAgentsTitle) },
-                    text = { Column {
-                        Text(AppStrings.connectAgentsBody)
-                        listOf(AgentId.CODEX, AgentId.CLAUDE_CODE, AgentId.PI, AgentId.OPEN_CODE).forEach { value ->
-                            TextButton(onClick = { dialog = null; loginAgent = value; gatewayFromIntro = true; navigate(AppPage.CONNECTIONS) }, modifier = Modifier.fillMaxWidth()) { Text("${value.label()} · ${AppStrings.signInAgent}") }
-                        }
-                        HorizontalDivider()
-                        TextButton(onClick = { dialog = null; gatewayStartAdding = true; gatewayFromIntro = true; gatewayFromConnections = false; navigate(AppPage.GATEWAY) }, modifier = Modifier.fillMaxWidth()) { Text(AppStrings.configureApiGateway) }
+                    text = { Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Text(AppStrings.setupAgentBody)
+                        val accounts by vm.nativeAccounts.collectAsStateWithLifecycle()
+                        AgentSetupChoices(accounts, system.ready,
+                            signIn = { value -> dialog = null; loginAgent = value; connectionFromSetup = false; gatewayFromIntro = true; navigate(AppPage.CONNECTIONS) },
+                            api = { dialog = null; gatewayStartAdding = true; connectionFromSetup = false; gatewayFromIntro = true; gatewayFromConnections = false; navigate(AppPage.GATEWAY) })
                     } },
                     confirmButton = {},
                     dismissButton = { TextButton(onClick = { dialog = null }) { Text(AppStrings.later) } },
                 )
-                if (dialog == "new") ConfigDialog(vm, c, onDismiss = { dialog = null }, onApply = { config, project -> vm.enqueue { actions.create(config, project) }; navigation = navigation.open(AppPage.CONVERSATION); dialog = null }, anchor = toolbarAnchor, manageConnections = { loginAgent = null; gatewayFromIntro = false; navigate(AppPage.CONNECTIONS) })
+                if (dialog == "new") ConfigDialog(vm, c, onDismiss = { dialog = null }, onApply = { config, project -> vm.enqueue { actions.create(config, project) }; navigation = navigation.open(AppPage.CONVERSATION); dialog = null }, anchor = toolbarAnchor, manageConnections = { loginAgent = null; gatewayFromIntro = false; connectionFromSetup = false; navigate(AppPage.CONNECTIONS) })
                 if (c != null) when (dialog) {
                     "rename" -> TextEditDialog(AppStrings.rename, c.title, { dialog = null }) { value -> vm.enqueue { vm.report(actions.rename(c.id, value)) }; dialog = null }
                     "project" -> ProjectGroupDialog(c, state.projects, { dialog = null }) { project -> vm.enqueue { vm.report(actions.project(c.id, project)) }; dialog = null }

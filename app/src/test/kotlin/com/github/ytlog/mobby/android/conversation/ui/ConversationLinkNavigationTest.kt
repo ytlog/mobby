@@ -20,6 +20,7 @@ import java.lang.reflect.Proxy
 class ConversationLinkNavigationTest {
     @get:Rule val compose = createComposeRule()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    @org.junit.Before fun completedSetup() { SetupProgress(org.robolectric.RuntimeEnvironment.getApplication()).save(SetupStep.DONE) }
     private inline fun <reified T> stub(crossinline body: (String) -> Any?): T =
         Proxy.newProxyInstance(T::class.java.classLoader, arrayOf(T::class.java)) { _, method, _ -> body(method.name) } as T
     @After fun cleanup() { scope.cancel() }
@@ -51,17 +52,17 @@ class ConversationLinkNavigationTest {
         fun settings() {
             compose.onNodeWithContentDescription("打开会话抽屉").performClick()
             compose.onNodeWithContentDescription("设置").performClick()
-            compose.onNodeWithText("AI 服务设置").assertExists()
+            compose.onNodeWithText("Agent 与 AI 服务").assertExists()
         }
         settings()
         compose.runOnIdle { request.value = "first-link" }
         compose.onNodeWithContentDescription("打开会话抽屉").assertExists()
-        compose.onNodeWithText("AI 服务设置").assertDoesNotExist()
+        compose.onNodeWithText("Agent 与 AI 服务").assertDoesNotExist()
         settings()
         restore.emulateSavedInstanceStateRestore()
-        compose.onNodeWithText("AI 服务设置").assertExists()
+        compose.onNodeWithText("Agent 与 AI 服务").assertExists()
         compose.runOnIdle { request.value = "second-link-to-same-conversation" }
         compose.onNodeWithContentDescription("打开会话抽屉").assertExists()
-        compose.onNodeWithText("AI 服务设置").assertDoesNotExist()
+        compose.onNodeWithText("Agent 与 AI 服务").assertDoesNotExist()
     }
 }

@@ -13,6 +13,7 @@ import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.performTouchInput
@@ -39,6 +40,7 @@ import kotlin.math.abs
 class ConversationDrawerPageTest {
     @get:Rule val compose = createComposeRule()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    @org.junit.Before fun completedSetup() { SetupProgress(org.robolectric.RuntimeEnvironment.getApplication()).save(SetupStep.DONE) }
 
     private inline fun <reified T> stub(crossinline body: (String) -> Any?): T =
         Proxy.newProxyInstance(T::class.java.classLoader, arrayOf(T::class.java)) { _, method, _ -> body(method.name) } as T
@@ -66,15 +68,17 @@ class ConversationDrawerPageTest {
             else -> error(name)
         } }
         val actions = ConversationUseCases(repository, stub<ExecutionPort> { error(it) }, system, { "fixture" }, scope, preferences)
+        SetupProgress(org.robolectric.RuntimeEnvironment.getApplication()).save(SetupStep.AGENTS)
         compose.setContent { ConversationEntry(actions, ConversationHostActions({}, {})) }
-        compose.onNodeWithText("连接你的 Agent").assertExists()
-        compose.onNodeWithText("配置 API 网关").performClick()
+        compose.onNodeWithText("先登录你的 Agent").assertExists()
+        compose.onNodeWithText("配置 API 网关").performScrollTo().performClick()
         compose.onNodeWithText("添加 AI 服务").assertExists()
         compose.onNodeWithText("免费体验").assertDoesNotExist()
         compose.onNodeWithText("其他服务（填写地址）").assertExists()
         compose.onNodeWithContentDescription("返回").performClick()
         compose.onNodeWithContentDescription("返回").performClick()
-        compose.onNodeWithText("连接你的 Agent").assertDoesNotExist()
+        compose.onNodeWithText("稍后").performScrollTo().performClick()
+        compose.onNodeWithText("先登录你的 Agent").assertDoesNotExist()
         compose.onNodeWithContentDescription("打开会话抽屉").performClick()
         compose.onNodeWithContentDescription("设置").performClick()
         compose.onNodeWithText("Agent 与 AI 服务").assertExists()
@@ -151,8 +155,9 @@ class ConversationDrawerPageTest {
             else -> error(name)
         } }
         val actions = ConversationUseCases(repository, stub<ExecutionPort> { error(it) }, system, { "fixture" }, scope, preferences)
+        SetupProgress(org.robolectric.RuntimeEnvironment.getApplication()).save(SetupStep.AGENTS)
         compose.setContent { ConversationEntry(actions, ConversationHostActions({}, {})) }
-        compose.onNodeWithText("稍后").performClick()
+        compose.onNodeWithText("稍后").performScrollTo().performClick()
         compose.onNodeWithTag("drawer-new").assertExists()
         compose.onNodeWithContentDescription("打开会话抽屉").assertDoesNotExist()
         compose.onNodeWithTag("conversation-transcript").assertExists()

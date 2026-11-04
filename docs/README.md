@@ -15,6 +15,7 @@
 | [项目需求](requirements.md) | 第一阶段本地 Agent 运行验证的目标与范围 |
 | [运行验证方案](design/runtime-test-plan.md) | 初始测试控制台方案；实际实现与验证进展以实施记录为准 |
 | [Android 对话 UI 评审稿](design/conversation-ui-review.html) | 当前交互规范：会话与执行、顶部菜单、输入、插件/技能、Android 行为、实现架构及可点击原型；原生接入进度见实施记录 |
+| [首次使用与屏幕操作引导](design/setup-guide.md) | 登录优先、配置进度、厂商开发者模式说明、通知配对与一次连接 |
 | [App 图标](design/app-icon.md) | 确认稿、蓝色环带矢量资源、自适应图层与单色图标 |
 | [悬浮对话](design/floating-conversation.md) | 悬浮球职责、共享会话执行与时间线、屏幕识别入口、窗口生命周期和验收范围 |
 | [平板与折叠屏自适应界面重构方案](design/adaptive-large-screen.md) | 窗口与铰链布局、状态所有权、实施方案与首版实现状态 |

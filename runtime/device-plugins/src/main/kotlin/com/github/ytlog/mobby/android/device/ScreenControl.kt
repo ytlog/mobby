@@ -47,7 +47,7 @@ object ScreenControl {
         check(leases == 0 && !connecting && !state.value.adbPairing) { AppStrings.screenModeBusy }
         check(context.getSharedPreferences("screen-control", Context.MODE_PRIVATE).edit().putString("mode", mode.name).commit())
         disconnect()
-        changes.value = ScreenControlState(mode, adbPaired = EmbeddedAdb.paired(context))
+        changes.value = ScreenControlState(mode, adbPaired = EmbeddedAdb.paired(context), adbPairingSuccess = state.value.adbPairingSuccess)
     }
 
     fun available(context: Context): Boolean = when (state.value.mode) {
@@ -120,7 +120,7 @@ object ScreenControl {
         }
         try {
             EmbeddedAdb.pair(context, port, code)
-            changes.value = state.value.copy(adbPaired = true, error = null)
+            changes.value = state.value.copy(adbPaired = true, error = null, adbPairingSuccess = state.value.adbPairingSuccess + 1)
         } catch (failure: Exception) {
             if (failure is kotlinx.coroutines.CancellationException) throw failure
             // Diagnostic types only: never log the pairing code, keys, addresses or exception messages.
@@ -152,7 +152,8 @@ object ScreenControl {
         heartbeat?.cancel(); heartbeat = null
         channel?.close(); channel = null
         release?.invoke(); release = null
-        changes.value = ScreenControlState(mode = state.value.mode, adbPaired = state.value.adbPaired, adbPairing = state.value.adbPairing)
+        changes.value = ScreenControlState(mode = state.value.mode, adbPaired = state.value.adbPaired, adbPairing = state.value.adbPairing,
+            adbPairingSuccess = state.value.adbPairingSuccess)
     }
 
     @Synchronized internal fun open(context: Context): ScreenSession {

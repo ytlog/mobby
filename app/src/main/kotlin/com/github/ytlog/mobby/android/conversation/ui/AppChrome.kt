@@ -163,16 +163,16 @@ internal fun Modifier.lightInputShadow(corner: Dp): Modifier = drawBehind {
     }
 }
 
-@Composable internal fun SettingsItem(title: String, onClick: () -> Unit, detail: String? = null, icon: AppGlyph? = null) {
-    TextButton(onClick = onClick, modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
+@Composable internal fun SettingsItem(title: String, onClick: () -> Unit, detail: String? = null, icon: AppGlyph? = null, enabled: Boolean = true) {
+    TextButton(onClick = onClick, enabled = enabled, modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
         colors = textButtonColors(onButtonColor())) {
         if (icon != null) {
             AppIcon(icon, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurface)
             Spacer(Modifier.width(12.dp))
         }
         Column(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
-            Text(title, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
-            if (detail != null) Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(title, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.38f))
+            if (detail != null) Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (enabled) 1f else 0.38f))
         }
         AppIcon(AppIcons.ChevronRight, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }

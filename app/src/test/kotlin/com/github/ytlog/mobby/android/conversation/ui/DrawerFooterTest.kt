@@ -23,6 +23,7 @@ import java.lang.reflect.Proxy
 class DrawerFooterTest {
     @get:Rule val compose = createComposeRule()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    @org.junit.Before fun completedSetup() { SetupProgress(org.robolectric.RuntimeEnvironment.getApplication()).save(SetupStep.DONE) }
 
     private inline fun <reified T> stub(crossinline body: (String) -> Any?): T =
         Proxy.newProxyInstance(T::class.java.classLoader, arrayOf(T::class.java)) { _, method, _ -> body(method.name) } as T

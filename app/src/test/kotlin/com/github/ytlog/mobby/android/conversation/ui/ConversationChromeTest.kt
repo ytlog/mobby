@@ -26,6 +26,7 @@ import java.util.concurrent.TimeUnit
 class ConversationChromeTest {
     @get:Rule val compose = createComposeRule()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    @org.junit.Before fun completedSetup() { SetupProgress(org.robolectric.RuntimeEnvironment.getApplication()).save(SetupStep.DONE) }
     private val conversations = MutableStateFlow(ConversationState(loading = false, selected = detail(AgentId.CLAUDE_CODE)))
 
     private inline fun <reified T> stub(crossinline body: (String) -> Any?): T =
