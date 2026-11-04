@@ -63,9 +63,11 @@ internal fun connectionLabel(profile: GatewayProfile): String = if (profile.sour
                 val setting = settings.firstOrNull { it.agent == agent } ?: AgentConnectionPreference(agent)
                 val current = routes.firstOrNull { it.agent == agent }
                 SettingsGroup(AppStrings.nativeSignIn) {
-                    SettingsItem(if (login == null) AppStrings.agentSignedOut else if (login.expired) AppStrings.nativeLoginExpired else "${AppStrings.agentSignedIn} · ${login.label}", { showLogin = true })
-                    GroupDivider()
-                    SettingsAction(if (login == null) AppStrings.signInAgent else AppStrings.switchAgentAccount) { showLogin = true }
+                    SettingsItem(
+                        if (login == null || login.expired) AppStrings.signInAgent else AppStrings.switchAgentAccount,
+                        { showLogin = true },
+                        if (login == null) AppStrings.agentSignedOut else if (login.expired) AppStrings.nativeLoginExpired else "${AppStrings.agentSignedIn} · ${login.label}",
+                    )
                     if (login != null) {
                         GroupDivider()
                         SettingsAction(AppStrings.signOutAgent) { vm.enqueue {

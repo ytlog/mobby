@@ -27,11 +27,11 @@ class AgentConnectionsUiTest {
     private var preference = AgentConnectionPreference(AgentId.CODEX)
     private inline fun <reified T> stub(crossinline body: (String, Array<out Any?>) -> Any?): T =
         Proxy.newProxyInstance(T::class.java.classLoader, arrayOf(T::class.java)) { _, method, args -> body(method.name, args.orEmpty()) } as T
-    private fun vm(api: List<GatewayProfile> = emptyList()): ConversationViewModel {
+    private fun vm(api: List<GatewayProfile> = emptyList(), accounts: List<AgentLogin> = listOf(account)): ConversationViewModel {
         val system = stub<SystemPort> { name, args -> when (name) {
             "getStatus" -> flowOf(SystemStatus(true, true))
             "getDiagnostic" -> emptyFlow<DiagnosticOutput>()
-            "nativeAccounts" -> listOf(account)
+            "nativeAccounts" -> accounts
             "connectionSettings" -> listOf(preference)
             "gateways" -> api
             "defaultGateway" -> GatewayDefault(AgentId.CODEX, account.route().id, account.version)
@@ -59,6 +59,25 @@ class AgentConnectionsUiTest {
         compose.onNodeWithText("OpenCode").assertDoesNotExist()
         compose.onNodeWithText("创建").assertIsEnabled()
         compose.onNodeWithText("管理登录与 API").assertExists()
+    }
+    @Test fun `signed out status and sign in action share a single clickable row`() {
+        val vm = vm(accounts = emptyList())
+        compose.setContent { MaterialTheme { AgentConnectionsPage(vm, back = {}, gateway = {}) } }
+        compose.onNodeWithText("Codex").performClick()
+        val action = compose.onNodeWithText("登录").fetchSemanticsNode()
+        val status = compose.onNodeWithText("未登录").fetchSemanticsNode()
+        assertEquals("Status and action should belong to one row", action.id, status.id)
+    }
+    @Test fun `signed in account status shares its switch action while sign out stays separate`() {
+        val vm = vm()
+        compose.setContent { MaterialTheme { AgentConnectionsPage(vm, back = {}, gateway = {}) } }
+        compose.waitUntil { vm.nativeAccounts.value.isNotEmpty() }
+        compose.onNodeWithText("Codex").performClick()
+        val action = compose.onNodeWithText("切换账号").fetchSemanticsNode()
+        val status = compose.onNodeWithText("已登录 · ChatGPT").fetchSemanticsNode()
+        val signOut = compose.onNodeWithText("退出登录").fetchSemanticsNode()
+        assertEquals(action.id, status.id)
+        assertNotEquals(action.id, signOut.id)
     }
     @Test fun `API-only setting keeps native login and switches the effective connection`() {
         val api = GatewayProfile(AgentId.CODEX, "existing-api", 3, "https://example.invalid/v1", "api-model", "RESPONSES", true)
