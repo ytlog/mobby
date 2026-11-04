@@ -101,23 +101,28 @@ internal fun connectionLabel(profile: GatewayProfile): String = if (profile.sour
             }
         }
     }
-    if (showLogin && selected != null) NativeLoginDialog(vm, selected!!, { showLogin = false; loginDismissed?.invoke() }, {
+    val loginTarget = selected
+    if (showLogin && loginTarget != null) NativeLoginDialog(vm, loginTarget, { showLogin = false; loginDismissed?.invoke() }, {
         notice = AppStrings.nativeLoginSucceeded
         showLogin = false
         scope.launch {
-            vm.refresh()
-            vm.connections.value.firstOrNull { it.agent == selected }?.let { profile ->
-                vm.rememberAgentSelection(NextTurnConfig(profile.agent, profile.model, null, "default", profile.id, profile.version))
-                vm.state.value.selected?.conversation?.takeIf { !it.hasTurns && it.draft.text.isBlank() }?.let { current ->
-                    vm.actions.configure(current.id, NextTurnConfig(profile.agent, profile.model, null, current.config.workspace, profile.id, profile.version))
-                }
-            }
+            vm.completeNativeSignIn(loginTarget)
             connected()
         }
     })
 }
 
-@Composable private fun NativeLoginDialog(vm: ConversationViewModel, agent: AgentId, dismiss: () -> Unit, success: () -> Unit) {
+internal suspend fun ConversationViewModel.completeNativeSignIn(agent: AgentId) {
+    refresh()
+    connections.value.firstOrNull { it.agent == agent }?.let { profile ->
+        rememberAgentSelection(NextTurnConfig(profile.agent, profile.model, null, "default", profile.id, profile.version))
+        state.value.selected?.conversation?.takeIf { !it.hasTurns && it.draft.text.isBlank() }?.let { current ->
+            actions.configure(current.id, NextTurnConfig(profile.agent, profile.model, null, current.config.workspace, profile.id, profile.version))
+        }
+    }
+}
+
+@Composable internal fun NativeLoginDialog(vm: ConversationViewModel, agent: AgentId, dismiss: () -> Unit, success: () -> Unit) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
     val scope = rememberCoroutineScope()

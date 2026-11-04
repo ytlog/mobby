@@ -10,15 +10,18 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.launch
 import com.github.ytlog.mobby.android.conversation.domain.AgentId
 import com.github.ytlog.mobby.android.conversation.domain.gateway.AgentLogin
 import com.github.ytlog.mobby.android.conversation.ui.UiStrings as AppStrings
 
-internal enum class SetupStep { AGENTS, SCREEN, DONE }
+internal enum class SetupStep { AGENTS, SIGN_IN, SCREEN, DONE }
 
 /** Only guide progress; existing accounts, routes, screen choices and chats are never written here. */
 internal class SetupProgress(context: Context) {
     private val preferences = context.getSharedPreferences("mobby.setup-guide", Context.MODE_PRIVATE)
+    fun agent(): AgentId? = preferences.getString("agent", AgentId.CODEX.name)?.takeUnless { it == "API" }?.let(AgentId::valueOf)
+    fun selectAgent(agent: AgentId?) { preferences.edit().putString("agent", agent?.name ?: "API").apply() }
     fun read(): SetupStep = if (preferences.getBoolean("seen", false)) SetupStep.DONE
         else preferences.getString("step", null)?.let { SetupStep.valueOf(it) } ?: SetupStep.AGENTS
     fun save(step: SetupStep) {
@@ -48,42 +51,55 @@ internal class SetupProgress(context: Context) {
     SettingsGroup(AppStrings.setupApiAlternative) { SettingsItem(AppStrings.configureApiGateway, api) }
 }
 
-@Composable internal fun SetupGuidePage(vm: ConversationViewModel, step: SetupStep, signIn: (AgentId) -> Unit,
-    api: () -> Unit, next: () -> Unit, agents: () -> Unit, screen: () -> Unit, finish: () -> Unit) {
+@Composable internal fun SetupGuidePage(vm: ConversationViewModel, step: SetupStep, selectedAgent: AgentId?,
+    selectAgent: (AgentId?) -> Unit, api: () -> Unit, next: () -> Unit, previous: () -> Unit, finish: () -> Unit) {
     val accounts by vm.nativeAccounts.collectAsStateWithLifecycle()
-    val routes by vm.connections.collectAsStateWithLifecycle()
     val system by vm.status.collectAsStateWithLifecycle()
-    val screenState = ScreenUi.controller?.state?.collectAsStateWithLifecycle()?.value
-    Column(Modifier.fillMaxSize()) {
-        PageHeader(AppStrings.setupGuide, if (step == SetupStep.SCREEN) agents else finish)
-        Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text(if (step == SetupStep.AGENTS) "1 / 2" else "2 / 2", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            LinearProgressIndicator(progress = { if (step == SetupStep.AGENTS) 0.5f else 1f }, modifier = Modifier.fillMaxWidth(),
-                color = MaterialTheme.colorScheme.primary, trackColor = MaterialTheme.colorScheme.surfaceVariant)
-            Text(if (step == SetupStep.AGENTS) AppStrings.setupAgentTitle else AppStrings.setupScreenTitle,
-                style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
-            SettingsCaption(if (step == SetupStep.AGENTS) AppStrings.setupAgentBody else AppStrings.setupScreenBody)
-            if (step == SetupStep.AGENTS) {
-                AgentSetupChoices(accounts, system.ready, signIn, api)
-                if (!system.ready) SettingsCaption(AppStrings.setupRuntimePreparing)
-                if (routes.any { it.source == com.github.ytlog.mobby.android.conversation.domain.gateway.ConnectionSource.API }) SettingsCaption(AppStrings.setupApiPreserved)
-                Button(onClick = next, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp), shape = RoundedCornerShape(22.dp)) {
-                    Text(AppStrings.setupNextScreen)
-                }
-                TextButton(onClick = finish) { Text(AppStrings.later) }
-            } else {
-                SettingsGroup {
-                    SettingsItem(AppStrings.setupScreenAction, screen,
-                        screenState?.let { screenModeLabel(it.mode) + if (it.connected) " · ${AppStrings.screenBackendReady}" else "" })
-                }
-                SettingsCaption(AppStrings.currentScreenQuickHelp)
-                SettingsCaption(AppStrings.virtualScreenModeHelp)
-                Button(onClick = finish, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp), shape = RoundedCornerShape(22.dp)) {
-                    Text(AppStrings.setupStart)
-                }
-                TextButton(onClick = agents) { Text(AppStrings.setupAgentAgain) }
+    val routes by vm.connections.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
+    var showLogin by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var completing by remember { mutableStateOf(false) }
+    if (step == SetupStep.SCREEN) {
+        val controller = ScreenUi.controller
+        if (controller != null) ScreenControlSettings(controller, onBack = previous, onFinished = finish, embedded = true, stepOffset = 2)
+        else SetupWizardFrame(AppStrings.setupGuide, 3, AppStrings.wizardChooseMode, AppStrings.setupRuntimePreparing,
+            previous, AppStrings.wizardNext, {}, enabled = false)
+        return
+    }
+    val account = accounts.firstOrNull { it.agent == selectedAgent && !it.expired }
+    val choosing = step == SetupStep.AGENTS
+    val ready = account != null || selectedAgent == null && routes.any { it.source == com.github.ytlog.mobby.android.conversation.domain.gateway.ConnectionSource.API }
+    SetupWizardFrame(AppStrings.setupGuide, if (choosing) 1 else 2,
+        if (choosing) AppStrings.wizardChooseAgent else selectedAgent?.let { AppStrings.wizardSignIn(it.label()) } ?: AppStrings.wizardApiTitle,
+        if (choosing) AppStrings.wizardChooseAgentHelp else if (selectedAgent == null) AppStrings.wizardApiHelp else account?.let { "${AppStrings.agentSignedIn} · ${it.label}" } ?: AppStrings.wizardSignInHelp,
+        back = previous,
+        primaryText = if (choosing || ready) AppStrings.wizardNext else selectedAgent?.let { AppStrings.wizardSignIn(it.label()) } ?: AppStrings.configureApiGateway,
+        primary = { if (choosing || ready) next() else if (selectedAgent == null) api() else showLogin = true },
+        enabled = choosing || selectedAgent == null || system.ready,
+        secondaryText = if (choosing) AppStrings.later else AppStrings.wizardPrevious, secondary = previous,
+        busy = completing, error = error) {
+        if (choosing) SettingsGroup {
+            listOf(AgentId.CODEX, AgentId.CLAUDE_CODE, AgentId.PI, AgentId.OPEN_CODE).forEachIndexed { index, agent ->
+                if (index > 0) GroupDivider()
+                ChoiceRow(agent.label(), selectedAgent == agent, { selectAgent(agent) })
             }
+            GroupDivider()
+            ChoiceRow(AppStrings.wizardUseApi, selectedAgent == null, { selectAgent(null) })
+        }
+        else {
+            if (!system.ready && selectedAgent != null) Text(AppStrings.setupRuntimePreparing, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            TextButton(onClick = next) { Text(AppStrings.wizardSkipSignIn) }
         }
     }
+    if (showLogin && selectedAgent != null) NativeLoginDialog(vm, selectedAgent, { showLogin = false }, {
+        showLogin = false
+        completing = true
+        scope.launch {
+            try { vm.completeNativeSignIn(selectedAgent); next() }
+            catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (_: Exception) { error = AppStrings.nativeLoginFailed }
+            finally { completing = false }
+        }
+    })
 }

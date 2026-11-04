@@ -121,6 +121,7 @@ class ConversationHostActions(
     val context = LocalContext.current
     val setupProgress = remember(context) { SetupProgress(context) }
     var setupStep by rememberSaveable { mutableStateOf(setupProgress.read()) }
+    var setupAgent by rememberSaveable { mutableStateOf(setupProgress.agent()) }
     var connectionFromSetup by rememberSaveable { mutableStateOf(false) }
     var navigation by rememberSaveable(stateSaver = AppNavigationState.Saver) {
         mutableStateOf(AppNavigationState(page = if (setupStep == SetupStep.DONE) AppPage.CONVERSATION else AppPage.SETUP))
@@ -143,6 +144,8 @@ class ConversationHostActions(
     }
     var reading by remember { mutableStateOf<Pair<String, String>?>(null) }
     val snackbar = remember { SnackbarHostState() }
+    var wizardFooterInset by remember { mutableStateOf(0.dp) }
+    val reportWizardFooterInset: (Dp) -> Unit = remember { { wizardFooterInset = it } }
     val keyboard = LocalSoftwareKeyboardController.current
     val focus = LocalFocusManager.current
     var consumedNavigation by rememberSaveable { mutableStateOf<String?>(null) }
@@ -193,6 +196,13 @@ class ConversationHostActions(
         connectionFromSetup = false
         navigation = navigation.open(AppPage.CONVERSATION)
     }
+    fun previousSetup() {
+        when (setupStep) {
+            SetupStep.AGENTS, SetupStep.DONE -> finishSetup()
+            SetupStep.SIGN_IN -> showSetup(SetupStep.AGENTS)
+            SetupStep.SCREEN -> showSetup(SetupStep.SIGN_IN)
+        }
+    }
     fun connectionsBack() {
         loginAgent = null
         navigation = navigation.open(if (connectionFromSetup) AppPage.SETUP else if (gatewayFromIntro) AppPage.CONVERSATION else AppPage.SETTINGS)
@@ -205,7 +215,7 @@ class ConversationHostActions(
     }
     BackHandler(navigation.page != AppPage.CONVERSATION || navigation.addSheetOpen) {
         when {
-            navigation.page == AppPage.SETUP -> if (setupStep == SetupStep.SCREEN) showSetup(SetupStep.AGENTS) else finishSetup()
+            navigation.page == AppPage.SETUP -> previousSetup()
             navigation.page == AppPage.GATEWAY -> gatewayBack()
             navigation.page == AppPage.CONNECTIONS -> connectionsBack()
             else -> navigation = navigation.back(gatewayFromIntro)
@@ -282,11 +292,11 @@ class ConversationHostActions(
                             if (page == AppPage.SETUP) { setupStep = setupProgress.read().takeUnless { it == SetupStep.DONE } ?: SetupStep.AGENTS; connectionFromSetup = false }
                             navigate(page)
                         }, { navigation = navigation.open(AppPage.CONVERSATION) }, vm, petEnabled, petPermitted, hostActions.pet)
-                        AppPage.SETUP -> SetupGuidePage(vm, setupStep,
-                            signIn = { agent -> loginAgent = agent; connectionFromSetup = true; gatewayFromIntro = true; gatewayFromConnections = false; navigate(AppPage.CONNECTIONS) },
+                        AppPage.SETUP -> CompositionLocalProvider(LocalWizardFooterInset provides reportWizardFooterInset) { SetupGuidePage(vm, setupStep, setupAgent,
+                            selectAgent = { setupAgent = it; setupProgress.selectAgent(it) },
                             api = { gatewayStartAdding = true; connectionFromSetup = true; gatewayFromIntro = true; gatewayFromConnections = false; navigate(AppPage.GATEWAY) },
-                            next = { showSetup(SetupStep.SCREEN) }, agents = { showSetup(SetupStep.AGENTS) },
-                            screen = { context.startActivity(android.content.Intent(context, ScreenControlSettingsActivity::class.java)) }, finish = ::finishSetup)
+                            next = { showSetup(if (setupStep == SetupStep.AGENTS) SetupStep.SIGN_IN else SetupStep.SCREEN) },
+                            previous = ::previousSetup, finish = ::finishSetup) }
                         AppPage.CONNECTIONS -> AgentConnectionsPage(vm, initialAgent = loginAgent,
                             back = ::connectionsBack,
                             gateway = { gatewayStartAdding = false; gatewayFromConnections = true; navigate(AppPage.GATEWAY) },
@@ -337,7 +347,7 @@ class ConversationHostActions(
                     } else Modifier.width(drawerWidth).height(availableHeight).offset {
                         IntOffset(x + ((progress - 1f) * pixels).roundToInt(), y)
                     }.then(swipe))
-                SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
+                SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(bottom = if (navigation.page == AppPage.SETUP) wizardFooterInset else 0.dp))
                 if (navigation.addSheetOpen) ModalBottomSheet(onDismissRequest = { navigation = navigation.closeAddSheet() }, modifier = Modifier.offset(x = sheetOffset), sheetMaxWidth = overlayWidth, shape = RoundedCornerShape(28.dp, 28.dp, 0.dp, 0.dp), containerColor = addSheetColor(), contentColor = addInkColor()) {
                     val target = state.selected?.conversation
                     val availability = attachmentAvailability(target, agentOptions, system.ready, camera.busy)
