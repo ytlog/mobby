@@ -634,7 +634,7 @@ internal fun LazyListScope.programSection(shortcuts: List<ProgramShortcut>, quer
     var more by remember { mutableStateOf(false) }
     var chip by remember { mutableStateOf(IntRect.Zero) }
     var actions by remember { mutableStateOf(IntRect.Zero) }
-    Row(modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, top = 8.dp, bottom = if (darkChrome()) 0.dp else 12.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, top = 8.dp, bottom = if (darkChrome()) 0.dp else 4.dp), verticalAlignment = Alignment.CenterVertically) {
             if (showMenu) Surface(Modifier.size(ToolbarControl), shape = CircleShape, color = buttonColor(), contentColor = onButtonColor(), shadowElevation = floatingElevation(), tonalElevation = 0.dp) { ActionIcon(menuLabel, onMenu, AppIcons.Menu) }
             Box(Modifier.padding(horizontal = 6.dp).onGloballyPositioned { coordinates ->
                 val origin = coordinates.positionInWindow()
@@ -882,7 +882,7 @@ internal fun Turn.showsSeparateActivity(): Boolean = occupied || pending
 }
 
 @Composable internal fun Timeline(detail: ConversationDetail, vm: ConversationViewModel, modifier: Modifier, followPadding: PaddingValues? = null, read: (String, String) -> Unit, hostActions: ConversationHostActions, proposal: (SkillProposal) -> Unit, onSelectPlugin: (String) -> Unit, initialFollow: Boolean? = null, onFollowChanged: (Boolean) -> Unit = {}, programs: EmptyPagePrograms? = null) {
-    val topFade = if (darkChrome()) ConversationEdgeFade else LightConversationTopFade
+    val topFade = ConversationTopFade
     val bottomFade = if (darkChrome()) ConversationEdgeFade else LightConversationBottomFade
     val contentPadding = PaddingValues(start = 16.dp, top = topFade, end = 16.dp, bottom = bottomFade)
     val activityTurn = detail.turns.lastOrNull { it.occupied } ?: detail.turns.lastOrNull { it.showsSeparateActivity() }
@@ -1066,7 +1066,7 @@ internal suspend fun LazyListState.followConversationTail() {
 }
 
 private val ConversationEdgeFade = 28.dp
-private val LightConversationTopFade = 48.dp
+private val ConversationTopFade = 16.dp
 private val LightConversationBottomFade = 64.dp
 
 /** Softens the list where it meets the toolbar buttons and the input, without covering the jump button. */
