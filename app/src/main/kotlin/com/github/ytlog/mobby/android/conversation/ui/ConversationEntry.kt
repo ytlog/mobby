@@ -1051,16 +1051,21 @@ internal fun Turn.showsSeparateActivity(): Boolean = occupied || pending
                 }
             }
         }
-        if (!follow && list.canScrollForward && detail.turns.isNotEmpty()) FilledTonalButton(
-            onClick = { follow = true },
+        if (!follow && list.canScrollForward && detail.turns.isNotEmpty()) GlassSurface(
             modifier = Modifier.align(Alignment.BottomEnd)
                 .padding(followPadding ?: if (darkChrome()) PaddingValues(12.dp) else PaddingValues(20.dp))
-                .shadow(if (darkChrome()) 0.dp else floatingElevation(), CircleShape)
                 .size(48.dp),
             shape = CircleShape,
-            colors = tonalButtonColors(),
-            contentPadding = PaddingValues(0.dp),
-        ) { AppIcon(AppIcons.ArrowDown, AppStrings.latestMessages, Modifier.size(22.dp), tint = onButtonColor()) }
+        ) {
+            FilledTonalButton(
+                onClick = { follow = true },
+                modifier = Modifier.fillMaxSize(),
+                shape = CircleShape,
+                colors = ButtonDefaults.filledTonalButtonColors(containerColor = Color.Transparent),
+                elevation = null,
+                contentPadding = PaddingValues(0.dp),
+            ) { AppIcon(AppIcons.ArrowDown, AppStrings.latestMessages, Modifier.size(22.dp), tint = onButtonColor()) }
+        }
     }
 }
 
