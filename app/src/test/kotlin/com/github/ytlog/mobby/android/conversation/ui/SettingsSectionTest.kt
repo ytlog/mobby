@@ -38,6 +38,17 @@ class SettingsSectionTest {
 
     @After fun cleanup() { compose.runOnIdle { store.clear() }; scope.cancel() }
 
+    @Test fun `agent sign in and AI services share one settings entry`() {
+        val vm = viewModel()
+        var destination: String? = null
+        compose.setContent { MaterialTheme {
+            SettingsPage(SystemStatus(true, true), Appearance.DARK, {}, { destination = it }, {}, vm)
+        } }
+        compose.onNodeWithText("AI 服务设置").assertDoesNotExist()
+        compose.onNodeWithText("Agent 与 AI 服务").performClick()
+        assertEquals("connections", destination)
+    }
+
     @Test fun `screen control shell diagnostic and environment check share the runtime section`() {
         val repository = stub<ConversationStore> { name -> when (name) {
             "getState" -> MutableStateFlow(ConversationState(loading = false))

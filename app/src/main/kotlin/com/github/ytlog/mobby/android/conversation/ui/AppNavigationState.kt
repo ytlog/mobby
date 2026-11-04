@@ -10,7 +10,6 @@ internal enum class AppPage {
     companion object {
         fun fromSettingsRoute(route: String): AppPage = when (route) {
             "connections" -> CONNECTIONS
-            "gateway" -> GATEWAY
             "history-limits" -> HISTORY_LIMITS
             "diagnostic" -> DIAGNOSTIC
             "archived" -> ARCHIVED

@@ -256,7 +256,7 @@ class ConversationHostActions(
                             openedNewConversation = { navigation = navigation.open(AppPage.CONVERSATION) }) }
                         AppPage.SETTINGS -> SettingsPage(system, appearance, { value -> vm.enqueue { vm.report(actions.setAppearance(value)) } }, { next ->
                             val page = AppPage.fromSettingsRoute(next)
-                            if (page == AppPage.GATEWAY || page == AppPage.CONNECTIONS) { gatewayStartAdding = false; gatewayFromIntro = false; gatewayFromConnections = false; loginAgent = null }
+                            if (page == AppPage.CONNECTIONS) { gatewayStartAdding = false; gatewayFromIntro = false; gatewayFromConnections = false; loginAgent = null }
                             navigate(page)
                         }, { navigation = navigation.open(AppPage.CONVERSATION) }, vm, petEnabled, petPermitted, hostActions.pet)
                         AppPage.CONNECTIONS -> AgentConnectionsPage(vm, initialAgent = loginAgent,

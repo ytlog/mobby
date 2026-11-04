@@ -177,8 +177,6 @@ import kotlinx.coroutines.*
             SettingsGroup {
                 SettingsItem(AppStrings.agentConnectionsTitle, { navigate("connections") }, AppStrings.agentConnectionsSummary)
                 GroupDivider()
-                SettingsItem(AppStrings.gatewaySettings, { navigate("gateway") }, AppStrings.configuredGatewaysAndModels)
-                GroupDivider()
                 SettingsItem(AppStrings.storageRetention, { navigate("history-limits") }, AppStrings.conversationAndAttachmentRetention)
                 GroupDivider()
                 SettingsItem(AppStrings.appUpdates, { navigate("updates") }, AppStrings.updateSettingSummary)

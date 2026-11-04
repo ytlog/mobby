@@ -57,7 +57,7 @@ internal fun connectionLabel(profile: GatewayProfile): String = if (profile.sour
                             ?: if (login?.expired == true) AppStrings.nativeLoginExpired else AppStrings.noAvailableConnection)
                     }
                 }
-                SettingsGroup { SettingsItem(AppStrings.configureApiGateway, gateway) }
+                SettingsGroup { SettingsItem(AppStrings.configureApiGateway, gateway, AppStrings.configuredGatewaysAndModels) }
             } else {
                 val login = logins.firstOrNull { it.agent == agent }
                 val setting = settings.firstOrNull { it.agent == agent } ?: AgentConnectionPreference(agent)

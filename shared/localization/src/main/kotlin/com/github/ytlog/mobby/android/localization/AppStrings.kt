@@ -18,8 +18,8 @@ open class StringCatalog(private val fixedLanguage: AppLanguage? = null) {
         return PLACEHOLDER.replace(template) { match -> args[match.groupValues[1].toInt()].toString() }
     }
 
-    val agentConnectionsTitle get() = text("Agent 登录与 API", "Agent sign-in & API")
-    val agentConnectionsSummary get() = text("管理原生登录、API 兜底和使用方式", "Manage native sign-in, API fallback, and connection mode")
+    val agentConnectionsTitle get() = text("Agent 与 AI 服务", "Agents & AI services")
+    val agentConnectionsSummary get() = text("登录 Agent、配置 API 网关与切换使用方式", "Sign in to agents, configure API gateways, and choose connection modes")
     val connectAgentsTitle get() = text("连接你的 Agent", "Connect your agents")
     val connectAgentsBody get() = text("登录已有账号，或配置 API 网关开始使用", "Sign in to an existing account or configure an API gateway")
     val configureApiGateway get() = text("配置 API 网关", "Configure API gateway")
@@ -478,7 +478,6 @@ open class StringCatalog(private val fixedLanguage: AppLanguage? = null) {
     val create get() = text("创建", "Create")
     val back get() = text("返回", "Back")
     val settings get() = text("设置", "Settings")
-    val gatewaySettings get() = text("AI 服务设置", "AI service settings")
     val localModelService get() = text("本地模型服务", "Local model service")
     val localGatewaySetupHelp get() = text("下载并加载本地模型后，它会作为临时 AI 服务出现在列表中。", "Download and load a local model to make it available as a temporary AI service.")
     val openLocalModelSetup get() = text("打开本地模型配置", "Open local model setup")

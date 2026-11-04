@@ -26,7 +26,9 @@ class AppNavigationStateTest {
     }
 
     @Test fun settingsRouteBoundaryRejectsUnknownDestination() {
+        assertEquals(AppPage.CONNECTIONS, AppPage.fromSettingsRoute("connections"))
         assertEquals(AppPage.DIAGNOSTIC, AppPage.fromSettingsRoute("diagnostic"))
+        org.junit.Assert.assertThrows(IllegalStateException::class.java) { AppPage.fromSettingsRoute("gateway") }
         org.junit.Assert.assertThrows(IllegalStateException::class.java) { AppPage.fromSettingsRoute("typo") }
         org.junit.Assert.assertThrows(IllegalStateException::class.java) { AppPage.fromSettingsRoute("programs") }
     }
