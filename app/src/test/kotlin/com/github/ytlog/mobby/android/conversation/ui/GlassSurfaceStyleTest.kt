@@ -4,6 +4,10 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.view.View
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Column
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Size
+import org.junit.Assert.assertEquals
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
@@ -118,6 +122,34 @@ class GlassSurfaceStyleTest {
         }
         val contrast = pixels[180, 40].luminance() - pixels[60, 40].luminance()
         assertTrue("light glass must keep broad backdrop contrast: $contrast", contrast > 0.85f)
+    }
+
+    @Test fun `toolbar decoration can overflow over transcript without enlarging toolbar slot`() {
+        compose.setContent {
+            val host = LocalView.current
+            SideEffect { view = host }
+            Column(Modifier.size(120.dp, 100.dp).testTag("chrome")) {
+                ConversationToolbarLayer(Modifier.size(120.dp, 40.dp).testTag("header")) {
+                    Box(Modifier.size(120.dp, 40.dp).drawBehind {
+                        // Deterministic overflow probes draw order, independent of GPU shadow support.
+                        drawRect(Color.Black, size = Size(size.width, size.height + 12.dp.toPx()))
+                    })
+                }
+                Box(Modifier.size(120.dp, 60.dp).background(Color.White).testTag("body"))
+            }
+        }
+        val header = compose.onNodeWithTag("header").fetchSemanticsNode().boundsInRoot
+        val body = compose.onNodeWithTag("body").fetchSemanticsNode().boundsInRoot
+        assertEquals("header keeps its existing slot", 40f, header.height, 0.5f)
+        assertEquals("transcript keeps its original origin", header.bottom, body.top, 0.5f)
+        val root = compose.onNodeWithTag("chrome").fetchSemanticsNode().boundsInRoot
+        val pixels = compose.runOnIdle {
+            val bitmap = Bitmap.createBitmap(root.width.toInt(), root.height.toInt(), Bitmap.Config.ARGB_8888)
+            view.draw(Canvas(bitmap).apply { translate(-root.left, -root.top) })
+            bitmap.asImageBitmap().toPixelMap()
+        }
+        assertTrue("transcript must not erase the overflowing header decoration", pixels[60, 46].luminance() < 0.1f)
+        assertTrue("decoration stays local rather than covering the transcript", pixels[60, 70].luminance() > 0.9f)
     }
 
 }

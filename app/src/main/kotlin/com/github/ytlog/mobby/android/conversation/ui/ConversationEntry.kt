@@ -446,7 +446,7 @@ class ConversationHostActions(
     val backdrop = rememberCanvasBackdrop { drawRect(canvas) }
     CompositionLocalProvider(LocalConversationBackdrop provides backdrop) {
         Column(modifier.background(canvas)) {
-            Column(Modifier.fillMaxWidth().background(canvas).testTag("conversation-toolbar")) {
+            ConversationToolbarLayer(Modifier.fillMaxWidth().background(canvas).testTag("conversation-toolbar")) {
                 ConversationToolbar(state.selected?.conversation, vm,
                     modifier = Modifier.fillMaxWidth(),
                     onMenu = onMenu, onNew = onNew, onMore = onMore, onAnchor = onAnchor, showMenu = showMenu, menuLabel = menuLabel)
