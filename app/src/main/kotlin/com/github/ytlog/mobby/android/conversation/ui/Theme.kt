@@ -119,7 +119,7 @@ import kotlin.math.roundToInt
                 }
                 Box(Modifier.matchParentSize().background(scrim))
             }
-            GlassControlScope(background = cardColor(), backdrop = backdrop) {
+            GlassControlScope(background = cardColor(), backdrop = backdrop, glassButtons = false) {
                 MaterialTheme(
                     colorScheme = MaterialTheme.colorScheme.copy(
                         primary = menuAccent(),

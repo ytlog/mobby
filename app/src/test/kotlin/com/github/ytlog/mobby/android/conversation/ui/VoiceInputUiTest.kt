@@ -54,8 +54,6 @@ class VoiceInputUiTest {
         compose.onNodeWithContentDescription("语音输入").assertIsDisplayed()
     }
 
-    // This checks routing/semantics; Backdrop AGSL rendering is exercised on the device.
-    @GraphicsMode(GraphicsMode.Mode.LEGACY)
     @Test fun `running agent replaces stop with one send action while draft has content`() {
         val events = mutableListOf<String>()
         val hasDraft = mutableStateOf(true)

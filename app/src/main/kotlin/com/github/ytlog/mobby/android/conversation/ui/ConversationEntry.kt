@@ -557,12 +557,10 @@ class ConversationHostActions(
     Text(title, Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 4.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
-@Composable private fun DrawerEntry(title: String, mark: AppGlyph? = null, selected: Boolean = false, onClick: () -> Unit) {
-    GlassSurface(Modifier.fillMaxWidth().padding(vertical = 2.dp), shape = RoundedCornerShape(14.dp),
-        tint = if (selected) buttonColor() else Color.Unspecified) {
+@Composable private fun DrawerEntry(title: String, mark: AppGlyph? = null, glass: Boolean = false, onClick: () -> Unit) {
+    val row: @Composable () -> Unit = {
         Row(
-            Modifier.fillMaxWidth().height(DrawerRowHeight).clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)
-            .semantics { this.selected = selected }.padding(horizontal = 12.dp),
+            Modifier.fillMaxWidth().height(DrawerRowHeight).clickable(onClick = onClick).padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (mark != null) {
@@ -572,11 +570,20 @@ class ConversationHostActions(
             Text(title, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, color = LocalContentColor.current)
         }
     }
+    if (glass) GlassSurface(Modifier.fillMaxWidth().padding(vertical = 2.dp), shape = RoundedCornerShape(14.dp)) { row() }
+    else row()
 }
 
 @Composable private fun DrawerConversation(item: ConversationSummary, state: ConversationState, onSelect: (Conversation) -> Unit) {
-    DrawerEntry(item.conversation.title, mark = item.conversation.config.agent.glyph(),
-        selected = state.selected?.conversation?.id == item.conversation.id) { onSelect(item.conversation) }
+    val selected = state.selected?.conversation?.id == item.conversation.id
+    Surface(
+        modifier = Modifier.semantics { this.selected = selected },
+        color = if (selected) buttonColor() else Color.Transparent,
+        contentColor = if (selected) onButtonColor() else conversationInk(),
+        shape = RoundedCornerShape(14.dp),
+    ) {
+        DrawerEntry(item.conversation.title, mark = item.conversation.config.agent.glyph()) { onSelect(item.conversation) }
+    }
 }
 
 private val DrawerRowHeight = 40.dp
@@ -595,12 +602,12 @@ internal fun LazyListScope.programSection(shortcuts: List<ProgramShortcut>, quer
     item(key = "section:programs") { DrawerSection(AppStrings.programs) }
     visible.forEach { shortcut ->
         item(key = "program:${shortcut.id}") {
-            DrawerEntry(listOfNotNull(shortcut.name, shortcut.note).joinToString(" · "), mark = AppIcons.Terminal) {
+            DrawerEntry(listOfNotNull(shortcut.name, shortcut.note).joinToString(" · "), mark = AppIcons.Terminal, glass = true) {
                 if (shortcut.opensPage) openPage(shortcut.id) else openDetails(shortcut.id)
             }
         }
     }
-    if (query.isBlank()) item(key = "all-programs") { DrawerEntry(AppStrings.allPrograms, onClick = openAll) }
+    if (query.isBlank()) item(key = "all-programs") { DrawerEntry(AppStrings.allPrograms, glass = true, onClick = openAll) }
 }
 
 @Composable private fun DrawerPill(onClick: () -> Unit, modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {

@@ -131,6 +131,10 @@ class DrawerFooterTest {
         val top = (headers + entries).associateWith { compose.onNodeWithText(it).fetchSemanticsNode().boundsInRoot.top }
         assertTrue(top.getValue("置顶") < top.getValue("置顶事项"))
         assertTrue(top.getValue("置顶事项") < top.getValue("项目"))
+        val projectRow = compose.onNodeWithText("示例项目").getBoundsInRoot()
+        val emptyProjectRow = compose.onNodeWithText("空项目").getBoundsInRoot()
+        assertEquals("project items retain the original compact row spacing", 40f,
+            (emptyProjectRow.top - projectRow.top).value, 0.5f)
         assertTrue(top.getValue("项目") < top.getValue("示例项目"))
         assertTrue(top.getValue("示例项目") < top.getValue("空项目"))
         assertTrue(top.getValue("空项目") < top.getValue("更多项目"))

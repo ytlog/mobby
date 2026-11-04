@@ -47,7 +47,7 @@ class GlassPanelInteractionTest {
         assertEquals(listOf("filled", "text", "outlined", "tonal", "action"), events)
     }
 
-    @Test fun `glass menu options retain selected and disabled semantics`() {
+    @Test fun `plain menu options retain original spacing selected and disabled semantics`() {
         val selected = mutableStateOf(false)
         var clicks = 0
         compose.setContent {
@@ -62,6 +62,8 @@ class GlassPanelInteractionTest {
         }
         compose.onNodeWithText("option").assertIsNotSelected().performClick().assertIsSelected()
         compose.onNodeWithText("unavailable").assertIsNotEnabled()
+        assertEquals("menu options retain original row spacing", 48f,
+            (compose.onNodeWithText("unavailable").getBoundsInRoot().top - compose.onNodeWithText("option").getBoundsInRoot().top).value, 0.5f)
         assertEquals(1, clicks)
     }
 }

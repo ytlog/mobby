@@ -144,18 +144,20 @@ import kotlinx.coroutines.*
                 MenuOption(AppStrings.manageAgentConnections, false) { onDismiss(); manageConnections() }
             }
         }
-        Button(
-            onClick = {
-                val config = remembered ?: return@Button
-                vm.enqueue { vm.rememberAgentSelection(config) }
-                onApply(config, project)
-            },
-            enabled = canCreate,
-            modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 20.dp).heightIn(min = 48.dp),
-            shape = RoundedCornerShape(22.dp),
-            colors = filledButtonColors(if (darkChrome()) MobbyColors.Dark.button else menuAccent(), if (darkChrome()) MobbyColors.Dark.onButton else MobbyColors.onAccent),
-            elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp, pressedElevation = 0.dp, focusedElevation = 0.dp, hoveredElevation = 0.dp),
-        ) { Text(AppStrings.create, fontWeight = FontWeight.SemiBold) }
+        CompositionLocalProvider(LocalGlassControls provides true) {
+            Button(
+                onClick = {
+                    val config = remembered ?: return@Button
+                    vm.enqueue { vm.rememberAgentSelection(config) }
+                    onApply(config, project)
+                },
+                enabled = canCreate,
+                modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 20.dp).heightIn(min = 48.dp),
+                shape = RoundedCornerShape(22.dp),
+                colors = filledButtonColors(if (darkChrome()) MobbyColors.Dark.button else menuAccent(), if (darkChrome()) MobbyColors.Dark.onButton else MobbyColors.onAccent),
+                elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp, pressedElevation = 0.dp, focusedElevation = 0.dp, hoveredElevation = 0.dp),
+            ) { Text(AppStrings.create, fontWeight = FontWeight.SemiBold) }
+        }
     }
 }
 @Composable internal fun PageHeader(title: String, back: () -> Unit, trailing: @Composable () -> Unit = {}) {

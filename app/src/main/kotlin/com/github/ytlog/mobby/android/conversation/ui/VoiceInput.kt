@@ -489,9 +489,9 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectVo
                         if (hasDraftContent) {
                             Box {
                                 ActionIcon(AppStrings.chooseMessageDelivery, { deliveryMenu = true }, AppIcons.Send, enabled = sendEnabled, filled = true)
-                                FrostedMenu(expanded = deliveryMenu, onDismissRequest = { deliveryMenu = false }) {
-                                    MenuAction(AppStrings.insertCurrentMessage, onClick = { deliveryMenu = false; onInsert() })
-                                    MenuAction(AppStrings.queueNextMessage, onClick = { deliveryMenu = false; onSend() })
+                                DropdownMenu(expanded = deliveryMenu, onDismissRequest = { deliveryMenu = false }) {
+                                    DropdownMenuItem(text = { Text(AppStrings.insertCurrentMessage) }, onClick = { deliveryMenu = false; onInsert() })
+                                    DropdownMenuItem(text = { Text(AppStrings.queueNextMessage) }, onClick = { deliveryMenu = false; onSend() })
                                 }
                             }
                         } else ActionIcon(AppStrings.stopCurrentTask, onStop, AppIcons.Stop, enabled = stopEnabled, filled = true, glyphSize = 16.dp)

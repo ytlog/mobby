@@ -14,9 +14,9 @@ import com.kyant.backdrop.backdrops.rememberCanvasBackdrop
 internal val LocalGlassControls = staticCompositionLocalOf { false }
 
 /** Flat panels sample their actual solid background; popups supply their own window-local layer. */
-@Composable internal fun GlassControlScope(background: Color, backdrop: Backdrop? = null, content: @Composable () -> Unit) {
+@Composable internal fun GlassControlScope(background: Color, backdrop: Backdrop? = null, glassButtons: Boolean = true, content: @Composable () -> Unit) {
     val flatBackground = rememberCanvasBackdrop { drawRect(background) }
-    CompositionLocalProvider(LocalGlassControls provides true,
+    CompositionLocalProvider(LocalGlassControls provides glassButtons,
         LocalConversationBackdrop provides (backdrop ?: flatBackground), content = content)
 }
 
