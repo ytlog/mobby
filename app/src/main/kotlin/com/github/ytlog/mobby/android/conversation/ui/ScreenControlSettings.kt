@@ -4,11 +4,14 @@ import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
@@ -20,6 +23,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
+import com.github.ytlog.mobby.android.MobbyApplication
+import com.github.ytlog.mobby.android.conversation.domain.Appearance
 import com.github.ytlog.mobby.android.runtime.api.device.ScreenControlPort
 import com.github.ytlog.mobby.android.runtime.api.device.ScreenMode
 import kotlinx.coroutines.*
@@ -37,8 +42,16 @@ object ScreenUi { var controller: ScreenControlPort? = null }
 class ScreenControlSettingsActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         setContent {
-            MaterialTheme(colorScheme = if (isSystemInDarkTheme()) MobbyDarkScheme else MobbyLightScheme) {
+            val appearance by (application as MobbyApplication).conversations.appearance.collectAsStateWithLifecycle()
+            val dark = appearance == Appearance.DARK || appearance == Appearance.SYSTEM && isSystemInDarkTheme()
+            LaunchedEffect(dark) {
+                val background = mobbySystemBarColor(dark)
+                val style = if (dark) SystemBarStyle.dark(background) else SystemBarStyle.light(background, background)
+                enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
+            }
+            MaterialTheme(colorScheme = if (dark) MobbyDarkScheme else MobbyLightScheme) {
                 Surface(Modifier.fillMaxSize()) {
                     ScreenUi.controller?.let { ScreenControlSettings(it, onBack = ::finish) }
                 }
@@ -65,34 +78,42 @@ class ScreenControlSettingsActivity : ComponentActivity() {
     }
     Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
         PageHeader(AppStrings.screenModeTitle, onBack)
-        Column(Modifier.verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            ScreenMode.entries.forEach { mode ->
-                Row {
-                    RadioButton(selected = state.mode == mode, enabled = !busy && !state.active && !state.adbPairing, onClick = {
-                        execute { controller.select(mode) }
-                    })
-                    TextButton(enabled = !busy && !state.active && !state.adbPairing, onClick = { execute { controller.select(mode) } }) { Text(screenModeLabel(mode)) }
+        Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            SettingsGroup {
+                ScreenMode.entries.forEachIndexed { index, mode ->
+                    if (index > 0) GroupDivider()
+                    ChoiceRow(screenModeLabel(mode), state.mode == mode, { execute { controller.select(mode) } },
+                        enabled = !busy && !state.active && !state.adbPairing)
                 }
             }
-            Text(if (state.mode == ScreenMode.CURRENT) AppStrings.currentScreenModeHelp else AppStrings.virtualScreenModeHelp)
+            SettingsCaption(if (state.mode == ScreenMode.CURRENT) AppStrings.currentScreenModeHelp else AppStrings.virtualScreenModeHelp)
             if (state.mode == ScreenMode.CURRENT) {
-                OutlinedButton(onClick = { context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }) { Text(AppStrings.openAccessibilitySettings) }
-            } else {
-                Text(if (state.connected) AppStrings.screenBackendReady else AppStrings.screenBackendDisconnected)
-                if (state.mode == ScreenMode.ADB) {
-                    Text(AppStrings.adbScreenHelp)
-                    OutlinedButton(enabled = !busy && !state.active, onClick = {
-                        execute { if (state.adbPairing) controller.cancelAdbPairing() else controller.startAdbPairing() }
-                    }) { Text(if (state.adbPairing) AppStrings.adbCancelPairing else AppStrings.adbStartPairing) }
-                    OutlinedButton(onClick = { context.startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)) }, enabled = !busy && !state.active) {
-                        Text(AppStrings.openWirelessDebugging)
-                    }
-                    if (state.adbPaired) Text(AppStrings.adbPaired)
-                    OutlinedTextField(connectionPort, { connectionPort = it }, label = { Text(AppStrings.adbConnectionPort) },
-                        enabled = !busy && !state.active && !state.connected && !state.adbPairing, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-                    Text(AppStrings.adbConnectionPortHelp)
+                SettingsGroup {
+                    SettingsItem(AppStrings.openAccessibilitySettings, { context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) })
                 }
-                Button(enabled = !busy && !state.active && !state.adbPairing, onClick = {
+            } else {
+                SettingsCaption(if (state.connected) AppStrings.screenBackendReady else AppStrings.screenBackendDisconnected)
+                if (state.mode == ScreenMode.ADB) {
+                    SettingsGroup {
+                        SettingsAction(if (state.adbPairing) AppStrings.adbCancelPairing else AppStrings.adbStartPairing, enabled = !busy && !state.active) {
+                            execute { if (state.adbPairing) controller.cancelAdbPairing() else controller.startAdbPairing() }
+                        }
+                        GroupDivider()
+                        SettingsAction(AppStrings.openWirelessDebugging, enabled = !busy && !state.active) {
+                            context.startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS))
+                        }
+                    }
+                    SettingsCaption(AppStrings.adbScreenHelp)
+                    if (state.adbPaired) SettingsCaption(AppStrings.adbPaired)
+                    SettingsGroup {
+                        SettingsField(connectionPort, { connectionPort = it }, AppStrings.adbConnectionPort,
+                            enabled = !busy && !state.active && !state.connected && !state.adbPairing,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                    }
+                    SettingsCaption(AppStrings.adbConnectionPortHelp)
+                }
+                Button(modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp), shape = RoundedCornerShape(22.dp),
+                    enabled = !busy && !state.active && !state.adbPairing, onClick = {
                     execute {
                         if (state.connected) controller.disconnect() else {
                             if (state.mode == ScreenMode.ADB) controller.setAdbPort(connectionPort)
@@ -100,13 +121,15 @@ class ScreenControlSettingsActivity : ComponentActivity() {
                         }
                     }
                 }) { Text(if (state.connected) AppStrings.disconnectScreen else AppStrings.connectScreen) }
-                if (android.os.Build.VERSION.SDK_INT < 33) Text(AppStrings.virtualScreenAndroidVersion)
+                if (android.os.Build.VERSION.SDK_INT < 33) SettingsCaption(AppStrings.virtualScreenAndroidVersion)
             }
-            OutlinedButton(onClick = {
-                context.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName))
-            }) { Text(AppStrings.openNotificationSettings) }
-            if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-            (error ?: state.error)?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            SettingsGroup {
+                SettingsItem(AppStrings.openNotificationSettings, {
+                    context.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName))
+                })
+            }
+            if (busy) LinearProgressIndicator(Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.primary, trackColor = MaterialTheme.colorScheme.surfaceVariant)
+            (error ?: state.error)?.let { SettingsCaption(it, error = true) }
         }
     }
 }

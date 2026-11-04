@@ -126,12 +126,13 @@ internal fun Modifier.lightInputShadow(corner: Dp): Modifier = drawBehind {
     value: String, onValueChange: (String) -> Unit, label: String, enabled: Boolean = true,
     singleLine: Boolean = true, maxLines: Int = if (singleLine) 1 else Int.MAX_VALUE,
     visualTransformation: VisualTransformation = VisualTransformation.None,
+    keyboardOptions: androidx.compose.foundation.text.KeyboardOptions = androidx.compose.foundation.text.KeyboardOptions.Default,
     trailing: (@Composable () -> Unit)? = null,
 ) {
     OutlinedTextField(
         value, onValueChange, Modifier.fillMaxWidth(), enabled = enabled,
         textStyle = MaterialTheme.typography.bodyLarge, label = { Text(label) }, trailingIcon = trailing,
-        visualTransformation = visualTransformation, singleLine = singleLine, maxLines = maxLines,
+        visualTransformation = visualTransformation, keyboardOptions = keyboardOptions, singleLine = singleLine, maxLines = maxLines,
         shape = RoundedCornerShape(0.dp), colors = settingsFieldColors(),
     )
 }
