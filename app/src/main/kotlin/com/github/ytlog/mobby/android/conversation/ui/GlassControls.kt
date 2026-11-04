@@ -38,7 +38,9 @@ internal fun GlassSurface(
 ) {
     val backdrop = LocalConversationBackdrop.current
     val dark = darkChrome()
-    val base = if (tint == Color.Unspecified) buttonColor() else tint
+    val base = if (tint == Color.Unspecified) {
+        if (dark) buttonColor() else Color(0xFFE8EDF4)
+    } else tint
     val accented = tint != Color.Unspecified
     val opticalGlass = Build.VERSION.SDK_INT >= 31 && backdrop != null
     val surface: DrawScope.() -> Unit = { drawGlassLighting(base, dark, accented) }
@@ -51,7 +53,7 @@ internal fun GlassSurface(
         },
         highlight = { Highlight(width = 0.4.dp, blurRadius = 0.5.dp,
             style = HighlightStyle.Default(intensity = if (dark) 0.36f else 0.40f, falloff = 6f)) },
-        shadow = { Shadow(radius = 12.dp, offset = DpOffset(0.dp, 4.dp), color = Color.Black.copy(alpha = if (dark) 0.10f else 0.07f)) },
+        shadow = { Shadow(radius = 12.dp, offset = DpOffset(0.dp, 4.dp), color = Color.Black.copy(alpha = if (dark) 0.10f else 0.12f)) },
         onDrawSurface = surface,
     ) else Modifier.background(base, shape).clip(shape).drawBehind(surface)
     // The library already draws a directional highlight. A second border turns it into chrome.
@@ -72,6 +74,16 @@ internal fun GlassSurface(
 /** Lighting over the sampled image; kept separate so transmission can be pixel-tested without AGSL. */
 internal fun DrawScope.drawGlassLighting(base: Color, dark: Boolean, accented: Boolean) {
     drawRect(base.copy(alpha = if (accented) 0.94f else if (dark) 0.32f else 0.42f))
+    if (accented && !dark) {
+        // Colored actions need a readable curved surface against pale popup backgrounds.
+        drawRect(Brush.verticalGradient(
+            0f to Color.White.copy(alpha = 0.24f),
+            0.28f to Color.White.copy(alpha = 0.06f),
+            0.58f to Color.Transparent,
+            1f to Color.Black.copy(alpha = 0.12f),
+            endY = size.height,
+        ))
+    }
     if (!accented) {
         drawRect(Brush.verticalGradient(
             0f to Color.White.copy(alpha = if (dark) 0.012f else 0.18f),
