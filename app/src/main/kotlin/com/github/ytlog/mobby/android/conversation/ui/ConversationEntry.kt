@@ -434,18 +434,11 @@ class ConversationHostActions(
     showMenu: Boolean, menuLabel: String, onMenu: () -> Unit, onNew: () -> Unit, onMore: (String) -> Unit,
     onAnchor: (IntRect) -> Unit, onAdd: () -> Unit, onRead: (String, String) -> Unit,
 ) {
-    val connections by vm.connections.collectAsStateWithLifecycle()
     Column(modifier) {
         Column(Modifier.fillMaxWidth().testTag("conversation-toolbar")) {
         ConversationToolbar(state.selected?.conversation, vm,
             modifier = Modifier.fillMaxWidth(),
             onMenu = onMenu, onNew = onNew, onMore = onMore, onAnchor = onAnchor, showMenu = showMenu, menuLabel = menuLabel)
-        state.selected?.conversation?.let { current ->
-            val route = connections.firstOrNull { it.agent == current.config.agent && it.id == current.config.gatewayProfile }
-            Text(route?.let(::connectionLabel) ?: AppStrings.noAvailableConnection,
-                Modifier.align(Alignment.CenterHorizontally).clickable { onMore("connections") }.padding(horizontal = 16.dp, vertical = 3.dp),
-                style = MaterialTheme.typography.labelSmall)
-        }
         }
         VirtualScreenPreview()
         if (!system.connected || !system.ready) Text(
