@@ -41,7 +41,7 @@ class ConversationChromeTest {
 
     @After fun cleanup() { scope.cancel() }
 
-    @Test fun `transcript stays between chrome, agent chip has no arrow, and latest jump is only an icon`() {
+    @Test fun `transcript supplies glass backdrop while latest jump and final reply stay above composer`() {
         val system = stub<SystemPort> { name -> when (name) {
             "getStatus" -> flowOf(SystemStatus(true, true))
             "getDiagnostic" -> flowOf(DiagnosticOutput(null, emptyList()))
@@ -86,7 +86,7 @@ class ConversationChromeTest {
         assertAgentChipHasNoArrow("Codex")
         compose.onNodeWithText("最新消息").assertDoesNotExist()
         val jump = compose.onNodeWithContentDescription("最新消息").assertIsDisplayed().getBoundsInRoot()
-        assertTranscriptClearOfChrome()
+        assertTranscriptBehindGlass()
         assertTrue("latest jump overlaps the composer", jump.bottom <= composerBounds().top + 1.dp)
         assertTrue("latest jump overlaps the toolbar", jump.top + 1.dp >= toolbarBounds().bottom)
 
@@ -97,6 +97,8 @@ class ConversationChromeTest {
         // Parsing finishes off the main thread; wait for the final layout and follow scroll too.
         compose.waitUntil(10_000) { compose.onNodeWithText("END OF FINAL REPLY").isDisplayed() }
         compose.onNodeWithText("END OF FINAL REPLY").assertIsDisplayed()
+        val finalReply = compose.onNodeWithText("END OF FINAL REPLY").getBoundsInRoot()
+        assertTrue("final reply hidden behind glass composer", finalReply.bottom <= composerBounds().top + 1.dp)
         compose.onNodeWithContentDescription("最新消息").assertDoesNotExist()
 
         compose.onNode(hasScrollToIndexAction()).performTouchInput { swipeDown() }
@@ -104,7 +106,7 @@ class ConversationChromeTest {
         compose.onNodeWithContentDescription("最新消息").assertIsDisplayed()
         compose.onNode(hasScrollToIndexAction()).performScrollToIndex(10)
         compose.waitForIdle()
-        assertTranscriptClearOfChrome()
+        assertTranscriptBehindGlass()
     }
 
     private fun assertAgentChipHasNoArrow(label: String) {
@@ -114,21 +116,19 @@ class ConversationChromeTest {
         assertTrue("$label chip keeps a trailing arrow ($trailing)", trailing < 32.dp)
     }
 
-    private fun assertTranscriptClearOfChrome() {
+    private fun assertTranscriptBehindGlass() {
         val toolbar = toolbarBounds()
         val composer = composerBounds()
         val transcript = compose.onNodeWithTag("conversation-transcript").getBoundsInRoot()
-        assertEquals(toolbar.bottom.value, transcript.top.value, 0.5f)
-        assertEquals(transcript.bottom.value, composer.top.value, 0.5f)
+        assertTrue("transcript must extend behind toolbar glass", transcript.top <= toolbar.top)
+        assertTrue("transcript must extend behind composer glass", transcript.bottom >= composer.bottom)
         val lines = compose.onAllNodesWithText("transcript-line", substring = true)
         val count = lines.fetchSemanticsNodes().size
         var visible = 0
         repeat(count) { index ->
             val bounds = lines[index].getBoundsInRoot()
             if (bounds.right <= bounds.left || bounds.bottom <= bounds.top) return@repeat
-            visible++
-            assertTrue("transcript overlaps toolbar: $bounds toolbar=$toolbar", bounds.top + 1.dp >= toolbar.bottom)
-            assertTrue("transcript overlaps composer: $bounds composer=$composer", bounds.bottom <= composer.top + 1.dp)
+            if (bounds.top >= toolbar.bottom && bounds.bottom <= composer.top) visible++
         }
         assertTrue("expected visible transcript", visible > 0)
     }

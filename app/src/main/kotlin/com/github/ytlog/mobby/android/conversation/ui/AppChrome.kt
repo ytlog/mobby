@@ -1,6 +1,9 @@
 package com.github.ytlog.mobby.android.conversation.ui
 
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -54,11 +57,17 @@ internal fun Modifier.lightInputShadow(corner: Dp): Modifier = drawBehind {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable internal fun ActionIcon(label: String, onClick: () -> Unit, icon: AppGlyph, enabled: Boolean = true, filled: Boolean = false, tint: Color = Color.Unspecified, buttonSize: Dp = ToolbarControl, glyphSize: Dp = if (filled) 20.dp else 22.dp) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val reduced = rememberReducedMotion()
+    val scale by animateFloatAsState(if (pressed && !reduced) 0.97f else 1f, tween(120), label = "glass-button-press")
     val ink = if (tint == Color.Unspecified) onButtonColor() else tint
     CompositionLocalProvider(LocalMinimumInteractiveComponentEnforcement provides false) {
-    IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.size(buttonSize)) {
-        if (filled) Box(Modifier.size(32.dp).alpha(if (enabled) 1f else 0.38f).background(onButtonColor(), CircleShape), contentAlignment = Alignment.Center) {
-            AppIcon(icon, label, Modifier.size(glyphSize), tint = buttonColor())
+    IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.size(buttonSize).graphicsLayer { scaleX = scale; scaleY = scale }, interactionSource = interaction) {
+        if (filled) GlassSurface(Modifier.size(40.dp).alpha(if (enabled) 1f else 0.38f), shape = CircleShape, tint = onButtonColor()) {
+            Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+                AppIcon(icon, label, Modifier.size(glyphSize), tint = buttonColor())
+            }
         } else AppIcon(icon, label, Modifier.size(glyphSize), tint = if (enabled) ink else ink.copy(alpha = 0.38f))
     }
     }

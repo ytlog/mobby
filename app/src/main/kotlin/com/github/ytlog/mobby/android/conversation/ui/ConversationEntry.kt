@@ -45,6 +45,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.input.pointer.util.addPointerInputChange
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import com.kyant.backdrop.backdrops.layerBackdrop
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.*
@@ -434,45 +437,56 @@ class ConversationHostActions(
     showMenu: Boolean, menuLabel: String, onMenu: () -> Unit, onNew: () -> Unit, onMore: (String) -> Unit,
     onAnchor: (IntRect) -> Unit, onAdd: () -> Unit, onRead: (String, String) -> Unit,
 ) {
-    Column(modifier) {
-        Column(Modifier.fillMaxWidth().testTag("conversation-toolbar")) {
-        ConversationToolbar(state.selected?.conversation, vm,
-            modifier = Modifier.fillMaxWidth(),
-            onMenu = onMenu, onNew = onNew, onMore = onMore, onAnchor = onAnchor, showMenu = showMenu, menuLabel = menuLabel)
-        }
-        VirtualScreenPreview()
-        if (!system.connected || !system.ready) Text(
-            system.message,
-            Modifier.padding(horizontal = 20.dp, vertical = 4.dp).align(Alignment.CenterHorizontally),
-            style = MaterialTheme.typography.bodySmall,
-        )
-        Box(Modifier.weight(1f).fillMaxWidth().clipToBounds().testTag("conversation-transcript")) {
-            CompositionLocalProvider(LocalContentColor provides conversationInk()) {
-                Box(Modifier.align(Alignment.Center).widthIn(max = 760.dp).fillMaxSize()) {
-                    when {
-                        state.error != null -> Text(state.error!!, Modifier.align(Alignment.Center).padding(24.dp), color = MaterialTheme.colorScheme.error)
-                        state.loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
-                        state.selected == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                EmptyPlaceholder(AppStrings.noConversationsYet, AppStrings.startAConversationWithASpecificTask)
-                                Button(onClick = onNew, colors = filledButtonColors()) { Text(AppStrings.newConversation2) }
-                            }
-                        }
-                        else -> {
-                            val detail = state.selected!!
-                            key(detail.conversation.id) {
-                                Timeline(detail, vm, Modifier.fillMaxSize(), read = onRead,
-                                    hostActions = hostActions, proposal = vm::openSkillProposal, onSelectPlugin = onSelectPlugin, programs = programs)
+    val backdrop = rememberLayerBackdrop()
+    val density = LocalDensity.current
+    var toolbarPixels by remember { mutableIntStateOf(with(density) { 60.dp.roundToPx() }) }
+    var composerPixels by remember { mutableIntStateOf(0) }
+    val toolbarHeight = with(density) { toolbarPixels.toDp() }
+    val showComposer = state.selected != null && state.error == null && !state.loading
+    val composerHeight = with(density) { if (showComposer) composerPixels.toDp() else 0.dp }
+    CompositionLocalProvider(LocalConversationBackdrop provides backdrop) {
+        Box(modifier) {
+            Column(Modifier.fillMaxSize().layerBackdrop(backdrop).background(conversationCanvas())) {
+                Box(Modifier.weight(1f).fillMaxWidth().clipToBounds().testTag("conversation-transcript")) {
+                    CompositionLocalProvider(LocalContentColor provides conversationInk()) {
+                        Box(Modifier.align(Alignment.Center).widthIn(max = 760.dp).fillMaxSize()) {
+                            when {
+                                state.error != null -> Text(state.error!!, Modifier.align(Alignment.Center).padding(24.dp), color = MaterialTheme.colorScheme.error)
+                                state.loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
+                                state.selected == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        EmptyPlaceholder(AppStrings.noConversationsYet, AppStrings.startAConversationWithASpecificTask)
+                                        Button(onClick = onNew, colors = filledButtonColors()) { Text(AppStrings.newConversation2) }
+                                    }
+                                }
+                                else -> {
+                                    val detail = state.selected!!
+                                    key(detail.conversation.id) {
+                                        Timeline(detail, vm, Modifier.fillMaxSize(), glassInsets = PaddingValues(top = toolbarHeight, bottom = composerHeight), read = onRead,
+                                            hostActions = hostActions, proposal = vm::openSkillProposal, onSelectPlugin = onSelectPlugin, programs = programs)
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
-        }
-        if (state.selected != null && state.error == null && !state.loading) {
-            Composer(state.selected!!, state, system, vm,
-                modifier = Modifier.align(Alignment.CenterHorizontally).widthIn(max = 760.dp).fillMaxWidth().testTag("conversation-composer"),
-                onAdd = onAdd, onConnect = { onMore("connections") })
+            Column(Modifier.align(Alignment.TopCenter).fillMaxWidth().onSizeChanged { toolbarPixels = it.height }.testTag("conversation-toolbar")) {
+                ConversationToolbar(state.selected?.conversation, vm,
+                    modifier = Modifier.fillMaxWidth(),
+                    onMenu = onMenu, onNew = onNew, onMore = onMore, onAnchor = onAnchor, showMenu = showMenu, menuLabel = menuLabel)
+                VirtualScreenPreview()
+                if (!system.connected || !system.ready) Text(
+                    system.message,
+                    Modifier.padding(horizontal = 20.dp, vertical = 4.dp).align(Alignment.CenterHorizontally),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            if (state.selected != null && state.error == null && !state.loading) {
+                Composer(state.selected!!, state, system, vm,
+                    modifier = Modifier.align(Alignment.BottomCenter).onSizeChanged { composerPixels = it.height }.widthIn(max = 760.dp).fillMaxWidth().testTag("conversation-composer"),
+                    onAdd = onAdd, onConnect = { onMore("connections") })
+            }
         }
     }
 }
@@ -635,12 +649,12 @@ internal fun LazyListScope.programSection(shortcuts: List<ProgramShortcut>, quer
     var chip by remember { mutableStateOf(IntRect.Zero) }
     var actions by remember { mutableStateOf(IntRect.Zero) }
     Row(modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, top = 8.dp, bottom = if (darkChrome()) 0.dp else 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (showMenu) Surface(Modifier.size(ToolbarControl), shape = CircleShape, color = buttonColor(), contentColor = onButtonColor(), shadowElevation = floatingElevation(), tonalElevation = 0.dp) { ActionIcon(menuLabel, onMenu, AppIcons.Menu) }
+            if (showMenu) GlassSurface(Modifier.size(ToolbarControl), shape = CircleShape) { ActionIcon(menuLabel, onMenu, AppIcons.Menu) }
             Box(Modifier.padding(horizontal = 6.dp).onGloballyPositioned { coordinates ->
                 val origin = coordinates.positionInWindow()
                 chip = IntRect(origin.x.roundToInt(), origin.y.roundToInt(), origin.x.roundToInt() + coordinates.size.width, origin.y.roundToInt() + coordinates.size.height)
             }) {
-                Surface(shape = RoundedCornerShape(26.dp), color = buttonColor(), contentColor = onButtonColor(), shadowElevation = floatingElevation(), tonalElevation = 0.dp) {
+                GlassSurface(shape = RoundedCornerShape(26.dp)) {
                     CompositionLocalProvider(LocalMinimumInteractiveComponentEnforcement provides false) {
                     TextButton(
                         onClick = { config = true; vm.enqueue { vm.refresh() } },
@@ -666,7 +680,7 @@ internal fun LazyListScope.programSection(shortcuts: List<ProgramShortcut>, quer
                 actions = rect
                 onAnchor(rect)
             }) {
-                Surface(Modifier.height(ToolbarControl), shape = RoundedCornerShape(26.dp), color = buttonColor(), contentColor = onButtonColor(), shadowElevation = floatingElevation(), tonalElevation = 0.dp) {
+                GlassSurface(Modifier.height(ToolbarControl), shape = RoundedCornerShape(26.dp)) {
                     Row(Modifier.height(ToolbarControl)) {
                         ActionIcon(AppStrings.newConversation2, onNew, AppIcons.New)
                         ActionIcon(AppStrings.moreConversationActions, { more = true }, AppIcons.More, c != null)
@@ -881,10 +895,10 @@ internal fun Turn.showsSeparateActivity(): Boolean = occupied || pending
     }
 }
 
-@Composable internal fun Timeline(detail: ConversationDetail, vm: ConversationViewModel, modifier: Modifier, followPadding: PaddingValues? = null, read: (String, String) -> Unit, hostActions: ConversationHostActions, proposal: (SkillProposal) -> Unit, onSelectPlugin: (String) -> Unit, initialFollow: Boolean? = null, onFollowChanged: (Boolean) -> Unit = {}, programs: EmptyPagePrograms? = null) {
+@Composable internal fun Timeline(detail: ConversationDetail, vm: ConversationViewModel, modifier: Modifier, followPadding: PaddingValues? = null, read: (String, String) -> Unit, hostActions: ConversationHostActions, proposal: (SkillProposal) -> Unit, onSelectPlugin: (String) -> Unit, initialFollow: Boolean? = null, onFollowChanged: (Boolean) -> Unit = {}, programs: EmptyPagePrograms? = null, glassInsets: PaddingValues = PaddingValues(0.dp)) {
     val topFade = ConversationTopFade
     val bottomFade = if (darkChrome()) ConversationEdgeFade else LightConversationBottomFade
-    val contentPadding = PaddingValues(start = 16.dp, top = topFade, end = 16.dp, bottom = bottomFade)
+    val contentPadding = PaddingValues(start = 16.dp, top = topFade + glassInsets.calculateTopPadding(), end = 16.dp, bottom = bottomFade + glassInsets.calculateBottomPadding())
     val activityTurn = detail.turns.lastOrNull { it.occupied } ?: detail.turns.lastOrNull { it.showsSeparateActivity() }
     val keys = buildList {
         if (detail.hasEarlier) add("earlier")
@@ -1034,6 +1048,7 @@ internal fun Turn.showsSeparateActivity(): Boolean = occupied || pending
         if (!follow && list.canScrollForward && detail.turns.isNotEmpty()) FilledTonalButton(
             onClick = { follow = true },
             modifier = Modifier.align(Alignment.BottomEnd)
+                .padding(bottom = glassInsets.calculateBottomPadding())
                 .padding(followPadding ?: if (darkChrome()) PaddingValues(12.dp) else PaddingValues(20.dp))
                 .shadow(if (darkChrome()) 0.dp else floatingElevation(), CircleShape)
                 .size(48.dp),

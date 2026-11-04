@@ -505,15 +505,9 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectVo
 }
 
 @Composable internal fun ComposerShell(modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
-    val dark = darkChrome()
-    Surface(
-        modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = if (dark) 0.dp else 12.dp, bottom = 10.dp)
-            .then(if (dark) Modifier else Modifier.lightInputShadow(28.dp)),
+    GlassSurface(
+        modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 10.dp),
         shape = RoundedCornerShape(28.dp),
-        color = buttonColor(),
-        contentColor = onButtonColor(),
-        shadowElevation = if (dark) floatingElevation() else 0.dp,
-        tonalElevation = 0.dp,
     ) {
         Row(Modifier.fillMaxWidth().padding(4.dp), verticalAlignment = Alignment.Bottom, content = content)
     }
