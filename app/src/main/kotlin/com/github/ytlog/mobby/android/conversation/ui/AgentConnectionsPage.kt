@@ -4,13 +4,16 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -151,26 +154,69 @@ internal fun connectionLabel(profile: GatewayProfile): String = if (profile.sour
     }
     LaunchedEffect(update.url) { update.url?.takeIf { it != opened }?.let(::open) }
     DisposableEffect(Unit) { onDispose { job?.cancel(); answers.close(); updates.value = AgentLoginUpdate() } }
-    AlertDialog(onDismissRequest = { job?.cancel(); dismiss() }, title = { Text("${agent.label()} · ${AppStrings.signInAgent}") },
+    AlertDialog(
+        onDismissRequest = { job?.cancel(); dismiss() },
+        modifier = Modifier.testTag("native-login-dialog"),
+        containerColor = raisedColor(),
+        shape = RoundedCornerShape(24.dp),
+        tonalElevation = 0.dp,
+        title = { Text("${agent.label()} · ${AppStrings.signInAgent}", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface) },
         text = {
-            Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (job?.isActive == true || methods == null) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text(AppStrings.waitingNativeLogin) }
-                if (job?.isActive != true) {
-                    methods?.forEach { method -> TextButton(onClick = { start(method.id) }) { Text(method.label) } }
-                    if (methods?.isEmpty() == true) Text(AppStrings.nativeMethodsUnavailable)
+            Column(Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                if (job?.isActive == true || methods == null) {
+                    LinearProgressIndicator(Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.primary, trackColor = MaterialTheme.colorScheme.surfaceVariant)
+                    Text(AppStrings.waitingNativeLogin, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                update.url?.let { url -> TextButton(onClick = { open(url) }) { Text(AppStrings.openNativeLoginPage) } }
-                update.code?.let { code -> Text("${AppStrings.nativeLoginCode}：$code"); TextButton(onClick = { clipboard.setText(AnnotatedString(code)) }) { Text(AppStrings.copyOriginalText) } }
-                update.instructions?.takeIf { it != update.prompt }?.let { Text(it) }
-                update.prompt?.let { prompt ->
-                    Text(prompt)
-                    if (update.options.isNotEmpty()) update.options.forEach { option -> TextButton(onClick = { answers.trySend(option.id); updates.value = update.copy(prompt = null, options = emptyList()) }) { Text(option.label) } }
-                    else {
-                        OutlinedTextField(answer, { answer = it }, label = { Text(AppStrings.nativeLoginAnswer) }, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
-                        TextButton(onClick = { answers.trySend(answer); answer = ""; updates.value = update.copy(prompt = null) }, enabled = answer.isNotBlank()) { Text(AppStrings.nativeLoginContinue) }
+                if (job?.isActive != true) {
+                    methods?.takeIf { it.isNotEmpty() }?.let { available ->
+                        Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+                            Column {
+                                available.forEachIndexed { index, method ->
+                                    if (index > 0) GroupDivider()
+                                    SettingsItem(method.label, { start(method.id) })
+                                }
+                            }
+                        }
+                    }
+                    if (methods?.isEmpty() == true) Text(AppStrings.nativeMethodsUnavailable, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                update.url?.let { url ->
+                    Button(onClick = { open(url) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp), shape = RoundedCornerShape(22.dp)) {
+                        Text(AppStrings.openNativeLoginPage)
                     }
                 }
-                error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                update.code?.let { code ->
+                    Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+                        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(AppStrings.nativeLoginCode, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(code, style = MaterialTheme.typography.titleLarge, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurface)
+                            TextButton(onClick = { clipboard.setText(AnnotatedString(code)) }) { Text(AppStrings.copyOriginalText) }
+                        }
+                    }
+                }
+                update.instructions?.takeIf { it != update.prompt }?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                update.prompt?.let { prompt ->
+                    Text(prompt, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                    if (update.options.isNotEmpty()) {
+                        Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+                            Column {
+                                update.options.forEachIndexed { index, option ->
+                                    if (index > 0) GroupDivider()
+                                    SettingsAction(option.label) { answers.trySend(option.id); updates.value = update.copy(prompt = null, options = emptyList()) }
+                                }
+                            }
+                        }
+                    } else {
+                        Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+                            SettingsField(answer, { answer = it }, AppStrings.nativeLoginAnswer, visualTransformation = PasswordVisualTransformation())
+                        }
+                        Button(onClick = { answers.trySend(answer); answer = ""; updates.value = update.copy(prompt = null) },
+                            enabled = answer.isNotBlank(), modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp), shape = RoundedCornerShape(22.dp)) {
+                            Text(AppStrings.nativeLoginContinue)
+                        }
+                    }
+                }
+                error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
             }
         }, confirmButton = {}, dismissButton = { TextButton(onClick = { job?.cancel(); dismiss() }) { Text(AppStrings.cancel) } })
 }
