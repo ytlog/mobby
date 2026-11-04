@@ -56,6 +56,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -352,25 +353,27 @@ class ConversationHostActions(
                     }.then(swipe))
                 SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(bottom = if (navigation.page == AppPage.SETUP) wizardFooterInset else 0.dp))
                 if (navigation.addSheetOpen) ModalBottomSheet(onDismissRequest = { navigation = navigation.closeAddSheet() }, modifier = Modifier.offset(x = sheetOffset), sheetMaxWidth = overlayWidth, shape = RoundedCornerShape(28.dp, 28.dp, 0.dp, 0.dp), containerColor = addSheetColor(), contentColor = addInkColor()) {
-                    val target = state.selected?.conversation
-                    val availability = attachmentAvailability(target, agentOptions, system.ready, camera.busy)
-                    Column(Modifier.fillMaxWidth().heightIn(max = (availableHeight - 48.dp).coerceAtLeast(120.dp)).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            AttachmentTile(AppStrings.takePhoto, AppIcons.Camera, availability.photos, Modifier.weight(1f)) { if (target != null) { navigate(AppPage.CONVERSATION); camera.start(target) } }
-                            AttachmentTile(AppStrings.photos, AppIcons.Photo, availability.photos, Modifier.weight(1f)) {
-                                if (target != null) {
-                                    fileTarget = target.id.value; fileWorkspace = target.config.workspace; navigation = navigation.open(AppPage.CONVERSATION)
-                                    photoPicker.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    GlassControlScope(background = addSheetColor()) {
+                        val target = state.selected?.conversation
+                        val availability = attachmentAvailability(target, agentOptions, system.ready, camera.busy)
+                        Column(Modifier.fillMaxWidth().heightIn(max = (availableHeight - 48.dp).coerceAtLeast(120.dp)).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                AttachmentTile(AppStrings.takePhoto, AppIcons.Camera, availability.photos, Modifier.weight(1f)) { if (target != null) { navigate(AppPage.CONVERSATION); camera.start(target) } }
+                                AttachmentTile(AppStrings.photos, AppIcons.Photo, availability.photos, Modifier.weight(1f)) {
+                                    if (target != null) {
+                                        fileTarget = target.id.value; fileWorkspace = target.config.workspace; navigation = navigation.open(AppPage.CONVERSATION)
+                                        photoPicker.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                                    }
+                                }
+                                AttachmentTile(AppStrings.localFile, AppIcons.Upload, availability.files, Modifier.weight(1f)) {
+                                    if (target != null) { fileTarget = target.id.value; fileWorkspace = target.config.workspace; navigation = navigation.open(AppPage.CONVERSATION); filePicker.launch(arrayOf("*/*")) }
                                 }
                             }
-                            AttachmentTile(AppStrings.localFile, AppIcons.Upload, availability.files, Modifier.weight(1f)) {
-                                if (target != null) { fileTarget = target.id.value; fileWorkspace = target.config.workspace; navigation = navigation.open(AppPage.CONVERSATION); filePicker.launch(arrayOf("*/*")) }
+                            AddSheetCapabilities(programs = hostActions.programCenter != null) { page ->
+                                navigation = if (page == AppPage.PROGRAMS) navigation.openPrograms(fromSheet = true) else navigation.open(page)
                             }
+                            Spacer(Modifier.height(16.dp))
                         }
-                        AddSheetCapabilities(programs = hostActions.programCenter != null) { page ->
-                            navigation = if (page == AppPage.PROGRAMS) navigation.openPrograms(fromSheet = true) else navigation.open(page)
-                        }
-                        Spacer(Modifier.height(16.dp))
                     }
                 }
                 skillProposal?.let { editor -> SkillProposalDialog(editor.proposal, vm, sourceAvailable = state.selected?.turns?.any { turn -> turn.skillProposals.any { it.ref == editor.proposal.ref } } == true, onDismiss = vm::dismissSkillProposal) }
@@ -378,16 +381,18 @@ class ConversationHostActions(
                     val ink = readerInk()
                     val muted = readerMuted()
                     ModalBottomSheet(onDismissRequest = { reading = null }, modifier = Modifier.offset(x = sheetOffset), sheetMaxWidth = overlayWidth, containerColor = raisedColor(), contentColor = if (dark) ink else contentColorFor(raisedColor())) {
-                        Column(Modifier.fillMaxWidth().heightIn(max = (availableHeight - 48.dp).coerceAtLeast(120.dp))) {
-                            Text(title, Modifier.fillMaxWidth().padding(horizontal = 16.dp), color = if (dark) muted else Color.Unspecified, style = MaterialTheme.typography.titleMedium)
-                            val clipboard = LocalClipboardManager.current
-                            TextButton(onClick = { clipboard.setText(AnnotatedString(text)) }, colors = if (dark) textButtonColors(muted) else textButtonColors()) { Text(AppStrings.copyOriginalText) }
-                            androidx.compose.foundation.text.selection.SelectionContainer {
-                                Text(
-                                    if (dark) readerBody(text, ink, muted) else AnnotatedString(text),
-                                    Modifier.heightIn(max = (availableHeight - 180.dp).coerceAtLeast(100.dp)).verticalScroll(rememberScrollState()).padding(16.dp),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                )
+                        GlassControlScope(background = raisedColor()) {
+                            Column(Modifier.fillMaxWidth().heightIn(max = (availableHeight - 48.dp).coerceAtLeast(120.dp))) {
+                                Text(title, Modifier.fillMaxWidth().padding(horizontal = 16.dp), color = if (dark) muted else Color.Unspecified, style = MaterialTheme.typography.titleMedium)
+                                val clipboard = LocalClipboardManager.current
+                                TextButton(onClick = { clipboard.setText(AnnotatedString(text)) }, colors = if (dark) textButtonColors(muted) else textButtonColors()) { Text(AppStrings.copyOriginalText) }
+                                androidx.compose.foundation.text.selection.SelectionContainer {
+                                    Text(
+                                        if (dark) readerBody(text, ink, muted) else AnnotatedString(text),
+                                        Modifier.heightIn(max = (availableHeight - 180.dp).coerceAtLeast(100.dp)).verticalScroll(rememberScrollState()).padding(16.dp),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                    )
+                                }
                             }
                         }
                     }
@@ -494,54 +499,55 @@ class ConversationHostActions(
 @Composable private fun ConversationListPane(state: ConversationState, query: String, onQuery: (String) -> Unit, listScroll: LazyListState, onSelect: (Conversation) -> Unit, onNew: () -> Unit, onSettings: () -> Unit, onProjects: () -> Unit, onProject: (String) -> Unit,
     programs: List<ProgramShortcut>, onProgramPage: (String) -> Unit, onProgramDetails: (String) -> Unit, onAllPrograms: () -> Unit,
     onCollapse: (() -> Unit)?, modifier: Modifier) {
-    val control = drawerControlColor()
-    Surface(modifier, color = drawerColor(), contentColor = conversationInk()) {
-        Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = if (onCollapse != null) 10.dp else 12.dp)) {
-            Row(Modifier.fillMaxWidth().padding(bottom = if (darkChrome()) 0.dp else 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(AppStrings.appName, Modifier.weight(1f), color = conversationInk(), style = MaterialTheme.typography.headlineSmall)
-                DrawerPill(onNew, control, Modifier.testTag("drawer-new")) {
-                    AppIcon(AppIcons.New, null, Modifier.size(22.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text(AppStrings.newConversation, style = MaterialTheme.typography.titleMedium)
-                }
-                if (onCollapse != null) {
-                    Spacer(Modifier.width(8.dp))
-                    DrawerCircle(AppStrings.collapseConversationSidebar, onCollapse, control, AppIcons.Back, Modifier.testTag("sidebar-collapse"))
-                }
-            }
-            val visible = state.conversations.filter { !it.conversation.archived && !it.conversation.deleted && it.conversation.title.contains(query, true) }
-            val pinned = visible.filter { it.conversation.pinned }
-            val history = visible.filter { !it.conversation.pinned && it.conversation.project == null }
-            val projectNames = state.projects.map { it.name }.filter { name ->
-                query.isBlank() || name.contains(query, true) || visible.any { it.conversation.project == name }
-            }.take(3)
-            LazyColumn(Modifier.weight(1f), state = listScroll, horizontalAlignment = Alignment.Start) {
-                if (pinned.isNotEmpty()) {
-                    item(key = "section:pinned") { DrawerSection(AppStrings.pin) }
-                    items(pinned, key = { it.conversation.id.value }) { DrawerConversation(it, state, onSelect) }
-                }
-                if (query.isBlank() || projectNames.isNotEmpty()) {
-                    item(key = "section:projects") { DrawerSection(AppStrings.project) }
-                    projectNames.forEach { name ->
-                        item(key = "project:$name") { DrawerEntry(name) { onProject(name) } }
+    GlassControlScope(background = drawerColor()) {
+        Surface(modifier, color = drawerColor(), contentColor = conversationInk()) {
+            Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = if (onCollapse != null) 10.dp else 12.dp)) {
+                Row(Modifier.fillMaxWidth().padding(bottom = if (darkChrome()) 0.dp else 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(AppStrings.appName, Modifier.weight(1f), color = conversationInk(), style = MaterialTheme.typography.headlineSmall)
+                    DrawerPill(onNew, Modifier.testTag("drawer-new")) {
+                        AppIcon(AppIcons.New, null, Modifier.size(22.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(AppStrings.newConversation, style = MaterialTheme.typography.titleMedium)
                     }
-                    if (query.isBlank()) item(key = "more-projects") { DrawerEntry(AppStrings.moreProjects, onClick = onProjects) }
-                }
-                programSection(programs, query, onProgramPage, onProgramDetails, onAllPrograms)
-                if (history.isNotEmpty() || visible.isEmpty()) {
-                    item(key = "section:history") { DrawerSection(AppStrings.history) }
-                    items(history, key = { it.conversation.id.value }) { DrawerConversation(it, state, onSelect) }
-                    // Before the store first answers there is nothing to report; "no matches" is only for a search.
-                    if (visible.isEmpty() && !state.loading) item(key = "empty") {
-                        if (query.isBlank()) EmptyPlaceholder(AppStrings.noConversationsYet, AppStrings.startAConversationWithASpecificTask)
-                        else EmptyPlaceholder(AppStrings.noMatchingConversations, AppStrings.tryAnotherSearchTermOrStartANewConversation)
+                    if (onCollapse != null) {
+                        Spacer(Modifier.width(8.dp))
+                        DrawerCircle(AppStrings.collapseConversationSidebar, onCollapse, AppIcons.Back, Modifier.testTag("sidebar-collapse"))
                     }
                 }
-            }
-            val footerHeight = if (onCollapse != null) ToolbarControl + 8.dp else ToolbarControl
-            Row(Modifier.fillMaxWidth().padding(top = if (darkChrome()) 0.dp else 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                DrawerSearch(query, onQuery, control, Modifier.weight(1f).testTag("drawer-search"), footerHeight)
-                DrawerCircle(AppStrings.settings, onSettings, control, AppIcons.Settings, size = footerHeight, softShadow = true)
+                val visible = state.conversations.filter { !it.conversation.archived && !it.conversation.deleted && it.conversation.title.contains(query, true) }
+                val pinned = visible.filter { it.conversation.pinned }
+                val history = visible.filter { !it.conversation.pinned && it.conversation.project == null }
+                val projectNames = state.projects.map { it.name }.filter { name ->
+                    query.isBlank() || name.contains(query, true) || visible.any { it.conversation.project == name }
+                }.take(3)
+                LazyColumn(Modifier.weight(1f), state = listScroll, horizontalAlignment = Alignment.Start) {
+                    if (pinned.isNotEmpty()) {
+                        item(key = "section:pinned") { DrawerSection(AppStrings.pin) }
+                        items(pinned, key = { it.conversation.id.value }) { DrawerConversation(it, state, onSelect) }
+                    }
+                    if (query.isBlank() || projectNames.isNotEmpty()) {
+                        item(key = "section:projects") { DrawerSection(AppStrings.project) }
+                        projectNames.forEach { name ->
+                            item(key = "project:$name") { DrawerEntry(name) { onProject(name) } }
+                        }
+                        if (query.isBlank()) item(key = "more-projects") { DrawerEntry(AppStrings.moreProjects, onClick = onProjects) }
+                    }
+                    programSection(programs, query, onProgramPage, onProgramDetails, onAllPrograms)
+                    if (history.isNotEmpty() || visible.isEmpty()) {
+                        item(key = "section:history") { DrawerSection(AppStrings.history) }
+                        items(history, key = { it.conversation.id.value }) { DrawerConversation(it, state, onSelect) }
+                        // Before the store first answers there is nothing to report; "no matches" is only for a search.
+                        if (visible.isEmpty() && !state.loading) item(key = "empty") {
+                            if (query.isBlank()) EmptyPlaceholder(AppStrings.noConversationsYet, AppStrings.startAConversationWithASpecificTask)
+                            else EmptyPlaceholder(AppStrings.noMatchingConversations, AppStrings.tryAnotherSearchTermOrStartANewConversation)
+                        }
+                    }
+                }
+                val footerHeight = if (onCollapse != null) ToolbarControl + 8.dp else ToolbarControl
+                Row(Modifier.fillMaxWidth().padding(top = if (darkChrome()) 0.dp else 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    DrawerSearch(query, onQuery, Modifier.weight(1f).testTag("drawer-search"), footerHeight)
+                    DrawerCircle(AppStrings.settings, onSettings, AppIcons.Settings, size = footerHeight)
+                }
             }
         }
     }
@@ -551,28 +557,26 @@ class ConversationHostActions(
     Text(title, Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 4.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
-@Composable private fun DrawerEntry(title: String, mark: AppGlyph? = null, onClick: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().height(DrawerRowHeight).clickable(onClick = onClick).padding(horizontal = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (mark != null) {
-            AppIcon(mark, null, Modifier.size(16.dp))
-            Spacer(Modifier.width(8.dp))
+@Composable private fun DrawerEntry(title: String, mark: AppGlyph? = null, selected: Boolean = false, onClick: () -> Unit) {
+    GlassSurface(Modifier.fillMaxWidth().padding(vertical = 2.dp), shape = RoundedCornerShape(14.dp),
+        tint = if (selected) buttonColor() else Color.Unspecified) {
+        Row(
+            Modifier.fillMaxWidth().height(DrawerRowHeight).clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)
+            .semantics { this.selected = selected }.padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (mark != null) {
+                AppIcon(mark, null, Modifier.size(16.dp))
+                Spacer(Modifier.width(8.dp))
+            }
+            Text(title, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, color = LocalContentColor.current)
         }
-        Text(title, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, color = LocalContentColor.current)
     }
 }
 
 @Composable private fun DrawerConversation(item: ConversationSummary, state: ConversationState, onSelect: (Conversation) -> Unit) {
-    val selected = state.selected?.conversation?.id == item.conversation.id
-    Surface(
-        color = if (selected) buttonColor() else Color.Transparent,
-        contentColor = if (selected) onButtonColor() else conversationInk(),
-        shape = RoundedCornerShape(14.dp),
-    ) {
-        DrawerEntry(item.conversation.title, mark = item.conversation.config.agent.glyph()) { onSelect(item.conversation) }
-    }
+    DrawerEntry(item.conversation.title, mark = item.conversation.config.agent.glyph(),
+        selected = state.selected?.conversation?.id == item.conversation.id) { onSelect(item.conversation) }
 }
 
 private val DrawerRowHeight = 40.dp
@@ -599,28 +603,24 @@ internal fun LazyListScope.programSection(shortcuts: List<ProgramShortcut>, quer
     if (query.isBlank()) item(key = "all-programs") { DrawerEntry(AppStrings.allPrograms, onClick = openAll) }
 }
 
-@Composable private fun DrawerPill(onClick: () -> Unit, color: Color, modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
-    Row(
-        modifier.height(ToolbarControl).then(drawerControlShadow()).clip(CircleShape).background(color).clickable(onClick = onClick).padding(horizontal = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        val row = this
-        CompositionLocalProvider(LocalContentColor provides onButtonColor()) { row.content() }
+@Composable private fun DrawerPill(onClick: () -> Unit, modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
+    GlassSurface(modifier.height(ToolbarControl), shape = CircleShape) {
+        Row(Modifier.height(ToolbarControl).clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onClick).padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically, content = content)
     }
 }
 
-@Composable private fun DrawerCircle(label: String, onClick: () -> Unit, color: Color, icon: AppGlyph, modifier: Modifier = Modifier, size: Dp = ToolbarControl, softShadow: Boolean = false) {
-    val shadow = if (softShadow && !darkChrome()) Modifier.lightInputShadow(size / 2) else drawerControlShadow()
-    Box(modifier.size(size).then(shadow).clip(CircleShape).background(color).clickable(onClick = onClick).semantics { contentDescription = label }, contentAlignment = Alignment.Center) {
-        AppIcon(icon, null, Modifier.size(22.dp), tint = onButtonColor())
+@Composable private fun DrawerCircle(label: String, onClick: () -> Unit, icon: AppGlyph, modifier: Modifier = Modifier, size: Dp = ToolbarControl) {
+    GlassSurface(modifier.size(size).clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)
+        .semantics { contentDescription = label }, shape = CircleShape) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            AppIcon(icon, null, Modifier.size(22.dp), tint = onButtonColor())
+        }
     }
 }
 
-@Composable private fun drawerControlShadow() = if (darkChrome()) Modifier else Modifier.shadow(floatingElevation(), CircleShape)
-
-@Composable private fun DrawerSearch(query: String, onQuery: (String) -> Unit, color: Color, modifier: Modifier = Modifier, height: Dp = ToolbarControl) {
-    Surface(modifier.height(height).then(if (darkChrome()) Modifier else Modifier.lightInputShadow(height / 2)),
-        shape = CircleShape, color = color, contentColor = onButtonColor(), shadowElevation = 0.dp, tonalElevation = 0.dp) {
+@Composable private fun DrawerSearch(query: String, onQuery: (String) -> Unit, modifier: Modifier = Modifier, height: Dp = ToolbarControl) {
+    GlassSurface(modifier.height(height), shape = CircleShape) {
         Row(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
             AppIcon(AppIcons.Search, null, Modifier.size(22.dp), tint = onButtonColor())
             Spacer(Modifier.width(8.dp))

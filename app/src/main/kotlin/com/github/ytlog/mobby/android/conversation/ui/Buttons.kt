@@ -24,9 +24,13 @@ internal fun Button(
     contentPadding: PaddingValues = ButtonDefaults.ContentPadding,
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
     content: @Composable RowScope.() -> Unit,
-) = androidx.compose.material3.Button(
-    onClick, modifier, enabled, shape, colors, elevation, border, contentPadding, interactionSource, content,
-)
+) = ScopedButtonSurface(modifier, shape, colors, enabled) { surfaceModifier, surfaceColors ->
+    androidx.compose.material3.Button(
+        onClick, surfaceModifier, enabled, shape, surfaceColors,
+        if (LocalGlassControls.current) null else elevation,
+        if (LocalGlassControls.current) null else border, contentPadding, interactionSource, content,
+    )
+}
 
 @Composable
 internal fun FilledTonalButton(
@@ -40,9 +44,13 @@ internal fun FilledTonalButton(
     contentPadding: PaddingValues = ButtonDefaults.ContentPadding,
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
     content: @Composable RowScope.() -> Unit,
-) = androidx.compose.material3.FilledTonalButton(
-    onClick, modifier, enabled, shape, colors, elevation, border, contentPadding, interactionSource, content,
-)
+) = ScopedButtonSurface(modifier, shape, colors, enabled) { surfaceModifier, surfaceColors ->
+    androidx.compose.material3.FilledTonalButton(
+        onClick, surfaceModifier, enabled, shape, surfaceColors,
+        if (LocalGlassControls.current) null else elevation,
+        if (LocalGlassControls.current) null else border, contentPadding, interactionSource, content,
+    )
+}
 
 @Composable
 internal fun OutlinedButton(
@@ -56,9 +64,13 @@ internal fun OutlinedButton(
     contentPadding: PaddingValues = ButtonDefaults.ContentPadding,
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
     content: @Composable RowScope.() -> Unit,
-) = androidx.compose.material3.OutlinedButton(
-    onClick, modifier, enabled, shape, colors, elevation, border, contentPadding, interactionSource, content,
-)
+) = ScopedButtonSurface(modifier, shape, colors, enabled) { surfaceModifier, surfaceColors ->
+    androidx.compose.material3.OutlinedButton(
+        onClick, surfaceModifier, enabled, shape, surfaceColors,
+        if (LocalGlassControls.current) null else elevation,
+        if (LocalGlassControls.current) null else border, contentPadding, interactionSource, content,
+    )
+}
 
 @Composable
 internal fun TextButton(
@@ -72,6 +84,10 @@ internal fun TextButton(
     contentPadding: PaddingValues = ButtonDefaults.TextButtonContentPadding,
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
     content: @Composable RowScope.() -> Unit,
-) = androidx.compose.material3.TextButton(
-    onClick, modifier, enabled, shape, colors, elevation, border, contentPadding, interactionSource, content,
-)
+) = ScopedButtonSurface(modifier, shape, colors, enabled) { surfaceModifier, surfaceColors ->
+    androidx.compose.material3.TextButton(
+        onClick, surfaceModifier, enabled, shape, surfaceColors,
+        if (LocalGlassControls.current) null else elevation,
+        if (LocalGlassControls.current) null else border, contentPadding, interactionSource, content,
+    )
+}

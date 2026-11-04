@@ -68,6 +68,10 @@ internal fun Modifier.lightInputShadow(corner: Dp): Modifier = drawBehind {
             Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
                 AppIcon(icon, label, Modifier.size(glyphSize), tint = buttonColor())
             }
+        } else if (LocalGlassControls.current) GlassSurface(Modifier.size(buttonSize), shape = CircleShape) {
+            Box(Modifier.size(buttonSize), contentAlignment = Alignment.Center) {
+                AppIcon(icon, label, Modifier.size(glyphSize), tint = if (enabled) ink else ink.copy(alpha = 0.38f))
+            }
         } else AppIcon(icon, label, Modifier.size(glyphSize), tint = if (enabled) ink else ink.copy(alpha = 0.38f))
     }
     }
@@ -86,11 +90,13 @@ internal fun Modifier.lightInputShadow(corner: Dp): Modifier = drawBehind {
 
 @Composable internal fun AttachmentTile(label: String, icon: AppGlyph, enabled: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val ink = addInkColor()
-    Surface(onClick = onClick, enabled = enabled, modifier = modifier.height(100.dp).semantics { contentDescription = label }, shape = RoundedCornerShape(18.dp), color = addTileColor(), contentColor = ink) {
-        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-            AppIcon(icon, null, Modifier.size(26.dp), tint = if (enabled) ink else ink.copy(alpha = 0.38f))
-            Spacer(Modifier.height(10.dp))
-            Text(label, style = MaterialTheme.typography.bodyMedium, color = if (enabled) ink else ink.copy(alpha = 0.38f))
+    GlassControlSurface(modifier.height(100.dp), shape = RoundedCornerShape(18.dp)) {
+        Surface(onClick = onClick, enabled = enabled, modifier = Modifier.semantics { contentDescription = label }, shape = RoundedCornerShape(18.dp), color = if (LocalGlassControls.current) Color.Transparent else addTileColor(), contentColor = ink) {
+            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+                AppIcon(icon, null, Modifier.size(26.dp), tint = if (enabled) ink else ink.copy(alpha = 0.38f))
+                Spacer(Modifier.height(10.dp))
+                Text(label, style = MaterialTheme.typography.bodyMedium, color = if (enabled) ink else ink.copy(alpha = 0.38f))
+            }
         }
     }
 }
@@ -298,19 +304,21 @@ internal fun Modifier.lightInputShadow(corner: Dp): Modifier = drawBehind {
 
 @Composable internal fun MenuOption(text: String, selected: Boolean, enabled: Boolean = true, icon: AppGlyph? = null, onClick: () -> Unit) {
     val color = menuInk().copy(alpha = if (enabled) 1f else 0.38f)
-    Row(
-        Modifier.fillMaxWidth().height(48.dp)
-            .clickable(enabled = enabled, role = Role.RadioButton, onClick = onClick)
+    GlassSurface(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 3.dp), shape = RoundedCornerShape(14.dp)) {
+        Row(
+            Modifier.fillMaxWidth().height(48.dp)
+            .selectable(selected = selected, enabled = enabled, role = Role.RadioButton, onClick = onClick)
             .semantics(mergeDescendants = true) {}
-            .padding(horizontal = 20.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (icon != null) {
-            AppIcon(icon, null, Modifier.size(20.dp), tint = color)
-            Spacer(Modifier.width(12.dp))
+            .padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (icon != null) {
+                AppIcon(icon, null, Modifier.size(20.dp), tint = color)
+                Spacer(Modifier.width(12.dp))
+            }
+            Text(text, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, color = color, style = MaterialTheme.typography.bodyLarge, fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal)
+            if (selected) AppIcon(AppIcons.Check, null, Modifier.size(20.dp), tint = menuTick())
         }
-        Text(text, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, color = color, style = MaterialTheme.typography.bodyLarge, fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal)
-        if (selected) AppIcon(AppIcons.Check, null, Modifier.size(20.dp), tint = menuTick())
     }
 }
 
@@ -320,14 +328,16 @@ internal fun Modifier.lightInputShadow(corner: Dp): Modifier = drawBehind {
 
 @Composable internal fun MenuAction(text: String, enabled: Boolean = true, danger: Boolean = false, icon: AppGlyph? = null, onClick: () -> Unit) {
     val color = if (danger) MaterialTheme.colorScheme.error else menuInk().copy(alpha = if (enabled) 1f else 0.38f)
-    Row(
-        Modifier.fillMaxWidth().height(48.dp).clickable(enabled = enabled, onClick = onClick).padding(horizontal = 20.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (icon != null) {
-            AppIcon(icon, null, Modifier.size(20.dp), tint = color)
-            Spacer(Modifier.width(12.dp))
+    GlassSurface(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 3.dp), shape = RoundedCornerShape(14.dp)) {
+        Row(
+            Modifier.fillMaxWidth().height(48.dp).clickable(enabled = enabled, role = Role.Button, onClick = onClick).padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (icon != null) {
+                AppIcon(icon, null, Modifier.size(20.dp), tint = color)
+                Spacer(Modifier.width(12.dp))
+            }
+            Text(text, color = color, style = MaterialTheme.typography.bodyLarge)
         }
-        Text(text, color = color, style = MaterialTheme.typography.bodyLarge)
     }
 }

@@ -11,8 +11,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.MaterialTheme
@@ -139,9 +137,9 @@ private fun shortTime(millis: Long): String {
     Page(AppStrings.myPrograms, back, trailing = {
         Box {
             ActionIcon(AppStrings.moreActions, { menu = true }, AppIcons.More)
-            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                DropdownMenuItem(text = { Text(AppStrings.permissionOverview) }, onClick = { menu = false; permissions() })
-                DropdownMenuItem(text = { Text(AppStrings.pauseAllPrograms) }, onClick = { menu = false; scope.launch { platform.stopAll() } })
+            FrostedMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                MenuAction(AppStrings.permissionOverview, onClick = { menu = false; permissions() })
+                MenuAction(AppStrings.pauseAllPrograms, onClick = { menu = false; scope.launch { platform.stopAll() } })
             }
         }
     }) {

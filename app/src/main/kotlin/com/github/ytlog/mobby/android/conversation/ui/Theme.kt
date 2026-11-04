@@ -34,6 +34,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionOnScreen
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import com.kyant.backdrop.backdrops.layerBackdrop
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextAlign
@@ -63,7 +66,6 @@ import kotlin.math.roundToInt
     val host = LocalView.current
     var snapshot by remember { mutableStateOf(snapshotView(host)) }
     LaunchedEffect(host) { captureWindow(host)?.let { snapshot = it } }
-    val night = darkChrome()
     val density = LocalDensity.current
     val margin = with(density) { 16.dp.roundToPx() }
     val gap = with(density) { 8.dp.roundToPx() }
@@ -74,8 +76,10 @@ import kotlin.math.roundToInt
     val predictedHeight = with(density) { 560.dp.roundToPx() }
     val frostTop = if (anchor.bottom > 0) anchor.bottom + gap else margin + with(density) { 56.dp.roundToPx() }
     var cardHeight by remember { mutableStateOf(predictedHeight) }
-    val frost = remember(snapshot, popupLeft, popupWidth, frostTop, cardHeight) {
-        snapshot?.let { frostRegion(it, popupLeft, frostTop, popupWidth, cardHeight).asImageBitmap() }
+    val hostOrigin = remember(host) { IntArray(2).also { host.rootView.getLocationOnScreen(it) } }
+    var actualOrigin by remember { mutableStateOf(IntOffset(popupLeft, frostTop)) }
+    val frost = remember(snapshot, actualOrigin, popupWidth, cardHeight) {
+        snapshot?.let { frostRegion(it, actualOrigin.x, actualOrigin.y, popupWidth, cardHeight).asImageBitmap() }
     }
     val shape = RoundedCornerShape(22.dp)
     val scrim = menuScrim()
@@ -96,6 +100,7 @@ import kotlin.math.roundToInt
     }
     Popup(popupPositionProvider = position, onDismissRequest = onDismissRequest, properties = PopupProperties(focusable = true, clippingEnabled = false)) {
         val popupView = LocalView.current
+        val backdrop = rememberLayerBackdrop()
         SideEffect { clearPopupChrome(popupView) }
         Box(
             Modifier
@@ -104,21 +109,27 @@ import kotlin.math.roundToInt
                 .border(0.5.dp, stroke, shape)
                 .onGloballyPositioned { coordinates ->
                     if (coordinates.size.height > 0 && coordinates.size.height != cardHeight) cardHeight = coordinates.size.height
+                    val origin = coordinates.positionOnScreen()
+                    actualOrigin = IntOffset(origin.x.roundToInt() - hostOrigin[0], origin.y.roundToInt() - hostOrigin[1])
                 },
         ) {
-            frost?.let { image ->
-                Image(image, contentDescription = null, modifier = Modifier.matchParentSize(), contentScale = ContentScale.Crop)
+            Box(Modifier.matchParentSize().layerBackdrop(backdrop)) {
+                frost?.let { image ->
+                    Image(image, contentDescription = null, modifier = Modifier.matchParentSize(), contentScale = ContentScale.Crop)
+                }
+                Box(Modifier.matchParentSize().background(scrim))
             }
-            Box(Modifier.matchParentSize().background(scrim))
-            MaterialTheme(
-                colorScheme = MaterialTheme.colorScheme.copy(
-                    primary = menuAccent(),
-                    onPrimary = MobbyColors.onAccent,
-                    onSurface = menuInk(),
-                    onSurfaceVariant = menuMuted(),
-                ),
-            ) {
-                Column(Modifier.fillMaxWidth(), content = content)
+            GlassControlScope(background = cardColor(), backdrop = backdrop) {
+                MaterialTheme(
+                    colorScheme = MaterialTheme.colorScheme.copy(
+                        primary = menuAccent(),
+                        onPrimary = MobbyColors.onAccent,
+                        onSurface = menuInk(),
+                        onSurfaceVariant = menuMuted(),
+                    ),
+                ) {
+                    Column(Modifier.fillMaxWidth(), content = content)
+                }
             }
         }
     }

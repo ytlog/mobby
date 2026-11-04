@@ -20,6 +20,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.github.ytlog.mobby.android.conversation.domain.*
@@ -138,34 +139,36 @@ private val skillCatalogTabs get() = listOf(AppStrings.added, AppStrings.feature
         }
     }
     if (adding) ModalBottomSheet(onDismissRequest = { adding = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = addSheetColor(), contentColor = addInkColor(), shape = RoundedCornerShape(28.dp, 28.dp, 0.dp, 0.dp)) {
-        val ink = addInkColor()
-        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(AppStrings.addSkill, Modifier.padding(horizontal = 4.dp), style = MaterialTheme.typography.titleLarge, color = ink)
-            Text(AppStrings.chooseHowToAddSkill, Modifier.padding(horizontal = 4.dp), style = MaterialTheme.typography.bodySmall, color = ink)
-            val creator = skills.firstOrNull { it.name == "skill-creator" && it.available }
-            val canCreateWithAgent = creator != null && conversation != null
-            val creatorDetail = when {
-                creator == null -> AppStrings.skillCreatorUnavailable
-                conversation == null -> AppStrings.skillCreatorRequiresConversation
-                else -> AppStrings.createSkillWithCurrentConversation
-            }
-            SkillAddAction(AppStrings.createWithMobby, creatorDetail,
-                AppIcons.Skill, canCreateWithAgent) {
-                adding = false
-                if (conversation != null) vm.enqueue {
-                    when (val created = vm.actions.createSkillConversation(conversation.id, agent)) {
-                        is DataResult.Loaded -> onConversation()
-                        is DataResult.Failed -> vm.feedback.send(created.message)
+        GlassControlScope(background = addSheetColor()) {
+            val ink = addInkColor()
+            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(AppStrings.addSkill, Modifier.padding(horizontal = 4.dp), style = MaterialTheme.typography.titleLarge, color = ink)
+                Text(AppStrings.chooseHowToAddSkill, Modifier.padding(horizontal = 4.dp), style = MaterialTheme.typography.bodySmall, color = ink)
+                val creator = skills.firstOrNull { it.name == "skill-creator" && it.available }
+                val canCreateWithAgent = creator != null && conversation != null
+                val creatorDetail = when {
+                    creator == null -> AppStrings.skillCreatorUnavailable
+                    conversation == null -> AppStrings.skillCreatorRequiresConversation
+                    else -> AppStrings.createSkillWithCurrentConversation
+                }
+                SkillAddAction(AppStrings.createWithMobby, creatorDetail,
+                    AppIcons.Skill, canCreateWithAgent) {
+                    adding = false
+                    if (conversation != null) vm.enqueue {
+                        when (val created = vm.actions.createSkillConversation(conversation.id, agent)) {
+                            is DataResult.Loaded -> onConversation()
+                            is DataResult.Failed -> vm.feedback.send(created.message)
+                        }
                     }
                 }
+                SkillAddAction(AppStrings.importSkillFileMd, AppStrings.importExistingSkillDescription, AppIcons.Upload) {
+                    adding = false; importAgent = agent; picker.launch(arrayOf("text/markdown", "text/plain", "text/x-markdown", "application/octet-stream"))
+                }
+                SkillAddAction(AppStrings.createManually, AppStrings.createManualSkillDescription, AppIcons.Edit) {
+                    adding = false; vm.openManualSkill(agent); page = "editor"
+                }
+                Spacer(Modifier.height(14.dp))
             }
-            SkillAddAction(AppStrings.importSkillFileMd, AppStrings.importExistingSkillDescription, AppIcons.Upload) {
-                adding = false; importAgent = agent; picker.launch(arrayOf("text/markdown", "text/plain", "text/x-markdown", "application/octet-stream"))
-            }
-            SkillAddAction(AppStrings.createManually, AppStrings.createManualSkillDescription, AppIcons.Edit) {
-                adding = false; vm.openManualSkill(agent); page = "editor"
-            }
-            Spacer(Modifier.height(14.dp))
         }
     }
 }
@@ -173,15 +176,17 @@ private val skillCatalogTabs get() = listOf(AppStrings.added, AppStrings.feature
 @Composable private fun SkillAddAction(title: String, detail: String, icon: AppGlyph, enabled: Boolean = true, onClick: () -> Unit) {
     val ink = addInkColor()
     val content = if (enabled) ink else ink.copy(alpha = 0.38f)
-    Surface(onClick = onClick, enabled = enabled, shape = RoundedCornerShape(18.dp), color = addTileColor(), contentColor = content) {
-        Row(Modifier.fillMaxWidth().heightIn(min = 76.dp).padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            AppIcon(icon, null, Modifier.size(24.dp), tint = content)
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(title, style = MaterialTheme.typography.bodyLarge, color = content)
-                Text(detail, style = MaterialTheme.typography.bodySmall, color = content)
+    GlassControlSurface(shape = RoundedCornerShape(18.dp)) {
+        Surface(onClick = onClick, enabled = enabled, shape = RoundedCornerShape(18.dp), color = if (LocalGlassControls.current) Color.Transparent else addTileColor(), contentColor = content) {
+            Row(Modifier.fillMaxWidth().heightIn(min = 76.dp).padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                AppIcon(icon, null, Modifier.size(24.dp), tint = content)
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(title, style = MaterialTheme.typography.bodyLarge, color = content)
+                    Text(detail, style = MaterialTheme.typography.bodySmall, color = content)
+                }
+                AppIcon(AppIcons.ChevronRight, null, Modifier.size(18.dp), tint = content)
             }
-            AppIcon(AppIcons.ChevronRight, null, Modifier.size(18.dp), tint = content)
         }
     }
 }

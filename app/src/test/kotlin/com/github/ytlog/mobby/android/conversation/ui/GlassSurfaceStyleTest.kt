@@ -80,7 +80,7 @@ class GlassSurfaceStyleTest {
         assertTrue("dark rim should not look like a bright continuous outline: $rim", rim < 0.12f)
     }
 
-    @Test fun `clear material transmits high contrast background instead of covering it with a frosted surface`() {
+    @Test fun `regular glass preserves coarse backdrop tones without being fully see-through`() {
         compose.setContent {
             val host = LocalView.current
             SideEffect { view = host }
@@ -97,7 +97,7 @@ class GlassSurfaceStyleTest {
             bitmap.asImageBitmap().toPixelMap()
         }
         val transmittedContrast = pixels[180, 40].luminance() - pixels[60, 40].luminance()
-        assertTrue("clear glass must preserve background contrast: $transmittedContrast", transmittedContrast > 0.65f)
+        assertTrue("glass must retain coarse tones while protecting controls: $transmittedContrast", transmittedContrast in 0.25f..0.55f)
     }
 
 }
