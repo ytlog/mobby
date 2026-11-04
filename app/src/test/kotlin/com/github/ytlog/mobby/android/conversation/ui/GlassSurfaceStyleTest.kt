@@ -55,4 +55,29 @@ class GlassSurfaceStyleTest {
         assertTrue("white backdrop needs visible glass shading, upper=$upper lower=$lower", upper - lower > 0.025f)
         assertTrue("clear glass must not look like a dark opaque panel", lower > 0.75f)
     }
+
+    @Test fun `dark glass has restrained surface lighting instead of metallic shading`() {
+        compose.setContent {
+            val host = LocalView.current
+            SideEffect { view = host }
+            MaterialTheme(colorScheme = MobbyDarkScheme) {
+                Box(Modifier.background(MobbyColors.Dark.Conversation.canvas)) {
+                    GlassSurface(Modifier.size(240.dp, 80.dp).testTag("dark-glass")) {}
+                }
+            }
+        }
+        val bounds = compose.onNodeWithTag("dark-glass").fetchSemanticsNode().boundsInRoot
+        val pixels = compose.runOnIdle {
+            val bitmap = Bitmap.createBitmap(bounds.width.toInt(), bounds.height.toInt(), Bitmap.Config.ARGB_8888)
+            view.draw(Canvas(bitmap).apply { translate(-bounds.left, -bounds.top) })
+            bitmap.asImageBitmap().toPixelMap()
+        }
+        val upper = pixels[120, 12].luminance()
+        val lower = pixels[120, 68].luminance()
+        assertTrue("dark glass should not have a metallic light-to-dark ramp: $upper / $lower",
+            kotlin.math.abs(upper - lower) < 0.025f)
+        val rim = pixels[120, 0].luminance()
+        assertTrue("dark rim should not look like a bright continuous outline: $rim", rim < 0.12f)
+    }
+
 }
