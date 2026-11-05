@@ -31,9 +31,9 @@ import java.io.File
 class VoiceRecordingOverlayTest {
     @get:Rule val compose = createComposeRule()
 
-    @Test fun `recording wash fades into light canvas at all edges`() = checkWash(MobbyLightScheme, "light")
+    @Test fun `recording glow rises softly from the bottom on a light canvas`() = checkWash(MobbyLightScheme, "light")
 
-    @Test fun `recording wash fades into dark canvas at all edges`() = checkWash(MobbyDarkScheme, "dark")
+    @Test fun `recording glow rises softly from the bottom on a dark canvas`() = checkWash(MobbyDarkScheme, "dark")
 
     private fun checkWash(scheme: ColorScheme, theme: String) {
         lateinit var view: View
@@ -53,16 +53,15 @@ class VoiceRecordingOverlayTest {
             File(directory).mkdirs()
             File(directory, "voice-overlay-$theme.png").outputStream().use { image.compress(Bitmap.CompressFormat.PNG, 100, it) }
         }
-        val backdrop = image.getPixel(110, 780)
-        val left = image.getPixel(122, 780)
-        val center = image.getPixel(500, 780)
-        val right = image.getPixel(878, 780)
-        val top = image.getPixel(500, 621)
-        val topBackdrop = image.getPixel(110, 621)
-        assertTrue("the wash must remain visible in its center", distance(backdrop, center) > 20)
-        assertTrue("left edge should blend into the canvas", distance(backdrop, left) < 8)
-        assertTrue("right edge should blend into the canvas", distance(backdrop, right) < 8)
-        assertTrue("top edge should blend into the canvas", distance(topBackdrop, top) < 8)
+        val backdrop = image.getPixel(10, 20)
+        val center = image.getPixel(500, 790)
+        val aboveOverlay = image.getPixel(500, 560)
+        val side = image.getPixel(170, 790)
+        val farAbove = image.getPixel(500, 60)
+        assertTrue("the glow must be strongest in the bottom center", distance(backdrop, center) > 40)
+        assertTrue("the glow must spread above the overlay's own bounds", distance(backdrop, aboveOverlay) > 8)
+        assertTrue("the glow must soften toward the sides", distance(backdrop, side) < distance(backdrop, center))
+        assertTrue("the glow must fade out before the top", distance(backdrop, farAbove) < 4)
     }
 
     private fun distance(a: Int, b: Int) =

@@ -41,8 +41,8 @@ internal object MobbyColors {
         val addSheet = Color(0xFF1F1F1F)
         val addTile = Color(0xFF2A2A2A)
         val addInk = Color(0xFFDBDBDB)
-        val voiceWash = Color(0xFF1A2A44)
-        val voiceCancel = Color(0xFF3A2226)
+        val voiceGlow = Color(0xFF5B8DEF)
+        val voiceGlowCancel = Color(0xFFE88B8B)
         val catalog = listOf(
             Color(0xFF80BAFF) to Color(0xFF1A3050),
             Color(0xFF8BC34A) to Color(0xFF1C2E18),
@@ -87,8 +87,8 @@ internal object MobbyColors {
         val addTile = Color(0xFFEAE6DD)
         val addInk = Color(0xFF2C2A26)
         val voiceTrack = Color(0xFFF4E4DA)
-        val voiceWash = Color(0xFFF2DFD2)
-        val voiceCancel = Color(0xFFFFE4E6)
+        val voiceGlow = Color(0xFFE8895E)
+        val voiceGlowCancel = Color(0xFFE5534B)
         val catalog = listOf(
             Color(0xFF1E88E5) to Color(0xFFE3F2FD),
             Color(0xFF43A047) to Color(0xFFE8F5E9),
@@ -213,11 +213,9 @@ internal val MobbyLightScheme: ColorScheme = lightColorScheme(
 @Composable internal fun voiceTrack(): Color =
     if (darkChrome()) MaterialTheme.colorScheme.primary.copy(alpha = 0.20f) else MobbyColors.Light.voiceTrack
 
-@Composable internal fun voiceWash(cancelArmed: Boolean): Color = when {
-    cancelArmed && darkChrome() -> MobbyColors.Dark.voiceCancel
-    cancelArmed -> MobbyColors.Light.voiceCancel
-    darkChrome() -> MobbyColors.Dark.voiceWash
-    else -> MobbyColors.Light.voiceWash
+@Composable internal fun voiceGlow(cancelArmed: Boolean): Color = when {
+    darkChrome() -> if (cancelArmed) MobbyColors.Dark.voiceGlowCancel else MobbyColors.Dark.voiceGlow
+    else -> if (cancelArmed) MobbyColors.Light.voiceGlowCancel else MobbyColors.Light.voiceGlow
 }
 
 @Composable internal fun catalogSwatch(key: String): Pair<Color, Color> {

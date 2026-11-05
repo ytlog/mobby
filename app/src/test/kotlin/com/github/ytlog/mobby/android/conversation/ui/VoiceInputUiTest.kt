@@ -57,23 +57,34 @@ class VoiceInputUiTest {
         compose.onNodeWithContentDescription("语音输入").assertIsDisplayed()
     }
 
-    @Test fun `holding the draft field switches to voice without starting a recording`() {
-        var recordings = 0
-        compose.setContent {
-            var voice by remember { mutableStateOf(false) }
-            MaterialTheme {
-                bar(voiceMode = voice, micAvailable = false, hasDraftContent = true,
-                    onEnterVoice = { voice = true }, onExitVoice = { voice = false },
-                    onHoldStart = { recordings++ })
-            }
-        }
+    // Holding the field only swapped the button, so nothing appeared to speak into while the finger was down.
+    @Test fun `holding the draft field starts recording and release finishes it`() {
+        val events = mutableListOf<String>()
+        compose.setContent { MaterialTheme {
+            bar(micAvailable = false, hasDraftContent = true,
+                onEnterVoice = { events += "voice-mode" }, onHoldStart = { events += "start" },
+                onHoldMove = { events += "move:$it" }, onHoldEnd = { events += "end:$it" })
+        } }
         compose.onNodeWithTag("draft-field").performTouchInput { click() }
-        compose.onNodeWithTag("draft-field").assertIsDisplayed()
-        compose.onNodeWithTag("draft-field").performTouchInput { longClick() }
-        compose.onNodeWithText("按住说话").assertIsDisplayed()
-        compose.onNodeWithContentDescription("键盘输入").performClick()
-        compose.onNodeWithText("已有草稿").assertIsDisplayed()
-        assertEquals(0, recordings)
+        compose.runOnIdle { assertEquals(emptyList<String>(), events) }
+        compose.onNodeWithTag("draft-field").performTouchInput { down(center); advanceEventTime(1_000); moveBy(androidx.compose.ui.geometry.Offset(0f, 1f)) }
+        compose.runOnIdle { assertEquals(listOf("start"), events) }
+        compose.onNodeWithTag("draft-field").performTouchInput { up() }
+        compose.runOnIdle { assertEquals(listOf("start", "end:false"), events) }
+    }
+
+    @Test fun `sliding up while holding the draft field cancels the recording`() {
+        val events = mutableListOf<String>()
+        compose.setContent { MaterialTheme {
+            bar(micAvailable = false, hasDraftContent = true, onHoldStart = { events += "start" },
+                onHoldMove = { events += "move:$it" }, onHoldEnd = { events += "end:$it" })
+        } }
+        compose.onNodeWithTag("draft-field").performTouchInput {
+            down(center); advanceEventTime(1_000); moveBy(androidx.compose.ui.geometry.Offset(0f, 1f))
+            moveBy(androidx.compose.ui.geometry.Offset(0f, -600f))
+            up()
+        }
+        compose.runOnIdle { assertEquals(listOf("start", "move:true", "end:true"), events) }
     }
 
     @Test fun `running agent replaces stop with one send action while draft has content`() {
@@ -256,8 +267,13 @@ class VoiceInputUiTest {
             onHoldEnd = onHoldEnd,
             textField = {
                 if (micAvailable) Text("描述任务，或添加上下文")
-                else androidx.compose.foundation.text.BasicTextField("已有草稿", {},
-                    Modifier.weight(1f).testTag("draft-field").enterVoiceOnLongPress(!stop, onEnterVoice))
+                else {
+                    // As in the real composer: disabled during a hold, or its own long press would open text selection.
+                    var holding by remember { mutableStateOf(false) }
+                    androidx.compose.foundation.text.BasicTextField("已有草稿", {},
+                        Modifier.weight(1f).testTag("draft-field").voiceHoldOnLongPress(!stop, { holding = true; onHoldStart() }, onHoldMove, { holding = false; onHoldEnd(it) }, onEnterVoice),
+                        enabled = !holding)
+                }
             },
         )
     }

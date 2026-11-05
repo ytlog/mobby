@@ -1,5 +1,8 @@
 package com.github.ytlog.mobby.android.conversation.ui
 
+import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.graphics.drawscope.withTransform
+import kotlin.math.exp
 import com.github.ytlog.mobby.android.conversation.ui.UiStrings as AppStrings
 
 import android.content.Context
@@ -41,7 +44,10 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.AwaitPointerEventScope
+import androidx.compose.ui.input.pointer.PointerId
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChangeIgnoreConsumed
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.LocalDensity
@@ -315,37 +321,52 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectVo
 ) {
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false)
-        val holding = booleanArrayOf(false)
-        var cancelArmed = false
-        try {
-            val released = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) { waitForUpOrCancellation() }
-            if (released != null) {
-                onTap()
-                return@awaitEachGesture
-            }
-            val stillDown = currentEvent.changes.any { it.id == down.id && it.pressed }
-            if (!stillDown) return@awaitEachGesture
-            holding[0] = true
-            onHoldStart()
-            while (true) {
-                val event = awaitPointerEvent()
-                val change = event.changes.firstOrNull { it.id == down.id }
-                if (change == null || !change.pressed) {
-                    onHoldEnd(cancelArmed)
-                    holding[0] = false
-                    return@awaitEachGesture
-                }
-                val armed = change.position.y - down.position.y <= -cancelSlop
-                if (armed != cancelArmed) {
-                    cancelArmed = armed
-                    onHoldMove(cancelArmed)
-                }
-                change.consume()
-            }
-        } catch (cancelled: CancellationException) {
-            if (holding[0]) onHoldEnd(true)
-            throw cancelled
+        val released = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) { waitForUpOrCancellation() }
+        if (released != null) {
+            onTap()
+            return@awaitEachGesture
         }
+        if (currentEvent.changes.none { it.id == down.id && it.pressed }) return@awaitEachGesture
+        followVoiceHold(down.id, PointerEventPass.Main, cancelSlop, onHoldStart, onHoldMove, onHoldEnd)
+    }
+}
+
+/**
+ * A hold in progress, until the finger lifts. The distance adds up movement rather than comparing positions, because
+ * hiding the keyboard moves the composer under a finger that stayed still and that must not read as a swipe.
+ */
+private suspend fun AwaitPointerEventScope.followVoiceHold(
+    pointer: PointerId,
+    pass: PointerEventPass,
+    cancelSlop: Float,
+    onHoldStart: () -> Unit,
+    onHoldMove: (Boolean) -> Unit,
+    onHoldEnd: (Boolean) -> Unit,
+) {
+    var holding = true
+    var cancelArmed = false
+    var rise = 0f
+    try {
+        onHoldStart()
+        while (true) {
+            val event = awaitPointerEvent(pass)
+            val change = event.changes.firstOrNull { it.id == pointer }
+            if (change == null || !change.pressed) {
+                holding = false
+                onHoldEnd(cancelArmed)
+                return
+            }
+            rise -= change.positionChangeIgnoreConsumed().y
+            val armed = rise >= cancelSlop
+            if (armed != cancelArmed) {
+                cancelArmed = armed
+                onHoldMove(cancelArmed)
+            }
+            event.changes.forEach { it.consume() }
+        }
+    } catch (cancelled: CancellationException) {
+        if (holding) onHoldEnd(true)
+        throw cancelled
     }
 }
 
@@ -397,36 +418,44 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectVo
     }
 }
 
+/** How far the recording glow rises above the bottom edge. It paints past the overlay's own bounds on purpose. */
+private val VoiceGlowHeight = 340.dp
+
+/** Alpha stops of a Gaussian falloff, ending exactly at zero so the glow has no visible rim. */
+private fun gaussianGlowStops(color: Color, peak: Float): Array<Pair<Float, Color>> {
+    val floor = exp(-4.84f)
+    return Array(9) { index ->
+        val t = index / 8f
+        val alpha = (exp(-(t * 2.2f) * (t * 2.2f)) - floor) / (1f - floor)
+        t to color.copy(alpha = peak * alpha)
+    }
+}
+
 @Composable internal fun VoiceRecordingOverlay(cancelArmed: Boolean, level: Float, transcript: String, modifier: Modifier = Modifier) {
-    val wash = voiceWash(cancelArmed)
+    val glow = voiceGlow(cancelArmed)
+    val peak = if (darkChrome()) 0.5f else 0.62f
     val hint = if (cancelArmed) AppStrings.releaseToCancel else AppStrings.releaseToSendSwipeUpToCancel
+    val reduced = rememberReducedMotion()
+    val breath by animateFloatAsState(if (reduced) 0.5f else level.coerceIn(0f, 1f), tween(180), label = "voice-glow")
     Box(
         modifier.fillMaxWidth().heightIn(min = 168.dp),
         contentAlignment = Alignment.BottomCenter,
     ) {
-        Spacer(Modifier.matchParentSize().graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }.drawWithCache {
-            val vertical = Brush.verticalGradient(
-                0f to Color.Transparent,
-                0.25f to wash.copy(alpha = 0.08f),
-                0.6f to wash.copy(alpha = 0.38f),
-                1f to wash.copy(alpha = 0.76f),
-            )
-            val horizontal = Brush.horizontalGradient(
-                0f to Color.Transparent,
-                0.12f to Color.White.copy(alpha = 0.18f),
-                0.28f to Color.White,
-                0.72f to Color.White,
-                0.88f to Color.White.copy(alpha = 0.18f),
-                1f to Color.Transparent,
-            )
+        Spacer(Modifier.matchParentSize().drawWithCache {
+            val center = Offset(size.width / 2f, size.height)
+            val radius = size.width * 1.15f
+            val brush = Brush.radialGradient(*gaussianGlowStops(glow, peak), center = center, radius = radius)
+            val height = VoiceGlowHeight.toPx()
             onDrawBehind {
-                drawRect(vertical)
-                drawRect(horizontal, blendMode = BlendMode.DstIn)
+                // A circle squashed to the glow's height; the half below the screen edge is never seen.
+                withTransform({ scale(1f + 0.04f * breath, height * (0.9f + 0.2f * breath) / radius, center) }) {
+                    drawCircle(brush, radius, center)
+                }
             }
         })
         Column(Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, bottom = 88.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             if (transcript.isNotBlank()) Text(transcript, color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodyLarge, maxLines = 3)
-            Text(hint, color = if (cancelArmed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+            Text(hint, color = if (cancelArmed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodyMedium)
             Spacer(Modifier.height(16.dp))
             VoiceSpectrum(level, cancelArmed, Modifier.fillMaxWidth())
         }
@@ -455,17 +484,24 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectVo
     }
 }
 
-/** Observe the down without consuming it, so tapping the field still edits text. */
-@Composable
-internal fun Modifier.enterVoiceOnLongPress(enabled: Boolean, onEnterVoice: () -> Unit): Modifier {
+/**
+ * Holding the text field records like holding the mic: release sends, sliding up cancels. A quick tap or a scroll is
+ * left to the field, so the down is only observed until the hold is certain. Screen readers cannot hold a finger, so
+ * their long-click action opens the hold-to-speak bar instead.
+ */
+@Composable internal fun Modifier.voiceHoldOnLongPress(enabled: Boolean, onHoldStart: () -> Unit, onHoldMove: (Boolean) -> Unit, onHoldEnd: (Boolean) -> Unit, onEnterVoice: () -> Unit): Modifier {
     if (!enabled) return this
+    val start by rememberUpdatedState(onHoldStart)
+    val move by rememberUpdatedState(onHoldMove)
+    val end by rememberUpdatedState(onHoldEnd)
     val enter by rememberUpdatedState(onEnterVoice)
-    return pointerInput(Unit) {
+    val slop = with(LocalDensity.current) { VoiceCancelDistance.toPx() }
+    return pointerInput(slop) {
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-            // Switch before the text field's own hold opens its selection toolbar.
-            val voiceTimeout = (viewConfiguration.longPressTimeoutMillis - 32L).coerceAtLeast(1L)
-            val cancelled = withTimeoutOrNull(voiceTimeout) {
+            // Start early enough to disable the field before its own hold opens text selection.
+            val holdTimeout = (viewConfiguration.longPressTimeoutMillis - 80L).coerceAtLeast(1L)
+            val cancelled = withTimeoutOrNull(holdTimeout) {
                 while (true) {
                     val event = awaitPointerEvent(PointerEventPass.Initial)
                     val pointer = event.changes.firstOrNull { it.id == down.id }
@@ -474,7 +510,7 @@ internal fun Modifier.enterVoiceOnLongPress(enabled: Boolean, onEnterVoice: () -
                 }
                 true
             }
-            if (cancelled == null) enter()
+            if (cancelled == null) followVoiceHold(down.id, PointerEventPass.Initial, slop, { start() }, { move(it) }, { end(it) })
         }
     }.semantics {
         onLongClick(label = AppStrings.voiceInput) { enter(); true }

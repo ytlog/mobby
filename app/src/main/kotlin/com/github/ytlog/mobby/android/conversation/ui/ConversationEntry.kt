@@ -793,6 +793,17 @@ internal fun LazyListScope.programSection(shortcuts: List<ProgramShortcut>, quer
             focus.clearFocus()
         } else snapshot.value = null
     }
+    fun endHold(cancelled: Boolean) {
+        val activeHold = holding
+        holding = false
+        cancelArmed = false
+        if (activeHold) {
+            if (cancelled) {
+                snapshot.value = null
+                capture.cancel()
+            } else capture.finish()
+        }
+    }
     fun sendAndDismiss(mode: MessageDeliveryMode = MessageDeliveryMode.QUEUE) {
         if (vm.connections.value.none { it.agent == detail.conversation.config.agent }) { onConnect(); return }
         vm.send(mode)
@@ -854,23 +865,14 @@ internal fun LazyListScope.programSection(shortcuts: List<ProgramShortcut>, quer
                 onHoldTap = { hint = AppStrings.holdToSpeak },
                 onHoldStart = ::beginHold,
                 onHoldMove = { cancelArmed = it },
-                onHoldEnd = { cancelled ->
-                    val activeHold = holding
-                    holding = false
-                    cancelArmed = false
-                    if (activeHold) {
-                        if (cancelled) {
-                            snapshot.value = null
-                            capture.cancel()
-                        } else capture.finish()
-                    }
-                },
+                onHoldEnd = ::endHold,
                 textField = {
                     androidx.compose.foundation.text.BasicTextField(
                         composer.value, vm::edit,
                         Modifier.weight(1f).heightIn(min = ToolbarControl).padding(vertical = 10.dp)
-                            .enterVoiceOnLongPress(!unavailable && !stop, ::enterVoice).focusRequester(focusRequester),
-                        enabled = !unavailable, maxLines = 5,
+                            .voiceHoldOnLongPress(!unavailable && !stop, ::beginHold, { cancelArmed = it }, ::endHold, ::enterVoice).focusRequester(focusRequester),
+                        // Disabled during a hold so the field's own long press cannot open text selection.
+                        enabled = !unavailable && !holding, maxLines = 5,
                         textStyle = MaterialTheme.typography.bodyLarge.copy(color = onButtonColor()),
                         cursorBrush = SolidColor(onButtonColor()),
                         decorationBox = { inner -> Box { if (composer.value.text.isEmpty()) Text(AppStrings.describeATaskOrAddContext, color = MaterialTheme.colorScheme.onSurfaceVariant); inner() } },
