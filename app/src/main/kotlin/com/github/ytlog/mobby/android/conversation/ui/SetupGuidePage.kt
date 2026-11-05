@@ -64,7 +64,8 @@ internal class SetupProgress(context: Context) {
         val controller = ScreenUi.controller
         if (controller != null) ScreenControlSettings(controller, onBack = previous, onFinished = finish, embedded = true, stepOffset = 2)
         else SetupWizardFrame(AppStrings.setupGuide, 3, AppStrings.wizardChooseMode, AppStrings.setupRuntimePreparing,
-            previous, AppStrings.wizardNext, {}, enabled = false)
+            previous, AppStrings.wizardNext, {}, enabled = false,
+            steps = setupAgentStepLabels() + screenSetupPath(com.github.ytlog.mobby.android.runtime.api.device.ScreenMode.CURRENT).map(::screenStepLabel))
         return
     }
     val account = accounts.firstOrNull { it.agent == selectedAgent && !it.expired }
@@ -78,7 +79,9 @@ internal class SetupProgress(context: Context) {
         primary = { if (choosing || ready) next() else if (selectedAgent == null) api() else showLogin = true },
         enabled = choosing || selectedAgent == null || system.ready,
         secondaryText = if (choosing) AppStrings.later else AppStrings.wizardPrevious, secondary = previous,
-        busy = completing, error = error) {
+        busy = completing, error = error,
+        steps = setupAgentStepLabels() + screenSetupPath(ScreenUi.controller?.state?.value?.mode
+            ?: com.github.ytlog.mobby.android.runtime.api.device.ScreenMode.CURRENT).map(::screenStepLabel)) {
         if (choosing) SettingsGroup {
             listOf(AgentId.CODEX, AgentId.CLAUDE_CODE, AgentId.PI, AgentId.OPEN_CODE).forEachIndexed { index, agent ->
                 if (index > 0) GroupDivider()

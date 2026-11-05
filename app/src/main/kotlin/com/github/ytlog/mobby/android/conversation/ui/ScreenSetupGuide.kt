@@ -2,6 +2,22 @@ package com.github.ytlog.mobby.android.conversation.ui
 
 import com.github.ytlog.mobby.android.runtime.api.device.ScreenControlState
 import com.github.ytlog.mobby.android.runtime.api.device.ScreenMode
+import com.github.ytlog.mobby.android.conversation.ui.UiStrings as AppStrings
+
+internal fun screenStepLabel(step: ScreenSetupStep): String = when (step) {
+    ScreenSetupStep.MODE -> AppStrings.wizardChooseMode
+    ScreenSetupStep.NOTIFICATIONS -> AppStrings.wizardNotifications
+    ScreenSetupStep.ACCESSIBILITY -> AppStrings.openAccessibilitySettings
+    ScreenSetupStep.WIFI -> AppStrings.screenOpenWifi
+    ScreenSetupStep.DEVELOPER -> AppStrings.screenDeveloperStep
+    ScreenSetupStep.WIRELESS -> AppStrings.screenWirelessStep
+    ScreenSetupStep.PAIR -> AppStrings.screenPairStep
+    ScreenSetupStep.CONNECT -> AppStrings.connectScreen
+    ScreenSetupStep.COMPLETE -> AppStrings.wizardFinish
+    else -> error("Auxiliary tasks use their parent step")
+}
+
+internal fun setupAgentStepLabels() = listOf(AppStrings.wizardChooseAgent, AppStrings.wizardSignInStep)
 
 internal enum class ScreenSetupStep {
     MODE, NOTIFICATIONS, ACCESSIBILITY, WIFI, DEVELOPER, WIRELESS, PAIR, CONNECT, COMPLETE,

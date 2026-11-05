@@ -283,12 +283,16 @@ class ScreenControlSettingsActivity : ComponentActivity() {
         (step != ScreenSetupStep.MODE || selectedMode == ScreenMode.CURRENT || status.sdk >= 33) &&
         (step != ScreenSetupStep.DISCONNECT || state.connected)
     val chrome = if (embedded) Modifier.fillMaxSize() else Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()
+    val path = screenSetupPath(if (step == ScreenSetupStep.MODE) selectedMode else state.mode)
+    val parentStep = history.asReversed().map(ScreenSetupStep::valueOf).first { !it.auxiliary }
+    val stepNumber = path.indexOf(parentStep).coerceAtLeast(0) + 1
+    val stepLabels = (if (embedded) setupAgentStepLabels() else emptyList()) + path.map(::screenStepLabel)
     Box(chrome) {
         SetupWizardFrame(if (embedded) AppStrings.setupGuide else AppStrings.screenModeTitle,
-            stepOffset + history.count { !ScreenSetupStep.valueOf(it).auxiliary }, heading, description,
+            stepOffset + stepNumber, heading, description,
             back = ::previous, primaryText = primaryText, primary = ::primary, enabled = enabled, busy = busy,
             secondaryText = if (state.adbPairing && !step.auxiliary) AppStrings.adbCancelPairing else if (step == ScreenSetupStep.MODE && !embedded) AppStrings.back else AppStrings.wizardPrevious,
-            error = error ?: state.error ?: if (state.active) AppStrings.screenModeBusy else null) {
+            error = error ?: state.error ?: if (state.active) AppStrings.screenModeBusy else null, steps = stepLabels) {
             when (step) {
                 ScreenSetupStep.MODE -> {
                     SettingsGroup {

@@ -61,12 +61,14 @@ class SetupJourneyTest {
     }
     @Test fun `choosing an agent does not mix in sign in or screen configuration`() {
         show(api = true)
+        compose.onNodeWithContentDescription("第 1 步：选择一个 Agent").assertIsSelected().assertIsDisplayed()
         compose.onNodeWithText("选择一个 Agent").assertIsDisplayed()
         compose.onNodeWithText("Claude Code").performClick().assertIsSelected()
         compose.onNodeWithText("ChatGPT").assertDoesNotExist()
         compose.onNodeWithText("配置 API 网关").assertDoesNotExist()
         compose.onNodeWithText("选择屏幕操作方式").assertDoesNotExist()
         next()
+        compose.onNodeWithContentDescription("第 2 步：连接 AI 服务").assertIsSelected().assertIsDisplayed()
         button("登录 Claude Code").assertIsDisplayed()
         compose.onNodeWithText("Codex").assertDoesNotExist()
     }
@@ -76,7 +78,7 @@ class SetupJourneyTest {
         button("登录 Codex").performClick()
         compose.onNodeWithText("ChatGPT").performClick()
         compose.onNodeWithText("选择屏幕操作方式").assertIsDisplayed()
-        compose.onNodeWithText("第 3 步").assertIsDisplayed()
+        compose.onNodeWithContentDescription("第 3 步：选择屏幕操作方式").assertIsSelected().assertIsDisplayed()
         compose.onNodeWithText("开启开发者模式").assertDoesNotExist()
         val prefs = RuntimeEnvironment.getApplication().getSharedPreferences("mobby.setup-guide", 0)
         compose.runOnIdle { Assert.assertEquals("SCREEN", prefs.getString("step", null)) }

@@ -95,6 +95,7 @@ class ScreenControlSettingsTest {
         var finished = false
         show(controller, finished = { finished = true })
         next()
+        compose.onNodeWithContentDescription("第 7 步：连接").assertIsSelected()
         button("连接").assertIsDisplayed()
         compose.onNodeWithText("配对这台手机").assertDoesNotExist()
         compose.runOnIdle { assertTrue(controller.events.isEmpty()) }
@@ -102,6 +103,17 @@ class ScreenControlSettingsTest {
         compose.onNodeWithText("屏幕操作已就绪").assertIsDisplayed()
         button("完成").performClick()
         compose.runOnIdle { assertTrue(finished); assertEquals(listOf("port:", "connect"), controller.events) }
+    }
+    @Test fun `embedded guide includes agent steps and auxiliary pages keep parent numbering`() {
+        val controller = TestController(ScreenControlState(mode = ScreenMode.ADB, adbPaired = true))
+        compose.setContent { MaterialTheme { ScreenControlSettings(controller, {}, statusOverride = ready,
+            settingsOverride = {}, embedded = true, stepOffset = 2) } }
+        compose.onNodeWithContentDescription("第 1 步：选择一个 Agent").assertExists()
+        compose.onNodeWithContentDescription("第 3 步：选择屏幕操作方式").assertIsSelected()
+        next()
+        compose.onNodeWithContentDescription("第 9 步：连接").assertIsSelected()
+        button("手动填写连接端口").performClick()
+        compose.onNodeWithContentDescription("第 9 步：连接").assertIsSelected()
     }
     @Test fun `manual port has its own page and does not connect when saved`() {
         val controller = TestController(ScreenControlState(mode = ScreenMode.ADB, adbPaired = true))

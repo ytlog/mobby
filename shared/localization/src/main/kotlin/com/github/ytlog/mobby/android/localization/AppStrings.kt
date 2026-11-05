@@ -21,6 +21,7 @@ open class StringCatalog(private val fixedLanguage: AppLanguage? = null) {
     val agentConnectionsTitle get() = text("Agent 与 AI 服务", "Agents & AI services")
     val agentConnectionsSummary get() = text("登录 Agent、配置 API 网关与切换使用方式", "Sign in to agents, configure API gateways, and choose connection modes")
     fun wizardStep(number: Int) = text("第 {0} 步", "Step {0}", number)
+    val wizardSignInStep get() = text("连接 AI 服务", "Connect AI service")
     val wizardNext get() = text("下一步", "Next")
     val wizardPrevious get() = text("上一步", "Back")
     val wizardFinish get() = text("完成", "Finish")
