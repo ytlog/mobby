@@ -99,7 +99,6 @@ class ScreenControlDeviceTest {
                 assertEquals(mode.name.lowercase(), apps.getString("backend"))
                 val display = apps.getInt("displayId")
                 assertEquals(mode == ScreenMode.CURRENT, display == 0)
-                perform("launch", mapOf("package" to "com.android.settings"))
                 val fixturePackage = instrumentation.context.packageName
                 // Use the actual Agent launch path, including its selected-display contract.
                 perform("launch", mapOf("package" to fixturePackage))
