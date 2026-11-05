@@ -34,14 +34,13 @@ import java.util.concurrent.atomic.AtomicReference
 
 internal class DeviceActions(private val context: Context, private val inbox: File, private val workspace: File, private val gate: DeviceActionGate, private val resources: DeviceResourceRegistrar, private val cachedResources: DeviceResourceRegistrar,
     /** Device actions this chat run allows; dry runs may only query within them. */
-    private val allow: Map<String, Set<String>> = emptyMap(),
+    private val allow: () -> Map<String, Set<String>> = { emptyMap() },
     /** Programs the user attached to this chat; records are readable only for these. */
     private val attachedPrograms: Set<String> = emptySet(),
-    private val screenSession: ScreenSession? = null) {
+    private val screenSession: () -> ScreenSession? = { null }) {
     fun perform(plugin: String, action: String, args: Map<String, String>, execution: DeviceExecution): DeviceResult {
         gate.checkActive()
-        val spec = DeviceCatalog.all.first { it.id == plugin }
-        val ref = if (action in spec.grant?.actions.orEmpty()) spec.grantRef!! else spec.ref
+        val ref = DeviceCatalog.actionRef(plugin, action)
         if (!DeviceHost.granted(context, ref)) deviceFailure(DeviceErrorCode.PERMISSION_REVOKED)
         return when (plugin) {
             "screen" -> screen(action, args)
@@ -61,8 +60,8 @@ internal class DeviceActions(private val context: Context, private val inbox: Fi
     }
 
     private fun screen(action: String, args: Map<String, String>): DeviceResult {
-        val observation = if (screenSession != null) screenSession.operate(action, args, gate::checkActive)
-            else selectScreenBackend(ScreenControl.state.value.mode,
+        val observation = screenSession()?.operate(action, args, gate::checkActive)
+            ?: selectScreenBackend(ScreenControl.state.value.mode,
                 { (ScreenAccessService.instance ?: error(AppStrings.accessibilityIsOffEnableMobbySScreenServiceIn)).operate(action, args, gate::checkActive) },
                 { error(AppStrings.connectScreenBackend) })
         val screenshot = observation.screenshot
@@ -376,7 +375,7 @@ internal class DeviceActions(private val context: Context, private val inbox: Fi
             "validate" -> deviceResult("program_report", port.validate(args.getValue("path")))
             "dry-run" -> {
                 val timeout = args["timeoutMs"]?.toLongOrNull()?.coerceIn(1_000, 60_000) ?: 20_000
-                deviceResult("program_report", port.dryRun(args.getValue("path"), args["events"] ?: "[]", timeout, allow))
+                deviceResult("program_report", port.dryRun(args.getValue("path"), args["events"] ?: "[]", timeout, allow()))
             }
             "records" -> {
                 val id = args.getValue("programId")

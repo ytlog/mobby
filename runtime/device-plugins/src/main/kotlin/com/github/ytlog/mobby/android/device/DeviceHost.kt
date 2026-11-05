@@ -23,6 +23,12 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 
 object DeviceHost {
+    @Volatile var conversationSelection: (suspend (String) -> Set<String>?)? = null
+    @Volatile var authorizeSelection: (suspend (String, String) -> Unit)? = null
+
+    fun respond(request: DeviceOperationResponse) = DeviceAuthorization.respond(request)
+
+
     fun summaries(context: Context): List<PluginSummary> = DeviceCatalog.all.map { spec ->
         val permissions = if (spec.id == "media") mediaPermissions() else spec.permissions
         val available = granted(context, spec.ref)
@@ -87,31 +93,54 @@ object DeviceHost {
     private fun allowed(context: Context, permission: String) =
         context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
 
-    fun start(context: Context, root: File, inbox: File, workspace: File, node: String, refs: Set<String>, operations: DeviceOperationPort, registerResource: (File, String) -> String, registerCachedResource: (File, String) -> String, exportResource: (String) -> String, isCancelled: () -> Boolean = { false }, attachedPrograms: Set<String> = emptySet()): DeviceSession {
+    fun start(context: Context, root: File, inbox: File, workspace: File, node: String, refs: Set<String>, operations: DeviceOperationPort, registerResource: (File, String) -> String, registerCachedResource: (File, String) -> String, exportResource: (String) -> String, isCancelled: () -> Boolean = { false }, attachedPrograms: Set<String> = emptySet(),
+        conversationTurn: String? = null, discoverableRefs: Set<String> = emptySet()): DeviceSession {
         var screen: ScreenSession? = null
-        return openDeviceSession(refs, {
+        var dynamicScreen: AutoCloseable? = null
+        fun openScreen(): AutoCloseable {
             val chat = ScreenCoordinator.chatSession()
             val session = try { ScreenControl.open(context) } catch (failure: Throwable) { chat.close(); throw failure }
             screen = session
-            AutoCloseable { try { session.close() } finally { chat.close() } }
-        }) {
+            return AutoCloseable { try { session.close() } finally { chat.close() } }
+        }
+        return openDeviceSession(if (conversationTurn == null) refs else emptySet(), ::openScreen) {
             val token = DeviceCommands.token()
-            val allow = DeviceCatalog.allow(refs)
+            val exposed = refs + discoverableRefs
+            val allow = DeviceCatalog.allow(exposed)
             val gate = DeviceActionGate(isCancelled)
-            val actions = DeviceActions(context, inbox, workspace, gate, DeviceResourceRegistrar(registerResource), DeviceResourceRegistrar(registerCachedResource), allow, attachedPrograms, screen)
-            val workflow = DeviceWorkflowManager(context) { query, input ->
+            val authorization = conversationTurn?.let { turn ->
+                val selected = checkNotNull(conversationSelection)
+                val authorize = checkNotNull(authorizeSelection)
+                DeviceAuthorization({ selected(turn).orEmpty() }, { granted(context, it) },
+                    { ref -> authorize(turn, ref) }, gate::checkActive)
+            }
+            val actions = DeviceActions(context, inbox, workspace, gate, DeviceResourceRegistrar(registerResource),
+                DeviceResourceRegistrar(registerCachedResource), {
+                    val selected = if (conversationTurn == null) refs
+                        else kotlinx.coroutines.runBlocking { conversationSelection?.invoke(conversationTurn).orEmpty() }
+                    DeviceCatalog.allow(refs.intersect(selected))
+                }, attachedPrograms) {
+                if (authorization != null && screen == null) dynamicScreen = openScreen()
+                screen
+            }
+            fun mayReadScreen(): Boolean = authorization == null ||
+                runCatching { kotlinx.coroutines.runBlocking { authorization.permits("plugin:device:screen") } }.getOrDefault(false)
+            val workflow = DeviceWorkflowManager(context, ::mayReadScreen) { query, input ->
                 gate.checkActive()
+                if (!mayReadScreen()) deviceFailure(DeviceErrorCode.UNAUTHORIZED)
                 (screen ?: deviceFailure(DeviceErrorCode.UNAVAILABLE)).inspect(query, input)
             }
-            val bridge = DeviceBridge(gate::close, workflow::close) { line ->
+            val bridge = DeviceBridge(gate::close, { try { workflow.close() } finally { dynamicScreen?.close() } }) { line ->
                 workflow.handle(line, token, allow) { request ->
-                    DeviceCommands.handle(request, token, allow, operations, gate::checkActive, exportResource) { plugin, action, args, execution ->
-                        actions.perform(plugin, action, args, execution)
-                    }
+                    DeviceCommands.handle(request, token, allow, operations, gate::checkActive, exportResource,
+                        authorize = { plugin, action, execution ->
+                            authorization?.require(DeviceCatalog.actionRef(plugin, action), execution)
+                        }) { plugin, action, args, execution -> actions.perform(plugin, action, args, execution) }
                 }
             }
             try {
-                bridge to DeviceSkillPack.write(root, node, bridge.port, token, refs, ScreenControl.state.value.mode)
+                bridge to DeviceSkillPack.write(root, node, bridge.port, token, exposed, ScreenControl.state.value.mode,
+                    needsAuthorization = authorization != null)
             } catch (error: Throwable) {
                 bridge.close()
                 throw error

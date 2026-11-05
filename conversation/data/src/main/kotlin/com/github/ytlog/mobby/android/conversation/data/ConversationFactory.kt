@@ -7,10 +7,12 @@ import kotlinx.coroutines.CoroutineScope
 import java.util.UUID
 
 object ConversationFactory {
-    fun create(context: Context, client: RuntimeClient, admin: RuntimeAdminClient, diagnostics: RuntimeDiagnosticsClient, scope: CoroutineScope): ConversationUseCases {
+    fun create(context: Context, client: RuntimeClient, admin: RuntimeAdminClient, diagnostics: RuntimeDiagnosticsClient, scope: CoroutineScope,
+        bindDeviceSelection: ((suspend (String) -> Set<String>?, suspend (String, String) -> Unit) -> Unit)? = null): ConversationUseCases {
         val execution = RuntimeExecutionAdapter(client)
         val system = RuntimeSystemAdapter(context.applicationContext, client, admin, diagnostics)
         val repository = RoomConversationStore(ConversationDatabase.open(context), client, system, scope, execution)
+        bindDeviceSelection?.invoke(repository::deviceSelection, repository::authorizeDevice)
         return ConversationUseCases(repository, execution, system, { UUID.randomUUID().toString() }, scope, ConversationPreferences(context))
     }
 }

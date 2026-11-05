@@ -5,7 +5,6 @@ import android.app.NotificationManager
 import android.provider.Settings
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.isDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -109,23 +108,6 @@ class DirectPluginSelectorTest {
         compose.onNodeWithText("AI 操作手机").performClick()
         compose.waitUntil(5_000) { written.isNotEmpty() }
         assertEquals(listOf(ref), written)
-    }
-
-    @Test fun `accepting a screen suggestion attaches through the normal draft selector`() {
-        val written = mutableListOf<String>()
-        val (vm, conversation) = viewModel({ Plugin(ScreenSkillRef, "屏幕", "AI 操作手机", true, null) }, written)
-        compose.setContent {
-            MaterialTheme {
-                val select = rememberDirectPluginSelector(vm, conversation)
-                rememberScreenSkillSuggestion(conversation.id.value, "帮我打开微信", true) { select(ScreenSkillRef) }
-            }
-        }
-        val add = compose.onNodeWithText(UiStrings.suggestScreenSkillAdd)
-        compose.waitUntil(5_000) { add.isDisplayed() }
-        assertTrue(written.isEmpty())
-        add.performClick()
-        compose.waitUntil(5_000) { written.isNotEmpty() }
-        assertEquals(listOf(ScreenSkillRef), written)
     }
 
     @Test fun `unavailable photos request its permission on the conversation instead of opening catalogue`() {

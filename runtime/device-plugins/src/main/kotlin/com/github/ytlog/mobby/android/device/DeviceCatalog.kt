@@ -149,6 +149,11 @@ object DeviceCatalog {
         ),
     )
 
+    fun actionRef(plugin: String, action: String): String {
+        val spec = all.first { it.id == plugin }
+        return if (action in spec.grant?.actions.orEmpty()) requireNotNull(spec.grantRef) else spec.ref
+    }
+
     fun isKnown(ref: String) = all.any { it.ref == ref || it.grantRef == ref }
     fun missingParent(refs: Set<String>) = all.any { it.grantRef != null && it.grantRef in refs && it.ref !in refs }
     fun allow(refs: Set<String>): Map<String, Set<String>> = buildMap {

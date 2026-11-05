@@ -43,6 +43,7 @@ object DeviceLabels {
         return if (actionName.isBlank()) name else "$name · $actionName"
     }
     fun phase(operation: DeviceOperation): String = when (operation.phaseCode) {
+        "device.authorize" -> text("等待你授权这项会话权限", "Waiting for your permission in this conversation")
         "appfunction.confirm" -> text("请核对目标应用与参数后确认调用", "Review target app and arguments before calling")
         "capture.photo" -> text("请拍摄照片", "Take a photo")
         "capture.record" -> text("正在录音，完成后确认素材", "Recording; confirm when ready")

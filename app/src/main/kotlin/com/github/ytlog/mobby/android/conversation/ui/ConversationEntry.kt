@@ -443,6 +443,7 @@ class ConversationHostActions(
     onAnchor: (IntRect) -> Unit, onAdd: () -> Unit, onRead: (String, String) -> Unit,
     contextBubblesVisible: Boolean,
 ) {
+    state.selected?.let { com.github.ytlog.mobby.android.deviceoperation.ConversationDevicePermissionDialog(it, vm) }
     val canvas = conversationCanvas()
     val backdrop = rememberCanvasBackdrop { drawRect(canvas) }
     CompositionLocalProvider(LocalConversationBackdrop provides backdrop) {
@@ -486,7 +487,7 @@ class ConversationHostActions(
                 Composer(state.selected!!, state, system, vm,
                     modifier = Modifier.align(Alignment.CenterHorizontally).widthIn(max = 760.dp).fillMaxWidth()
                         .testTag("conversation-composer"),
-                    onAdd = onAdd, onAddScreen = { onSelectPlugin(ScreenSkillRef) }, onConnect = { onMore("connections") }, contextBubblesVisible = contextBubblesVisible)
+                    onAdd = onAdd, onConnect = { onMore("connections") }, contextBubblesVisible = contextBubblesVisible)
             }
         }
     }
@@ -713,17 +714,10 @@ internal fun LazyListScope.programSection(shortcuts: List<ProgramShortcut>, quer
         }
 }
 
-@Composable private fun Composer(detail: ConversationDetail, state: ConversationState, system: SystemStatus, vm: ConversationViewModel, onAdd: () -> Unit, onAddScreen: () -> Unit, modifier: Modifier = Modifier, onConnect: () -> Unit = {}, contextBubblesVisible: Boolean = true) {
+@Composable private fun Composer(detail: ConversationDetail, state: ConversationState, system: SystemStatus, vm: ConversationViewModel, onAdd: () -> Unit, modifier: Modifier = Modifier, onConnect: () -> Unit = {}, contextBubblesVisible: Boolean = true) {
     val composer by vm.composer.collectAsStateWithLifecycle()
     val active = detail.turns.lastOrNull { it.occupied }
     val unavailable = detail.conversation.archived || detail.conversation.deleted
-    val screenSkillOffer = rememberScreenSkillSuggestion(
-        detail.conversation.id.value,
-        composer.value.text.takeIf { composer.conversation == detail.conversation.id }.orEmpty(),
-        !unavailable && composer.conversation == detail.conversation.id &&
-            ScreenSkillRef !in detail.conversation.draft.capabilities,
-        onAddScreen,
-    )
     val context = LocalContext.current
     val keyboard = LocalSoftwareKeyboardController.current
     val focus = LocalFocusManager.current
@@ -745,11 +739,7 @@ internal fun LazyListScope.programSection(shortcuts: List<ProgramShortcut>, quer
         capture.onTranscript = transcript@{ text ->
             val original = snapshot.value ?: return@transcript
             snapshot.value = null
-            val composed = vm.composer.value.insertVoice(original, text)
-            val problem = if (text.isNotBlank() && composed != null && screenSkillOffer(composed.value.text)) {
-                vm.edit(composed.value)
-                null
-            } else vm.sendVoice(original, text)
+            val problem = vm.sendVoice(original, text)
             if (problem != null) capture.error = problem else voiceMode = false
         }
     }
@@ -794,7 +784,6 @@ internal fun LazyListScope.programSection(shortcuts: List<ProgramShortcut>, quer
         } else snapshot.value = null
     }
     fun sendAndDismiss(mode: MessageDeliveryMode = MessageDeliveryMode.QUEUE) {
-        if (screenSkillOffer(vm.composer.value.value.text)) return
         if (vm.connections.value.none { it.agent == detail.conversation.config.agent }) { onConnect(); return }
         vm.send(mode)
         keyboard?.hide()

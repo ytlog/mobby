@@ -12,7 +12,11 @@ import kotlinx.serialization.json.*
 import java.util.UUID
 
 /** The only owner of screen workflow recording, persistence and checked replay. */
-internal class DeviceWorkflowManager(context: Context, private val inspect: (String?, String?) -> ScreenEvidence) : AutoCloseable {
+internal class DeviceWorkflowManager(
+    context: Context,
+    private val canUseScreen: () -> Boolean = { true },
+    private val inspect: (String?, String?) -> ScreenEvidence,
+) : AutoCloseable {
     private val store = WorkflowStore(context)
     private var currentId = UUID.randomUUID().toString()
     private var historyError = false
@@ -25,7 +29,7 @@ internal class DeviceWorkflowManager(context: Context, private val inspect: (Str
         if (request.plugin == "workflow") return command(request, raw, token, allow, execute)
         if (request.plugin != "screen" || request.action !in setOf("click", "type", "back") ||
             (raw["token"] as? JsonPrimitive)?.contentOrNull != token || request.protocolVersion != 1 ||
-            request.action !in allow["screen"].orEmpty()) return execute(line)
+            request.action !in allow["screen"].orEmpty() || !canUseScreen()) return execute(line)
         if (try { store.hasRequest(request.requestId) } catch (_: Exception) { false }) return execute(line)
         val args = try { DeviceActionDefinition("screen", request.action).validate(request.args) } catch (_: Exception) { return execute(line) }
         val query = args["query"]
@@ -56,7 +60,7 @@ internal class DeviceWorkflowManager(context: Context, private val inspect: (Str
         if (request.protocolVersion != 1) return failure(DeviceErrorCode.INCOMPATIBLE_VERSION)
         if (!request.requestId.matches(DeviceOperationRules.ID)) return failure(DeviceErrorCode.INVALID_ARGUMENT)
         if (request.parentOperationId != null) return failure(DeviceErrorCode.INVALID_ARGUMENT)
-        if ("snapshot" !in allow["screen"].orEmpty()) return failure(DeviceErrorCode.UNAUTHORIZED)
+        if ("snapshot" !in allow["screen"].orEmpty() || !canUseScreen()) return failure(DeviceErrorCode.UNAUTHORIZED)
         if (request.args.size > 3) return failure(DeviceErrorCode.INVALID_ARGUMENT)
         val mutating = request.action in setOf("start", "finish", "run", "replay")
         if (mutating) {

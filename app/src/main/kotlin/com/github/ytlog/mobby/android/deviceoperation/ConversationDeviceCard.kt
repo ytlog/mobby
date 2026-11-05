@@ -12,25 +12,23 @@ import com.github.ytlog.mobby.android.deviceoperation.ui.*
 import com.github.ytlog.mobby.android.conversation.domain.*
 import com.github.ytlog.mobby.android.conversation.ui.ConversationViewModel
 import com.github.ytlog.mobby.android.conversation.ui.LocalAttachmentPreviewHost
-import java.util.UUID
 
 /** Composition root adapter: cards know neither ConversationViewModel nor the runtime client. */
 @Composable internal fun ConversationDeviceCard(operation: DeviceOperation, turn: Turn, conversation: Conversation, vm: ConversationViewModel) {
     var preview by remember { mutableStateOf<String?>(null) }
     val execution = turn.execution
     val previewHost = LocalAttachmentPreviewHost.current
+    val respond: ((String) -> Unit)? = execution?.takeIf { turn.occupied }?.let { id ->
+        { response -> vm.respondToOperation(id, operation, response) }
+    }
+    val permissionResponse = if (respond != null && operation.requiresAttention?.reasonCode == "device.authorize")
+        devicePermissionPrompt(operation, vm, respond) else respond
     DeviceTaskCard(operation, DeviceCardActions(
         stop = execution?.takeIf { turn.occupied }?.let { id -> { vm.stop(id) } },
         openResource = { ref -> if (ref in operation.result?.resourceRefs.orEmpty()) {
             if (previewHost != null) previewHost(ref) else preview = ref
         } },
-        respond = execution?.takeIf { turn.occupied }?.let { id -> { response ->
-            operation.requiresAttention?.let { attention -> vm.enqueue {
-                vm.report(vm.actions.respondToDevice(DeviceOperationResponse(UUID.randomUUID().toString(), id.value,
-                    operation.operationId, attention.promptId, operation.revision, response)))
-            } }
-            Unit
-        } },
+        respond = permissionResponse,
     ), stopping = turn.phase == ExecutionPhase.CANCELLING, thumbnail = { ref ->
         val bytes by produceState<ByteArray?>(null, ref) {
             value = (vm.actions.previewAttachment(conversation.config.workspace, ref, false) as? DataResult.Loaded)?.value?.bytes

@@ -42,7 +42,7 @@ internal class AndroidRuntimePorts(
         return if (session.insert(text)) InsertionOffer.ACCEPTED else InsertionOffer.NOT_READY
     }
     override fun offerDeviceResponse(request: DeviceOperationResponse) =
-        com.github.ytlog.mobby.android.device.DeviceCapture.respond(request.operationId, request.response) || AppFunctionHost.respond(request)
+        com.github.ytlog.mobby.android.device.DeviceCapture.respond(request.operationId, request.response) || DeviceHost.respond(request) || AppFunctionHost.respond(request)
     override fun offerApproval(requestId: RequestId, approvalId: String, choice: ApprovalChoice) = control?.offer(requestId, approvalId, choice) == true
     suspend fun shutdownLive() {
         val current = gate.withLock { held.also { held = null } }
@@ -106,16 +106,17 @@ internal class AndroidRuntimePorts(
             return@withContext RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY)
         val pluginRefs = request.capabilityRefs.map { it.value }.filter { it.startsWith("plugin:") }.toSet()
         val deviceRefs = pluginRefs.filter { it.startsWith("plugin:device:") }.toSet()
+        val liveSelection = DeviceHost.conversationSelection?.invoke(request.requestId.value) != null
         val appFunctionRefs = pluginRefs.filter { it.startsWith(AppFunctionRefs.PREFIX) }.toSet()
         // Attached programs only make sense with the program development plugin, which reads their records.
         val programRefs = pluginRefs.filter { it.startsWith(PROGRAM_REF) }.toSet()
         if (programRefs.any { !it.removePrefix(PROGRAM_REF).matches(PROGRAM_ID) } || (programRefs.isNotEmpty() && "plugin:device:programs" !in deviceRefs))
             return@withContext RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY)
         if (pluginRefs.size != deviceRefs.size + appFunctionRefs.size + programRefs.size || deviceRefs.any { !DeviceCatalog.isKnown(it) } ||
-            appFunctionRefs.any { AppFunctionRefs.decode(it) == null } || DeviceCatalog.missingParent(deviceRefs) ||
+            appFunctionRefs.any { AppFunctionRefs.decode(it) == null } || (!liveSelection && DeviceCatalog.missingParent(deviceRefs)) ||
             request.capabilityRefs.any { !it.value.startsWith("plugin:") && skills.resolve(it, request.agentId) == null })
             return@withContext RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY)
-        if (deviceRefs.any { !DeviceHost.granted(context, it) })
+        if (deviceRefs.any { (!liveSelection || it == "plugin:device:programs") && !DeviceHost.granted(context, it) })
             return@withContext RuntimeError(ErrorCode.PERMISSION_DENIED)
         if (appFunctionRefs.isNotEmpty()) {
             val catalog = AppFunctionCatalog(context)
@@ -225,13 +226,19 @@ internal class AndroidRuntimePorts(
         var launched = false
         try {
             val deviceRefs = request.capabilityRefs.map { it.value }.filter { DeviceCatalog.isKnown(it) }.toSet()
+            val conversationTurn = request.requestId.value.takeIf {
+                DeviceHost.conversationSelection?.invoke(it) != null
+            }
+            val discoverableRefs = if (conversationTurn == null) emptySet() else DeviceCatalog.all
+                .filter { it.id != "programs" && !skills.blocked(request.agentId, it.skillName) }
+                .flatMap { listOfNotNull(it.ref, it.grantRef) }.toSet()
             val appFunctionRefs = request.capabilityRefs.map { it.value }.filter { it.startsWith(AppFunctionRefs.PREFIX) }.toSet()
-            if (deviceRefs.isNotEmpty() || appFunctionRefs.isNotEmpty()) {
+            if (deviceRefs.isNotEmpty() || discoverableRefs.isNotEmpty() || appFunctionRefs.isNotEmpty()) {
                 bridgeDir = File(context.filesDir, "device-bridge/${request.requestId.value}")
                 inbox = File(runtime.sdk.vfs.homeDir, "mobby-plugin-inbox/${request.requestId.value}")
                 inbox!!.mkdirs()
                 val node = File(runtime.sdk.vfs.binDir, "node").absolutePath
-                if (deviceRefs.isNotEmpty()) session = DeviceHost.start(context, bridgeDir!!, inbox!!, workingDirectory, node, deviceRefs, devices,
+                if (deviceRefs.isNotEmpty() || discoverableRefs.isNotEmpty()) session = DeviceHost.start(context, bridgeDir!!, inbox!!, workingDirectory, node, deviceRefs, devices,
                     registerResource = { file, type ->
                         com.github.ytlog.mobby.android.device.DevicePaths.contained(listOf(workingDirectory, inbox!!), file)
                         PersistentResourceStore(File(context.filesDir, "input-resources"), EventHistorySettingsStore(context)::attachmentBudgetBytes)
@@ -248,6 +255,7 @@ internal class AndroidRuntimePorts(
                         file.writeBytes(store.contentBytes(resource, request.workspaceRef))
                         file.absolutePath
                     }, isCancelled = { deviceStop.get()?.let { it.value != null } ?: true },
+                    conversationTurn = conversationTurn, discoverableRefs = discoverableRefs,
                     attachedPrograms = request.capabilityRefs.map { it.value }.filter { it.startsWith(PROGRAM_REF) }.map { it.removePrefix(PROGRAM_REF) }.toSet())
                 if (appFunctionRefs.isNotEmpty()) appFunctionSession = AppFunctionHost.start(context, bridgeDir!!, node,
                     appFunctionRefs, devices) { if (deviceStop.get()?.value != null) throw CancellationException() }

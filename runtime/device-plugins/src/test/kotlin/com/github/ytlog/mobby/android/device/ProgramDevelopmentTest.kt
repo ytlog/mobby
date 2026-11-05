@@ -29,7 +29,7 @@ class ProgramDevelopmentTest {
     @After fun clean() { ProgramDevelopment.port = null; dir.deleteRecursively() }
 
     private fun actions(attached: Set<String>) = DeviceActions(RuntimeEnvironment.getApplication(), dir, dir, DeviceActionGate(),
-        { _, _ -> "" }, { _, _ -> "" }, mapOf("sms" to setOf("list"), "programs" to setOf("catalog")), attached)
+        { _, _ -> "" }, { _, _ -> "" }, { mapOf("sms" to setOf("list"), "programs" to setOf("catalog")) }, attached)
     private fun run(actions: DeviceActions, action: String, args: Map<String, String> = emptyMap()) =
         actions.perform("programs", action, args, DeviceExecution("op") { _, _, _ -> })
 

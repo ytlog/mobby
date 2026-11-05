@@ -115,6 +115,24 @@ class RoomConversationStoreTest {
         } finally { language.current = com.github.ytlog.mobby.android.localization.AppLanguage.CHINESE }
     }
 
+    @Test fun `device permission follows the live labels of the requesting conversation`() = runBlocking {
+        val first = state().selected!!.conversation
+        val turn = TurnId("device-permission-turn")
+        val ref = "plugin:device:contacts:write"
+        repository.editDraft(first.id, "Update a contact", 16, 16)
+        assertTrue(repository.prepareTurn(first.id, turn) is PrepareTurnResult.Prepared)
+        val second = repository.create(first.config)
+
+        assertNull(repository.deviceSelection("unknown-turn"))
+        assertTrue(repository.deviceSelection(turn.value)!!.isEmpty())
+        repository.authorizeDevice(turn.value, ref)
+        assertEquals(setOf(ref), repository.deviceSelection(turn.value))
+        assertTrue(repository.conversation(second).draft.capabilities.isEmpty())
+
+        repository.setSkill(first.id, ref, false)
+        assertTrue(repository.deviceSelection(turn.value)!!.isEmpty())
+    }
+
     @Test fun `message submitted while an agent runs is queued and sent after that turn ends`() = runBlocking {
         val conversation = state().selected!!.conversation
         repository.editDraft(conversation.id, "first", 5, 5)

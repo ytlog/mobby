@@ -17,7 +17,10 @@ import kotlinx.coroutines.SupervisorJob
 class AppGraph(context: Context, notification: () -> PendingIntent) {
     private val conversationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     val runtime = RuntimeHost(context.applicationContext, notification)
-    val conversations = ConversationFactory.create(context.applicationContext, runtime.client, runtime.admin, runtime.diagnostics, conversationScope)
+    val conversations = ConversationFactory.create(context.applicationContext, runtime.client, runtime.admin, runtime.diagnostics, conversationScope) { selection, authorize ->
+        com.github.ytlog.mobby.android.device.DeviceHost.conversationSelection = selection
+        com.github.ytlog.mobby.android.device.DeviceHost.authorizeSelection = authorize
+    }
     private val programScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     // Programs are written into the default workspace by the phone AI and installed from there.
     val programs = ProgramPlatform.create(context.applicationContext,

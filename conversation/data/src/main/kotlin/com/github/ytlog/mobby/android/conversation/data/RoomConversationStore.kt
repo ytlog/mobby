@@ -66,6 +66,19 @@ internal class RoomConversationStore(
     }.combine(projects.observe()) { state, projectList -> state.copy(projects = projectList) }.combine(startupError) { state, error -> state.copy(error = error ?: state.error) }.catch { emit(ConversationState(loading = false, error = AppStrings.cannotReadTheConversationDatabaseDataPreservedRestartThe)) }
         .stateIn(scope, SharingStarted.Eagerly, ConversationState())
 
+    suspend fun deviceSelection(turnId: String): Set<String>? {
+        val turn = dao.turn(turnId) ?: return null
+        val conversation = dao.conversation(turn.conversationId)?.domain()
+        return conversation?.takeUnless { it.archived || it.deleted }?.draft?.capabilities.orEmpty()
+    }
+
+    suspend fun authorizeDevice(turnId: String, ref: String) = db.withTransaction {
+        val turn = checkNotNull(dao.turn(turnId))
+        val conversation = checkNotNull(dao.conversation(turn.conversationId)?.domain())
+        check(!conversation.archived && !conversation.deleted)
+        drafts.setSkill(conversation.id, ref, true)
+    }
+
     override suspend fun saveSkillProposal(proposal: SkillProposal, markdown: String): DataResult<Skill> {
         suspend fun sourceAvailable() = db.withTransaction {
             val chunk = dao.chunk(proposal.ref) ?: return@withTransaction false

@@ -55,6 +55,18 @@ class DevicePluginTest {
             assertTrue(port.records.isEmpty())
         }
     }
+    @Test fun `denied write is never dispatched and has no external effect`() {
+        val port = MemoryDevices()
+        val response = DeviceJson.decodeFromString<DeviceResponse>(DeviceCommands.handle(
+            request("contacts", "delete", """{"id":"1"}"""), "fixture", mapOf("contacts" to setOf("delete")), port,
+            authorize = { _, _, _ -> deviceFailure(DeviceErrorCode.UNAUTHORIZED) },
+            performer = DevicePerformer { _, _, _, _ -> error("denied action dispatched") },
+        ))
+        assertEquals(DeviceStatus.FAILED, response.status)
+        assertEquals(DeviceErrorCode.UNAUTHORIZED, response.error?.code)
+        assertEquals(EffectState.NONE, response.error?.effectState)
+    }
+
     @Test fun `duplicate requests replay facts and conflicting content cannot execute`() {
         val port = MemoryDevices(); var calls = 0
         val performer = DevicePerformer { _, _, _, _ -> calls++; deviceText("value") }

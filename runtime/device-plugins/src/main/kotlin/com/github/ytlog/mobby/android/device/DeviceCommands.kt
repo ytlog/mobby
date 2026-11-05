@@ -14,7 +14,8 @@ fun interface DevicePerformer {
 object DeviceCommands {
     fun token() = UUID.randomUUID().toString()
     fun handle(line: String, token: String, allow: Map<String, Set<String>>, operations: DeviceOperationPort,
-        gate: () -> Unit = {}, exportResource: ((String) -> String)? = null, performer: DevicePerformer): String = runBlocking {
+        gate: () -> Unit = {}, exportResource: ((String) -> String)? = null,
+        authorize: suspend (String, String, DeviceExecution) -> Unit = { _, _, _ -> }, performer: DevicePerformer): String = runBlocking {
         var requestId = "invalid-request"
         var operation: DeviceOperation? = null
         var writes = false
@@ -49,13 +50,17 @@ object DeviceCommands {
             operation = operations.update(operation!!.copy(revision = operation!!.revision + 1, status = DeviceStatus.RUNNING, phaseCode = "${request.plugin}.${request.action}"))
             if (operation!!.status != DeviceStatus.RUNNING) deviceFailure(DeviceErrorCode.CANCELLED)
             gate()
-            writes = definition.writes
             val execution = DeviceExecution(operation!!.operationId) { status, phase, attention ->
                 val previous = checkNotNull(operation)
                 operation = operations.update(previous.copy(revision = previous.revision + 1, status = status, phaseCode = phase,
                     requiresAttention = attention, availableActions = listOfNotNull(DeviceButton.STOP_RUN, DeviceButton.OPEN_CONVERSATION,
                         DeviceButton.RESPOND.takeIf { attention != null })))
             }
+            authorize(request.plugin, request.action, execution)
+            operation = operations.find(request.requestId) ?: deviceFailure(DeviceErrorCode.NOT_FOUND)
+            if (operation!!.status != DeviceStatus.RUNNING) deviceFailure(DeviceErrorCode.CANCELLED)
+            gate()
+            writes = definition.writes
             val result = performer.perform(request.plugin, request.action, args, execution)
             operation = operations.find(request.requestId) ?: deviceFailure(DeviceErrorCode.NOT_FOUND)
             val sendFailed = result.kind == "message_receipt" && result.data["sent"]?.jsonPrimitive?.content == "failed"
@@ -108,6 +113,9 @@ object DeviceCommands {
 
 class DeviceExecution internal constructor(val operationId: String,
     private val update: suspend (DeviceStatus, String, DeviceAttention?) -> Unit) {
+    internal suspend fun authorizing(promptId: String, deadline: Long) =
+        update(DeviceStatus.AWAITING_USER, "device.authorize",
+            DeviceAttention("device.authorize", promptId, listOf("confirm", "cancel"), deadline))
     fun waiting(phase: String, promptId: String) = runBlocking {
         update(DeviceStatus.AWAITING_USER, phase, DeviceAttention(phase, promptId, listOf("cancel")))
     }

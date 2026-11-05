@@ -91,8 +91,10 @@ class DeviceCardActions(
                 if (DeviceButton.RESPOND in operation.availableActions && actions.respond != null && !stopping && !operation.status.terminal)
                     operation.requiresAttention?.allowedResponses?.filter { it in setOf("cancel", "continue", "confirm") }?.forEach { response ->
                         TextButton(onClick = { actions.respond.invoke(response) }) { Text(when (response) {
-                            "cancel" -> if (operation.plugin == "appfunction") DeviceLabels.text("取消调用", "Cancel call") else DeviceLabels.text("取消采集", "Cancel capture")
-                            "confirm" -> if (operation.plugin == "appfunction") DeviceLabels.text("确认调用", "Confirm call") else DeviceLabels.text("确认使用", "Use capture")
+                            "cancel" -> if (operation.phaseCode == "device.authorize") DeviceLabels.text("拒绝", "Deny")
+                                else if (operation.plugin == "appfunction") DeviceLabels.text("取消调用", "Cancel call") else DeviceLabels.text("取消采集", "Cancel capture")
+                            "confirm" -> if (operation.phaseCode == "device.authorize") DeviceLabels.text("授权并继续", "Allow and continue")
+                                else if (operation.plugin == "appfunction") DeviceLabels.text("确认调用", "Confirm call") else DeviceLabels.text("确认使用", "Use capture")
                             else -> DeviceLabels.text("继续", "Continue")
                         }) }
                     }
