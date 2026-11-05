@@ -352,28 +352,26 @@ class ConversationHostActions(
                     }.then(swipe))
                 SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(bottom = if (navigation.page == AppPage.SETUP) wizardFooterInset else 0.dp))
                 if (navigation.addSheetOpen) ModalBottomSheet(onDismissRequest = { navigation = navigation.closeAddSheet() }, modifier = Modifier.offset(x = sheetOffset), sheetMaxWidth = overlayWidth, shape = RoundedCornerShape(28.dp, 28.dp, 0.dp, 0.dp), containerColor = addSheetColor(), contentColor = addInkColor()) {
-                    GlassControlScope(background = addSheetColor()) {
-                        val target = state.selected?.conversation
-                        val availability = attachmentAvailability(target, agentOptions, system.ready, camera.busy)
-                        Column(Modifier.fillMaxWidth().heightIn(max = (availableHeight - 48.dp).coerceAtLeast(120.dp)).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                AttachmentTile(AppStrings.takePhoto, AppIcons.Camera, availability.photos, Modifier.weight(1f)) { if (target != null) { navigate(AppPage.CONVERSATION); camera.start(target) } }
-                                AttachmentTile(AppStrings.photos, AppIcons.Photo, availability.photos, Modifier.weight(1f)) {
-                                    if (target != null) {
-                                        fileTarget = target.id.value; fileWorkspace = target.config.workspace; navigation = navigation.open(AppPage.CONVERSATION)
-                                        photoPicker.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                                    }
-                                }
-                                AttachmentTile(AppStrings.localFile, AppIcons.Upload, availability.files, Modifier.weight(1f)) {
-                                    if (target != null) { fileTarget = target.id.value; fileWorkspace = target.config.workspace; navigation = navigation.open(AppPage.CONVERSATION); filePicker.launch(arrayOf("*/*")) }
+                    val target = state.selected?.conversation
+                    val availability = attachmentAvailability(target, agentOptions, system.ready, camera.busy)
+                    AddSheetBody(maxHeight = (availableHeight - 48.dp).coerceAtLeast(120.dp),
+                        tiles = {
+                            AttachmentTile(AppStrings.takePhoto, AppIcons.Camera, availability.photos, Modifier.weight(1f)) { if (target != null) { navigate(AppPage.CONVERSATION); camera.start(target) } }
+                            AttachmentTile(AppStrings.photos, AppIcons.Photo, availability.photos, Modifier.weight(1f)) {
+                                if (target != null) {
+                                    fileTarget = target.id.value; fileWorkspace = target.config.workspace; navigation = navigation.open(AppPage.CONVERSATION)
+                                    photoPicker.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                                 }
                             }
+                            AttachmentTile(AppStrings.localFile, AppIcons.Upload, availability.files, Modifier.weight(1f)) {
+                                if (target != null) { fileTarget = target.id.value; fileWorkspace = target.config.workspace; navigation = navigation.open(AppPage.CONVERSATION); filePicker.launch(arrayOf("*/*")) }
+                            }
+                        },
+                        capabilities = {
                             AddSheetCapabilities(programs = hostActions.programCenter != null) { page ->
                                 navigation = if (page == AppPage.PROGRAMS) navigation.openPrograms(fromSheet = true) else navigation.open(page)
                             }
-                            Spacer(Modifier.height(16.dp))
-                        }
-                    }
+                        })
                 }
                 skillProposal?.let { editor -> SkillProposalDialog(editor.proposal, vm, sourceAvailable = state.selected?.turns?.any { turn -> turn.skillProposals.any { it.ref == editor.proposal.ref } } == true, onDismiss = vm::dismissSkillProposal) }
                 reading?.let { (title, text) ->
@@ -1161,6 +1159,14 @@ private fun Modifier.conversationEdgeFade(color: Color, topFade: Dp, bottomFade:
         topLeft = Offset(0f, top),
         size = Size(size.width, bottomHeight),
     )
+}
+
+@Composable internal fun AddSheetBody(maxHeight: Dp, tiles: @Composable RowScope.() -> Unit, capabilities: @Composable ColumnScope.() -> Unit) {
+    Column(Modifier.fillMaxWidth().heightIn(max = maxHeight).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), content = tiles)
+        capabilities()
+        Spacer(Modifier.height(16.dp))
+    }
 }
 
 internal const val PROGRAM_DEVELOPMENT = "plugin:device:programs"

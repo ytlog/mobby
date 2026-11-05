@@ -96,13 +96,11 @@ internal fun Modifier.lightInputShadow(corner: Dp): Modifier = drawBehind {
 
 @Composable internal fun AttachmentTile(label: String, icon: AppGlyph, enabled: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val ink = addInkColor()
-    GlassControlSurface(modifier.height(100.dp), shape = RoundedCornerShape(18.dp)) {
-        Surface(onClick = onClick, enabled = enabled, modifier = Modifier.semantics { contentDescription = label }, shape = RoundedCornerShape(18.dp), color = if (LocalGlassControls.current) Color.Transparent else addTileColor(), contentColor = ink) {
-            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-                AppIcon(icon, null, Modifier.size(26.dp), tint = if (enabled) ink else ink.copy(alpha = 0.38f))
-                Spacer(Modifier.height(10.dp))
-                Text(label, style = MaterialTheme.typography.bodyMedium, color = if (enabled) ink else ink.copy(alpha = 0.38f))
-            }
+    Surface(onClick = onClick, enabled = enabled, modifier = modifier.height(100.dp).semantics { contentDescription = label }, shape = RoundedCornerShape(18.dp), color = addTileColor(), contentColor = ink) {
+        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+            AppIcon(icon, null, Modifier.size(26.dp), tint = if (enabled) ink else ink.copy(alpha = 0.38f))
+            Spacer(Modifier.height(10.dp))
+            Text(label, style = MaterialTheme.typography.bodyMedium, color = if (enabled) ink else ink.copy(alpha = 0.38f))
         }
     }
 }
