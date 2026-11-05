@@ -1,6 +1,7 @@
 package com.github.ytlog.mobby.android.conversation.ui
 
 import androidx.compose.ui.test.*
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.junit4.createComposeRule
 import com.github.ytlog.mobby.android.conversation.domain.*
 import com.github.ytlog.mobby.android.conversation.domain.gateway.*
@@ -79,6 +80,7 @@ class SetupJourneyTest {
         compose.onNodeWithText("ChatGPT").performClick()
         compose.onNodeWithText("选择屏幕操作方式").assertIsDisplayed()
         compose.onNodeWithContentDescription("第 3 步：选择屏幕操作方式").assertIsSelected().assertIsDisplayed()
+        compose.onNodeWithContentDescription("第 1 步：选择一个 Agent").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "步骤完成"))
         compose.onNodeWithText("开启开发者模式").assertDoesNotExist()
         val prefs = RuntimeEnvironment.getApplication().getSharedPreferences("mobby.setup-guide", 0)
         compose.runOnIdle { Assert.assertEquals("SCREEN", prefs.getString("step", null)) }

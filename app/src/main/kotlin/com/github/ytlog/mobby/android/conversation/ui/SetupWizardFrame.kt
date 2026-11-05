@@ -28,7 +28,8 @@ internal val LocalWizardFooterInset = staticCompositionLocalOf<(Dp) -> Unit> { {
 
 /** Completed tasks can be reviewed while pending tasks stay behind their prerequisite checks. */
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
-@Composable private fun WizardSteps(labels: List<String>, current: Int, canSelect: (Int) -> Boolean, select: (Int) -> Unit) {
+@Composable private fun WizardSteps(labels: List<String>, current: Int, isComplete: (Int) -> Boolean,
+    canSelect: (Int) -> Boolean, select: (Int) -> Unit) {
     val scroll = rememberScrollState()
     val active = remember { BringIntoViewRequester() }
     LaunchedEffect(current, labels) { active.bringIntoView() }
@@ -36,20 +37,23 @@ internal val LocalWizardFooterInset = staticCompositionLocalOf<(Dp) -> Unit> { {
         .testTag("wizard-steps").semantics { isTraversalGroup = true }, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         labels.forEachIndexed { index, label ->
             val selected = index == current
+            val completed = isComplete(index)
             Surface(shape = RoundedCornerShape(16.dp), color = if (selected) MaterialTheme.colorScheme.primary else cardColor(),
                 modifier = (if (selected) Modifier.bringIntoViewRequester(active) else Modifier)
                     .selectable(selected, enabled = canSelect(index), role = Role.Tab, onClick = { select(index) }).semantics {
                     contentDescription = "${AppStrings.wizardStep(index + 1)}：$label"
+                    stateDescription = when { selected -> AppStrings.wizardCurrentStep; completed -> AppStrings.stepCompleted; else -> AppStrings.wizardPendingStep }
                     this.selected = selected
                 }) {
                 Row(Modifier.heightIn(min = 48.dp).padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     val ink = when {
                         selected -> MaterialTheme.colorScheme.onPrimary
-                        canSelect(index) -> MaterialTheme.colorScheme.primary
+                        completed -> MaterialTheme.colorScheme.primary
                         else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                     }
                     Text("${index + 1}", Modifier.clearAndSetSemantics {}, color = ink, style = MaterialTheme.typography.labelLarge)
+                    if (completed && !selected) AppIcon(AppIcons.Check, null, Modifier.size(16.dp), tint = ink)
                     if (selected) Text(label, Modifier.clearAndSetSemantics {}, color = ink, style = MaterialTheme.typography.labelLarge)
                 }
             }
@@ -62,13 +66,13 @@ internal val LocalWizardFooterInset = staticCompositionLocalOf<(Dp) -> Unit> { {
     back: () -> Unit, primaryText: String, primary: () -> Unit, enabled: Boolean = true,
     secondaryText: String = AppStrings.wizardPrevious, secondary: () -> Unit = back,
     busy: Boolean = false, error: String? = null, steps: List<String> = emptyList(),
-    canSelectStep: (Int) -> Boolean = { false }, selectStep: (Int) -> Unit = {}, content: @Composable ColumnScope.() -> Unit = {}) {
+    isStepComplete: (Int) -> Boolean = { false }, canSelectStep: (Int) -> Boolean = { false }, selectStep: (Int) -> Unit = {}, content: @Composable ColumnScope.() -> Unit = {}) {
     val density = LocalDensity.current
     val footerInset = LocalWizardFooterInset.current
     DisposableEffect(footerInset) { onDispose { footerInset(0.dp) } }
     Column(Modifier.fillMaxSize().imePadding().testTag("setup-wizard")) {
         PageHeader(title, back)
-        if (steps.isNotEmpty()) WizardSteps(steps, (number - 1).coerceIn(steps.indices), { !busy && canSelectStep(it) }, selectStep)
+        if (steps.isNotEmpty()) WizardSteps(steps, (number - 1).coerceIn(steps.indices), isStepComplete, { !busy && canSelectStep(it) }, selectStep)
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (steps.isEmpty()) Text(AppStrings.wizardStep(number), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)

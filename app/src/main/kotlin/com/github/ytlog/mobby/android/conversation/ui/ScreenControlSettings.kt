@@ -61,7 +61,8 @@ class ScreenControlSettingsActivity : ComponentActivity() {
 @Composable internal fun ScreenControlSettings(controller: ScreenControlPort, onBack: () -> Unit,
     statusOverride: ScreenSetupStatus? = null, settingsOverride: ((ScreenSettingsTarget) -> Unit)? = null,
     onFinished: () -> Unit = onBack, embedded: Boolean = false, stepOffset: Int = 0,
-    canSelectPrefix: (Int) -> Boolean = { false }, selectPrefix: (Int) -> Unit = {}) {
+    canSelectPrefix: (Int) -> Boolean = { false }, selectPrefix: (Int) -> Unit = {},
+    isPrefixComplete: (Int) -> Boolean = { false }) {
     val state by controller.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -290,12 +291,16 @@ class ScreenControlSettingsActivity : ComponentActivity() {
     var furthestStep by androidx.compose.runtime.saveable.rememberSaveable(state.mode) { mutableIntStateOf(0) }
     SideEffect { furthestStep = maxOf(furthestStep, stepNumber - 1) }
     val stepLabels = (if (embedded) setupAgentStepLabels() else emptyList()) + path.map(::screenStepLabel)
+    fun completed(index: Int): Boolean {
+        if (index < stepOffset) return isPrefixComplete(index)
+        val target = path.getOrNull(index - stepOffset) ?: return false
+        return index - stepOffset <= furthestStep &&
+            (target == ScreenSetupStep.MODE || screenStepComplete(target, state, status, forcePair, developerConfirmed, wirelessConfirmed))
+    }
     fun canReview(index: Int): Boolean {
         if (busy || state.active || state.adbPairing) return false
         if (index < stepOffset) return canSelectPrefix(index)
-        val target = path.getOrNull(index - stepOffset) ?: return false
-        return index - stepOffset <= furthestStep && target != parentStep &&
-            (target == ScreenSetupStep.MODE || screenStepComplete(target, state, status, forcePair, developerConfirmed, wirelessConfirmed))
+        return index - stepOffset != stepNumber - 1 && completed(index)
     }
     Box(chrome) {
         SetupWizardFrame(if (embedded) AppStrings.setupGuide else AppStrings.screenModeTitle,
@@ -303,7 +308,7 @@ class ScreenControlSettingsActivity : ComponentActivity() {
             back = ::previous, primaryText = primaryText, primary = ::primary, enabled = enabled, busy = busy,
             secondaryText = if (state.adbPairing && !step.auxiliary) AppStrings.adbCancelPairing else if (step == ScreenSetupStep.MODE && !embedded) AppStrings.back else AppStrings.wizardPrevious,
             error = error ?: state.error ?: if (state.active) AppStrings.screenModeBusy else null, steps = stepLabels,
-            canSelectStep = ::canReview, selectStep = { index ->
+            isStepComplete = ::completed, canSelectStep = ::canReview, selectStep = { index ->
                 if (canReview(index)) {
                     if (index < stepOffset) selectPrefix(index) else go(path[index - stepOffset])
                 }

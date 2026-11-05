@@ -14,6 +14,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.test.*
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.junit4.createComposeRule
 import com.github.ytlog.mobby.android.device.ScreenControl
 import com.github.ytlog.mobby.android.runtime.api.device.*
@@ -132,6 +133,9 @@ class ScreenControlSettingsTest {
         val controller = TestController(ScreenControlState(mode = ScreenMode.ADB, adbPaired = true))
         show(controller)
         next()
+        compose.onNodeWithContentDescription("第 1 步：选择屏幕操作方式").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "步骤完成"))
+        compose.onNodeWithContentDescription("第 7 步：连接").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "当前步骤"))
+        compose.onNodeWithContentDescription("第 8 步：完成").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "未完成"))
         compose.onNodeWithContentDescription("第 1 步：选择屏幕操作方式").performScrollTo().performClick()
         compose.onNodeWithText("虚拟屏幕（内置 ADB）").assertIsDisplayed()
         compose.onNodeWithContentDescription("第 7 步：连接").assertIsNotEnabled()
@@ -149,6 +153,7 @@ class ScreenControlSettingsTest {
         next()
         compose.runOnIdle { controller.state.value = controller.state.value.copy(adbPairing = true) }
         compose.onNodeWithContentDescription("第 1 步：选择屏幕操作方式").assertIsNotEnabled()
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "步骤完成"))
         compose.runOnIdle { controller.state.value = controller.state.value.copy(adbPairing = false); status.value = ready.copy(wirelessEnabled = false) }
         compose.onNodeWithContentDescription("第 5 步：开启无线调试").assertIsNotEnabled()
         compose.onNodeWithContentDescription("第 3 步：连接 Wi-Fi").performScrollTo().performClick()

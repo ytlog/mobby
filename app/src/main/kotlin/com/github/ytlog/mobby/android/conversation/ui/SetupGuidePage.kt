@@ -68,9 +68,10 @@ internal class SetupProgress(context: Context) {
     if (step == SetupStep.SCREEN) {
         val controller = ScreenUi.controller
         if (controller != null) ScreenControlSettings(controller, onBack = previous, onFinished = finish, embedded = true, stepOffset = 2,
-            canSelectPrefix = ::canReview, selectPrefix = ::reviewStep)
+            canSelectPrefix = ::canReview, selectPrefix = ::reviewStep, isPrefixComplete = { it < furthestStep })
         else SetupWizardFrame(AppStrings.setupGuide, 3, AppStrings.wizardChooseMode, AppStrings.setupRuntimePreparing,
             previous, AppStrings.wizardNext, {}, enabled = false,
+            isStepComplete = { it < furthestStep },
             steps = setupAgentStepLabels() + screenSetupPath(com.github.ytlog.mobby.android.runtime.api.device.ScreenMode.CURRENT).map(::screenStepLabel))
         return
     }
@@ -86,7 +87,7 @@ internal class SetupProgress(context: Context) {
         enabled = choosing || selectedAgent == null || system.ready,
         secondaryText = if (choosing) AppStrings.later else AppStrings.wizardPrevious, secondary = previous,
         busy = completing, error = error,
-        canSelectStep = ::canReview, selectStep = ::reviewStep,
+        isStepComplete = { it < furthestStep }, canSelectStep = ::canReview, selectStep = ::reviewStep,
         steps = setupAgentStepLabels() + screenSetupPath(ScreenUi.controller?.state?.value?.mode
             ?: com.github.ytlog.mobby.android.runtime.api.device.ScreenMode.CURRENT).map(::screenStepLabel)) {
         if (choosing) SettingsGroup {
