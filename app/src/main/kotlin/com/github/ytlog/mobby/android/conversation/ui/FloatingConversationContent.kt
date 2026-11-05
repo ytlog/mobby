@@ -187,7 +187,7 @@ internal const val FloatingConversationHeight = 680
     }
 }
 
-@Composable private fun FloatingAction(icon: AppGlyph, description: String, enabled: Boolean, onClick: () -> Unit) {
+@Composable internal fun FloatingAction(icon: AppGlyph, description: String, enabled: Boolean, onClick: () -> Unit) {
     IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.size(48.dp)) {
         AppIcon(icon, description, Modifier.size(19.dp))
     }

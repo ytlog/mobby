@@ -7,7 +7,9 @@ import android.graphics.BitmapFactory
 import android.os.Bundle
 import android.provider.Settings
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -17,10 +19,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.*
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -33,11 +39,13 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 
+private const val PreviewWidth = 184
+
 @Composable
 internal fun VirtualScreenPreviewLayer() {
     val preview = (LocalContext.current.applicationContext as? MobbyApplication)?.screenPreview ?: return
     Box(Modifier.fillMaxSize().safeDrawingPadding().padding(top = 56.dp, end = 12.dp)) {
-        preview.Preview(Modifier.align(Alignment.TopEnd).width(200.dp))
+        preview.Preview(Modifier.align(Alignment.TopEnd).width(PreviewWidth.dp))
     }
 }
 
@@ -82,7 +90,7 @@ internal class VirtualScreenPreview(
         val top = petPx(56, density)
         val region = safeOverlayRegion(width, height, window.foldRegion(), width - margin, top, margin)
             ?: OverlayRegion(0, 0, width, height)
-        val cardWidth = minOf(petPx(200, density), (region.right - region.left - margin * 2).coerceAtLeast(1))
+        val cardWidth = minOf(petPx(PreviewWidth, density), (region.right - region.left - margin * 2).coerceAtLeast(1))
         val frame = PetFrame((region.right - margin - cardWidth).coerceAtLeast(region.left),
             (region.top + top).coerceAtMost(region.bottom - 1), cardWidth, WRAP_CONTENT, true)
         val view = overlay ?: ComposeView(overlayWindowContext(app)).apply {
@@ -133,27 +141,10 @@ internal class VirtualScreenPreview(
                 }
             }
         }
-        Surface(modifier, shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh,
-            shadowElevation = 6.dp) {
-            Column(Modifier.padding(horizontal = 8.dp)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically) {
-                    Text(UiStrings.virtualScreenPreview, Modifier.weight(1f), style = MaterialTheme.typography.labelMedium)
-                    TextButton(onClick = { expanded = !expanded }) {
-                        Text(if (expanded) UiStrings.hideVirtualScreen else UiStrings.showVirtualScreen)
-                    }
-                }
-                if (expanded) {
-                    val bitmap = remember(state.jpeg) {
-                        state.jpeg?.let { BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() }
-                    }
-                    if (bitmap != null) Image(bitmap, UiStrings.virtualScreenPreview, Modifier.fillMaxWidth().heightIn(max = 220.dp))
-                    else Text(UiStrings.virtualScreenWaiting, style = MaterialTheme.typography.bodySmall)
-                    state.error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
-                    Spacer(Modifier.height(8.dp))
-                }
-            }
+        val bitmap = remember(state.jpeg, expanded) {
+            state.jpeg?.takeIf { expanded }?.let { BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() }
         }
+        VirtualScreenPreviewCard(bitmap, state.error, expanded, { expanded = !expanded }, modifier)
     }
 
     override fun onActivityStarted(activity: Activity) { activities.add(activity); refreshWindow() }
@@ -163,4 +154,71 @@ internal class VirtualScreenPreview(
     override fun onActivityPaused(activity: Activity) = Unit
     override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
     override fun onActivityDestroyed(activity: Activity) = Unit
+}
+
+@Composable
+internal fun VirtualScreenPreviewCard(
+    bitmap: ImageBitmap?,
+    error: String?,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = MaterialTheme.colorScheme
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(24.dp),
+        color = conversationCanvas(),
+        border = BorderStroke(1.dp, colors.outlineVariant.copy(alpha = 0.5f)),
+        shadowElevation = 6.dp,
+    ) {
+        Column {
+            Row(
+                Modifier.fillMaxWidth().padding(start = 10.dp, end = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Surface(shape = RoundedCornerShape(10.dp), color = colors.primary.copy(alpha = 0.10f)) {
+                    AppIcon(AppIcons.Phone, null, Modifier.padding(7.dp).size(16.dp), tint = colors.primary)
+                }
+                Text(
+                    UiStrings.virtualScreenPreview,
+                    Modifier.weight(1f).padding(start = 8.dp),
+                    style = MaterialTheme.typography.labelLarge,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                FloatingAction(
+                    if (expanded) AppIcons.ChevronUp else AppIcons.ChevronDown,
+                    if (expanded) UiStrings.hideVirtualScreen else UiStrings.showVirtualScreen,
+                    enabled = true,
+                    onClick = onToggle,
+                )
+            }
+            if (expanded) {
+                error?.let {
+                    Text(it, Modifier.padding(start = 10.dp, end = 10.dp, bottom = 6.dp),
+                        style = MaterialTheme.typography.labelSmall, color = colors.error,
+                        maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+                val ratio = bitmap?.let { it.width.toFloat() / it.height } ?: 9f / 16f
+                BoxWithConstraints(
+                    Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, bottom = 8.dp),
+                    contentAlignment = Alignment.TopCenter,
+                ) {
+                    val width = if (constraints.hasBoundedHeight) minOf(maxWidth, maxHeight * ratio) else maxWidth
+                    if (width > 0.dp) {
+                        val frame = Modifier.width(width).aspectRatio(ratio).clip(RoundedCornerShape(16.dp))
+                        if (bitmap != null) {
+                            Image(bitmap, UiStrings.virtualScreenPreview, frame)
+                        } else {
+                            Box(frame.background(colors.surfaceContainer).padding(12.dp), contentAlignment = Alignment.Center) {
+                                Text(UiStrings.virtualScreenWaiting, style = MaterialTheme.typography.bodySmall,
+                                    color = colors.onSurfaceVariant, textAlign = TextAlign.Center)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
