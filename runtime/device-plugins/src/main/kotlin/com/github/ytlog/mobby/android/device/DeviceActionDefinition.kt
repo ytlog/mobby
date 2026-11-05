@@ -47,6 +47,7 @@ internal class DeviceActionDefinition(val plugin: String, val action: String) {
     /** Argument names with their maximum lengths, and those that may be omitted. */
     val arguments: Map<String, Int> get() = fields
     val optionalArguments: Set<String> get() = when ("$plugin.$action") {
+        "screen.request_input" -> setOf("label")
         "contacts.create" -> setOf("phone")
         "programs.dry-run" -> setOf("events", "timeoutMs")
         "programs.records" -> setOf("limit")

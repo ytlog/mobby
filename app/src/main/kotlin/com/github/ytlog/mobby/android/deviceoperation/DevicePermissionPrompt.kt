@@ -4,6 +4,13 @@ import androidx.activity.compose.LocalActivityResultRegistryOwner
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.Modifier
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.AlertDialog
@@ -124,12 +131,13 @@ internal fun ConversationDevicePermissionDialog(detail: ConversationDetail, vm: 
 @Composable
 private fun PrivateScreenInputDialog(operation: DeviceOperation) {
     val prompt = operation.requiresAttention ?: return
-    var value by remember(prompt.promptId) { mutableStateOf("") }
+    val labels = remember(prompt.promptId) { PrivateScreenInput.labels(operation.operationId, prompt.promptId) } ?: return
+    val values = remember(prompt.promptId) { mutableStateListOf<String>().apply { addAll(List(labels.size) { "" }) } }
     var submitted by remember(prompt.promptId) { mutableStateOf(false) }
-    fun respond(text: String?) {
+    fun respond(text: List<String>?) {
         if (submitted) return
         submitted = PrivateScreenInput.submit(operation.operationId, prompt.promptId, text)
-        if (submitted) value = ""
+        if (submitted) values.indices.forEach { values[it] = "" }
     }
     AlertDialog(
         onDismissRequest = { respond(null) },
@@ -138,18 +146,24 @@ private fun PrivateScreenInputDialog(operation: DeviceOperation) {
         shape = RoundedCornerShape(24.dp),
         title = { Text(DeviceLabels.text("请填写副屏字段", "Fill the field on the secondary display")) },
         text = {
-            OutlinedTextField(
-                value = value,
-                onValueChange = { if (it.length <= 2000) value = it },
-                label = { Text(operation.subject.label) },
-                enabled = !submitted,
-                singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-            )
+            Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                labels.forEachIndexed { index, label ->
+                    OutlinedTextField(
+                        value = values[index],
+                        onValueChange = { if (it.length <= 2000) values[index] = it },
+                        label = { Text(label.ifBlank { DeviceLabels.text("字段 ${index + 1}", "Field ${index + 1}") }) },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !submitted,
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    )
+                }
+            }
         },
         confirmButton = {
-            TextButton(onClick = { respond(value) }, enabled = !submitted && value.isNotEmpty()) {
+            TextButton(onClick = { respond(values.toList()) }, enabled = !submitted && values.any(String::isNotEmpty)) {
                 Text(DeviceLabels.text("填入副屏", "Fill field"))
             }
         },

@@ -273,7 +273,7 @@ object ScreenControl {
         }
     }
 
-    internal fun privateInput(context: Context, execution: DeviceExecution, checkActive: () -> Unit) {
+    internal fun privateInput(context: Context, label: String?, execution: DeviceExecution, checkActive: () -> Unit) {
         val (connection, display) = synchronized(this) {
             val current = state.value
             val display = current.displayId
@@ -284,13 +284,17 @@ object ScreenControl {
             connection to display
         }
         requireUnlocked(context)
-        request(connection, "prepare_private_input", expectedDisplay = display)
+        val prepared = request(connection, "prepare_private_input",
+            mapOf("focusedOnly" to (label != null).toString()), expectedDisplay = display)
         try {
-            val text = PrivateScreenInput.await(execution, checkActive)
+            val fields = prepared.getJSONArray("labels")
+            val labels = if (label != null) listOf(label) else List(fields.length(), fields::getString)
+            val values = PrivateScreenInput.await(execution, labels, checkActive)
             checkActive()
             requireUnlocked(context)
             execution.running("screen.private_input")
-            request(connection, "private_input", mapOf("text" to text), expectedDisplay = display)
+            request(connection, "private_input",
+                mapOf("values" to org.json.JSONArray(values).toString()), expectedDisplay = display)
         } finally {
             if (connection.alive) runCatching { request(connection, "cancel_private_input", expectedDisplay = display) }
         }

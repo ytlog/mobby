@@ -172,19 +172,23 @@ class ScreenControlDeviceTest {
                     perform("click", mapOf("query" to "Secure field"))
                     val fixture = "mobby-probe-only-secret"
                     val response = java.util.concurrent.CompletableFuture.supplyAsync {
-                        request("request_input", mapOf("label" to "Test password"))
+                        request("request_input")
                     }
                     waitFor("Private entry prompt must appear") { journal.privateInput() != null || response.isDone }
                     val operation = checkNotNull(journal.privateInput()) {
                         "No prompt: " + response.get().optJSONObject("error")?.optString("code")
                     }
+                    val promptId = requireNotNull(operation.requiresAttention).promptId
+                    assertEquals(listOf("Probe input", "Probe code"),
+                        com.github.ytlog.mobby.android.device.PrivateScreenInput.labels(operation.operationId, promptId))
                     assertTrue(com.github.ytlog.mobby.android.device.PrivateScreenInput.submit(
-                        operation.operationId, requireNotNull(operation.requiresAttention).promptId, fixture))
+                        operation.operationId, promptId, listOf(fixture, "probe-code-fixture")))
                     val result = response.get(10, java.util.concurrent.TimeUnit.SECONDS)
                     assertEquals("succeeded", result.optString("status"))
                     assertFalse(result.toString().contains(fixture))
                     val afterPrivateInput = perform("snapshot")
                     assertFalse(afterPrivateInput.toString().contains(fixture))
+                    assertFalse(afterPrivateInput.toString().contains("probe-code-fixture"))
                     assertEquals("private_input", afterPrivateInput.optString("screenshotStatus"))
                 }
                 perform("back")

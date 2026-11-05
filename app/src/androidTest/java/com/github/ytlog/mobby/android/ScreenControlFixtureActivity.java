@@ -22,7 +22,11 @@ public final class ScreenControlFixtureActivity extends Activity {
         Button detail = new Button(this); detail.setText("Open detail");
         detail.setOnClickListener(view -> startActivity(new android.content.Intent(this, Detail.class))); content.addView(detail);
         Button secure = new Button(this); secure.setText("Secure field");
+        EditText code = new EditText(this); code.setHint("Probe code");
+        code.setSingleLine(true); code.setVisibility(android.view.View.GONE);
+        code.setShowSoftInputOnFocus(false); content.addView(code);
         secure.setOnClickListener(view -> {
+            code.setVisibility(android.view.View.VISIBLE);
             input.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
             input.requestFocus();
         });

@@ -10,24 +10,28 @@ import java.util.concurrent.TimeUnit
 /** Values travel from the local form to the waiting worker in memory. */
 object PrivateScreenInput {
     private sealed interface Answer {
-        data class Value(val text: String) : Answer
+        data class Value(val fields: List<String>) : Answer
         data object Cancel : Answer
     }
 
-    private class Prompt(val operationId: String) {
+    private class Prompt(val operationId: String, val labels: List<String>) {
         val answer = ArrayBlockingQueue<Answer>(1)
     }
     private val pending = ConcurrentHashMap<String, Prompt>()
 
-    fun submit(operationId: String, promptId: String, value: String?): Boolean {
-        if (value != null && (value.isEmpty() || value.length > 2000 || '\u0000' in value)) return false
+    fun labels(operationId: String, promptId: String): List<String>? =
+        pending[promptId]?.takeIf { it.operationId == operationId }?.labels
+
+    fun submit(operationId: String, promptId: String, values: List<String>?): Boolean {
         val prompt = pending[promptId]?.takeIf { it.operationId == operationId } ?: return false
-        return prompt.answer.offer(if (value == null) Answer.Cancel else Answer.Value(value))
+        if (values != null && (values.size != prompt.labels.size || values.all(String::isEmpty) ||
+                values.any { it.length > 2000 || '\u0000' in it })) return false
+        return prompt.answer.offer(if (values == null) Answer.Cancel else Answer.Value(values.toList()))
     }
 
-    internal fun await(execution: DeviceExecution, checkActive: () -> Unit): String {
+    internal fun await(execution: DeviceExecution, labels: List<String>, checkActive: () -> Unit): List<String> {
         val id = UUID.randomUUID().toString()
-        val prompt = Prompt(execution.operationId)
+        val prompt = Prompt(execution.operationId, labels.toList())
         pending[id] = prompt
         try {
             val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(90)
@@ -35,7 +39,7 @@ object PrivateScreenInput {
             while (System.nanoTime() < deadline) {
                 checkActive()
                 when (val answer = prompt.answer.poll(100, TimeUnit.MILLISECONDS)) {
-                    is Answer.Value -> return answer.text
+                    is Answer.Value -> return answer.fields
                     Answer.Cancel -> deviceFailure(DeviceErrorCode.CANCELLED)
                     null -> Unit
                 }

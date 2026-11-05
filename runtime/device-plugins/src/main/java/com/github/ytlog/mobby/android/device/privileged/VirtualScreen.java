@@ -39,7 +39,8 @@ final class VirtualScreen implements AutoCloseable {
     private final HandlerThread callbacks = new HandlerThread("virtual-screen-callbacks");
     private Handler handler;
     private UiAutomation automation;
-    private AccessibilityNodeInfo privateInputTarget;
+    private final List<AccessibilityNodeInfo> privateInputTargets = new ArrayList<>();
+    private boolean privateInputFocusedOnly;
     private final List<String> privateValues = new ArrayList<>();
     private VirtualDisplay display;
     private ImageReader reader;
@@ -111,9 +112,15 @@ final class VirtualScreen implements AutoCloseable {
             if ("frame".equals(action)) return screenshot(metadata(new JSONObject()));
             if ("prepare_private_input".equals(action)) {
                 clearPrivateInputTarget();
-                if (privateValues.size() >= 20) throw new IllegalStateException("private_input_limit");
-                privateInputTarget = focusedInput();
-                return metadata(new JSONObject());
+                privateInputFocusedOnly = args.optBoolean("focusedOnly");
+                privateInputTargets.addAll(privateInputFields(privateInputFocusedOnly));
+                if (privateInputTargets.isEmpty() || privateInputTargets.size() + privateValues.size() > 20) {
+                    clearPrivateInputTarget();
+                    throw new IllegalStateException("private_input_field_count");
+                }
+                JSONArray labels = new JSONArray();
+                for (AccessibilityNodeInfo field : privateInputTargets) labels.put(privateInputLabel(field));
+                return metadata(new JSONObject().put("labels", labels));
             }
             if ("cancel_private_input".equals(action)) {
                 clearPrivateInputTarget();
@@ -121,19 +128,32 @@ final class VirtualScreen implements AutoCloseable {
             }
             if ("private_input".equals(action)) {
                 try {
-                    AccessibilityNodeInfo focused = focusedInput();
+                    JSONArray values = new JSONArray(args.getString("values"));
+                    List<AccessibilityNodeInfo> fields = privateInputFields(privateInputFocusedOnly);
                     try {
-                        if (!focused.equals(privateInputTarget)) throw new IllegalStateException("private_input_focus_changed");
-                        String text = args.getString("text");
-                        if (text.isEmpty() || text.length() > 2000 || text.indexOf(0) >= 0)
-                            throw new IllegalArgumentException("invalid_text");
-                        // Retain values only within this display session so its outputs can mask them.
-                        privateValues.add(text);
-                        Bundle bundle = new Bundle();
-                        bundle.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text);
-                        if (!focused.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, bundle))
-                            throw new IllegalStateException("text_refused");
-                    } finally { focused.recycle(); }
+                        if (!fields.equals(privateInputTargets) || values.length() != fields.size())
+                            throw new IllegalStateException("private_input_fields_changed");
+                        for (int index = 0; index < fields.size(); index++) {
+                            String text = values.getString(index);
+                            if (text.length() > 2000 || text.indexOf(0) >= 0)
+                                throw new IllegalArgumentException("invalid_text");
+                            if (!privateInputLabel(fields.get(index)).equals(privateInputLabel(privateInputTargets.get(index))))
+                                throw new IllegalStateException("private_input_fields_changed");
+                        }
+                        for (int index = 0; index < fields.size(); index++) {
+                            String text = values.getString(index);
+                            if (text.isEmpty()) continue;
+                            AccessibilityNodeInfo field = fields.get(index);
+                            if (!field.refresh() || !editablePrivateField(field) ||
+                                !privateInputLabel(field).equals(privateInputLabel(privateInputTargets.get(index))))
+                                throw new IllegalStateException("private_input_fields_changed");
+                            privateValues.add(text);
+                            Bundle bundle = new Bundle();
+                            bundle.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text);
+                            if (!field.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, bundle))
+                                throw new IllegalStateException("text_refused");
+                        }
+                    } finally { for (AccessibilityNodeInfo field : fields) field.recycle(); }
                     return metadata(new JSONObject());
                 } finally { clearPrivateInputTarget(); }
             }
@@ -193,21 +213,36 @@ final class VirtualScreen implements AutoCloseable {
         });
     }
 
-    private AccessibilityNodeInfo focusedInput() throws Exception {
+    private List<AccessibilityNodeInfo> privateInputFields(boolean focusedOnly) {
         AccessibilityNodeInfo root = root();
         try {
-            AccessibilityNodeInfo focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
-            if (focused != null && focused.isEditable() && focused.isEnabled()) return focused;
-            if (focused != null) focused.recycle();
-            throw new IllegalStateException("no_editable_field");
+            if (focusedOnly) {
+                AccessibilityNodeInfo focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
+                if (focused != null && editablePrivateField(focused)) return List.of(focused);
+                if (focused != null) focused.recycle();
+                return List.of();
+            }
+            List<AccessibilityNodeInfo> fields = new ArrayList<>();
+            walk(root, 0, new int[]{0}, (node, depth) -> {
+                if (editablePrivateField(node)) fields.add(AccessibilityNodeInfo.obtain(node));
+            });
+            return fields;
         } finally { root.recycle(); }
     }
 
+    private static boolean editablePrivateField(AccessibilityNodeInfo node) {
+        return node.isEditable() && node.isEnabled() && node.isVisibleToUser();
+    }
+
+    private static String privateInputLabel(AccessibilityNodeInfo node) {
+        CharSequence hint = node.getHintText();
+        if (hint == null) return "";
+        return hint.subSequence(0, Math.min(hint.length(), 80)).toString();
+    }
+
     private void clearPrivateInputTarget() {
-        if (privateInputTarget != null) {
-            privateInputTarget.recycle();
-            privateInputTarget = null;
-        }
+        for (AccessibilityNodeInfo target : privateInputTargets) target.recycle();
+        privateInputTargets.clear();
     }
 
     private AccessibilityNodeInfo root() {

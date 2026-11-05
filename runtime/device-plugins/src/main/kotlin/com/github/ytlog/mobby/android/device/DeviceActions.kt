@@ -45,8 +45,8 @@ internal class DeviceActions(private val context: Context, private val inbox: Fi
         return when (plugin) {
             "screen" -> if (action == "request_input") {
                 if (screenSession() == null) deviceFailure(DeviceErrorCode.UNSUPPORTED_CAPABILITY)
-                ScreenControl.privateInput(context, execution, gate::checkActive)
-                deviceText("The user filled the focused field.", EffectState.CONFIRMED)
+                ScreenControl.privateInput(context, args["label"], execution, gate::checkActive)
+                deviceText("The user filled the requested fields.", EffectState.CONFIRMED)
             } else screen(action, args)
             "sms" -> sms(action, args)
             "contacts" -> contacts(action, args)

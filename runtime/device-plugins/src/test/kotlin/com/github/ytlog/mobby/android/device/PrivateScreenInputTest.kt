@@ -8,17 +8,19 @@ import org.junit.Test
 
 class PrivateScreenInputTest {
     @Test fun `a local response only reaches its matching live field request`() {
-        val fixture = "test credential"
+        val fixture = listOf("test account", "test credential")
         var promptId = ""
         val execution = DeviceExecution("operation") { status, phase, attention ->
             assertEquals(DeviceStatus.AWAITING_USER, status)
             assertEquals("screen.private_input", phase)
             promptId = requireNotNull(attention).promptId
             assertFalse(PrivateScreenInput.submit("another-operation", promptId, fixture))
+            assertEquals(listOf("Account", "Password"), PrivateScreenInput.labels("operation", promptId))
+            assertFalse(PrivateScreenInput.submit("operation", promptId, listOf("wrong count")))
             assertTrue(PrivateScreenInput.submit("operation", promptId, fixture))
-            assertFalse(PrivateScreenInput.submit("operation", promptId, "duplicate"))
+            assertFalse(PrivateScreenInput.submit("operation", promptId, fixture))
         }
-        assertEquals(fixture, PrivateScreenInput.await(execution) {})
+        assertEquals(fixture, PrivateScreenInput.await(execution, listOf("Account", "Password")) {})
         assertFalse(PrivateScreenInput.submit("operation", promptId, fixture))
     }
 
@@ -26,7 +28,7 @@ class PrivateScreenInputTest {
         val execution = DeviceExecution("operation") { _, _, attention ->
             assertTrue(PrivateScreenInput.submit("operation", requireNotNull(attention).promptId, null))
         }
-        val error = assertThrows(DeviceFailure::class.java) { PrivateScreenInput.await(execution) {} }
+        val error = assertThrows(DeviceFailure::class.java) { PrivateScreenInput.await(execution, listOf("Account", "Password")) {} }
         assertEquals(DeviceErrorCode.CANCELLED, error.error.code)
     }
 }
