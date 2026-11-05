@@ -34,7 +34,7 @@ object ScreenControl {
     val state: StateFlow<ScreenControlState> = changes
     @Volatile private var channel: ScreenChannel? = null
     private var release: (() -> Unit)? = null
-    private var leases = 0
+    @Volatile private var leases = 0
     private var connecting = false
     private var heartbeat: Job? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -53,7 +53,8 @@ object ScreenControl {
 
     fun available(context: Context): Boolean = when (state.value.mode) {
         ScreenMode.CURRENT -> currentScreenPermission(context)
-        else -> state.value.connected && channel?.alive == true
+        ScreenMode.ADB -> leases > 0 || (state.value.connected && channel?.alive == true)
+        ScreenMode.ROOT -> state.value.connected && channel?.alive == true
     }
     fun reason(context: Context): String? = when {
         available(context) -> null
@@ -68,12 +69,15 @@ object ScreenControl {
             .orEmpty().split(':').mapNotNull(ComponentName::unflattenFromString).any { it == expected }
     }
 
+    private fun canReconnectAdb() =
+        state.value.mode == ScreenMode.ADB && channel?.alive != true
+
     suspend fun connect(context: Context) = withContext(Dispatchers.IO) {
         val mode = synchronized(this@ScreenControl) {
-            check(leases == 0 && !connecting && !state.value.adbPairing) { AppStrings.screenModeBusy }
+            check((leases == 0 || canReconnectAdb()) && !connecting && !state.value.adbPairing) { AppStrings.screenModeBusy }
             check(state.value.mode != ScreenMode.CURRENT)
             check(Build.VERSION.SDK_INT >= 33) { AppStrings.virtualScreenAndroidVersion }
-            disconnect()
+            clearConnection()
             connecting = true
             state.value.mode
         }
@@ -101,7 +105,7 @@ object ScreenControl {
         } catch (failure: Exception) {
             synchronized(this@ScreenControl) {
                 connecting = false
-                disconnect()
+                clearConnection()
                 changes.value = state.value.copy(error = when {
                     failure is kotlinx.coroutines.CancellationException -> null
                     mode == ScreenMode.ADB -> AppStrings.adbConnectionFailed
@@ -116,7 +120,7 @@ object ScreenControl {
     internal suspend fun pairAdb(context: Context, port: String, code: String) {
         synchronized(this) {
             check(Build.VERSION.SDK_INT >= 33) { AppStrings.virtualScreenAndroidVersion }
-            check(leases == 0 && !connecting && state.value.mode == ScreenMode.ADB) { AppStrings.screenModeBusy }
+            check((leases == 0 || canReconnectAdb()) && !connecting && state.value.mode == ScreenMode.ADB) { AppStrings.screenModeBusy }
             disconnect(); connecting = true
         }
         try {
@@ -150,6 +154,10 @@ object ScreenControl {
 
     @Synchronized fun disconnect() {
         check(leases == 0 && !connecting) { AppStrings.screenModeBusy }
+        clearConnection()
+    }
+
+    private fun clearConnection() {
         heartbeat?.cancel(); heartbeat = null
         channel?.close(); channel = null
         release?.invoke(); release = null
@@ -171,71 +179,15 @@ object ScreenControl {
             requireUnlocked(context)
             check(leases == 0) { AppStrings.screenModeBusy }
             val connected = channel ?: error(AppStrings.connectScreenBackend)
-            val opened = request(connected, "open")
-            val id = opened.getInt("displayId")
-            val navigation = VirtualScreenNavigation(context, id)
-            changes.value = state.value.copy(active = true, displayId = id, jpeg = null, error = null)
-            object : ScreenSession {
-                private fun onDisplay(action: String, args: Map<String, String> = emptyMap()) =
-                    request(connected, action, args, expectedDisplay = id)
-
-                private fun openNavigation(home: Boolean): JSONObject {
-                    val entries = if (home) onDisplay("apps").getString("text").lineSequence()
-                        .filter { it.isNotBlank() && it != context.packageName }
-                        .map { VirtualScreenNavigation.Entry(it, "launch", mapOf("package" to it)) }.toList()
-                    else onDisplay("tasks").getJSONArray("tasks").let { tasks ->
-                        (0 until tasks.length()).map { index ->
-                            val task = tasks.getJSONObject(index)
-                            val taskId = task.getInt("id").toString()
-                            VirtualScreenNavigation.Entry("${task.getString("package")} (task $taskId)", "focus_task", mapOf("id" to taskId))
-                        }
-                    }
-                    navigation.show(if (home) "Virtual apps" else "Virtual tasks", entries)
-                    return onDisplay("navigation_snapshot")
-                }
-
-                override fun operate(action: String, args: Map<String, String>, checkActive: () -> Unit): ScreenAccessService.Observation =
-                    ScreenCoordinator.chatAction {
-                        checkActive()
-                        requireUnlocked(context)
-                        var result = when {
-                            action == "home" || action == "recents" -> openNavigation(action == "home")
-                            action == "back" && navigation.visible -> { navigation.hide(); onDisplay("observe") }
-                            action == "launch" -> { navigation.hide(); onDisplay(action, args) }
-                            else -> onDisplay(action, args)
-                        }
-                        if (navigation.visible && action in setOf("click", "tap", "swipe")) {
-                            navigation.takeSelection()?.let { entry ->
-                                checkActive()
-                                requireUnlocked(context)
-                                navigation.hide()
-                                result = onDisplay(entry.action, entry.args)
-                            }
-                        }
-                        checkActive()
-                        val jpeg = result.optString("jpeg").takeIf(String::isNotEmpty)?.let { Base64.decode(it, Base64.NO_WRAP) }
-                        changes.update { current ->
-                            if (current.active && current.displayId == id)
-                                current.copy(jpeg = jpeg ?: current.jpeg, packageName = result.optString("packageName"), error = null)
-                            else current
-                        }
-                        ScreenAccessService.Observation(result.optString("text"), result.optString("packageName"),
-                            result.getLong("observedAtEpochMillis"), ScreenScreenshot(jpeg, result.optString("screenshotStatus", "not_requested")), mode.name.lowercase(), id)
-                    }
-                override fun inspect(query: String?, expectedInput: String?): ScreenEvidence = ScreenCoordinator.chatAction {
+            val initial = openVirtual(context, mode, connected)
+            if (mode == ScreenMode.ADB) RecoveringAdbScreenSession(initial, { channel?.alive == true && state.value.active }, { channel?.alive == true }) {
+                synchronized(this) {
+                    check(state.value.mode == ScreenMode.ADB)
                     requireUnlocked(context)
-                    val args = buildMap { query?.let { put("query", it) }; expectedInput?.let { put("expectedInput", it) } }
-                    val result = onDisplay("inspect", args)
-                    ScreenEvidence(result.getString("packageName"), result.getString("shape"), result.getInt("matches"),
-                        result.getInt("editable"), result.getBoolean("focusedEditable"), result.getBoolean("inputMatches"), result.getBoolean("passwordInput"))
+                    val replacement = checkNotNull(channel).also { check(it.alive) }
+                    openVirtual(context, mode, replacement)
                 }
-                override fun close() {
-                    synchronized(connected) {
-                        try { try { navigation.hide() } finally { request(connected, "close") } }
-                        finally { changes.value = state.value.copy(active = false, displayId = null, jpeg = null, packageName = "") }
-                    }
-                }
-            }
+            } else initial
         })
         leases++
         val closed = AtomicBoolean()
@@ -243,6 +195,80 @@ object ScreenControl {
             override fun close() {
                 if (!closed.compareAndSet(false, true)) return
                 try { session.close() } finally { synchronized(this@ScreenControl) { leases-- } }
+            }
+        }
+    }
+
+    private fun openVirtual(context: Context, mode: ScreenMode, connected: ScreenChannel): ScreenSession {
+        val opened = request(connected, "open")
+        val id = opened.getInt("displayId")
+        val navigation = VirtualScreenNavigation(context, id)
+        changes.value = state.value.copy(active = true, displayId = id, jpeg = null, error = null)
+        return object : ScreenSession {
+            private fun onDisplay(action: String, args: Map<String, String> = emptyMap()) =
+                request(connected, action, args, expectedDisplay = id)
+
+            private fun openNavigation(home: Boolean): JSONObject {
+                val entries = if (home) onDisplay("apps").getString("text").lineSequence()
+                    .filter { it.isNotBlank() && it != context.packageName }
+                    .map { VirtualScreenNavigation.Entry(it, "launch", mapOf("package" to it)) }.toList()
+                else onDisplay("tasks").getJSONArray("tasks").let { tasks ->
+                    (0 until tasks.length()).map { index ->
+                        val task = tasks.getJSONObject(index)
+                        val taskId = task.getInt("id").toString()
+                        VirtualScreenNavigation.Entry("${task.getString("package")} (task $taskId)", "focus_task", mapOf("id" to taskId))
+                    }
+                }
+                navigation.show(if (home) "Virtual apps" else "Virtual tasks", entries)
+                return onDisplay("navigation_snapshot")
+            }
+
+            override fun operate(action: String, args: Map<String, String>, checkActive: () -> Unit): ScreenAccessService.Observation =
+                ScreenCoordinator.chatAction {
+                    checkActive()
+                    requireUnlocked(context)
+                    var result = when {
+                        action == "home" || action == "recents" -> openNavigation(action == "home")
+                        action == "back" && navigation.visible -> { navigation.hide(); onDisplay("observe") }
+                        action == "launch" -> { navigation.hide(); onDisplay(action, args) }
+                        else -> onDisplay(action, args)
+                    }
+                    if (navigation.visible && action in setOf("click", "tap", "swipe")) {
+                        navigation.takeSelection()?.let { entry ->
+                            checkActive()
+                            requireUnlocked(context)
+                            navigation.hide()
+                            result = onDisplay(entry.action, entry.args)
+                        }
+                    }
+                    checkActive()
+                    val jpeg = result.optString("jpeg").takeIf(String::isNotEmpty)?.let { Base64.decode(it, Base64.NO_WRAP) }
+                    changes.update { current ->
+                        if (current.active && current.displayId == id)
+                            current.copy(jpeg = jpeg ?: current.jpeg, packageName = result.optString("packageName"), error = null)
+                        else current
+                    }
+                    ScreenAccessService.Observation(result.optString("text"), result.optString("packageName"),
+                        result.getLong("observedAtEpochMillis"), ScreenScreenshot(jpeg, result.optString("screenshotStatus", "not_requested")), mode.name.lowercase(), id)
+                }
+            override fun inspect(query: String?, expectedInput: String?): ScreenEvidence = ScreenCoordinator.chatAction {
+                requireUnlocked(context)
+                val args = buildMap { query?.let { put("query", it) }; expectedInput?.let { put("expectedInput", it) } }
+                val result = onDisplay("inspect", args)
+                ScreenEvidence(result.getString("packageName"), result.getString("shape"), result.getInt("matches"),
+                    result.getInt("editable"), result.getBoolean("focusedEditable"), result.getBoolean("inputMatches"), result.getBoolean("passwordInput"))
+            }
+            override fun close() {
+                synchronized(connected) {
+                    try { try { navigation.hide() } finally { if (connected.alive) request(connected, "close") } }
+                    finally {
+                        changes.update { current ->
+                            if (current.displayId == id && channel === connected)
+                                current.copy(active = false, displayId = null, jpeg = null, packageName = "")
+                            else current
+                        }
+                    }
+                }
             }
         }
     }
@@ -296,7 +322,8 @@ object ScreenControl {
                     channel !== connection -> current
                     connection.alive -> current.copy(error = AppStrings.virtualScreenOperationFailed)
                     else -> current.copy(connected = false, active = false, displayId = null, jpeg = null,
-                        packageName = "", error = AppStrings.virtualScreenOperationFailed)
+                        packageName = "", error = if (current.mode == ScreenMode.ADB && leases > 0)
+                            AppStrings.adbScreenWaitingForReconnect else AppStrings.virtualScreenOperationFailed)
                 }
             }
             throw failure
