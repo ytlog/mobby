@@ -947,6 +947,8 @@ internal enum class TimelineBlock { USER, PROSE, PROCESS, CARD, ACTIONS }
 /** Process rows sit together as one unit, replies get reading room around them, and each new turn starts clearly. */
 internal fun timelineGap(previous: TimelineBlock?, next: TimelineBlock): Dp = when {
     previous == null || next == TimelineBlock.ACTIONS -> 0.dp
+    // The action row already separates the turns, so it replaces most of the usual gap.
+    previous == TimelineBlock.ACTIONS && next == TimelineBlock.USER -> 14.dp
     next == TimelineBlock.USER -> 28.dp
     previous == TimelineBlock.PROCESS && next == TimelineBlock.PROCESS -> 0.dp
     previous == TimelineBlock.PROCESS || next == TimelineBlock.PROCESS -> 4.dp
@@ -1081,11 +1083,12 @@ internal fun timelineGap(previous: TimelineBlock?, next: TimelineBlock): Dp = wh
                         onRestore = { vm.enqueue { vm.actions.restoreDraft(detail.conversation.id, turn) } })
                 }
                 if (lastReply != null && turn.replyActionsVisible()) block("reply-actions:${turn.id.value}", TimelineBlock.ACTIONS) {
-                    // Pulled left by the button's own inset so the glyph lines up with the text.
-                    Row(Modifier.offset(x = (-11).dp)) {
+                    // Pulled left by the button's own inset so the glyph lines up with the text. The buttons are small
+                    // to keep turns close together; Compose still accepts touches within the minimum touch target.
+                    Row(Modifier.offset(x = (-6).dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         val clipboard = LocalClipboardManager.current
-                        ActionIcon(AppStrings.copyReply, { clipboard.setText(AnnotatedString(lastReply.text)) }, AppIcons.Copy, tint = replyActionColor(), buttonSize = 40.dp, glyphSize = 18.dp)
-                        ActionIcon(AppStrings.shareReply, { hostActions.share(lastReply.text) }, AppIcons.Share, tint = replyActionColor(), buttonSize = 40.dp, glyphSize = 18.dp)
+                        ActionIcon(AppStrings.copyReply, { clipboard.setText(AnnotatedString(lastReply.text)) }, AppIcons.Copy, tint = replyActionColor(), buttonSize = 28.dp, glyphSize = 16.dp)
+                        ActionIcon(AppStrings.shareReply, { hostActions.share(lastReply.text) }, AppIcons.Share, tint = replyActionColor(), buttonSize = 28.dp, glyphSize = 16.dp)
                     }
                 }
             }

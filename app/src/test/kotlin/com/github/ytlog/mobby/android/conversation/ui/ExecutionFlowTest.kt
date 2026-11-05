@@ -6,6 +6,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.*
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.junit4.createComposeRule
 import com.github.ytlog.mobby.android.conversation.domain.*
 import com.github.ytlog.mobby.android.runtime.api.device.*
@@ -257,6 +258,39 @@ class ExecutionFlowTest {
         assertEquals("已完成 1 个步骤", live.executionHeadline(listOf(earlier)))
         assertTrue(live.toolGroupExpanded(listOf(current)))
         assertEquals("执行中", live.executionHeadline(listOf(current)))
+    }
+
+    // A 40dp button row plus the 28dp turn gap left almost 70dp between a reply and the next message.
+    @Test fun `reply actions stay compact and the next message follows closely`() {
+        val first = empty.copy(id = TurnId("one"), userText = "first", messages = listOf(Message("m1", "reply one", order = 1)))
+        val second = empty.copy(id = TurnId("two"), userText = "second", messages = listOf(Message("m2", "reply two", order = 1)))
+        val conversation = Conversation(ConversationId("fixture"), NextTurnConfig(AgentId.CLAUDE_CODE, "fixture", null, "default", "fixture"))
+        val model = vm()
+        compose.setContent { MaterialTheme {
+            Timeline(ConversationDetail(conversation, listOf(first, second)), model, androidx.compose.ui.Modifier,
+                read = { _, _ -> }, hostActions = ConversationHostActions({}, {}), proposal = {}, onSelectPlugin = {})
+        } }
+        compose.waitUntil(5_000) { compose.onAllNodesWithText("reply one").fetchSemanticsNodes().isNotEmpty() }
+        val copy = compose.onAllNodesWithContentDescription(UiStrings.copyReply)[0].getBoundsInRoot()
+        val nextMessage = compose.onAllNodesWithTag("user-bubble")[1].getBoundsInRoot()
+        assertTrue("button height ${copy.bottom - copy.top}", copy.bottom - copy.top <= 28.dp)
+        assertTrue("gap ${nextMessage.top - copy.bottom}", nextMessage.top - copy.bottom <= 16.dp)
+    }
+
+    @Test fun `a touch just below a compact reply action still reaches it`() {
+        val turn = empty.copy(messages = listOf(Message("m", "reply", order = 1)))
+        val conversation = Conversation(ConversationId("fixture"), NextTurnConfig(AgentId.CLAUDE_CODE, "fixture", null, "default", "fixture"))
+        val model = vm()
+        val shared = mutableListOf<String>()
+        compose.setContent { MaterialTheme {
+            Timeline(ConversationDetail(conversation, listOf(turn)), model, androidx.compose.ui.Modifier,
+                read = { _, _ -> }, hostActions = ConversationHostActions({ shared += it }, {}), proposal = {}, onSelectPlugin = {})
+        } }
+        compose.waitUntil(5_000) { compose.onAllNodesWithContentDescription(UiStrings.shareReply).fetchSemanticsNodes().isNotEmpty() }
+        val share = compose.onNodeWithContentDescription(UiStrings.shareReply).fetchSemanticsNode().boundsInRoot
+        val below = 4 * compose.density.density
+        compose.onRoot().performTouchInput { click(androidx.compose.ui.geometry.Offset(share.center.x, share.bottom + below)) }
+        compose.runOnIdle { assertEquals(listOf("reply"), shared) }
     }
 
     @Test fun `copy and share close the turn rather than interrupting it`() {
