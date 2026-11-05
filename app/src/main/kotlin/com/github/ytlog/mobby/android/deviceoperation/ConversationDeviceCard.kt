@@ -19,7 +19,13 @@ import com.github.ytlog.mobby.android.conversation.ui.LocalAttachmentPreviewHost
     val execution = turn.execution
     val previewHost = LocalAttachmentPreviewHost.current
     val respond: ((String) -> Unit)? = execution?.takeIf { turn.occupied }?.let { id ->
-        { response -> vm.respondToOperation(id, operation, response) }
+        { response ->
+            val prompt = operation.requiresAttention
+            if (prompt?.reasonCode == "screen.private_input") {
+                if (response == "cancel")
+                    com.github.ytlog.mobby.android.device.PrivateScreenInput.submit(operation.operationId, prompt.promptId, null)
+            } else vm.respondToOperation(id, operation, response)
+        }
     }
     val permissionResponse = if (respond != null && operation.requiresAttention?.reasonCode == "device.authorize")
         devicePermissionPrompt(operation, vm, respond) else respond

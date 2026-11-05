@@ -39,6 +39,8 @@ final class VirtualScreen implements AutoCloseable {
     private final HandlerThread callbacks = new HandlerThread("virtual-screen-callbacks");
     private Handler handler;
     private UiAutomation automation;
+    private AccessibilityNodeInfo privateInputTarget;
+    private final List<String> privateValues = new ArrayList<>();
     private VirtualDisplay display;
     private ImageReader reader;
     private volatile byte[] jpeg;
@@ -107,6 +109,34 @@ final class VirtualScreen implements AutoCloseable {
         return call(() -> {
             if (display == null || displayId <= 0 || !display.getDisplay().isValid()) throw new IllegalStateException("invalid_display");
             if ("frame".equals(action)) return screenshot(metadata(new JSONObject()));
+            if ("prepare_private_input".equals(action)) {
+                clearPrivateInputTarget();
+                if (privateValues.size() >= 20) throw new IllegalStateException("private_input_limit");
+                privateInputTarget = focusedInput();
+                return metadata(new JSONObject());
+            }
+            if ("cancel_private_input".equals(action)) {
+                clearPrivateInputTarget();
+                return metadata(new JSONObject());
+            }
+            if ("private_input".equals(action)) {
+                try {
+                    AccessibilityNodeInfo focused = focusedInput();
+                    try {
+                        if (!focused.equals(privateInputTarget)) throw new IllegalStateException("private_input_focus_changed");
+                        String text = args.getString("text");
+                        if (text.isEmpty() || text.length() > 2000 || text.indexOf(0) >= 0)
+                            throw new IllegalArgumentException("invalid_text");
+                        // Retain values only within this display session so its outputs can mask them.
+                        privateValues.add(text);
+                        Bundle bundle = new Bundle();
+                        bundle.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text);
+                        if (!focused.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, bundle))
+                            throw new IllegalStateException("text_refused");
+                    } finally { focused.recycle(); }
+                    return metadata(new JSONObject());
+                } finally { clearPrivateInputTarget(); }
+            }
             if ("apps".equals(action)) return metadata(new JSONObject().put("text", apps()));
             if ("tasks".equals(action)) return metadata(new JSONObject().put("tasks", virtualTasks()));
             if ("focus_task".equals(action)) {
@@ -163,6 +193,23 @@ final class VirtualScreen implements AutoCloseable {
         });
     }
 
+    private AccessibilityNodeInfo focusedInput() throws Exception {
+        AccessibilityNodeInfo root = root();
+        try {
+            AccessibilityNodeInfo focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
+            if (focused != null && focused.isEditable() && focused.isEnabled()) return focused;
+            if (focused != null) focused.recycle();
+            throw new IllegalStateException("no_editable_field");
+        } finally { root.recycle(); }
+    }
+
+    private void clearPrivateInputTarget() {
+        if (privateInputTarget != null) {
+            privateInputTarget.recycle();
+            privateInputTarget = null;
+        }
+    }
+
     private AccessibilityNodeInfo root() {
         List<AccessibilityWindowInfo> windows = automation.getWindowsOnAllDisplays().get(displayId);
         if (windows == null) throw new IllegalStateException("no_virtual_window");
@@ -191,16 +238,17 @@ final class VirtualScreen implements AutoCloseable {
         // A delivered input is still reported honestly if the app closes its last readable window.
         try { AccessibilityNodeInfo node = root(); try { result.put("packageName", String.valueOf(node.getPackageName())); } finally { node.recycle(); } }
         catch (IllegalStateException noWindow) { result.put("packageName", ""); }
-        return screenshot(result);
+        return agentScreenshot(result);
     }
     private JSONObject snapshot(AccessibilityNodeInfo root) throws Exception {
         StringBuilder text = new StringBuilder();
         walk(root, 0, new int[]{0}, (node, depth) -> {
-            String label = node.isPassword() ? "[secure]" : node.getText() != null ? node.getText().toString() : String.valueOf(node.getContentDescription());
+            String label = node.isPassword() ? "[secure]" : redactPrivateValues(
+                node.getText() != null ? node.getText().toString() : String.valueOf(node.getContentDescription()));
             text.append("  ".repeat(depth)).append(node.getClassName()).append(' ').append(label.substring(0, Math.min(label.length(), 80)))
                 .append(node.isClickable() ? " clickable" : "").append('\n');
         });
-        return screenshot(metadata(new JSONObject().put("text", text).put("packageName", String.valueOf(root.getPackageName()))));
+        return agentScreenshot(metadata(new JSONObject().put("text", text).put("packageName", String.valueOf(root.getPackageName()))));
     }
     private JSONObject evidence(AccessibilityNodeInfo root, JSONObject args) throws Exception {
         StringBuilder shape = new StringBuilder();
@@ -218,7 +266,7 @@ final class VirtualScreen implements AutoCloseable {
         if (!focusedEditable) { if (focused != null) focused.recycle(); focused = soleEditable(root); }
         try {
             boolean input = focused != null && focused.isEditable();
-            boolean password = input && focused.isPassword();
+            boolean password = input && (focused.isPassword() || !redactPrivateValues(String.valueOf(focused.getText())).equals(String.valueOf(focused.getText())));
             return metadata(new JSONObject().put("packageName", String.valueOf(root.getPackageName())).put("shape", hash.toString())
                 .put("matches", count).put("editable", editable[0]).put("focusedEditable", focusedEditable).put("passwordInput", password)
                 .put("inputMatches", input && !password && args.has("expectedInput") && args.getString("expectedInput").contentEquals(focused.getText() == null ? "" : focused.getText())));
@@ -319,7 +367,7 @@ final class VirtualScreen implements AutoCloseable {
         List<AccessibilityNodeInfo> result = new ArrayList<>();
         walk(root, 0, new int[]{0}, (node, depth) -> {
             if (!node.isVisibleToUser() || node.isPassword()) return;
-            String text = String.valueOf(node.getText()) + " " + node.getContentDescription();
+            String text = redactPrivateValues(String.valueOf(node.getText()) + " " + node.getContentDescription());
             if (!text.toLowerCase(Locale.ROOT).contains(query.toLowerCase(Locale.ROOT))) return;
             AccessibilityNodeInfo target = AccessibilityNodeInfo.obtain(node);
             while (target != null && !target.isClickable()) {
@@ -386,6 +434,14 @@ final class VirtualScreen implements AutoCloseable {
     private JSONObject metadata(JSONObject result) throws Exception {
         return result.put("displayId", displayId).put("width", WIDTH).put("height", HEIGHT).put("observedAtEpochMillis", System.currentTimeMillis());
     }
+    private String redactPrivateValues(String text) {
+        for (String value : privateValues) text = text.replace(value, "[secure]");
+        return text;
+    }
+    private JSONObject agentScreenshot(JSONObject result) throws Exception {
+        // Pixel output can reveal a value even when the app does not expose a text node.
+        return privateValues.isEmpty() ? screenshot(result) : result.put("screenshotStatus", "private_input");
+    }
     private JSONObject screenshot(JSONObject result) throws Exception {
         byte[] frame = jpeg;
         result.put("screenshotStatus", frame == null ? "no_frame" : "captured");
@@ -424,6 +480,8 @@ final class VirtualScreen implements AutoCloseable {
         // Cleanup follows any in-flight operation on the same looper, including a late createDisplay.
         handler.post(() -> {
             try {
+                clearPrivateInputTarget();
+                privateValues.clear();
                 try { if (display != null) display.release(); }
                 catch (RuntimeException failure) { cleanupFailure.compareAndSet(null, failure); }
                 finally { display = null; }

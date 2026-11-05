@@ -43,7 +43,11 @@ internal class DeviceActions(private val context: Context, private val inbox: Fi
         val ref = DeviceCatalog.actionRef(plugin, action)
         if (!DeviceHost.granted(context, ref)) deviceFailure(DeviceErrorCode.PERMISSION_REVOKED)
         return when (plugin) {
-            "screen" -> screen(action, args)
+            "screen" -> if (action == "request_input") {
+                if (screenSession() == null) deviceFailure(DeviceErrorCode.UNSUPPORTED_CAPABILITY)
+                ScreenControl.privateInput(context, execution, gate::checkActive)
+                deviceText("The user filled the focused field.", EffectState.CONFIRMED)
+            } else screen(action, args)
             "sms" -> sms(action, args)
             "contacts" -> contacts(action, args)
             "calendar" -> calendar(action, args)

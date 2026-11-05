@@ -4,12 +4,18 @@ import androidx.activity.compose.LocalActivityResultRegistryOwner
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.SecureFlagPolicy
 import com.github.ytlog.mobby.android.conversation.domain.ConversationDetail
 import com.github.ytlog.mobby.android.conversation.domain.ExecutionId
 import com.github.ytlog.mobby.android.conversation.domain.OperationResult
@@ -21,6 +27,7 @@ import com.github.ytlog.mobby.android.conversation.ui.screenAccessSettingsIntent
 import com.github.ytlog.mobby.android.device.DeviceAccess
 import com.github.ytlog.mobby.android.device.DeviceCatalog
 import com.github.ytlog.mobby.android.device.DeviceHost
+import com.github.ytlog.mobby.android.device.PrivateScreenInput
 import com.github.ytlog.mobby.android.deviceoperation.ui.DeviceLabels
 import com.github.ytlog.mobby.android.runtime.api.device.DeviceOperation
 import com.github.ytlog.mobby.android.runtime.api.device.DeviceOperationResponse
@@ -84,6 +91,13 @@ internal fun ConversationViewModel.respondToOperation(execution: ExecutionId, op
 @Composable
 internal fun ConversationDevicePermissionDialog(detail: ConversationDetail, vm: ConversationViewModel) {
     val turn = detail.turns.lastOrNull { it.occupied } ?: return
+    val privateInput = turn.deviceOperations.firstOrNull {
+        it.operation.requiresAttention?.reasonCode == "screen.private_input"
+    }?.operation
+    if (privateInput != null) {
+        key(privateInput.operationId) { PrivateScreenInputDialog(privateInput) }
+        return
+    }
     val execution = turn.execution ?: return
     val operation = turn.deviceOperations.firstOrNull { it.operation.requiresAttention?.reasonCode == "device.authorize" }
         ?.operation ?: return
@@ -104,4 +118,45 @@ internal fun ConversationDevicePermissionDialog(detail: ConversationDetail, vm: 
             dismissButton = { TextButton(onClick = { respond("cancel") }) { Text(DeviceLabels.text("拒绝", "Deny")) } },
         )
     }
+}
+
+
+@Composable
+private fun PrivateScreenInputDialog(operation: DeviceOperation) {
+    val prompt = operation.requiresAttention ?: return
+    var value by remember(prompt.promptId) { mutableStateOf("") }
+    var submitted by remember(prompt.promptId) { mutableStateOf(false) }
+    fun respond(text: String?) {
+        if (submitted) return
+        submitted = PrivateScreenInput.submit(operation.operationId, prompt.promptId, text)
+        if (submitted) value = ""
+    }
+    AlertDialog(
+        onDismissRequest = { respond(null) },
+        properties = DialogProperties(securePolicy = SecureFlagPolicy.SecureOn),
+        containerColor = raisedColor(),
+        shape = RoundedCornerShape(24.dp),
+        title = { Text(DeviceLabels.text("请填写副屏字段", "Fill the field on the secondary display")) },
+        text = {
+            OutlinedTextField(
+                value = value,
+                onValueChange = { if (it.length <= 2000) value = it },
+                label = { Text(operation.subject.label) },
+                enabled = !submitted,
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { respond(value) }, enabled = !submitted && value.isNotEmpty()) {
+                Text(DeviceLabels.text("填入副屏", "Fill field"))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = { respond(null) }, enabled = !submitted) {
+                Text(DeviceLabels.text("取消", "Cancel"))
+            }
+        },
+    )
 }

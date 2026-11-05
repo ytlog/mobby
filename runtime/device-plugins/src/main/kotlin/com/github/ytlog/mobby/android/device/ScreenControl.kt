@@ -273,6 +273,29 @@ object ScreenControl {
         }
     }
 
+    internal fun privateInput(context: Context, execution: DeviceExecution, checkActive: () -> Unit) {
+        val (connection, display) = synchronized(this) {
+            val current = state.value
+            val display = current.displayId
+            val connection = channel
+            if (!current.active || display == null || display <= 0 || connection?.alive != true)
+                com.github.ytlog.mobby.android.runtime.api.device.deviceFailure(
+                    com.github.ytlog.mobby.android.runtime.api.device.DeviceErrorCode.UNSUPPORTED_CAPABILITY)
+            connection to display
+        }
+        requireUnlocked(context)
+        request(connection, "prepare_private_input", expectedDisplay = display)
+        try {
+            val text = PrivateScreenInput.await(execution, checkActive)
+            checkActive()
+            requireUnlocked(context)
+            execution.running("screen.private_input")
+            request(connection, "private_input", mapOf("text" to text), expectedDisplay = display)
+        } finally {
+            if (connection.alive) runCatching { request(connection, "cancel_private_input", expectedDisplay = display) }
+        }
+    }
+
     /** Preview only reads the active virtual display; it never sends an input or changes the main display. */
     suspend fun refreshPreview() = withContext(Dispatchers.IO) {
         val connected = synchronized(this@ScreenControl) { channel.takeIf { state.value.active } } ?: return@withContext

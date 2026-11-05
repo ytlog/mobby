@@ -24,6 +24,7 @@ internal class DeviceActionDefinition(val plugin: String, val action: String) {
     }
     private val fields: Map<String, Int> = when ("$plugin.$action") {
         "screen.click" -> mapOf("query" to 200)
+        "screen.request_input" -> mapOf("label" to 80)
         "screen.type" -> mapOf("text" to 2000)
         "screen.tap" -> mapOf("x" to 24, "y" to 24)
         "screen.swipe" -> mapOf("x" to 24, "y" to 24, "toX" to 24, "toY" to 24)
@@ -92,7 +93,7 @@ internal class DeviceActionDefinition(val plugin: String, val action: String) {
         val input = if (plugin == "sms" && action == "send") buildJsonObject {
             put("recipientLabel", ""); put("recipientMasked", args.getValue("to").filter(Char::isDigit).takeLast(4)); put("body", args.getValue("body"))
         } else JsonObject(request.args.filterKeys { it !in setOf("to", "phone") })
-        val label = args["name"] ?: args["title"] ?: args["query"] ?: args["path"]?.substringAfterLast('/') ?: ""
+        val label = args["label"] ?: args["name"] ?: args["title"] ?: args["query"] ?: args["path"]?.substringAfterLast('/') ?: ""
         return DeviceAdmission(request.requestId, fingerprint, plugin, action, displayType, DeviceSubject(label.take(1000), ""), input)
     }
 }

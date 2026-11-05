@@ -80,8 +80,9 @@ class ScreenControlDeviceTest {
                 return "image:${UUID.randomUUID()}"
             }
             val work = File(root, "workspace").apply { mkdirs() }
+            val journal = TestJournal()
             DeviceHost.start(context, root, File(root, "inbox").apply { mkdirs() }, work,
-                "/system/bin/false", setOf("plugin:device:screen"), TestJournal(), ::register, ::register, { error("No resource export requested") }).use { session ->
+                "/system/bin/false", setOf("plugin:device:screen"), journal, ::register, ::register, { error("No resource export requested") }).use { session ->
                 val script = File(session.skills.single().parentFile, "scripts/device.cjs").readText()
                 val port = Regex("const PORT=(\\d+);").find(script)!!.groupValues[1].toInt()
                 val token = Regex("const TOKEN=\"([^\"]+)\";").find(script)!!.groupValues[1]
@@ -168,6 +169,23 @@ class ScreenControlDeviceTest {
                     instrumentation.sendStatus(0, Bundle().apply { putString("screen_probe_phase", "virtual_preview") })
                     SystemClock.sleep(3000)
                     verifyBackgroundPreview(returned)
+                    perform("click", mapOf("query" to "Secure field"))
+                    val fixture = "mobby-probe-only-secret"
+                    val response = java.util.concurrent.CompletableFuture.supplyAsync {
+                        request("request_input", mapOf("label" to "Test password"))
+                    }
+                    waitFor("Private entry prompt must appear") { journal.privateInput() != null || response.isDone }
+                    val operation = checkNotNull(journal.privateInput()) {
+                        "No prompt: " + response.get().optJSONObject("error")?.optString("code")
+                    }
+                    assertTrue(com.github.ytlog.mobby.android.device.PrivateScreenInput.submit(
+                        operation.operationId, requireNotNull(operation.requiresAttention).promptId, fixture))
+                    val result = response.get(10, java.util.concurrent.TimeUnit.SECONDS)
+                    assertEquals("succeeded", result.optString("status"))
+                    assertFalse(result.toString().contains(fixture))
+                    val afterPrivateInput = perform("snapshot")
+                    assertFalse(afterPrivateInput.toString().contains(fixture))
+                    assertEquals("private_input", afterPrivateInput.optString("screenshotStatus"))
                 }
                 perform("back")
                 session.awaitIdle { }
@@ -235,7 +253,8 @@ class ScreenControlDeviceTest {
         assertTrue(label, predicate())
     }
     private class TestJournal : DeviceOperationPort {
-        private val records = mutableMapOf<String, DeviceOperation>()
+        private val records = java.util.concurrent.ConcurrentHashMap<String, DeviceOperation>()
+        fun privateInput() = records.values.firstOrNull { it.requiresAttention?.reasonCode == "screen.private_input" }
         override suspend fun admit(request: DeviceAdmission): AdmittedDevice {
             records[request.requestId]?.let { return AdmittedDevice(it, false) }
             val operation = DeviceOperation("op-${request.requestId}", request.requestId, 1, request.plugin, request.action,
