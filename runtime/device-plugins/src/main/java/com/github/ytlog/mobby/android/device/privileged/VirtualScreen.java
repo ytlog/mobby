@@ -25,6 +25,7 @@ import org.json.JSONObject;
 import org.json.JSONArray;
 import java.io.*;
 import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.security.MessageDigest;
 import java.util.*;
@@ -47,6 +48,7 @@ final class VirtualScreen implements AutoCloseable {
     private Context context;
     private Object taskManager;
     private Class<?> taskInterface;
+    private Method getTasks;
 
     VirtualScreen() {
         operations.start(); callbacks.start(); handler = new Handler(operations.getLooper());
@@ -55,6 +57,9 @@ final class VirtualScreen implements AutoCloseable {
     JSONObject open() throws Exception {
         return call(() -> {
             if (Build.VERSION.SDK_INT < 33) throw new UnsupportedOperationException("android_13_required");
+            taskInterface = Class.forName("android.app.IActivityTaskManager");
+            getTasks = resolveGetTasks(taskInterface);
+            taskManager = Class.forName("android.app.ActivityTaskManager").getMethod("getService").invoke(null);
             Class<?> activityThread = Class.forName("android.app.ActivityThread");
             Object thread = activityThread.getMethod("currentActivityThread").invoke(null);
             if (thread == null) thread = activityThread.getMethod("systemMain").invoke(null);
@@ -93,8 +98,6 @@ final class VirtualScreen implements AutoCloseable {
             AccessibilityServiceInfo info = automation.getServiceInfo();
             info.flags |= AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS | AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS;
             automation.setServiceInfo(info);
-            taskInterface = Class.forName("android.app.IActivityTaskManager");
-            taskManager = Class.forName("android.app.ActivityTaskManager").getMethod("getService").invoke(null);
             return metadata(new JSONObject());
         });
     }
@@ -231,14 +234,20 @@ final class VirtualScreen implements AutoCloseable {
         return null;
     }
 
+    static Method resolveGetTasks(Class<?> taskInterface) throws NoSuchMethodException {
+        // AOSP 13 has three arguments and 14 adds a display filter. Probe the actual
+        // framework signature because an OEM can backport either contract.
+        try {
+            return taskInterface.getMethod("getTasks", int.class, boolean.class, boolean.class, int.class);
+        } catch (NoSuchMethodException absent) {
+            return taskInterface.getMethod("getTasks", int.class, boolean.class, boolean.class);
+        }
+    }
     @SuppressWarnings("unchecked")
-    private List<ActivityManager.RunningTaskInfo> tasks() throws Exception {
-        // AOSP 13 has three arguments; 14+ adds the display filter. Always validate it ourselves too.
-        if (Build.VERSION.SDK_INT >= 34)
-            return (List<ActivityManager.RunningTaskInfo>) taskInterface.getMethod("getTasks", int.class, boolean.class, boolean.class, int.class)
-                .invoke(taskManager, 1000, false, false, -1);
-        return (List<ActivityManager.RunningTaskInfo>) taskInterface.getMethod("getTasks", int.class, boolean.class, boolean.class)
-            .invoke(taskManager, 1000, false, false);
+    private List<ActivityManager.RunningTaskInfo> tasks(int targetDisplay) throws Exception {
+        if (getTasks.getParameterCount() == 4)
+            return (List<ActivityManager.RunningTaskInfo>) getTasks.invoke(taskManager, 1000, false, false, targetDisplay);
+        return (List<ActivityManager.RunningTaskInfo>) getTasks.invoke(taskManager, 1000, false, false);
     }
     private int taskDisplay(ActivityManager.RunningTaskInfo task) throws Exception {
         return task.getClass().getField("displayId").getInt(task);
@@ -248,7 +257,7 @@ final class VirtualScreen implements AutoCloseable {
     }
     private JSONArray virtualTasks() throws Exception {
         JSONArray items = new JSONArray();
-        for (ActivityManager.RunningTaskInfo task : tasks()) {
+        for (ActivityManager.RunningTaskInfo task : tasks(displayId)) {
             if (taskDisplay(task) == displayId && task.baseActivity != null)
                 items.put(new JSONObject().put("id", task.taskId).put("package", task.baseActivity.getPackageName()));
         }
@@ -256,7 +265,7 @@ final class VirtualScreen implements AutoCloseable {
     }
     private void focusTask(int id) throws Exception {
         ActivityManager.RunningTaskInfo selected = null;
-        for (ActivityManager.RunningTaskInfo task : tasks()) if (task.taskId == id && taskDisplay(task) == displayId) selected = task;
+        for (ActivityManager.RunningTaskInfo task : tasks(displayId)) if (task.taskId == id && taskDisplay(task) == displayId) selected = task;
         if (selected == null) throw new IllegalStateException("virtual_task_not_found");
         String name = (selected.topActivity != null ? selected.topActivity : selected.baseActivity).getPackageName();
         // Only a task still on our display may be brought forward; no main-display task IDs are accepted.
@@ -268,7 +277,7 @@ final class VirtualScreen implements AutoCloseable {
     private void launch(String name) throws Exception {
         if (!name.matches("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+") || name.equals("com.github.ytlog.mobby.android"))
             throw new IllegalArgumentException("invalid_package");
-        for (ActivityManager.RunningTaskInfo task : tasks()) {
+        for (ActivityManager.RunningTaskInfo task : tasks(displayId)) {
             if (taskDisplay(task) == displayId && belongsTo(task, name)) { focusTask(task.taskId); return; }
         }
         String resolved = command("/system/bin/cmd", "package", "resolve-activity", "--brief", "--user", "current", "-a", "android.intent.action.MAIN", "-c", "android.intent.category.LAUNCHER", name);
@@ -278,7 +287,7 @@ final class VirtualScreen implements AutoCloseable {
         ActivityInfo info = context.getPackageManager().getActivityInfo(ComponentName.unflattenFromString(component), 0);
         // Single-task/single-instance apps can steal their existing task from another display.
         if (info.launchMode != ActivityInfo.LAUNCH_MULTIPLE && info.launchMode != ActivityInfo.LAUNCH_SINGLE_TOP) {
-            for (ActivityManager.RunningTaskInfo task : tasks())
+            for (ActivityManager.RunningTaskInfo task : tasks(-1))
                 if (taskDisplay(task) != displayId && belongsTo(task, name)) throw new UnsupportedOperationException("app_already_on_other_display");
         }
         command("/system/bin/am", "start", "-W", "--display", String.valueOf(displayId), "--user", "current",

@@ -94,3 +94,11 @@ python3 runtime/device-plugins/probe_screen.py \
 创建或释放失败、连接超时、显示失效或返回错误显示 ID 时，宿主关闭该连接并清除预览，下一次使用需要重新连接。API 37 模拟器探针先复现了认证前断开导致合法连接失败，再验证空连接和无效 JSON 后仍可打开副屏、关闭后重开，以及断线后工作进程退出且无残留显示。
 
 使用已有配对身份和手动连接端口，API 37 模拟器上的 mobby 正式内置 ADB 回归通过（27.448 秒）。Debug 与 AndroidTest 构建、相关单测和 lint 通过，419 项单测通过、2 项跳过。小米真机和 root 后端尚待复测。
+
+### Android 版本与厂商覆盖
+
+副屏最低支持 Android 13。AOSP 13 的任务查询接口有三个参数，14、15 和 16 的接口增加了显示 ID。工作进程在创建副屏前识别设备提供的签名，支持显示参数时直接查询副屏，两种签名都核对返回任务的实际显示 ID。只有确认签名不存在时才选择另一签名，系统拒绝请求时直接返回失败。[Android 13 接口](https://github.com/aosp-mirror/platform_frameworks_base/blob/android-13.0.0_r1/core/java/android/app/IActivityTaskManager.aidl) · [Android 14 接口](https://github.com/aosp-mirror/platform_frameworks_base/blob/android-14.0.0_r1/core/java/android/app/IActivityTaskManager.aidl) · [Android 16 接口](https://github.com/aosp-mirror/platform_frameworks_base/blob/android-16.0.0_r1/core/java/android/app/IActivityTaskManager.aidl)
+
+厂商验收分别检查无线配对、启动工作进程、创建副屏、输入及断线释放。Shizuku 的说明记录了 MIUI 通知回复和 ADB 权限差异、ColorOS 和 Flyme 的权限限制，以及 EMUI 和 Sony 的 USB 调试行为。它们是排查线索。小米 Android 13 有此前的内置 ADB 真机记录，最终版本的厂商覆盖仍待复测。Android 14–16 已核对源码，尚无本轮设备结果。[Shizuku 厂商说明](https://shizuku.rikka.app/guide/setup/#faq)
+
+本轮 Debug 构建及设备插件单测通过，覆盖三参数、四参数及缺失签名。使用更新后的 APK，API 37 模拟器内置 ADB 正式副屏回归通过（20.33 秒）。
