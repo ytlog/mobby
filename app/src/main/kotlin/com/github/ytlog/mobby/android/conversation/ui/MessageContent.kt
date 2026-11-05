@@ -23,6 +23,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.github.ytlog.mobby.android.conversation.domain.*
+import com.github.ytlog.mobby.android.deviceoperation.ui.showsFoldedPreview
+import com.github.ytlog.mobby.android.runtime.api.device.DeviceRecord
+import com.github.ytlog.mobby.android.runtime.api.device.DeviceStatus
 
 private val LocalToolCodeActionScale = staticCompositionLocalOf { 0.82f }
 
@@ -62,30 +65,81 @@ internal fun ExecutionPhase?.label(): String = when (this) {
     ExecutionPhase.INTERRUPTED -> AppStrings.interrupted
     ExecutionPhase.OUTCOME_UNKNOWN -> AppStrings.resultUnconfirmed
 }
+/**
+ * What the timeline draws for a turn. Finished work between two replies folds into one [Process] line, so replies stay
+ * the main thing on the page. An operation that is running, wants an answer, did not plainly succeed or has a photo
+ * to show stays a [Device] entry of its own: folding it would hide something the reader needs.
+ */
+internal sealed interface TimelineEntry {
+    data class Reply(val message: Message) : TimelineEntry
+    data class Device(val record: DeviceRecord) : TimelineEntry
+    data class Process(val steps: List<Step>, val devices: List<DeviceRecord> = emptyList()) : TimelineEntry
+}
+
+private fun DeviceRecord.folds() = operation.status == DeviceStatus.SUCCEEDED && operation.requiresAttention == null && !operation.showsFoldedPreview()
+
+internal fun Turn.timelineEntries(): List<TimelineEntry> {
+    val result = mutableListOf<TimelineEntry>()
+    val steps = mutableListOf<Step>()
+    val devices = mutableListOf<DeviceRecord>()
+    fun flush() {
+        if (steps.isNotEmpty() || devices.isNotEmpty()) result += TimelineEntry.Process(steps.toList(), devices.toList())
+        steps.clear(); devices.clear()
+    }
+    transcript().forEach { entry -> when (entry) {
+        is TranscriptEntry.Reply -> { flush(); result += TimelineEntry.Reply(entry.message) }
+        is TranscriptEntry.ToolRun -> steps += entry.steps
+        is TranscriptEntry.Device -> if (entry.record.folds()) devices += entry.record else { flush(); result += TimelineEntry.Device(entry.record) }
+    } }
+    flush()
+    return result
+}
+
+internal fun TimelineEntry.itemKey(turn: Turn): String = when (this) {
+    is TimelineEntry.Reply -> "message:${turn.id.value}:${message.id}"
+    is TimelineEntry.Device -> "device:${turn.id.value}:${record.operation.operationId}"
+    is TimelineEntry.Process -> steps.firstOrNull()?.let { "tools:${turn.id.value}:${it.id}" }
+        ?: "device:${turn.id.value}:${devices.first().operation.operationId}"
+}
+
+/** Saved reading positions and search hits can name a row that now sits inside a summary. */
+internal fun Turn.timelineKeyAliases(): Map<String, String> = timelineEntries().filterIsInstance<TimelineEntry.Process>().flatMap { entry ->
+    val summary = entry.itemKey(this)
+    entry.steps.map { "tools:${id.value}:${it.id}" to summary } + entry.devices.map { "device:${id.value}:${it.operation.operationId}" to summary }
+}.toMap()
+
+/** The turn draws its own status row, so a step group need not repeat how the run ended. */
+internal fun Turn.reportsOutcome(): Boolean = queued || failure != null || phase in setOf(
+    ExecutionPhase.CANCELLED, ExecutionPhase.TIMED_OUT, ExecutionPhase.INTERRUPTED, ExecutionPhase.OUTCOME_UNKNOWN, ExecutionPhase.AWAITING_APPROVAL,
+)
+
 internal fun Turn.hasVisibleExecution(): Boolean = steps.isNotEmpty()
 /** Routine CLI logs stay stored. The action appears only when this turn did not finish normally. */
 internal fun Turn.diagnosticsActionVisible(): Boolean = diagnostics.isNotEmpty() && (failure != null || phase in setOf(
     ExecutionPhase.FAILED, ExecutionPhase.TIMED_OUT, ExecutionPhase.INTERRUPTED, ExecutionPhase.OUTCOME_UNKNOWN,
 ))
 internal fun toolGroupKey(steps: List<Step>) = "tools:${steps.first().id}"
-/** The tool list stays open for the whole turn. It collapses only after execution has finished. */
+/** The turn is still running; its current step group stays open. */
 internal fun Turn.toolsLive(): Boolean = occupied && phase in setOf(
     null, ExecutionPhase.ACCEPTED, ExecutionPhase.RUNNING, ExecutionPhase.AWAITING_APPROVAL, ExecutionPhase.CANCELLING,
 )
-internal fun Turn.toolGroupExpanded(steps: List<Step>): Boolean = toolsLive() || toolGroupKey(steps) in expandedSteps
-internal fun Turn.executionHeadline(steps: List<Step> = this.steps): String {
-    val count = steps.size
-    // How the run ended belongs to the group it ended in. Earlier groups report their own steps.
-    val ended = steps.lastOrNull()?.id == this.steps.sortedBy { it.order }.lastOrNull()?.id
-    if (!ended) {
-        if (steps.any { it.outcome == "FAILED" }) return AppStrings.steps(ExecutionPhase.FAILED.label(), count)
-        if (steps.all { it.outcome == "SUCCEEDED" }) return if (steps.all { it is Step.Thinking }) AppStrings.thought else AppStrings.completedSteps(count)
-    }
+private fun Turn.endsWith(steps: List<Step>) = steps.isNotEmpty() && steps.last().id == this.steps.sortedBy { it.order }.lastOrNull()?.id
+internal fun Turn.toolGroupExpanded(steps: List<Step>): Boolean = (toolsLive() && endsWith(steps)) || toolGroupKey(steps) in expandedSteps
+internal fun Turn.executionHeadline(steps: List<Step> = this.steps, count: Int = steps.size): String {
+    val ended = endsWith(steps)
+    val failedSteps = steps.count { it.outcome == "FAILED" }
+    val done = if (steps.isNotEmpty() && count == steps.size && steps.all { it is Step.Thinking }) AppStrings.thought else AppStrings.completedSteps(count)
     return when {
-        phase == ExecutionPhase.CANCELLING -> AppStrings.stopping2
-        toolsLive() -> AppStrings.running
-        phase == ExecutionPhase.SUCCEEDED || phase == ExecutionPhase.RUNNING || phase == ExecutionPhase.ACCEPTED || phase == null ->
-            if (steps.isNotEmpty() && steps.all { it is Step.Thinking }) AppStrings.thought else AppStrings.completedSteps(count)
+        ended && phase == ExecutionPhase.CANCELLING -> AppStrings.stopping2
+        ended && toolsLive() -> AppStrings.running
+        failedSteps == count -> AppStrings.steps(ExecutionPhase.FAILED.label(), count)
+        failedSteps > 0 -> AppStrings.stepsPartlyFailed(count, failedSteps)
+        // A failed run with no message has no status row, so its last group has to say so.
+        ended && phase == ExecutionPhase.FAILED && failure == null -> AppStrings.steps(phase.label(), count)
+        steps.all { it.outcome == "SUCCEEDED" } -> done
+        // Unresolved steps claim nothing here; the status row says how the run ended.
+        reportsOutcome() -> AppStrings.stepCount(count)
+        phase == ExecutionPhase.SUCCEEDED || phase == ExecutionPhase.RUNNING || phase == ExecutionPhase.ACCEPTED || phase == null -> done
         else -> AppStrings.steps(phase.label(), count)
     }
 }
@@ -109,32 +163,29 @@ internal fun stepKindIcon(kind: String): AppGlyph = when (kind.lowercase()) {
     "mcp__phone__back", "mcp__phone__home", "mcp__phone__recents" -> AppIcons.Phone
     else -> AppIcons.More
 }
-/** A group's icon names what it did when all its steps did the same thing. */
-internal fun stepGroupIcon(steps: List<Step>): AppGlyph =
-    steps.map { stepKindIcon(it.glyphKind()) }.distinct().singleOrNull()?.takeIf { it != AppIcons.More } ?: AppIcons.Skill
-
-internal val ProcessRowHeight = 40.dp
+internal val ProcessRowHeight = 36.dp
 
 /** One quiet line of a run, aligned with the reply text: what happened, how it went, and a way to open it. */
 @Composable internal fun ProcessRow(
     title: String,
-    leading: @Composable () -> Unit,
+    leading: (@Composable () -> Unit)?,
     expanded: Boolean?,
     onClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
     status: String? = null,
     statusColor: Color = Color.Unspecified,
     style: TextStyle = MaterialTheme.typography.bodyMedium,
-    height: androidx.compose.ui.unit.Dp = ProcessRowHeight,
 ) {
     val ink = toolCallInk()
     Row(
-        modifier.fillMaxWidth().heightIn(min = height).clip(RoundedCornerShape(8.dp))
+        modifier.fillMaxWidth().heightIn(min = ProcessRowHeight).clip(RoundedCornerShape(8.dp))
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        leading()
-        Spacer(Modifier.width(8.dp))
+        if (leading != null) {
+            leading()
+            Spacer(Modifier.width(8.dp))
+        }
         Text(title, Modifier.weight(1f, fill = false), maxLines = 1, overflow = TextOverflow.Ellipsis, style = style, color = ink)
         if (status != null) {
             Spacer(Modifier.width(8.dp))
@@ -171,59 +222,66 @@ internal val ProcessRowHeight = 40.dp
         }
     }
 }
-@Composable internal fun ExecutionFlow(turn: Turn, vm: ConversationViewModel, steps: List<Step> = turn.steps, showExtras: Boolean = true, read: (String, String) -> Unit) {
-    if (steps.isEmpty()) return
-    val expanded = turn.toolGroupExpanded(steps)
+@Composable private fun StepRow(step: Step, turn: Turn, group: List<Step>, vm: ConversationViewModel, read: (String, String) -> Unit) {
     val ink = toolCallInk()
+    val open = step.id in turn.expandedSteps
+    val view = remember(step, LanguagePreferences.current) { ToolPresentation.present(step) }
+    val liveThought = turn.occupied && step.id == group.lastOrNull { it is Step.Thinking && it.outcome == null }?.id
+    ProcessRow(
+        view.title,
+        leading = { StepGlyph(step.glyphKind(), step.outcome, turn.phase) },
+        expanded = open,
+        onClick = {
+            val next = !open
+            vm.enqueue {
+                vm.actions.stepExpansion(turn.id, step.id, next)
+                if (next) vm.actions.expansion(turn.id, true)
+            }
+        },
+        style = MaterialTheme.typography.bodySmall,
+    )
+    if (open) {
+        val body = view.detail
+        Column(Modifier.fillMaxWidth().padding(start = 24.dp, bottom = 8.dp)) {
+            when {
+                step is Step.Thinking -> if (body.isBlank()) {
+                    if (!liveThought) Text(AppStrings.noOutput, style = MaterialTheme.typography.bodySmall, color = ink)
+                } else ReplyContent(body, streaming = liveThought, read = read)
+                view.terminal -> CodeContent(view.title, body.ifBlank { AppStrings.noOutput }, read, toolCallSurface(), ink)
+                ToolPresentation.looksLikeMarkdown(body) -> ReplyContent(body, streaming = false, read = read)
+                else -> SelectionContainer {
+                    Text(body.ifBlank { AppStrings.noOutput }, style = MaterialTheme.typography.bodySmall, color = ink,
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp).verticalScroll(rememberScrollState()))
+                }
+            }
+        }
+    }
+}
+
+/** One line summing up finished work; opening it lists the steps and operations in the order they happened. */
+@Composable internal fun ExecutionFlow(turn: Turn, vm: ConversationViewModel, steps: List<Step> = turn.steps, showExtras: Boolean = true,
+    devices: List<DeviceRecord> = emptyList(), deviceRow: @Composable (DeviceRecord) -> Unit = {}, read: (String, String) -> Unit) {
+    if (steps.isEmpty() && devices.isEmpty()) return
+    val groupKey = if (steps.isNotEmpty()) toolGroupKey(steps) else "tools:${devices.first().operation.operationId}"
+    val expanded = if (steps.isNotEmpty()) turn.toolGroupExpanded(steps) else groupKey in turn.expandedSteps
     val rail = toolCallBorder()
     val failed = steps.any { it.outcome == "FAILED" }
+    val error = MaterialTheme.colorScheme.error
     CompositionLocalProvider(LocalToolCodeActionScale provides 2f / 3f) {
         Column(Modifier.fillMaxWidth().testTag("execution-flow")) {
             ProcessRow(
-                turn.executionHeadline(steps),
-                leading = { AppIcon(if (failed) AppIcons.Error else stepGroupIcon(steps), null, Modifier.size(16.dp), tint = if (failed) MaterialTheme.colorScheme.error else ink) },
+                turn.executionHeadline(steps, steps.size + devices.size),
+                leading = if (failed) ({ AppIcon(AppIcons.Error, null, Modifier.size(16.dp), tint = error) }) else null,
                 expanded = expanded,
-                onClick = { vm.enqueue { vm.actions.stepExpansion(turn.id, toolGroupKey(steps), !expanded) } },
+                onClick = { vm.enqueue { vm.actions.stepExpansion(turn.id, groupKey, !expanded) } },
             )
             if (expanded) Column(Modifier.fillMaxWidth().drawBehind {
-                val x = 8.dp.toPx()
-                drawLine(rail, Offset(x, 0f), Offset(x, size.height), 1.dp.toPx())
-            }.padding(start = 20.dp, bottom = 4.dp)) {
-                steps.forEach { step -> key(step.id) {
-                    val open = step.id in turn.expandedSteps
-                    val view = remember(step, LanguagePreferences.current) { ToolPresentation.present(step) }
-                    val liveThought = turn.occupied && step.id == steps.lastOrNull { it is Step.Thinking && it.outcome == null }?.id
-                    ProcessRow(
-                        view.title,
-                        leading = { StepGlyph(step.glyphKind(), step.outcome, turn.phase) },
-                        expanded = open,
-                        onClick = {
-                            val next = !open
-                            vm.enqueue {
-                                vm.actions.stepExpansion(turn.id, step.id, next)
-                                if (next) vm.actions.expansion(turn.id, true)
-                            }
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        height = 36.dp,
-                    )
-                    if (open) {
-                        val body = view.detail
-                        Column(Modifier.fillMaxWidth().padding(start = 24.dp, bottom = 8.dp)) {
-                            when {
-                                step is Step.Thinking -> if (body.isBlank()) {
-                                    if (!liveThought) Text(AppStrings.noOutput, style = MaterialTheme.typography.bodySmall, color = ink)
-                                } else ReplyContent(body, streaming = liveThought, read = read)
-                                view.terminal -> CodeContent(view.title, body.ifBlank { AppStrings.noOutput }, read, toolCallSurface(), ink)
-                                ToolPresentation.looksLikeMarkdown(body) -> ReplyContent(body, streaming = false, read = read)
-                                else -> SelectionContainer {
-                                    Text(body.ifBlank { AppStrings.noOutput }, style = MaterialTheme.typography.bodySmall, color = ink,
-                                        modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp).verticalScroll(rememberScrollState()))
-                                }
-                            }
-                        }
-                    }
-                } }
+                drawLine(rail, Offset(0.5.dp.toPx(), 0f), Offset(0.5.dp.toPx(), size.height), 1.dp.toPx())
+            }.padding(start = 12.dp, bottom = 4.dp)) {
+                val rows: List<Pair<Long, @Composable () -> Unit>> =
+                    steps.map { step -> step.order to @Composable { key(step.id) { StepRow(step, turn, steps, vm, read) } } } +
+                    devices.map { record -> record.order to @Composable { key(record.operation.operationId) { deviceRow(record) } } }
+                rows.sortedBy { it.first }.forEach { (_, row) -> row() }
                 if (showExtras && turn.diagnosticsActionVisible()) TextButton(onClick = { read(AppStrings.runtimeDiagnostics, turn.diagnostics.joinToString("\n\n") { it.text }) }) { Text(AppStrings.viewDiagnostics(turn.diagnostics.size)) }
             }
         }

@@ -1,6 +1,9 @@
 package com.github.ytlog.mobby.android.deviceoperation.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -10,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.github.ytlog.mobby.android.conversation.ui.AppIcon
 import com.github.ytlog.mobby.android.conversation.ui.AppIcons
 import com.github.ytlog.mobby.android.conversation.ui.ProcessRow
@@ -35,8 +39,7 @@ class DeviceCardActions(
     val title = DeviceLabels.title(operation.plugin, operation.action)
     val detailsVisible = !operation.status.terminal || expanded
     val result = operation.result
-    val collapsedPhoto = operation.status.terminal && !expanded && operation.displayType == "capture" &&
-        result?.kind == "capture_resource" && result.data.text("mediaType").startsWith("image/")
+    val collapsedPhoto = !expanded && operation.showsFoldedPreview()
     // A finished, folded operation is one line of the run; a card appears only when there is more to show.
     val folded = operation.status.terminal && !expanded
     val statusColor = when {
@@ -126,6 +129,10 @@ class DeviceCardActions(
     }
     }
 }
+
+/** A captured photo is the result itself, so it stays visible while the operation is folded. */
+internal fun DeviceOperation.showsFoldedPreview(): Boolean = status.terminal && displayType == "capture" &&
+    result?.kind == "capture_resource" && result!!.data.text("mediaType").startsWith("image/")
 
 private fun deviceIcon(plugin: String) = when (plugin) {
     "camera" -> AppIcons.Camera
@@ -252,7 +259,11 @@ private fun JsonObject.objects(key: String) = (get(key) as? JsonArray)?.mapNotNu
             if (thumbnail != null) thumbnail(ref)
             else Caption(DeviceLabels.text("屏幕截图已保存", "Screen screenshot saved"))
         } else Caption(DeviceLabels.text("未获取到屏幕截图：", "Screen screenshot unavailable: ") + screenScreenshotReason(result.data.text("screenshotStatus")))
-        if (expanded) Text(result.data.text("text"), style = MaterialTheme.typography.bodySmall)
+        // The screen dump relies on indentation and long lines, so it reads as code and scrolls inside the card.
+        if (expanded) Text(result.data.text("text"), softWrap = false,
+            style = MaterialTheme.typography.labelSmall.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, lineHeight = 16.sp, fontWeight = FontWeight.Normal),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.fillMaxWidth().heightIn(max = 200.dp).verticalScroll(rememberScrollState()).horizontalScroll(rememberScrollState()))
         ResourceButtons(operation, actions)
     }
 }

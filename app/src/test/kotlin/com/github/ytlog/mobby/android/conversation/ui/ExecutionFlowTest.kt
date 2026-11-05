@@ -8,6 +8,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import com.github.ytlog.mobby.android.conversation.domain.*
+import com.github.ytlog.mobby.android.runtime.api.device.*
+import kotlinx.serialization.json.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import org.junit.*
@@ -129,8 +131,12 @@ class ExecutionFlowTest {
         assertEquals("失败 · 1 个步骤", empty.copy(phase = ExecutionPhase.FAILED, steps = listOf(step)).executionHeadline())
     }
 
-    // A stopped turn stamped "已停止" on every earlier group, though those steps had finished and later work followed.
-    @Test fun `only the group the run ended in reports how the run ended`() {
+    private fun device(id: String, order: Long, status: DeviceStatus = DeviceStatus.SUCCEEDED, result: DeviceResult? = null, display: String = "screen_control", attention: Boolean = false) = DeviceRecord(
+        DeviceOperation(id, "r", 1, "screen", "read", display, status, status.name.lowercase(), DeviceSubject(), JsonObject(emptyMap()), result = result,
+            requiresAttention = if (attention) DeviceAttention("p", "reason", listOf("continue")) else null), "f", order)
+
+    // A stopped turn stamped "已停止" on every group and again on the row below, though those steps had finished.
+    @Test fun `step groups report their own steps and the status row reports how the run ended`() {
         val done = step.copy(id = "done", order = 1)
         val failed = step.copy(id = "failed", outcome = "FAILED", order = 2)
         val unresolved = step.copy(id = "open", outcome = null, order = 3)
@@ -138,8 +144,88 @@ class ExecutionFlowTest {
         val stopped = empty.copy(phase = ExecutionPhase.CANCELLED, steps = listOf(done, failed, unresolved, last))
         assertEquals("已完成 1 个步骤", stopped.executionHeadline(listOf(done)))
         assertEquals("失败 · 1 个步骤", stopped.executionHeadline(listOf(failed)))
-        assertEquals("已停止 · 1 个步骤", stopped.executionHeadline(listOf(unresolved)))
-        assertEquals("已停止 · 1 个步骤", stopped.executionHeadline(listOf(last)))
+        // Unresolved steps make no claim of success; the status row below says the run stopped.
+        assertEquals("1 个步骤", stopped.executionHeadline(listOf(unresolved)))
+        assertEquals("已完成 1 个步骤", stopped.executionHeadline(listOf(last)))
+    }
+
+    // Folding made groups long, and "失败 · 11 个步骤" read as if all eleven had failed when one had.
+    @Test fun `a partly failed group says how many steps failed`() {
+        val ok = step.copy(id = "ok", order = 1)
+        val bad = step.copy(id = "bad", outcome = "FAILED", order = 2)
+        val turn = empty.copy(phase = ExecutionPhase.CANCELLED, steps = listOf(ok, bad, step.copy(id = "z", order = 3)))
+        assertEquals("11 个步骤 · 1 个失败", turn.executionHeadline(listOf(ok, bad), 11))
+        assertEquals("失败 · 1 个步骤", turn.executionHeadline(listOf(bad)))
+    }
+
+    @Test fun `the headline counts folded device operations`() {
+        val first = step.copy(id = "a", order = 1)
+        assertEquals("已完成 3 个步骤", empty.copy(steps = listOf(first)).executionHeadline(listOf(first), 3))
+    }
+
+    // Replies were separated by stacks of three process rows, which took more of the page than the replies.
+    @Test fun `finished work between replies folds into one entry`() {
+        val turn = empty.copy(
+            messages = listOf(Message("m1", "one", order = 1), Message("m2", "two", order = 5)),
+            steps = listOf(step.copy(id = "a", order = 2), step.copy(id = "b", order = 4)),
+            deviceOperations = listOf(device("d", 3)))
+        val entries = turn.timelineEntries()
+        assertEquals(3, entries.size)
+        assertTrue(entries[0] is TimelineEntry.Reply)
+        assertTrue(entries[2] is TimelineEntry.Reply)
+        val process = entries[1] as TimelineEntry.Process
+        assertEquals(listOf("a", "b"), process.steps.map { it.id })
+        assertEquals(listOf("d"), process.devices.map { it.operation.operationId })
+    }
+
+    @Test fun `operations that need a look stay out of the folded summary`() {
+        val photo = DeviceResult("capture_resource", EffectState.NONE, buildJsonObject { put("mediaType", "image/jpeg") }, resourceRefs = listOf("r"))
+        listOf(
+            device("x", 2, DeviceStatus.UNCONFIRMED), device("x", 2, DeviceStatus.FAILED), device("x", 2, DeviceStatus.PARTIAL),
+            device("x", 2, DeviceStatus.CANCELLED), device("x", 2, DeviceStatus.RUNNING), device("x", 2, attention = true),
+            device("x", 2, result = photo, display = "capture"),
+        ).forEach { kept ->
+            val entries = empty.copy(steps = listOf(step.copy(id = "a", order = 1), step.copy(id = "b", order = 3)), deviceOperations = listOf(kept)).timelineEntries()
+            assertEquals(kept.operation.status.name, 3, entries.size)
+            assertEquals(kept, (entries[1] as TimelineEntry.Device).record)
+        }
+    }
+
+    // Saved reading positions and search hits may name any row that has since been folded into a summary.
+    @Test fun `a saved position on a folded row resolves to its summary`() {
+        val turn = empty.copy(steps = listOf(step.copy(id = "a", order = 1), step.copy(id = "b", order = 3)), deviceOperations = listOf(device("d", 2)))
+        val entry = turn.timelineEntries().single()
+        val summary = entry.itemKey(turn)
+        assertEquals("tools:t:a", summary)
+        assertEquals(summary, turn.timelineKeyAliases()["tools:t:b"])
+        assertEquals(summary, turn.timelineKeyAliases()["device:t:d"])
+    }
+
+    @Test fun `only the group a live run is in stays open`() {
+        val earlier = step.copy(id = "a", order = 1)
+        val current = step.copy(id = "b", outcome = null, order = 3)
+        val live = empty.copy(phase = ExecutionPhase.RUNNING, occupied = true, steps = listOf(earlier, current))
+        assertFalse(live.toolGroupExpanded(listOf(earlier)))
+        assertEquals("已完成 1 个步骤", live.executionHeadline(listOf(earlier)))
+        assertTrue(live.toolGroupExpanded(listOf(current)))
+        assertEquals("执行中", live.executionHeadline(listOf(current)))
+    }
+
+    @Test fun `copy and share close the turn rather than interrupting it`() {
+        val stopped = empty.copy(phase = ExecutionPhase.CANCELLED,
+            messages = listOf(Message("m", "reply", order = 1)),
+            steps = listOf(step.copy(id = "a", order = 2)), deviceOperations = listOf(device("d", 3)))
+        val conversation = Conversation(ConversationId("fixture"), NextTurnConfig(AgentId.CLAUDE_CODE, "fixture", null, "default", "fixture"))
+        val model = vm()
+        compose.setContent { MaterialTheme {
+            Timeline(ConversationDetail(conversation, listOf(stopped)), model, androidx.compose.ui.Modifier,
+                read = { _, _ -> }, hostActions = ConversationHostActions({}, {}), proposal = {}, onSelectPlugin = {})
+        } }
+        compose.onAllNodesWithTag("execution-flow").assertCountEquals(1)
+        compose.onNodeWithText("屏幕", substring = true).assertDoesNotExist()
+        val status = compose.onNodeWithTag("turn-status").getBoundsInRoot()
+        val copy = compose.onNodeWithContentDescription(UiStrings.copyReply).getBoundsInRoot()
+        assertTrue("copy at ${copy.top}, status ends ${status.bottom}", copy.top >= status.bottom)
     }
 
     @Test fun `dark conversation colors come from the shared palette`() {

@@ -76,6 +76,7 @@ class ConversationStyleTest {
         assertTrue(process < around)
         assertTrue(around < newTurn)
         assertEquals(0.dp, timelineGap(null, TimelineBlock.USER))
+        assertEquals(0.dp, timelineGap(TimelineBlock.PROSE, TimelineBlock.ACTIONS))
     }
 
     @Test fun `a stopped turn is one short row and still offers restore`() {

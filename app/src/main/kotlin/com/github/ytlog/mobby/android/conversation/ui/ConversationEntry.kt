@@ -931,14 +931,14 @@ internal fun Turn.showsSeparateActivity(): Boolean = occupied || pending
 }
 
 /** What an item is for the reader; it decides the air around the item. */
-internal enum class TimelineBlock { USER, PROSE, PROCESS, CARD }
+internal enum class TimelineBlock { USER, PROSE, PROCESS, CARD, ACTIONS }
 
 /** Process rows sit together as one unit, replies get reading room around them, and each new turn starts clearly. */
 internal fun timelineGap(previous: TimelineBlock?, next: TimelineBlock): Dp = when {
-    previous == null -> 0.dp
+    previous == null || next == TimelineBlock.ACTIONS -> 0.dp
     next == TimelineBlock.USER -> 28.dp
     previous == TimelineBlock.PROCESS && next == TimelineBlock.PROCESS -> 0.dp
-    previous == TimelineBlock.PROCESS || next == TimelineBlock.PROCESS -> 8.dp
+    previous == TimelineBlock.PROCESS || next == TimelineBlock.PROCESS -> 4.dp
     previous == TimelineBlock.USER -> 16.dp
     else -> 12.dp
 }
@@ -956,35 +956,35 @@ internal fun timelineGap(previous: TimelineBlock?, next: TimelineBlock): Dp = wh
 
 @Composable internal fun Timeline(detail: ConversationDetail, vm: ConversationViewModel, modifier: Modifier, followPadding: PaddingValues? = null, read: (String, String) -> Unit, hostActions: ConversationHostActions, proposal: (SkillProposal) -> Unit, onSelectPlugin: (String) -> Unit, initialFollow: Boolean? = null, onFollowChanged: (Boolean) -> Unit = {}, programs: EmptyPagePrograms? = null, bottomContentClearance: Dp = 0.dp) {
     val topFade = ConversationTopFade
-    val bottomFade = if (darkChrome()) ConversationEdgeFade else LightConversationBottomFade
+    // Context chips float just above the input, so text passing behind them fades out instead of colliding.
+    val bottomFade = if (bottomContentClearance > 0.dp) maxOf(ContextChipFade, bottomContentClearance) else if (darkChrome()) ConversationEdgeFade else LightConversationBottomFade
     val contentPadding = PaddingValues(start = 16.dp, top = topFade, end = 16.dp, bottom = maxOf(bottomFade, bottomContentClearance))
     val activityTurn = detail.turns.lastOrNull { it.occupied } ?: detail.turns.lastOrNull { it.showsSeparateActivity() }
+    val entries = detail.turns.associate { it.id to it.timelineEntries() }
     val keys = buildList {
         if (detail.hasEarlier) add("earlier")
         detail.turns.forEach { t ->
             add("user:${t.id.value}")
-            t.transcript().forEach { entry ->
-                when (entry) {
-                    is TranscriptEntry.Device -> add("device:${t.id.value}:${entry.record.operation.operationId}")
-                    is TranscriptEntry.Reply -> add("message:${t.id.value}:${entry.message.id}")
-                    is TranscriptEntry.ToolRun -> add("tools:${t.id.value}:${entry.steps.first().id}")
-                }
-            }
+            entries.getValue(t.id).forEach { add(it.itemKey(t)) }
             t.permissions.forEach { add("permission:${t.id.value}:${it.id}:${it.revision}") }
             t.skillProposals.forEach { add("artifact:${t.id.value}:${it.ref}") }
+            if (t.progress != null) add("notice:${t.id.value}")
             if (t.creatingSkill && !t.occupied && t.skillProposals.isEmpty() && !t.proposalsLoading) add("creator:${t.id.value}")
-            if (t.queued || t.failure != null || t.phase in listOf(ExecutionPhase.CANCELLED, ExecutionPhase.TIMED_OUT, ExecutionPhase.INTERRUPTED, ExecutionPhase.OUTCOME_UNKNOWN, ExecutionPhase.AWAITING_APPROVAL)) add("status:${t.id.value}")
+            if (t.reportsOutcome()) add("status:${t.id.value}")
+            if (t.replyActionsVisible() && entries.getValue(t.id).any { it is TimelineEntry.Reply }) add("reply-actions:${t.id.value}")
         }
         activityTurn?.let { add("activity:${it.id.value}") }
     }
-    val initial = keys.indexOf(detail.conversation.anchor).coerceAtLeast(0)
+    val aliases = detail.turns.fold(emptyMap<String, String>()) { all, turn -> all + turn.timelineKeyAliases() }
+    fun indexOfKey(key: String?) = keys.indexOf(aliases[key] ?: key)
+    val initial = indexOfKey(detail.conversation.anchor).coerceAtLeast(0)
     val list = rememberLazyListState(initial, detail.conversation.anchorOffset.coerceAtLeast(0))
     var follow by remember { mutableStateOf(initialFollow ?: (detail.conversation.anchor == null)) }
     SideEffect { onFollowChanged(follow) }
     val target by vm.readingTarget.collectAsStateWithLifecycle()
     LaunchedEffect(target, keys) {
         val jump = target?.takeIf { it.conversation == detail.conversation.id } ?: return@LaunchedEffect
-        val index = keys.indexOf(jump.key)
+        val index = indexOfKey(jump.key)
         if (index >= 0) {
             follow = false
             list.scrollToItem(index)
@@ -1033,31 +1033,21 @@ internal fun timelineGap(previous: TimelineBlock?, next: TimelineBlock): Dp = wh
                 }
             }
             detail.turns.forEach { turn ->
-                val entries = turn.transcript()
-                val lastReply = entries.filterIsInstance<TranscriptEntry.Reply>().lastOrNull()?.message?.id
-                val lastTools = entries.filterIsInstance<TranscriptEntry.ToolRun>().lastOrNull()?.steps?.firstOrNull()?.id
+                val turnEntries = entries.getValue(turn.id)
+                val lastReply = turnEntries.filterIsInstance<TimelineEntry.Reply>().lastOrNull()?.message
+                val lastTools = turnEntries.filterIsInstance<TimelineEntry.Process>().lastOrNull { it.steps.isNotEmpty() }
                 block("user:${turn.id.value}", TimelineBlock.USER) { Row(Modifier.fillMaxWidth().padding(start = 48.dp), horizontalArrangement = Arrangement.End) { UserMessageBubble { androidx.compose.foundation.text.selection.SelectionContainer { Text(turn.userText) }; AttachmentList(turn.attachments, turn.workspace, vm) } } }
-                entries.forEach { entry ->
+                turnEntries.forEach { entry ->
                     when (entry) {
-                        is TranscriptEntry.Device -> block("device:${turn.id.value}:${entry.record.operation.operationId}", TimelineBlock.PROCESS) {
+                        is TimelineEntry.Device -> block(entry.itemKey(turn), TimelineBlock.PROCESS) {
                             com.github.ytlog.mobby.android.deviceoperation.ConversationDeviceCard(entry.record.operation, turn, detail.conversation, vm)
                         }
-                        is TranscriptEntry.ToolRun -> block("tools:${turn.id.value}:${entry.steps.first().id}", TimelineBlock.PROCESS) {
-                            ExecutionFlow(turn, vm, entry.steps, showExtras = entry.steps.first().id == lastTools, read)
+                        is TimelineEntry.Process -> block(entry.itemKey(turn), TimelineBlock.PROCESS) {
+                            ExecutionFlow(turn, vm, entry.steps, showExtras = entry === lastTools, devices = entry.devices,
+                                deviceRow = { com.github.ytlog.mobby.android.deviceoperation.ConversationDeviceCard(it.operation, turn, detail.conversation, vm) }, read = read)
                         }
-                        is TranscriptEntry.Reply -> block("message:${turn.id.value}:${entry.message.id}", TimelineBlock.PROSE) {
-                            Column {
-                                ReplyContent(entry.message.text, streaming = turn.occupied && turn.phase != ExecutionPhase.CANCELLING && entry.message.id == lastReply, read = read)
-                                if (entry.message.id == lastReply && turn.replyActionsVisible()) {
-                                    val reply = entry.message.text
-                                    // Pulled left by the button's own inset so the glyph lines up with the text.
-                                    Row(Modifier.offset(x = (-11).dp)) {
-                                        val clipboard = LocalClipboardManager.current
-                                        ActionIcon(AppStrings.copyReply, { clipboard.setText(AnnotatedString(reply)) }, AppIcons.Copy, tint = replyActionColor(), buttonSize = 40.dp, glyphSize = 18.dp)
-                                        ActionIcon(AppStrings.shareReply, { hostActions.share(reply) }, AppIcons.Share, tint = replyActionColor(), buttonSize = 40.dp, glyphSize = 18.dp)
-                                    }
-                                }
-                            }
+                        is TimelineEntry.Reply -> block(entry.itemKey(turn), TimelineBlock.PROSE) {
+                            ReplyContent(entry.message.text, streaming = turn.occupied && turn.phase != ExecutionPhase.CANCELLING && entry.message.id == lastReply?.id, read = read)
                         }
                     }
                 }
@@ -1074,10 +1064,18 @@ internal fun timelineGap(previous: TimelineBlock?, next: TimelineBlock): Dp = wh
                 if (turn.creatingSkill && !turn.occupied && turn.skillProposals.isEmpty() && !turn.proposalsLoading) block("creator:${turn.id.value}", TimelineBlock.CARD) {
                     Text(AppStrings.noSkillDraftToSaveThisTurnContinueDescribing, style = MaterialTheme.typography.bodySmall)
                 }
-                if ("status:${turn.id.value}" in keys) block("status:${turn.id.value}", TimelineBlock.CARD) {
+                if (turn.reportsOutcome()) block("status:${turn.id.value}", TimelineBlock.CARD) {
                     TurnStatus(turn,
                         onCancelQueued = { vm.enqueue { vm.actions.cancelQueued(turn.id) } },
                         onRestore = { vm.enqueue { vm.actions.restoreDraft(detail.conversation.id, turn) } })
+                }
+                if (lastReply != null && turn.replyActionsVisible()) block("reply-actions:${turn.id.value}", TimelineBlock.ACTIONS) {
+                    // Pulled left by the button's own inset so the glyph lines up with the text.
+                    Row(Modifier.offset(x = (-11).dp)) {
+                        val clipboard = LocalClipboardManager.current
+                        ActionIcon(AppStrings.copyReply, { clipboard.setText(AnnotatedString(lastReply.text)) }, AppIcons.Copy, tint = replyActionColor(), buttonSize = 40.dp, glyphSize = 18.dp)
+                        ActionIcon(AppStrings.shareReply, { hostActions.share(lastReply.text) }, AppIcons.Share, tint = replyActionColor(), buttonSize = 40.dp, glyphSize = 18.dp)
+                    }
                 }
             }
             activityTurn?.let { turn ->
@@ -1128,6 +1126,7 @@ internal suspend fun LazyListState.followConversationTail() {
 private val ConversationEdgeFade = 28.dp
 private val ConversationTopFade = 16.dp
 private val LightConversationBottomFade = 32.dp
+private val ContextChipFade = 72.dp
 
 /** Softens the list where it meets the toolbar buttons and the input, without covering the jump button. */
 private fun Modifier.conversationEdgeFade(color: Color, topFade: Dp, bottomFade: Dp) = drawWithContent {
