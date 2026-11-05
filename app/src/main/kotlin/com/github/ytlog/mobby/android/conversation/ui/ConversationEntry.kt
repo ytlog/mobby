@@ -793,7 +793,14 @@ internal fun LazyListScope.programSection(shortcuts: List<ProgramShortcut>, quer
     val hasDraftContent = composer.value.text.isNotBlank() || detail.conversation.draft.attachments.isNotEmpty()
     val micAvailable = !stop && composer.value.text.isEmpty() && detail.conversation.draft.attachments.isEmpty()
     LaunchedEffect(detail.conversation.id) { capture.error = null }
-    LaunchedEffect(micAvailable, stop) { if (!micAvailable || stop) voiceMode = false }
+    LaunchedEffect(stop, unavailable) { if (stop || unavailable) voiceMode = false }
+    fun enterVoice() {
+        hint = null
+        capture.error = null
+        voiceMode = true
+        keyboard?.hide()
+        focus.clearFocus()
+    }
     val selectedCapabilities = detail.conversation.draft.capabilities + listOfNotNull(detail.conversation.creator)
     BoxWithConstraints(modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth()) {
@@ -832,13 +839,7 @@ internal fun LazyListScope.programSection(shortcuts: List<ProgramShortcut>, quer
                 onStop = { active?.execution?.let(vm::stop) },
                 onSend = { sendAndDismiss() },
                 onInsert = { sendAndDismiss(MessageDeliveryMode.INSERT) },
-                onEnterVoice = {
-                    hint = null
-                    capture.error = null
-                    voiceMode = true
-                    keyboard?.hide()
-                    focus.clearFocus()
-                },
+                onEnterVoice = ::enterVoice,
                 onExitVoice = { hint = null; voiceMode = false; openKeyboard = true },
                 onHoldTap = { hint = AppStrings.holdToSpeak },
                 onHoldStart = ::beginHold,
@@ -857,7 +858,8 @@ internal fun LazyListScope.programSection(shortcuts: List<ProgramShortcut>, quer
                 textField = {
                     androidx.compose.foundation.text.BasicTextField(
                         composer.value, vm::edit,
-                        Modifier.weight(1f).heightIn(min = ToolbarControl).padding(vertical = 10.dp).focusRequester(focusRequester),
+                        Modifier.weight(1f).heightIn(min = ToolbarControl).padding(vertical = 10.dp)
+                            .enterVoiceOnLongPress(!unavailable && !stop, ::enterVoice).focusRequester(focusRequester),
                         enabled = !unavailable, maxLines = 5,
                         textStyle = MaterialTheme.typography.bodyLarge.copy(color = onButtonColor()),
                         cursorBrush = SolidColor(onButtonColor()),

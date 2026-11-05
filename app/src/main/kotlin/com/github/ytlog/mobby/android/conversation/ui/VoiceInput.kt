@@ -40,6 +40,7 @@ import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalWindowInfo
@@ -51,6 +52,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
@@ -453,6 +455,32 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectVo
     }
 }
 
+/** Observe the down without consuming it, so tapping the field still edits text. */
+@Composable
+internal fun Modifier.enterVoiceOnLongPress(enabled: Boolean, onEnterVoice: () -> Unit): Modifier {
+    if (!enabled) return this
+    val enter by rememberUpdatedState(onEnterVoice)
+    return pointerInput(Unit) {
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+            // Switch before the text field's own hold opens its selection toolbar.
+            val voiceTimeout = (viewConfiguration.longPressTimeoutMillis - 32L).coerceAtLeast(1L)
+            val cancelled = withTimeoutOrNull(voiceTimeout) {
+                while (true) {
+                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                    val pointer = event.changes.firstOrNull { it.id == down.id }
+                    if (pointer == null || !pointer.pressed || event.changes.count { it.pressed } > 1 ||
+                        (pointer.position - down.position).getDistance() > viewConfiguration.touchSlop) break
+                }
+                true
+            }
+            if (cancelled == null) enter()
+        }
+    }.semantics {
+        onLongClick(label = AppStrings.voiceInput) { enter(); true }
+    }
+}
+
 @Composable internal fun VoiceComposerBar(
     voiceMode: Boolean,
     recording: Boolean,
@@ -477,7 +505,7 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectVo
     onHoldEnd: (Boolean) -> Unit,
     textField: @Composable RowScope.() -> Unit,
 ) {
-    val hold = voiceMode && micAvailable && !stop
+    val hold = voiceMode && !stop
     var deliveryMenu by remember { mutableStateOf(false) }
     Box(Modifier.fillMaxWidth()) {
         if (recording) VoiceRecordingOverlay(cancelArmed, level, transcript, Modifier.align(Alignment.BottomCenter))

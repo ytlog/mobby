@@ -13,6 +13,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -22,6 +23,8 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.longClick
+import androidx.compose.ui.test.click
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -52,6 +55,25 @@ class VoiceInputUiTest {
         compose.onNodeWithContentDescription("键盘输入").performClick()
         compose.onNodeWithText("描述任务，或添加上下文").assertIsDisplayed()
         compose.onNodeWithContentDescription("语音输入").assertIsDisplayed()
+    }
+
+    @Test fun `holding the draft field switches to voice without starting a recording`() {
+        var recordings = 0
+        compose.setContent {
+            var voice by remember { mutableStateOf(false) }
+            MaterialTheme {
+                bar(voiceMode = voice, micAvailable = false, hasDraftContent = true,
+                    onEnterVoice = { voice = true }, onExitVoice = { voice = false },
+                    onHoldStart = { recordings++ })
+            }
+        }
+        compose.onNodeWithTag("draft-field").performTouchInput { click() }
+        compose.onNodeWithTag("draft-field").assertIsDisplayed()
+        compose.onNodeWithTag("draft-field").performTouchInput { longClick() }
+        compose.onNodeWithText("按住说话").assertIsDisplayed()
+        compose.onNodeWithContentDescription("键盘输入").performClick()
+        compose.onNodeWithText("已有草稿").assertIsDisplayed()
+        assertEquals(0, recordings)
     }
 
     @Test fun `running agent replaces stop with one send action while draft has content`() {
@@ -194,6 +216,7 @@ class VoiceInputUiTest {
     @androidx.compose.runtime.Composable
     private fun bar(
         voiceMode: Boolean = false,
+        micAvailable: Boolean = true,
         recording: Boolean = false,
         cancelArmed: Boolean = false,
         stop: Boolean = false,
@@ -216,7 +239,7 @@ class VoiceInputUiTest {
             level = 0.2f,
             transcript = "",
             enabled = true,
-            micAvailable = true,
+            micAvailable = micAvailable,
             stop = stop,
             stopEnabled = true,
             hasDraftContent = hasDraftContent,
@@ -231,7 +254,11 @@ class VoiceInputUiTest {
             onHoldStart = onHoldStart,
             onHoldMove = onHoldMove,
             onHoldEnd = onHoldEnd,
-            textField = { Text("描述任务，或添加上下文") },
+            textField = {
+                if (micAvailable) Text("描述任务，或添加上下文")
+                else androidx.compose.foundation.text.BasicTextField("已有草稿", {},
+                    Modifier.weight(1f).testTag("draft-field").enterVoiceOnLongPress(!stop, onEnterVoice))
+            },
         )
     }
 }
