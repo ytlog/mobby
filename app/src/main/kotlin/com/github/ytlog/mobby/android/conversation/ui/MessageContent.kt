@@ -152,6 +152,9 @@ internal val ProcessTextSize = 13.sp
 /** Secondary lines of a run: small enough to sit clearly below the reply text they accompany. */
 @Composable internal fun processTextStyle(): TextStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = ProcessTextSize, lineHeight = 18.sp)
 
+/** Longer process text keeps the same size with a more open line height. */
+@Composable internal fun processDetailStyle(): TextStyle = processTextStyle().copy(lineHeight = 20.sp)
+
 /**
  * One quiet line of a run, its text starting at the same edge as the reply text. Rows carry no icon: words say what
  * happened and color says when it needs a look.
@@ -230,16 +233,20 @@ internal val ProcessTextSize = 13.sp
     )
     if (open) {
         val body = view.detail
-        Column(Modifier.fillMaxWidth().padding(start = 24.dp, bottom = 8.dp)) {
-            when {
-                step is Step.Thinking -> if (body.isBlank()) {
-                    if (!liveThought) Text(AppStrings.noOutput, style = MaterialTheme.typography.bodySmall, color = ink)
-                } else ReplyContent(body, streaming = liveThought, read = read)
-                view.terminal -> CodeContent(view.title, body.ifBlank { AppStrings.noOutput }, read, toolCallSurface(), ink)
-                ToolPresentation.looksLikeMarkdown(body) -> ReplyContent(body, streaming = false, read = read)
-                else -> SelectionContainer {
-                    Text(body.ifBlank { AppStrings.noOutput }, style = MaterialTheme.typography.bodySmall, color = ink,
-                        modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp).verticalScroll(rememberScrollState()))
+        val detailStyle = processDetailStyle()
+        // Detail belongs to the run, not the conversation: small and quiet, starting where its row's title starts.
+        CompositionLocalProvider(LocalReplyDetailStyle provides detailStyle, LocalContentColor provides ink) {
+            Column(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                when {
+                    step is Step.Thinking -> if (body.isBlank()) {
+                        if (!liveThought) Text(AppStrings.noOutput, style = detailStyle, color = ink)
+                    } else ReplyContent(body, streaming = liveThought, read = read)
+                    view.terminal -> CodeContent(view.title, body.ifBlank { AppStrings.noOutput }, read, toolCallSurface(), ink)
+                    ToolPresentation.looksLikeMarkdown(body) -> ReplyContent(body, streaming = false, read = read)
+                    else -> SelectionContainer {
+                        Text(body.ifBlank { AppStrings.noOutput }, style = detailStyle, color = ink,
+                            modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp).verticalScroll(rememberScrollState()))
+                    }
                 }
             }
         }

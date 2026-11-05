@@ -177,6 +177,35 @@ class ExecutionFlowTest {
         assertEquals(lefts.toString(), 1, lefts.distinct().size)
     }
 
+    private fun textStyleOf(text: String): androidx.compose.ui.text.TextStyle {
+        val results = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+        compose.onNodeWithText(text).fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult].action!!(results)
+        return results.single().layoutInput.style
+    }
+
+    // An opened thought was rendered exactly like a reply: same size and color, and indented further than its row.
+    @Test fun `opened thinking reads as quiet process detail rather than as a reply`() {
+        val thought = Step.Thinking("think", "fixture thought", "SUCCEEDED", order = 1)
+        val reply = "fixture reply"
+        val turn = empty.copy(steps = listOf(thought), expandedSteps = setOf("tools:think", "think"))
+        val model = vm()
+        var secondary = Color.Unspecified
+        compose.setContent { MaterialTheme(colorScheme = MobbyLightScheme, typography = MobbyTypography) {
+            secondary = toolCallInk()
+            androidx.compose.foundation.layout.Column {
+                ExecutionFlow(turn, model, turn.steps) { _, _ -> }
+                ReplyContent(reply) { _, _ -> }
+            }
+        } }
+        compose.waitUntil(5_000) { compose.onAllNodesWithText("fixture thought").fetchSemanticsNodes().isNotEmpty() && compose.onAllNodesWithText(reply).fetchSemanticsNodes().isNotEmpty() }
+        val detail = textStyleOf("fixture thought")
+        assertEquals(ProcessTextSize, detail.fontSize)
+        assertEquals(secondary, detail.color)
+        assertEquals(MobbyTypography.bodyLarge.fontSize, textStyleOf(reply).fontSize)
+        val titleLeft = compose.onNode(hasText("思考"), useUnmergedTree = true).getBoundsInRoot().left
+        assertEquals(titleLeft, compose.onNodeWithText("fixture thought", useUnmergedTree = true).getBoundsInRoot().left)
+    }
+
     @Test fun `the headline counts folded device operations`() {
         val first = step.copy(id = "a", order = 1)
         assertEquals("已完成 3 个步骤", empty.copy(steps = listOf(first)).executionHeadline(listOf(first), 3))

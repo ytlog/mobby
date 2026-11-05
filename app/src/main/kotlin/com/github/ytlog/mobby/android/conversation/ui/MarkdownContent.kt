@@ -52,6 +52,9 @@ internal object ReplyMarkdown {
     }.getOrDefault(false)
 }
 
+/** Text style for Markdown shown as process detail; null for a reply, which uses the full reading size. */
+internal val LocalReplyDetailStyle = staticCompositionLocalOf<TextStyle?> { null }
+
 internal val LocalReplyParser = staticCompositionLocalOf<(String) -> Node> { ReplyMarkdown::parse }
 @OptIn(ExperimentalCoroutinesApi::class)
 private val replyParsingDispatcher = Dispatchers.Default.limitedParallelism(1)
@@ -77,7 +80,7 @@ private data class ParsedReply(val source: String, val document: Node)
 @Composable private fun MarkdownBlocks(nodes: List<Node>, read: (String, String) -> Unit) {
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         nodes.forEachIndexed { index, node -> when (node) {
-            is Heading -> MarkdownInline(node, when (node.level) {
+            is Heading -> MarkdownInline(node, LocalReplyDetailStyle.current?.copy(fontWeight = FontWeight.SemiBold) ?: when (node.level) {
                 1 -> MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp, lineHeight = 28.sp, fontWeight = FontWeight.SemiBold)
                 2 -> MaterialTheme.typography.titleLarge.copy(fontSize = 18.sp, lineHeight = 26.sp, fontWeight = FontWeight.SemiBold)
                 else -> MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
@@ -110,7 +113,7 @@ private data class ParsedReply(val source: String, val document: Node)
             val children = ReplyMarkdown.children(item)
             val task = children.filterIsInstance<TaskListItemMarker>().firstOrNull()
             Row(Modifier.fillMaxWidth()) {
-                Text(if (task != null) if (task.isChecked) "☑" else "☐" else if (start == null) "•" else "${start + index}.", Modifier.widthIn(min = 20.dp).padding(end = 4.dp), style = MaterialTheme.typography.bodyLarge, color = toolCallInk())
+                Text(if (task != null) if (task.isChecked) "☑" else "☐" else if (start == null) "•" else "${start + index}.", Modifier.widthIn(min = 20.dp).padding(end = 4.dp), style = LocalReplyDetailStyle.current ?: MaterialTheme.typography.bodyLarge, color = toolCallInk())
                 Box(Modifier.weight(1f)) { MarkdownBlocks(children.filterNot { it is TaskListItemMarker }, read) }
             }
         }
@@ -158,7 +161,7 @@ private data class ParsedReply(val source: String, val document: Node)
         .border(0.5.dp, outline).padding(10.dp)) {
         cell ?: return@Box
         val alignment = when (cell.alignment) { TableCell.Alignment.CENTER -> androidx.compose.ui.text.style.TextAlign.Center; TableCell.Alignment.RIGHT -> androidx.compose.ui.text.style.TextAlign.End; else -> androidx.compose.ui.text.style.TextAlign.Start }
-        MarkdownInline(cell, MaterialTheme.typography.bodyMedium.copy(fontWeight = if (cell.isHeader) FontWeight.SemiBold else FontWeight.Normal, textAlign = alignment))
+        MarkdownInline(cell, (LocalReplyDetailStyle.current ?: MaterialTheme.typography.bodyMedium).copy(fontWeight = if (cell.isHeader) FontWeight.SemiBold else FontWeight.Normal, textAlign = alignment))
     }
 }
 
@@ -190,7 +193,7 @@ private fun spread(base: List<Int>, weights: List<Int>, extra: Int): List<Int> {
     }
 }
 
-@Composable private fun MarkdownInline(node: Node, style: TextStyle = MaterialTheme.typography.bodyLarge, modifier: Modifier = Modifier) {
+@Composable private fun MarkdownInline(node: Node, style: TextStyle = LocalReplyDetailStyle.current ?: MaterialTheme.typography.bodyLarge, modifier: Modifier = Modifier) {
     val linkColor = MaterialTheme.colorScheme.primary
     val codeBackground = MaterialTheme.colorScheme.surfaceContainer
     val value = remember(node, linkColor, codeBackground) {
