@@ -86,3 +86,11 @@ python3 runtime/device-plugins/probe_screen.py \
 在用户已下载的 `Medium_Phone` API 37 模拟器上，先复现了真实通知配对的前台服务权限缺失：终端模块的移除规则同时删掉了设备插件的 `dataSync` 权限。将规则限定到 `com.libtermux` 后，真实无线调试配对测试通过（4.314 秒）。API 37 的 UiAutomation 要求工作进程有主 Looper；加入主消息循环后，工作进程探针通过。复用已配对身份、使用系统页面的连接端口，正式 DeviceHost 回归通过（20.229 秒）：启动设置和测试 App、两种点击、中文输入、真实滚动、页内返回、拒绝密码输入、应用列表、最近任务及保留计数的任务恢复、mobby 主屏预览与亮屏、主 Activity 保持 resumed 和结束释放副屏。自动发现端口在模拟器重启后曾超时；未更改自动发现和手动连接规则。模拟器 Debug APK 曾显示 16 KB 兼容性提示；本轮没有验收所有 native 库、真实 Agent 任务或 root 后端。最终宿主导航仍待小米真机回归。
 
 本轮 Debug 与 AndroidTest 构建、App/设备插件/Termux 单测、lint 和 Release R8 通过：418 项单测通过、2 项跳过，Node 网关/SDK 30 项通过。现有 GraalVM 17 的 Android JDK image transform 再次失败，最终使用已有 JBR 21，Java/Kotlin 目标仍为 17。Python 49 项中 47 项通过；剩下两项为本轮修改前已存在的模块边界检查失败：`ScreenSetupEnvironment.kt` 引用设备服务和 `GlassPanelInteractionTest.kt` 的命名，本轮不改动这些文件。
+
+### 2026-11-05 副屏工作进程生命周期
+
+参考 [Shizuku 的服务启动与断线处理](https://github.com/RikkaApps/Shizuku/blob/master/starter/src/main/java/moe/shizuku/starter/ServiceStarter.java)，mobby 通过现有的本机认证 socket 划分工作进程的生命周期。认证前的空连接、截断帧和无效 JSON 只关闭本次连接，工作进程在总启动时限内继续等待合法客户端。握手限制报文大小及每次尝试的总时间。认证后以该连接为副屏的所有者，连接结束即释放显示。ADB 和 root 分别要求工作进程 UID 为 2000 和 0。
+
+创建或释放失败、连接超时、显示失效或返回错误显示 ID 时，宿主关闭该连接并清除预览，下一次使用需要重新连接。API 37 模拟器探针先复现了认证前断开导致合法连接失败，再验证空连接和无效 JSON 后仍可打开副屏、关闭后重开，以及断线后工作进程退出且无残留显示。
+
+使用已有配对身份和手动连接端口，API 37 模拟器上的 mobby 正式内置 ADB 回归通过（27.448 秒）。Debug 与 AndroidTest 构建、相关单测和 lint 通过，419 项单测通过、2 项跳过。小米真机和 root 后端尚待复测。

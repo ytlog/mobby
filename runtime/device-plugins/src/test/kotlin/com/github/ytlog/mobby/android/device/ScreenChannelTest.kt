@@ -41,6 +41,14 @@ class ScreenChannelTest {
         }
     }
 
+    @Test fun `adb mode rejects a root identity`() {
+        withServer { endpoint, server ->
+            val worker = server.submit { read(); write(JSONObject().put("ok", true).put("uid", 0)) }
+            assertThrows(IllegalStateException::class.java) { ScreenChannel(endpoint, root = false) }
+            worker.get(2, TimeUnit.SECONDS)
+        }
+    }
+
     @Test fun `broken transport closes and never retries an input`() {
         withServer { endpoint, server ->
             val worker = server.submit {

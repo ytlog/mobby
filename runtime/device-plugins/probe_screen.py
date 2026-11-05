@@ -44,6 +44,12 @@ def probe(adb, jar, package):
         if endpoint is None:
             raise RuntimeError('worker did not start')
         forwarded = command('forward', 'tcp:0', 'tcp:' + str(endpoint['port']))
+        # An abandoned or malformed hello must not end the worker before the host attaches.
+        for hello in (b'', struct.pack('>i', 1) + b'{'):
+            with socket.create_connection(('127.0.0.1', int(forwarded)), timeout=5) as abandoned:
+                abandoned.sendall(hello)
+                abandoned.shutdown(socket.SHUT_WR)
+                assert abandoned.recv(1) == b'', 'unauthenticated client received a response'
         with socket.create_connection(('127.0.0.1', int(forwarded)), timeout=20) as connection:
             stream = connection.makefile('rwb', buffering=0)
             def exact(size):
@@ -116,9 +122,14 @@ def probe(adb, jar, package):
             assert request({'action': 'snapshot'})['packageName'] == package
             request({'action': 'back'})
             request({'action': 'close'})
-            print(json.dumps({'workerUid': endpoint['uid'], 'displayId': display, 'package': package,
+            assert request({'action': 'open'})['displayId'] > 0
+            stream.close()
+            stream = None
+        assert process.wait(timeout=10) == 0, 'worker did not exit after host disconnected'
+        assert 'mobby-agent' not in command('shell', 'dumpsys', 'display'), 'display survived host disconnect'
+        print(json.dumps({'workerUid': endpoint['uid'], 'displayId': display, 'package': package,
                               'screenshot': observed['screenshotStatus'], 'nodeTree': bool(observed['text']),
-                              'invalidInputRefused': True, 'virtualTaskRestored': True, 'tapAndSwipeDelivered': package in ('com.android.settings', 'dev.mobby.screenprobe', 'com.github.ytlog.mobby.android.test'), 'closed': True}))
+                              'invalidInputRefused': True, 'virtualTaskRestored': True, 'tapAndSwipeDelivered': package in ('com.android.settings', 'dev.mobby.screenprobe', 'com.github.ytlog.mobby.android.test'), 'closed': True, 'disconnectReleasedDisplay': True}))
     finally:
         if stream:
             stream.close()

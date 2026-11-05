@@ -17,6 +17,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.DataInputStream
@@ -31,7 +32,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 object ScreenControl {
     private val changes = MutableStateFlow(ScreenControlState())
     val state: StateFlow<ScreenControlState> = changes
-    private var channel: ScreenChannel? = null
+    @Volatile private var channel: ScreenChannel? = null
     private var release: (() -> Unit)? = null
     private var leases = 0
     private var connecting = false
@@ -172,12 +173,11 @@ object ScreenControl {
             val connected = channel ?: error(AppStrings.connectScreenBackend)
             val opened = request(connected, "open")
             val id = opened.getInt("displayId")
-            check(id > 0) { "Virtual screen must not be the main display" }
             val navigation = VirtualScreenNavigation(context, id)
             changes.value = state.value.copy(active = true, displayId = id, jpeg = null, error = null)
             object : ScreenSession {
                 private fun onDisplay(action: String, args: Map<String, String> = emptyMap()) =
-                    request(connected, action, args).also { check(it.getInt("displayId") == id) { "Virtual display changed" } }
+                    request(connected, action, args, expectedDisplay = id)
 
                 private fun openNavigation(home: Boolean): JSONObject {
                     val entries = if (home) onDisplay("apps").getString("text").lineSequence()
@@ -214,15 +214,18 @@ object ScreenControl {
                         }
                         checkActive()
                         val jpeg = result.optString("jpeg").takeIf(String::isNotEmpty)?.let { Base64.decode(it, Base64.NO_WRAP) }
-                        changes.value = state.value.copy(jpeg = jpeg ?: state.value.jpeg, packageName = result.optString("packageName"), error = null)
+                        changes.update { current ->
+                            if (current.active && current.displayId == id)
+                                current.copy(jpeg = jpeg ?: current.jpeg, packageName = result.optString("packageName"), error = null)
+                            else current
+                        }
                         ScreenAccessService.Observation(result.optString("text"), result.optString("packageName"),
                             result.getLong("observedAtEpochMillis"), ScreenScreenshot(jpeg, result.optString("screenshotStatus", "not_requested")), mode.name.lowercase(), id)
                     }
                 override fun inspect(query: String?, expectedInput: String?): ScreenEvidence = ScreenCoordinator.chatAction {
                     requireUnlocked(context)
                     val args = buildMap { query?.let { put("query", it) }; expectedInput?.let { put("expectedInput", it) } }
-                    val result = request(connected, "inspect", args)
-                    check(result.getInt("displayId") == id)
+                    val result = onDisplay("inspect", args)
                     ScreenEvidence(result.getString("packageName"), result.getString("shape"), result.getInt("matches"),
                         result.getInt("editable"), result.getBoolean("focusedEditable"), result.getBoolean("inputMatches"), result.getBoolean("passwordInput"))
                 }
@@ -249,9 +252,12 @@ object ScreenControl {
         val connected = synchronized(this@ScreenControl) { channel.takeIf { state.value.active } } ?: return@withContext
         synchronized(connected) {
             if (!state.value.active) return@synchronized
-            val result = request(connected, "frame")
+            val id = state.value.displayId ?: return@synchronized
+            val result = request(connected, "frame", expectedDisplay = id)
             val bytes = result.optString("jpeg").takeIf(String::isNotEmpty)?.let { Base64.decode(it, Base64.NO_WRAP) }
-            if (state.value.displayId == result.getInt("displayId")) changes.value = state.value.copy(jpeg = bytes)
+            changes.update { current ->
+                if (current.active && current.displayId == id) current.copy(jpeg = bytes) else current
+            }
         }
     }
 
@@ -262,7 +268,8 @@ object ScreenControl {
                 com.github.ytlog.mobby.android.runtime.api.device.DeviceErrorCode.UNAVAILABLE, AppStrings.unlockForVirtualScreen)
     }
 
-    private fun request(connection: ScreenChannel, action: String, args: Map<String, String> = emptyMap()): JSONObject {
+    private fun request(connection: ScreenChannel, action: String, args: Map<String, String> = emptyMap(),
+        expectedDisplay: Int? = null): JSONObject {
         try {
             val result = connection.request(action, args)
             if (!result.optBoolean("ok") && result.optString("cause") == "TimeoutException")
@@ -270,11 +277,28 @@ object ScreenControl {
             if (!result.optBoolean("ok") && result.optString("cause") == "UnsupportedOperationException")
                 com.github.ytlog.mobby.android.runtime.api.device.deviceFailure(
                     com.github.ytlog.mobby.android.runtime.api.device.DeviceErrorCode.UNSUPPORTED_CAPABILITY)
-            check(result.getBoolean("ok")) { result.optString("error", "virtual_screen_failed") }
+            check(result.getBoolean("ok")) {
+                if (result.optString("detail") in setOf("invalid_display", "virtual_screen_closed")) connection.close()
+                result.optString("error", "virtual_screen_failed")
+            }
+            val display = result.optInt("displayId", -1)
+            if ((action == "open" && display <= 0) || (expectedDisplay != null && display != expectedDisplay)) {
+                connection.close()
+                error("virtual_display_identity")
+            }
             return result
         } catch (failure: Exception) {
-            changes.value = state.value.copy(error = AppStrings.virtualScreenOperationFailed,
-                connected = connection.alive)
+            // A failed lifecycle operation leaves ownership uncertain. Closing the socket
+            // makes the worker release its display, even if the response was lost.
+            if (action in setOf("open", "close", "ping") || failure is java.util.concurrent.TimeoutException) connection.close()
+            changes.update { current ->
+                when {
+                    channel !== connection -> current
+                    connection.alive -> current.copy(error = AppStrings.virtualScreenOperationFailed)
+                    else -> current.copy(connected = false, active = false, displayId = null, jpeg = null,
+                        packageName = "", error = AppStrings.virtualScreenOperationFailed)
+                }
+            }
             throw failure
         }
     }
@@ -309,7 +333,7 @@ internal class ScreenChannel(endpoint: JSONObject, root: Boolean) : AutoCloseabl
             send(JSONObject().put("token", endpoint.getString("token")))
             val hello = receive()
             check(hello.getBoolean("ok"))
-            check(if (root) hello.getInt("uid") == 0 else hello.getInt("uid") in setOf(0, 2000))
+            check(hello.getInt("uid") == if (root) 0 else 2000) { "screen_worker_identity" }
         } catch (failure: Exception) { socket.close(); throw failure }
     }
     @Synchronized fun request(action: String, args: Map<String, String>): JSONObject {
