@@ -79,6 +79,7 @@ class ScreenControlSettingsActivity : ComponentActivity() {
     var pendingCheck by remember { mutableStateOf<ScreenSetupStep?>(null) }
     var developerConfirmed by remember { mutableStateOf(false) }
     var wirelessConfirmed by remember { mutableStateOf(false) }
+    var openWirelessAfterDeveloper by remember { mutableStateOf(false) }
     var forcePair by remember { mutableStateOf(false) }
     var connectAfterPairing by remember { mutableStateOf(false) }
     var pairingSuccessAtStart by remember { mutableLongStateOf(0) }
@@ -111,6 +112,7 @@ class ScreenControlSettingsActivity : ComponentActivity() {
     fun previous() {
         focus.clearFocus()
         keyboard?.hide()
+        if (step == ScreenSetupStep.DEVELOPER || step == ScreenSetupStep.WIRELESS) openWirelessAfterDeveloper = false
         if (!step.auxiliary) {
             pendingCheck = null
             connectAfterPairing = false
@@ -149,8 +151,22 @@ class ScreenControlSettingsActivity : ComponentActivity() {
     }
     fun connect() = execute {
         if (state.mode == ScreenMode.ADB) controller.setAdbPort(connectionPort)
-        controller.connect()
-        check(controller.state.value.connected) { AppStrings.screenBackendConnectionFailed }
+        try {
+            controller.connect()
+            check(controller.state.value.connected) { AppStrings.screenBackendConnectionFailed }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            if (controller.state.value.mode == ScreenMode.ADB) {
+                if (freshStatus().developerEnabled != true) {
+                    openWirelessAfterDeveloper = true
+                    go(ScreenSetupStep.DEVELOPER)
+                }
+                else open(ScreenSettingsTarget.WIRELESS)
+            }
+            error = failure.message ?: AppStrings.screenBackendConnectionFailed
+            return@execute
+        }
         go(ScreenSetupStep.COMPLETE)
     }
     fun pair() {
@@ -166,7 +182,15 @@ class ScreenControlSettingsActivity : ComponentActivity() {
     LaunchedEffect(step, pendingCheck, status) {
         if (pendingCheck == step && status.resumed && screenStepComplete(step, controller.state.value, status, forcePair, developerConfirmed, wirelessConfirmed)) {
             pendingCheck = null
-            go(next(step))
+            val target = next(step)
+            if (step == ScreenSetupStep.DEVELOPER && target != ScreenSetupStep.WIRELESS) openWirelessAfterDeveloper = false
+            go(target)
+        }
+    }
+    LaunchedEffect(step, openWirelessAfterDeveloper) {
+        if (step == ScreenSetupStep.WIRELESS && openWirelessAfterDeveloper) {
+            openWirelessAfterDeveloper = false
+            open(ScreenSettingsTarget.WIRELESS)
         }
     }
     LaunchedEffect(state.adbPairing, state.adbPairingSuccess, state.error, state.mode, state.connected, state.active, status.resumed, busy, connectAfterPairing) {

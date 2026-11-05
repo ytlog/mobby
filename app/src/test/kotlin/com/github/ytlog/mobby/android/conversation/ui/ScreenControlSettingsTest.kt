@@ -143,6 +143,26 @@ class ScreenControlSettingsTest {
         compose.onNodeWithText("配对这台手机").assertDoesNotExist()
         compose.runOnIdle { assertEquals(1, controller.events.count { it == "connect" }) }
     }
+    @Test fun `connection failure guides disabled developer settings before wireless debugging`() {
+        val controller = TestController(ScreenControlState(mode = ScreenMode.ADB, adbPaired = true), "fixture connection failed")
+        val status = mutableStateOf(ready)
+        compose.setContent { MaterialTheme { ScreenControlSettings(controller, {}, statusOverride = status.value, settingsOverride = { opened += it }) } }
+        next()
+        compose.runOnIdle { status.value = ready.copy(developerEnabled = false, wirelessEnabled = false) }
+        button("连接").performClick()
+        button("打开关于手机").assertIsDisplayed().performClick()
+        compose.runOnIdle { assertEquals(1, controller.events.count { it == "connect" }); status.value = ready.copy(wirelessEnabled = false) }
+        button("打开无线调试").assertIsDisplayed()
+        compose.runOnIdle { assertEquals(listOf(ScreenSettingsTarget.ABOUT, ScreenSettingsTarget.WIRELESS), opened) }
+    }
+    @Test fun `connection failure opens wireless settings when developer mode is enabled`() {
+        val controller = TestController(ScreenControlState(mode = ScreenMode.ADB, adbPaired = true), "fixture connection failed")
+        show(controller)
+        next()
+        button("连接").performClick()
+        compose.runOnIdle { assertEquals(listOf(ScreenSettingsTarget.WIRELESS), opened); assertEquals(1, controller.events.count { it == "connect" }) }
+        button("手动填写连接端口").assertIsDisplayed()
+    }
     @Test fun `cancelled or interrupted pairing never uses an old identity as new success`() {
         val controller = TestController(ScreenControlState(mode = ScreenMode.ADB, adbPairing = true, adbPaired = true))
         show(controller)
