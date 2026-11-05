@@ -22,7 +22,7 @@ internal val LocalGlassControls = staticCompositionLocalOf { false }
 
 @Composable internal fun GlassControlSurface(modifier: Modifier = Modifier, shape: Shape,
     tint: Color = Color.Unspecified, content: @Composable () -> Unit) {
-    if (LocalGlassControls.current) GlassSurface(modifier, shape, tint, content)
+    if (LocalGlassControls.current) GlassSurface(modifier, shape, tint, content = content)
     else Box(modifier, propagateMinConstraints = true) { content() }
 }
 

@@ -521,6 +521,7 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectVo
         modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 10.dp).testTag("composer-input-surface"),
         shape = RoundedCornerShape(28.dp),
         tint = buttonColor(),
+        emphasizeInnerEdge = true,
     ) {
         Row(Modifier.fillMaxWidth().padding(4.dp), verticalAlignment = Alignment.Bottom, content = content)
     }
