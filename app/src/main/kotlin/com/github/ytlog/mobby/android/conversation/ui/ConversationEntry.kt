@@ -498,7 +498,7 @@ class ConversationHostActions(
     onCollapse: (() -> Unit)?, modifier: Modifier) {
     GlassControlScope(background = drawerColor()) {
         Surface(modifier, color = drawerColor(), contentColor = conversationInk()) {
-            Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = if (onCollapse != null) 10.dp else 12.dp)) {
+            Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = GlassShadowClearance)) {
                 Row(Modifier.fillMaxWidth().padding(bottom = if (darkChrome()) 0.dp else 12.dp), verticalAlignment = Alignment.CenterVertically) {
                     DrawerBrand(Modifier.weight(1f))
                     DrawerPill(onNew, Modifier.testTag("drawer-new")) {

@@ -82,6 +82,21 @@ class GlassSurfaceStyleTest {
         }
     }
 
+    // Measured on the phone: with 10dp below the composer the shadow was still 12 levels darker than the page at the
+    // screen's last row, so the screen edge cut it off in a visible line.
+    @Test fun `the composer leaves room for its shadow to fade before the screen edge`() {
+        compose.setContent { MaterialTheme(colorScheme = MobbyLightScheme) {
+            androidx.compose.foundation.layout.Column(Modifier.size(400.dp, 200.dp).testTag("screen"), verticalArrangement = androidx.compose.foundation.layout.Arrangement.Bottom) {
+                ComposerShell {}
+            }
+        } }
+        val screen = compose.onNodeWithTag("screen").fetchSemanticsNode().boundsInRoot
+        val surface = compose.onNodeWithTag("composer-input-surface").fetchSemanticsNode().boundsInRoot
+        val density = compose.density.density
+        assertTrue("gap below the composer was ${(screen.bottom - surface.bottom) / density}dp",
+            (screen.bottom - surface.bottom) / density >= GlassShadowClearance.value)
+    }
+
     @Test fun `the drawer scope keeps glass on`() {
         var enabled = false
         compose.setContent { MaterialTheme(colorScheme = MobbyLightScheme) { GlassControlScope(MobbyColors.Light.drawer) { enabled = LocalGlassEnabled.current } } }

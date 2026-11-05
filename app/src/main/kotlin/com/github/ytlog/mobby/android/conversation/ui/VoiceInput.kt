@@ -582,7 +582,7 @@ private fun gaussianGlowStops(color: Color, peak: Float): Array<Pair<Float, Colo
 
 @Composable internal fun ComposerShell(modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
     GlassSurface(
-        modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 10.dp).testTag("composer-input-surface"),
+        modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = GlassShadowClearance).testTag("composer-input-surface"),
         shape = RoundedCornerShape(28.dp),
         tint = buttonColor(),
     ) {

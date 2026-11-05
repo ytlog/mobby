@@ -27,6 +27,9 @@ import com.kyant.backdrop.highlight.HighlightStyle
 import com.kyant.backdrop.shadow.Shadow
 import com.kyant.backdrop.shadow.InnerShadow
 
+/** Room a glass control needs below it so its outer shadow fades out before the screen edge cuts it off. */
+internal val GlassShadowClearance = 20.dp
+
 internal val LocalConversationBackdrop = staticCompositionLocalOf<Backdrop?> { null }
 
 /** Sample only the transcript layer; never record controls into their own backdrop. */
