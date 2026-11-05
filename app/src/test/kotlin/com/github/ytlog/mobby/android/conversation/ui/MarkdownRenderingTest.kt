@@ -101,9 +101,19 @@ class MarkdownRenderingTest {
         assertEquals(600, tableColumnWidths(listOf(33, 33, 34), listOf(33, 33, 34), 600).sum())
     }
     @Test fun `four backtick skill document remains one code block with nested code intact`() {
-        compose.setContent { MaterialTheme { ReplyContent("````SKILL.md\n# Workflow\n```sh\necho hi\n```\n````") { _, _ -> } } }
+        var copied: androidx.compose.ui.text.AnnotatedString? = null
+        val clipboard = object : androidx.compose.ui.platform.ClipboardManager {
+            override fun setText(annotatedString: androidx.compose.ui.text.AnnotatedString) { copied = annotatedString }
+            override fun getText() = copied
+        }
+        compose.setContent { MaterialTheme { androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalClipboardManager provides clipboard) {
+            ReplyContent("````SKILL.md\n# Workflow\n```sh\necho hi\n```\n````") { _, _ -> }
+        } } }
         compose.waitUntil(5_000) { compose.onAllNodesWithContentDescription("复制原始代码").fetchSemanticsNodes().isNotEmpty() }
         compose.onAllNodesWithContentDescription("复制原始代码").assertCountEquals(1)
-        compose.onNodeWithText("# Workflow\n```sh\necho hi\n```\n").assertExists()
+        // The block does not draw an empty last line, but copying keeps the original text exactly.
+        compose.onNodeWithText("# Workflow\n```sh\necho hi\n```").assertExists()
+        compose.onNodeWithContentDescription("复制原始代码").performClick()
+        compose.runOnIdle { org.junit.Assert.assertEquals("# Workflow\n```sh\necho hi\n```\n", copied?.text) }
     }
 }

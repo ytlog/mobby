@@ -23,6 +23,7 @@ import androidx.lifecycle.lifecycleScope
 import com.github.ytlog.mobby.android.MobbyApplication
 import com.github.ytlog.mobby.android.conversation.ui.MobbyDarkScheme
 import com.github.ytlog.mobby.android.conversation.ui.MobbyLightScheme
+import com.github.ytlog.mobby.android.conversation.ui.MobbyTypography
 import com.github.ytlog.mobby.android.conversation.ui.PageHeader
 import com.github.ytlog.mobby.android.conversation.ui.VirtualScreenPreviewLayer
 import com.github.ytlog.mobby.android.conversation.ui.TextButton
@@ -50,7 +51,7 @@ class ProgramUiActivity : ComponentActivity() {
             var link by remember { mutableStateOf<Uri?>(null) }
             var generation by remember { mutableIntStateOf(0) }
             LaunchedEffect(Unit) { platform.programs.collect { list -> list.firstOrNull { it.id == programId }?.let { title = it.name } } }
-            MaterialTheme(colorScheme = if (isSystemInDarkTheme()) MobbyDarkScheme else MobbyLightScheme) {
+            MaterialTheme(colorScheme = if (isSystemInDarkTheme()) MobbyDarkScheme else MobbyLightScheme, typography = MobbyTypography) {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     Column(Modifier.fillMaxSize().safeDrawingPadding()) {
                         PageHeader(title, { finish() }) {

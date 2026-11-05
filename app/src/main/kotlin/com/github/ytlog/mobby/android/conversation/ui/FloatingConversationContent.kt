@@ -45,7 +45,7 @@ internal const val FloatingConversationHeight = 680
     val dark = appearance == Appearance.DARK || appearance == Appearance.SYSTEM && isSystemInDarkTheme()
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(vm) { for (message in vm.feedback) snackbar.showSnackbar(message) }
-    MaterialTheme(colorScheme = if (dark) MobbyDarkScheme else MobbyLightScheme) {
+    MaterialTheme(colorScheme = if (dark) MobbyDarkScheme else MobbyLightScheme, typography = MobbyTypography) {
         CompositionLocalProvider(LocalAttachmentPreviewHost provides { open(target) }) {
             val colors = MaterialTheme.colorScheme
             val detail = state.selected?.takeIf { it.conversation.id == target }

@@ -223,7 +223,7 @@ class ConversationHostActions(
             else -> navigation = navigation.back(gatewayFromIntro)
         }
     }
-    MaterialTheme(colorScheme = colors) {
+    MaterialTheme(colorScheme = colors, typography = MobbyTypography) {
         if (updates?.state?.phase == AppUpdateManager.Phase.READY && updates.dismissedVersion != updates.state.version) {
             AlertDialog(onDismissRequest = updates::dismissNotice, title = { Text(AppStrings.updateAvailable(updates.state.version.orEmpty())) },
                 text = { Text(AppStrings.updateReadyToInstall) },
@@ -893,6 +893,56 @@ internal fun Turn.showsSeparateActivity(): Boolean = occupied || pending
     } else StreamingCursor(description = AppStrings.replying)
 }
 
+/**
+ * The turn's outcome, placed after its content. A stop the user asked for or a queued message is a plain line;
+ * only a failure with a message to read gets a card.
+ */
+@Composable internal fun TurnStatus(turn: Turn, onCancelQueued: () -> Unit, onRestore: () -> Unit) {
+    val failure = turn.failure
+    val accent = statusAccentColor()
+    val action: @Composable () -> Unit = {
+        val compact = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+        if (turn.queued) TextButton(onClick = onCancelQueued, contentPadding = compact, colors = textButtonColors()) { Text(AppStrings.cancelQueuedMessage, style = MaterialTheme.typography.labelLarge) }
+        else if (!turn.occupied) TextButton(onClick = onRestore, contentPadding = compact, colors = textButtonColors()) { Text(AppStrings.restoreToInput, style = MaterialTheme.typography.labelLarge) }
+    }
+    if (failure != null) Surface(
+        color = if (darkChrome()) MobbyColors.Dark.statusCard else MobbyColors.Light.statusCard,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier.fillMaxWidth().testTag("turn-status"),
+    ) {
+        Column(Modifier.padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 4.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
+                AppIcon(AppIcons.Error, null, Modifier.padding(top = 2.dp).size(16.dp), tint = accent)
+                Text(failure, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            }
+            Box(Modifier.align(Alignment.End)) { action() }
+        }
+    } else {
+        val calm = turn.queued || turn.phase == ExecutionPhase.CANCELLED
+        val ink = if (calm) toolCallInk() else accent
+        Row(Modifier.fillMaxWidth().testTag("turn-status"), verticalAlignment = Alignment.CenterVertically) {
+            AppIcon(if (turn.queued) AppIcons.Send else if (calm) AppIcons.Close else AppIcons.Error, null, Modifier.size(16.dp), tint = ink)
+            Spacer(Modifier.width(8.dp))
+            Text(if (turn.queued) AppStrings.queuedMessageWaiting else turn.phase.label(), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = ink)
+            action()
+        }
+    }
+}
+
+/** What an item is for the reader; it decides the air around the item. */
+internal enum class TimelineBlock { USER, PROSE, PROCESS, CARD }
+
+/** Process rows sit together as one unit, replies get reading room around them, and each new turn starts clearly. */
+internal fun timelineGap(previous: TimelineBlock?, next: TimelineBlock): Dp = when {
+    previous == null -> 0.dp
+    next == TimelineBlock.USER -> 28.dp
+    previous == TimelineBlock.PROCESS && next == TimelineBlock.PROCESS -> 0.dp
+    previous == TimelineBlock.PROCESS || next == TimelineBlock.PROCESS -> 8.dp
+    previous == TimelineBlock.USER -> 16.dp
+    else -> 12.dp
+}
+
 @Composable internal fun UserMessageBubble(content: @Composable ColumnScope.() -> Unit) {
     Surface(
         shape = RoundedCornerShape(21.dp, 21.dp, 6.dp, 21.dp),
@@ -964,7 +1014,13 @@ internal fun Turn.showsSeparateActivity(): Boolean = occupied || pending
         }
     }
     Box(modifier.fillMaxWidth()) {
-        LazyColumn(state = list, modifier = Modifier.fillMaxSize().conversationEdgeFade(conversationCanvas(), topFade, bottomFade), contentPadding = contentPadding, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        LazyColumn(state = list, modifier = Modifier.fillMaxSize().conversationEdgeFade(conversationCanvas(), topFade, bottomFade), contentPadding = contentPadding) {
+            var previous: TimelineBlock? = null
+            fun block(key: String, kind: TimelineBlock, content: @Composable LazyItemScope.() -> Unit) {
+                val gap = timelineGap(previous, kind)
+                previous = kind
+                item(key = key) { Box(Modifier.fillMaxWidth().padding(top = gap)) { content() } }
+            }
             if (detail.hasEarlier) item(key = "earlier") {
                 TextButton(onClick = { follow = false; vm.enqueue { vm.actions.loadEarlier(detail.conversation.id) } }, modifier = Modifier.fillMaxWidth()) { Text(AppStrings.loadEarlierMessages) }
             }
@@ -980,76 +1036,52 @@ internal fun Turn.showsSeparateActivity(): Boolean = occupied || pending
                 val entries = turn.transcript()
                 val lastReply = entries.filterIsInstance<TranscriptEntry.Reply>().lastOrNull()?.message?.id
                 val lastTools = entries.filterIsInstance<TranscriptEntry.ToolRun>().lastOrNull()?.steps?.firstOrNull()?.id
-                item(key = "user:${turn.id.value}") { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { UserMessageBubble { androidx.compose.foundation.text.selection.SelectionContainer { Text(turn.userText) }; AttachmentList(turn.attachments, turn.workspace, vm) } } }
+                block("user:${turn.id.value}", TimelineBlock.USER) { Row(Modifier.fillMaxWidth().padding(start = 48.dp), horizontalArrangement = Arrangement.End) { UserMessageBubble { androidx.compose.foundation.text.selection.SelectionContainer { Text(turn.userText) }; AttachmentList(turn.attachments, turn.workspace, vm) } } }
                 entries.forEach { entry ->
                     when (entry) {
-                        is TranscriptEntry.Device -> item(key = "device:${turn.id.value}:${entry.record.operation.operationId}") {
+                        is TranscriptEntry.Device -> block("device:${turn.id.value}:${entry.record.operation.operationId}", TimelineBlock.PROCESS) {
                             com.github.ytlog.mobby.android.deviceoperation.ConversationDeviceCard(entry.record.operation, turn, detail.conversation, vm)
                         }
-                        is TranscriptEntry.ToolRun -> item(key = "tools:${turn.id.value}:${entry.steps.first().id}") {
+                        is TranscriptEntry.ToolRun -> block("tools:${turn.id.value}:${entry.steps.first().id}", TimelineBlock.PROCESS) {
                             ExecutionFlow(turn, vm, entry.steps, showExtras = entry.steps.first().id == lastTools, read)
                         }
-                        is TranscriptEntry.Reply -> item(key = "message:${turn.id.value}:${entry.message.id}") {
+                        is TranscriptEntry.Reply -> block("message:${turn.id.value}:${entry.message.id}", TimelineBlock.PROSE) {
                             Column {
                                 ReplyContent(entry.message.text, streaming = turn.occupied && turn.phase != ExecutionPhase.CANCELLING && entry.message.id == lastReply, read = read)
                                 if (entry.message.id == lastReply && turn.replyActionsVisible()) {
                                     val reply = entry.message.text
-                                    Row {
+                                    // Pulled left by the button's own inset so the glyph lines up with the text.
+                                    Row(Modifier.offset(x = (-11).dp)) {
                                         val clipboard = LocalClipboardManager.current
-                                        ActionIcon(AppStrings.copyReply, { clipboard.setText(AnnotatedString(reply)) }, AppIcons.Copy, tint = replyActionColor())
-                                        ActionIcon(AppStrings.shareReply, { hostActions.share(reply) }, AppIcons.Share, tint = replyActionColor())
+                                        ActionIcon(AppStrings.copyReply, { clipboard.setText(AnnotatedString(reply)) }, AppIcons.Copy, tint = replyActionColor(), buttonSize = 40.dp, glyphSize = 18.dp)
+                                        ActionIcon(AppStrings.shareReply, { hostActions.share(reply) }, AppIcons.Share, tint = replyActionColor(), buttonSize = 40.dp, glyphSize = 18.dp)
                                     }
                                 }
                             }
                         }
                     }
                 }
-                turn.permissions.forEach { permission -> item(key = "permission:${turn.id.value}:${permission.id}:${permission.revision}") {
+                turn.permissions.forEach { permission -> block("permission:${turn.id.value}:${permission.id}:${permission.revision}", TimelineBlock.CARD) {
                     PermissionCard(turn, permission, detail.conversation.config.agent, vm)
                 } }
-                turn.skillProposals.forEach { candidate -> item(key = "artifact:${turn.id.value}:${candidate.ref}") {
-                    OutlinedCard(onClick = { proposal(candidate) }, shape = RoundedCornerShape(16.dp), colors = CardDefaults.outlinedCardColors(containerColor = raisedColor()), border = BorderStroke(0.dp, Color.Transparent)) { Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                turn.skillProposals.forEach { candidate -> block("artifact:${turn.id.value}:${candidate.ref}", TimelineBlock.CARD) {
+                    OutlinedCard(onClick = { proposal(candidate) }, shape = RoundedCornerShape(14.dp), colors = CardDefaults.outlinedCardColors(containerColor = conversationCardColor()), border = BorderStroke(0.dp, Color.Transparent)) { Column(Modifier.fillMaxWidth().padding(14.dp)) {
                         Text(AppStrings.generatedSkillDraft, style = MaterialTheme.typography.titleMedium)
                         Text(AppStrings.previewValidateAndSaveTo(candidate.agent.label()))
                     } }
                 } }
-                turn.progress?.let { notice -> item(key = "notice:${turn.id.value}") { TurnNotice(notice) } }
-                if (turn.creatingSkill && !turn.occupied && turn.skillProposals.isEmpty() && !turn.proposalsLoading) item(key = "creator:${turn.id.value}") {
+                turn.progress?.let { notice -> block("notice:${turn.id.value}", TimelineBlock.CARD) { TurnNotice(notice) } }
+                if (turn.creatingSkill && !turn.occupied && turn.skillProposals.isEmpty() && !turn.proposalsLoading) block("creator:${turn.id.value}", TimelineBlock.CARD) {
                     Text(AppStrings.noSkillDraftToSaveThisTurnContinueDescribing, style = MaterialTheme.typography.bodySmall)
                 }
-                if ("status:${turn.id.value}" in keys) item(key = "status:${turn.id.value}") {
-                    val statusInk = if (turn.queued) MaterialTheme.colorScheme.primary
-                        else if (darkChrome()) MobbyColors.Dark.statusAccent else MobbyColors.Light.statusAccent
-                    Surface(
-                        color = if (darkChrome()) MobbyColors.Dark.statusCard else MobbyColors.Light.statusCard,
-                        contentColor = MaterialTheme.colorScheme.onSurface,
-                        shape = RoundedCornerShape(16.dp),
-                        border = BorderStroke(1.dp, statusInk.copy(alpha = 0.16f)),
-                    ) {
-                        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
-                                AppIcon(if (turn.queued) AppIcons.Send else AppIcons.Error, null, Modifier.padding(top = 1.dp).size(20.dp), tint = statusInk)
-                                Text(turn.failure ?: if (turn.queued) AppStrings.queuedMessageWaiting else turn.phase.label(), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                            }
-                            if (turn.queued) OutlinedButton(
-                                onClick = { vm.enqueue { vm.actions.cancelQueued(turn.id) } },
-                                modifier = Modifier.align(Alignment.End),
-                                shape = RoundedCornerShape(10.dp),
-                            ) { Text(AppStrings.cancelQueuedMessage, style = MaterialTheme.typography.labelLarge) }
-                            else if (!turn.occupied) OutlinedButton(
-                                onClick = { vm.enqueue { vm.actions.restoreDraft(detail.conversation.id, turn) } },
-                                modifier = Modifier.align(Alignment.End),
-                                shape = RoundedCornerShape(10.dp),
-                                border = BorderStroke(1.dp, statusInk.copy(alpha = 0.3f)),
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = statusInk),
-                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
-                            ) { Text(AppStrings.restoreToInput, style = MaterialTheme.typography.labelLarge) }
-                        }
-                    }
+                if ("status:${turn.id.value}" in keys) block("status:${turn.id.value}", TimelineBlock.CARD) {
+                    TurnStatus(turn,
+                        onCancelQueued = { vm.enqueue { vm.actions.cancelQueued(turn.id) } },
+                        onRestore = { vm.enqueue { vm.actions.restoreDraft(detail.conversation.id, turn) } })
                 }
             }
             activityTurn?.let { turn ->
-                item(key = "activity:${turn.id.value}") {
+                block("activity:${turn.id.value}", TimelineBlock.CARD) {
                     Box(Modifier.testTag("turn-loading")) { ReplyActivity(turn.phase) }
                 }
             }
@@ -1095,7 +1127,7 @@ internal suspend fun LazyListState.followConversationTail() {
 
 private val ConversationEdgeFade = 28.dp
 private val ConversationTopFade = 16.dp
-private val LightConversationBottomFade = 64.dp
+private val LightConversationBottomFade = 32.dp
 
 /** Softens the list where it meets the toolbar buttons and the input, without covering the jump button. */
 private fun Modifier.conversationEdgeFade(color: Color, topFade: Dp, bottomFade: Dp) = drawWithContent {

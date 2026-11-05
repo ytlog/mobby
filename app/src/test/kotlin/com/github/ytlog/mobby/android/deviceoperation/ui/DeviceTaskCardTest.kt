@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
@@ -54,6 +55,16 @@ class DeviceTaskCardTest {
         compose.onNodeWithText("fixture body").assertDoesNotExist()
         compose.onAllNodes(hasClickAction()).onFirst().performClick()
         compose.onNodeWithText("fixture body").assertExists()
+    }
+    // A finished operation is one fact in the run; a tall card per operation drowned the replies around it.
+    @Test fun `a folded finished operation is a single short row and failures stay visible`() {
+        var shown by mutableStateOf(operation().copy(status = DeviceStatus.SUCCEEDED))
+        compose.setContent { MaterialTheme { DeviceTaskCard(shown, DeviceCardActions(), Modifier.testTag("card")) } }
+        val height = compose.onNodeWithTag("card").getBoundsInRoot().let { it.bottom - it.top }
+        assertTrue("height was $height", height <= 44.dp)
+        compose.onNodeWithText("已完成").assertExists()
+        compose.runOnIdle { shown = shown.copy(status = DeviceStatus.UNCONFIRMED) }
+        compose.onNodeWithText("结果待确认").assertIsDisplayed()
     }
     @Test fun `completed photo keeps its preview visible while details are folded`() {
         val photo = operation("capture").copy(plugin = "camera", action = "photo", status = DeviceStatus.SUCCEEDED,

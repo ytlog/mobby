@@ -1,13 +1,16 @@
 package com.github.ytlog.mobby.android.conversation.ui
 
+import android.graphics.Color.TRANSPARENT
+import androidx.activity.SystemBarStyle
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.unit.sp
 
 /** Named colors for every page. Screens read these instead of embedding hex values. */
 internal object MobbyColors {
@@ -16,7 +19,6 @@ internal object MobbyColors {
     val menuMuted = Color(0xFF8E8E93)
 
     object Dark {
-        val systemBar = Color(0xFF111213)
         val page = Color(0xFF121212)
         val card = Color(0xFF1E1E1E)
         val surfaceVariant = Color(0xFF2A2A2C)
@@ -62,7 +64,6 @@ internal object MobbyColors {
     }
 
     object Light {
-        val systemBar = Color(0xFFFAFAFA)
         val statusCard = Color(0xFFF5F1E9)
         val statusAccent = Color(0xFF79551C)
         val page = Color(0xFFF5F5F7)
@@ -104,16 +105,45 @@ internal object MobbyColors {
     }
 }
 
-/** Shared system-bar colors for the Activity, which lives outside the UI module. */
-fun mobbySystemBarColor(dark: Boolean): Int =
-    (if (dark) MobbyColors.Dark.systemBar else MobbyColors.Light.systemBar).toArgb()
+/** Bars stay transparent so every page's own background runs behind them without a seam. */
+fun mobbySystemBarStyle(dark: Boolean): SystemBarStyle =
+    if (dark) SystemBarStyle.dark(TRANSPARENT) else SystemBarStyle.light(TRANSPARENT, TRANSPARENT)
+
+private val BaseType = Typography()
+
+/** Material's tracking is tuned for Latin and visibly loosens Chinese, so text here carries none. */
+internal val MobbyTypography = BaseType.copy(
+    titleLarge = BaseType.titleLarge.copy(letterSpacing = 0.sp),
+    titleMedium = BaseType.titleMedium.copy(letterSpacing = 0.sp),
+    titleSmall = BaseType.titleSmall.copy(letterSpacing = 0.sp),
+    bodyLarge = BaseType.bodyLarge.copy(letterSpacing = 0.sp, lineHeight = 26.sp),
+    bodyMedium = BaseType.bodyMedium.copy(letterSpacing = 0.sp, lineHeight = 21.sp),
+    bodySmall = BaseType.bodySmall.copy(letterSpacing = 0.sp, lineHeight = 17.sp),
+    labelLarge = BaseType.labelLarge.copy(letterSpacing = 0.sp),
+    labelMedium = BaseType.labelMedium.copy(letterSpacing = 0.sp),
+    labelSmall = BaseType.labelSmall.copy(letterSpacing = 0.sp),
+)
 
 internal val MobbyDarkScheme: ColorScheme = darkColorScheme(
     background = MobbyColors.Dark.page,
     surface = MobbyColors.Dark.page,
     surfaceVariant = MobbyColors.Dark.surfaceVariant,
+    surfaceTint = MobbyColors.Dark.primary,
+    surfaceContainerLowest = Color(0xFF0E0E0E),
+    surfaceContainerLow = MobbyColors.Dark.card,
+    surfaceContainer = Color(0xFF232323),
+    surfaceContainerHigh = Color(0xFF2A2A2A),
+    surfaceContainerHighest = Color(0xFF313131),
     primary = MobbyColors.Dark.primary,
     onPrimary = MobbyColors.Dark.onPrimary,
+    primaryContainer = Color(0xFF1A3050),
+    onPrimaryContainer = Color(0xFFCFE3FF),
+    secondaryContainer = Color(0xFF26303D),
+    onSecondaryContainer = Color(0xFFD6E2F2),
+    tertiary = MobbyColors.Dark.primary,
+    onTertiary = MobbyColors.Dark.onPrimary,
+    tertiaryContainer = Color(0xFF1A3050),
+    onTertiaryContainer = Color(0xFFCFE3FF),
     onBackground = MobbyColors.Dark.ink,
     onSurface = MobbyColors.Dark.ink,
     onSurfaceVariant = MobbyColors.Dark.muted,
@@ -128,8 +158,22 @@ internal val MobbyLightScheme: ColorScheme = lightColorScheme(
     background = MobbyColors.Light.page,
     surface = MobbyColors.Light.page,
     surfaceVariant = MobbyColors.Light.surfaceVariant,
+    surfaceTint = MobbyColors.Light.primary,
+    surfaceContainerLowest = Color.White,
+    surfaceContainerLow = Color(0xFFF6F6F7),
+    surfaceContainer = Color(0xFFF2F2F4),
+    surfaceContainerHigh = Color(0xFFECECEE),
+    surfaceContainerHighest = Color(0xFFE6E6E9),
     primary = MobbyColors.Light.primary,
     onPrimary = MobbyColors.Light.onPrimary,
+    primaryContainer = Color(0xFFDCE9FF),
+    onPrimaryContainer = Color(0xFF0B2A5B),
+    secondaryContainer = Color(0xFFE8EEF8),
+    onSecondaryContainer = Color(0xFF24344D),
+    tertiary = MobbyColors.Light.primary,
+    onTertiary = MobbyColors.Light.onPrimary,
+    tertiaryContainer = Color(0xFFDCE9FF),
+    onTertiaryContainer = Color(0xFF0B2A5B),
     onBackground = MobbyColors.Light.ink,
     onSurface = MobbyColors.Light.ink,
     onSurfaceVariant = MobbyColors.Light.muted,
@@ -215,6 +259,13 @@ internal val MobbyLightScheme: ColorScheme = lightColorScheme(
     disabledContentColor = (if (darkChrome()) MobbyColors.Dark.onButton else MaterialTheme.colorScheme.primary).copy(alpha = 0.38f),
 )
 
+/** Fill for code, permission and other cards that sit directly on the conversation canvas. */
+@Composable internal fun conversationCardColor(): Color = MaterialTheme.colorScheme.surfaceContainerLow
+
+/** Warning ink for results that need a second look but did not fail outright. */
+@Composable internal fun statusAccentColor(): Color =
+    if (darkChrome()) MobbyColors.Dark.statusAccent else MobbyColors.Light.statusAccent
+
 @Composable internal fun conversationCanvas(): Color =
     if (darkChrome()) MobbyColors.Dark.Conversation.canvas else MobbyColors.Light.Conversation.canvas
 
@@ -222,10 +273,13 @@ internal val MobbyLightScheme: ColorScheme = lightColorScheme(
     if (darkChrome()) MobbyColors.Dark.Conversation.ink else MobbyColors.Light.Conversation.ink
 
 @Composable internal fun toolCallSurface(): Color =
-    if (darkChrome()) MobbyColors.Dark.Conversation.canvas else raisedColor()
+    if (darkChrome()) MobbyColors.Dark.Conversation.canvas else conversationCardColor()
 
 @Composable internal fun toolCallInk(): Color =
     if (darkChrome()) MobbyColors.Dark.Conversation.toolInk else MobbyColors.Light.Conversation.toolInk
+
+@Composable internal fun toolCallBorder(): Color =
+    if (darkChrome()) MobbyColors.Dark.Conversation.toolBorder else MobbyColors.Light.Conversation.toolBorder
 
 @Composable internal fun userBubbleColor(): Color =
     if (darkChrome()) MobbyColors.Dark.Conversation.userBubble else MobbyColors.Light.Conversation.userBubble
@@ -234,7 +288,7 @@ internal val MobbyLightScheme: ColorScheme = lightColorScheme(
     if (darkChrome()) MobbyColors.Dark.Conversation.userInk else MobbyColors.Light.Conversation.ink
 
 @Composable internal fun replyActionColor(): Color =
-    if (darkChrome()) MobbyColors.Dark.Conversation.replyAction else onButtonColor()
+    if (darkChrome()) MobbyColors.Dark.Conversation.replyAction else MobbyColors.Light.Conversation.toolInk
 
 @Composable internal fun readerInk(): Color =
     if (darkChrome()) MobbyColors.Dark.Conversation.userInk else MaterialTheme.colorScheme.onSurface

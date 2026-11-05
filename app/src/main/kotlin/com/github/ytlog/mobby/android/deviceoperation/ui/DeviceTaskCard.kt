@@ -1,7 +1,5 @@
 package com.github.ytlog.mobby.android.deviceoperation.ui
 
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -9,10 +7,15 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.github.ytlog.mobby.android.conversation.ui.AppIcon
+import com.github.ytlog.mobby.android.conversation.ui.AppIcons
+import com.github.ytlog.mobby.android.conversation.ui.ProcessRow
+import com.github.ytlog.mobby.android.conversation.ui.conversationCardColor
+import com.github.ytlog.mobby.android.conversation.ui.statusAccentColor
+import com.github.ytlog.mobby.android.conversation.ui.toolCallInk
 import com.github.ytlog.mobby.android.runtime.api.device.*
 import kotlinx.serialization.json.*
 
@@ -34,28 +37,37 @@ class DeviceCardActions(
     val result = operation.result
     val collapsedPhoto = operation.status.terminal && !expanded && operation.displayType == "capture" &&
         result?.kind == "capture_resource" && result.data.text("mediaType").startsWith("image/")
-    Surface(modifier.fillMaxWidth().semantics { contentDescription = title; stateDescription = status },
-        shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        color = MaterialTheme.colorScheme.surface) {
-    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Row(Modifier.fillMaxWidth().then(if (operation.status.terminal) Modifier.clickable { expanded = !expanded } else Modifier).heightIn(min = 44.dp),
+    // A finished, folded operation is one line of the run; a card appears only when there is more to show.
+    val folded = operation.status.terminal && !expanded
+    val statusColor = when {
+        operation.status == DeviceStatus.FAILED -> MaterialTheme.colorScheme.error
+        operation.status == DeviceStatus.UNCONFIRMED || operation.status == DeviceStatus.PARTIAL -> statusAccentColor()
+        operation.status.terminal -> toolCallInk()
+        else -> MaterialTheme.colorScheme.primary
+    }
+    Surface(modifier.fillMaxWidth().then(if (folded) Modifier else Modifier.padding(vertical = 6.dp))
+        .semantics { contentDescription = title; stateDescription = status },
+        shape = RoundedCornerShape(14.dp),
+        color = if (folded) androidx.compose.ui.graphics.Color.Transparent else conversationCardColor(),
+        contentColor = MaterialTheme.colorScheme.onSurface) {
+    Column(if (folded) Modifier else Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(if (folded) 6.dp else 10.dp)) {
+        if (folded) ProcessRow(
+            title,
+            leading = { AppIcon(deviceIcon(operation.plugin), null, Modifier.size(16.dp), tint = toolCallInk()) },
+            expanded = false,
+            onClick = { expanded = true },
+            status = status,
+            statusColor = statusColor,
+        ) else Row(Modifier.fillMaxWidth().then(if (operation.status.terminal) Modifier.clickable { expanded = false } else Modifier),
             verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                Text(status, style = MaterialTheme.typography.labelMedium,
-                    color = if (operation.status == DeviceStatus.FAILED || operation.status == DeviceStatus.UNCONFIRMED) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                Text(status, style = MaterialTheme.typography.labelMedium, color = statusColor,
                     modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
             }
             if (operation.status.terminal) {
                 Spacer(Modifier.width(8.dp))
-                val chevron = MaterialTheme.colorScheme.onSurfaceVariant
-                Canvas(Modifier.size(16.dp)) {
-                    val first = if (detailsVisible) Offset(size.width * .2f, size.height * .38f) else Offset(size.width * .38f, size.height * .2f)
-                    val middle = if (detailsVisible) Offset(size.width * .5f, size.height * .68f) else Offset(size.width * .68f, size.height * .5f)
-                    val last = if (detailsVisible) Offset(size.width * .8f, size.height * .38f) else Offset(size.width * .38f, size.height * .8f)
-                    drawLine(chevron, first, middle, 2.dp.toPx())
-                    drawLine(chevron, middle, last, 2.dp.toPx())
-                }
+                AppIcon(AppIcons.ChevronDown, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         if (collapsedPhoto && thumbnail != null) {
@@ -115,6 +127,13 @@ class DeviceCardActions(
     }
 }
 
+private fun deviceIcon(plugin: String) = when (plugin) {
+    "camera" -> AppIcons.Camera
+    "media" -> AppIcons.Photo
+    "storage" -> AppIcons.File
+    "appfunction" -> AppIcons.Plugin
+    else -> AppIcons.Phone
+}
 private val knownDisplays = setOf("basic", "screen_control", "message_list", "message_send", "media_grid", "batch_change", "file_list", "file_transfer", "capture", "record_change", "measurement", "connection", "system_handoff")
 private fun JsonObject.text(key: String) = (get(key) as? JsonPrimitive)?.contentOrNull.orEmpty()
 private fun JsonObject.objects(key: String) = (get(key) as? JsonArray)?.mapNotNull { it as? JsonObject }.orEmpty()
@@ -263,8 +282,8 @@ private fun screenScreenshotReason(status: String): String = when (status) {
 
 /** Candidate/excluded capability has no operation identity and cannot look like a completed action. */
 @Composable fun DeviceUnavailableCard(title: String, reason: String, modifier: Modifier = Modifier) {
-    Surface(modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Surface(modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), color = conversationCardColor()) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(title, style = MaterialTheme.typography.titleSmall)
             Text(DeviceLabels.text("当前不可用", "Currently unavailable"), color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(reason, style = MaterialTheme.typography.bodySmall)

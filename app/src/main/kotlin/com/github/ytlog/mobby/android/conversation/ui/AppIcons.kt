@@ -57,6 +57,7 @@ internal object AppIcons {
     val Pin = glyph("M8 3h8l-1 7 4 4H5l4-4zM12 14v8")
     val Check = glyph("M5 12.5 9.5 17 19 7")
     val Error = glyph("M12 9v4M12 16.5h.01M10.3 4.8 2.6 18.2A2 2 0 0 0 4.3 21h15.4a2 2 0 0 0 1.7-2.8L13.7 4.8a2 2 0 0 0-3.4 0z")
+    val Thought = glyph("M9 18h6M10 21h4M8.5 14.5a6 6 0 1 1 7 0c-.7.5-1 1.2-1 2v.5h-5v-.5c0-.8-.3-1.5-1-2z")
     val Help = glyph("M12 17h.01M9.4 9.4a2.6 2.6 0 1 1 4.4 1.9c-.9.8-1.8 1.2-1.8 2.7M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18")
     val Camera = glyph("M3 7h4l2-3h6l2 3h4v14H3zM16 13a4 4 0 1 1-8 0 4 4 0 0 1 8 0")
     val Photo = glyph("M3 3h18v18H3zM5 16l4.5-4.5 4 4 3-3 3 3M8 7h.01")

@@ -102,7 +102,7 @@ internal class VirtualScreenPreview(
             setContent {
                 val appearance by app.conversations.appearance.collectAsStateWithLifecycle()
                 val dark = appearance == Appearance.DARK || appearance == Appearance.SYSTEM && isSystemInDarkTheme()
-                MaterialTheme(colorScheme = if (dark) MobbyDarkScheme else MobbyLightScheme) {
+                MaterialTheme(colorScheme = if (dark) MobbyDarkScheme else MobbyLightScheme, typography = MobbyTypography) {
                     Preview(Modifier.fillMaxWidth())
                 }
             }

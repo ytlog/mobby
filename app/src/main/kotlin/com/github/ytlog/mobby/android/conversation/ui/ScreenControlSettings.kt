@@ -2,7 +2,6 @@ package com.github.ytlog.mobby.android.conversation.ui
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
-import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -42,11 +41,10 @@ class ScreenControlSettingsActivity : ComponentActivity() {
             val appearance by (application as MobbyApplication).conversations.appearance.collectAsStateWithLifecycle()
             val dark = appearance == Appearance.DARK || appearance == Appearance.SYSTEM && isSystemInDarkTheme()
             LaunchedEffect(dark) {
-                val background = mobbySystemBarColor(dark)
-                val style = if (dark) SystemBarStyle.dark(background) else SystemBarStyle.light(background, background)
+                val style = mobbySystemBarStyle(dark)
                 enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
             }
-            MaterialTheme(colorScheme = if (dark) MobbyDarkScheme else MobbyLightScheme) {
+            MaterialTheme(colorScheme = if (dark) MobbyDarkScheme else MobbyLightScheme, typography = MobbyTypography) {
                 Surface(Modifier.fillMaxSize()) {
                     ScreenUi.controller?.let { ScreenControlSettings(it, onBack = ::finish) }
                     VirtualScreenPreviewLayer()

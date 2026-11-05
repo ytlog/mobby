@@ -11,16 +11,20 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.github.ytlog.mobby.android.conversation.domain.*
 
-private val LocalToolCodeActionScale = staticCompositionLocalOf { 1f }
+private val LocalToolCodeActionScale = staticCompositionLocalOf { 0.82f }
 
 internal fun ProgressNotice.label() = when (this) {
     ProgressNotice.OUTPUT_TRUNCATED -> AppStrings.outputExceedsTheRetentionLimitSubsequentContentWasTruncated
@@ -29,7 +33,7 @@ internal fun ProgressNotice.label() = when (this) {
 
 /** A turn's notice, shown under the turn: the step group starts collapsed and would hide it. */
 @Composable internal fun TurnNotice(notice: ProgressNotice) {
-    Text(notice.label(), Modifier.padding(horizontal = 14.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text(notice.label(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 internal fun AgentId.label() = when (this) {
@@ -71,6 +75,12 @@ internal fun Turn.toolsLive(): Boolean = occupied && phase in setOf(
 internal fun Turn.toolGroupExpanded(steps: List<Step>): Boolean = toolsLive() || toolGroupKey(steps) in expandedSteps
 internal fun Turn.executionHeadline(steps: List<Step> = this.steps): String {
     val count = steps.size
+    // How the run ended belongs to the group it ended in. Earlier groups report their own steps.
+    val ended = steps.lastOrNull()?.id == this.steps.sortedBy { it.order }.lastOrNull()?.id
+    if (!ended) {
+        if (steps.any { it.outcome == "FAILED" }) return AppStrings.steps(ExecutionPhase.FAILED.label(), count)
+        if (steps.all { it.outcome == "SUCCEEDED" }) return if (steps.all { it is Step.Thinking }) AppStrings.thought else AppStrings.completedSteps(count)
+    }
     return when {
         phase == ExecutionPhase.CANCELLING -> AppStrings.stopping2
         toolsLive() -> AppStrings.running
@@ -92,21 +102,59 @@ internal fun stepKindIcon(kind: String): AppGlyph = when (kind.lowercase()) {
     "webfetch" -> AppIcons.Globe
     "read", "write", "edit", "editnotebook", "ls", "file_change" -> AppIcons.File
     "bash", "shell", "command_execution" -> AppIcons.Terminal
-    "thinking" -> AppIcons.Help
+    "thinking" -> AppIcons.Thought
     "todo_list", "task" -> AppIcons.Skill
     "mcp_tool_call", "tool", "snapshot", "click", "type", "tap", "back", "home", "recents" -> AppIcons.Phone
     "mcp__phone__snapshot", "mcp__phone__click", "mcp__phone__type", "mcp__phone__tap",
     "mcp__phone__back", "mcp__phone__home", "mcp__phone__recents" -> AppIcons.Phone
     else -> AppIcons.More
 }
-@Composable internal fun CodeContent(title: String, text: String, read: (String, String) -> Unit, container: Color = raisedColor(), ink: Color = Color.Unspecified) {
+/** A group's icon names what it did when all its steps did the same thing. */
+internal fun stepGroupIcon(steps: List<Step>): AppGlyph =
+    steps.map { stepKindIcon(it.glyphKind()) }.distinct().singleOrNull()?.takeIf { it != AppIcons.More } ?: AppIcons.Skill
+
+internal val ProcessRowHeight = 40.dp
+
+/** One quiet line of a run, aligned with the reply text: what happened, how it went, and a way to open it. */
+@Composable internal fun ProcessRow(
+    title: String,
+    leading: @Composable () -> Unit,
+    expanded: Boolean?,
+    onClick: (() -> Unit)?,
+    modifier: Modifier = Modifier,
+    status: String? = null,
+    statusColor: Color = Color.Unspecified,
+    style: TextStyle = MaterialTheme.typography.bodyMedium,
+    height: androidx.compose.ui.unit.Dp = ProcessRowHeight,
+) {
+    val ink = toolCallInk()
+    Row(
+        modifier.fillMaxWidth().heightIn(min = height).clip(RoundedCornerShape(8.dp))
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        leading()
+        Spacer(Modifier.width(8.dp))
+        Text(title, Modifier.weight(1f, fill = false), maxLines = 1, overflow = TextOverflow.Ellipsis, style = style, color = ink)
+        if (status != null) {
+            Spacer(Modifier.width(8.dp))
+            Text(status, maxLines = 1, overflow = TextOverflow.Ellipsis, style = style, color = if (statusColor == Color.Unspecified) ink else statusColor)
+        }
+        if (expanded != null) {
+            Spacer(Modifier.width(2.dp))
+            AppIcon(if (expanded) AppIcons.ChevronDown else AppIcons.ChevronRight, if (expanded) AppStrings.expanded else AppStrings.collapsed, Modifier.size(14.dp), tint = ink)
+        }
+    }
+}
+
+@Composable internal fun CodeContent(title: String, text: String, read: (String, String) -> Unit, container: Color = conversationCardColor(), ink: Color = Color.Unspecified) {
     val clipboard = LocalClipboardManager.current
     var wrap by rememberSaveable { mutableStateOf(false) }
     val content = if (ink == Color.Unspecified) LocalContentColor.current else ink
     val titleInk = if (ink == Color.Unspecified) MaterialTheme.colorScheme.onSurfaceVariant else ink
-    Surface(shape = RoundedCornerShape(16.dp), color = container, contentColor = content, modifier = Modifier.fillMaxWidth()) {
+    Surface(shape = RoundedCornerShape(12.dp), color = container, contentColor = content, modifier = Modifier.fillMaxWidth()) {
         Column {
-            Row(Modifier.fillMaxWidth().padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(title.take(30), Modifier.weight(1f), style = MaterialTheme.typography.labelMedium, color = titleInk)
                 val actionTint = if (darkChrome()) content else Color.Unspecified
                 val actionScale = LocalToolCodeActionScale.current
@@ -115,8 +163,9 @@ internal fun stepKindIcon(kind: String): AppGlyph = when (kind.lowercase()) {
                 ActionIcon(AppStrings.expandCode, { read(title, text) }, AppIcons.Expand, tint = actionTint, buttonSize = ToolbarControl * actionScale, glyphSize = 22.dp * actionScale)
             }
             SelectionContainer {
-                Text(text, modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp).verticalScroll(rememberScrollState())
-                    .then(if (wrap) Modifier else Modifier.horizontalScroll(rememberScrollState())).padding(12.dp),
+                // Markdown code literals end in a newline; copying keeps it, the block does not draw an empty last line.
+                Text(text.trimEnd('\n'), modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp).verticalScroll(rememberScrollState())
+                    .then(if (wrap) Modifier else Modifier.horizontalScroll(rememberScrollState())).padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
                     fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall, softWrap = wrap)
             }
         }
@@ -126,42 +175,41 @@ internal fun stepKindIcon(kind: String): AppGlyph = when (kind.lowercase()) {
     if (steps.isEmpty()) return
     val expanded = turn.toolGroupExpanded(steps)
     val ink = toolCallInk()
+    val rail = toolCallBorder()
+    val failed = steps.any { it.outcome == "FAILED" }
     CompositionLocalProvider(LocalToolCodeActionScale provides 2f / 3f) {
         Column(Modifier.fillMaxWidth().testTag("execution-flow")) {
-            Row(
-                Modifier.fillMaxWidth().clickable { vm.enqueue { vm.actions.stepExpansion(turn.id, toolGroupKey(steps), !expanded) } }
-                    .heightIn(min = 44.dp).padding(start = 14.dp, end = 10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(turn.executionHeadline(steps), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = ink)
-                AppIcon(if (expanded) AppIcons.ChevronUp else AppIcons.ChevronRight, if (expanded) AppStrings.expanded else AppStrings.collapsed, Modifier.size(18.dp), tint = ink)
-            }
-            if (expanded) Column(Modifier.padding(start = 2.dp, end = 8.dp, bottom = 8.dp)) {
+            ProcessRow(
+                turn.executionHeadline(steps),
+                leading = { AppIcon(if (failed) AppIcons.Error else stepGroupIcon(steps), null, Modifier.size(16.dp), tint = if (failed) MaterialTheme.colorScheme.error else ink) },
+                expanded = expanded,
+                onClick = { vm.enqueue { vm.actions.stepExpansion(turn.id, toolGroupKey(steps), !expanded) } },
+            )
+            if (expanded) Column(Modifier.fillMaxWidth().drawBehind {
+                val x = 8.dp.toPx()
+                drawLine(rail, Offset(x, 0f), Offset(x, size.height), 1.dp.toPx())
+            }.padding(start = 20.dp, bottom = 4.dp)) {
                 steps.forEach { step -> key(step.id) {
                     val open = step.id in turn.expandedSteps
                     val view = remember(step, LanguagePreferences.current) { ToolPresentation.present(step) }
                     val liveThought = turn.occupied && step.id == steps.lastOrNull { it is Step.Thinking && it.outcome == null }?.id
-                    Row(Modifier.fillMaxWidth().clickable {
-                        val next = !open
-                        vm.enqueue {
-                            vm.actions.stepExpansion(turn.id, step.id, next)
-                            if (next) vm.actions.expansion(turn.id, true)
-                        }
-                    }.heightIn(min = 40.dp).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        StepGlyph(step.glyphKind(), step.outcome, turn.phase)
-                        Text(
-                            view.title,
-                            Modifier.weight(1f).padding(horizontal = 10.dp),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = ink,
-                        )
-                        AppIcon(if (open) AppIcons.ChevronDown else AppIcons.ChevronRight, if (open) AppStrings.expanded else AppStrings.collapsed, Modifier.size(16.dp), tint = ink)
-                    }
+                    ProcessRow(
+                        view.title,
+                        leading = { StepGlyph(step.glyphKind(), step.outcome, turn.phase) },
+                        expanded = open,
+                        onClick = {
+                            val next = !open
+                            vm.enqueue {
+                                vm.actions.stepExpansion(turn.id, step.id, next)
+                                if (next) vm.actions.expansion(turn.id, true)
+                            }
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        height = 36.dp,
+                    )
                     if (open) {
                         val body = view.detail
-                        Column(Modifier.fillMaxWidth().padding(start = 40.dp, end = 8.dp, bottom = 8.dp)) {
+                        Column(Modifier.fillMaxWidth().padding(start = 24.dp, bottom = 8.dp)) {
                             when {
                                 step is Step.Thinking -> if (body.isBlank()) {
                                     if (!liveThought) Text(AppStrings.noOutput, style = MaterialTheme.typography.bodySmall, color = ink)
@@ -196,8 +244,8 @@ internal fun stepKindIcon(kind: String): AppGlyph = when (kind.lowercase()) {
 
 @Composable internal fun PermissionContent(permission: PermissionRequest, enabled: Boolean, busy: Boolean, submitted: Boolean, connected: Boolean, decide: (Boolean) -> Unit) {
     val view = remember(permission.subject) { ToolPresentation.permission(permission.subject) }
-    Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = raisedColor()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), color = conversationCardColor()) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(AppStrings.yourPermissionIsRequired, style = MaterialTheme.typography.titleMedium)
             Text(view.title, style = MaterialTheme.typography.titleSmall)
             SelectionContainer {
@@ -233,7 +281,7 @@ internal fun stepStatusLabel(outcome: String?, phase: ExecutionPhase?): String =
         "CANCELLED" -> AppIcons.Close
         else -> stepKindIcon(kind)
     }
-    AppIcon(icon, stepStatusLabel(outcome, phase), Modifier.size(18.dp), tint = when (outcome) {
+    AppIcon(icon, stepStatusLabel(outcome, phase), Modifier.size(16.dp), tint = when (outcome) {
         "FAILED" -> MaterialTheme.colorScheme.error
         else -> toolCallInk()
     })

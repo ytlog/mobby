@@ -18,6 +18,7 @@ import androidx.lifecycle.lifecycleScope
 import com.github.ytlog.mobby.android.MobbyApplication
 import com.github.ytlog.mobby.android.conversation.ui.MobbyDarkScheme
 import com.github.ytlog.mobby.android.conversation.ui.MobbyLightScheme
+import com.github.ytlog.mobby.android.conversation.ui.MobbyTypography
 import com.github.ytlog.mobby.android.conversation.ui.TextButton
 import com.github.ytlog.mobby.android.localization.AppStrings
 import com.github.ytlog.mobby.android.programs.ProgramView
@@ -46,7 +47,7 @@ class ProgramShareActivity : ComponentActivity() {
                 targets?.isEmpty() == true -> AppStrings.noProgramTakesShares
                 else -> null
             }
-            MaterialTheme(colorScheme = if (isSystemInDarkTheme()) MobbyDarkScheme else MobbyLightScheme) {
+            MaterialTheme(colorScheme = if (isSystemInDarkTheme()) MobbyDarkScheme else MobbyLightScheme, typography = MobbyTypography) {
                 AlertDialog(onDismissRequest = ::finish, title = { Text(AppStrings.shareToProgram) },
                     text = {
                         if (problem != null) Text(problem)

@@ -18,6 +18,7 @@
 | [首次使用与屏幕操作引导](design/setup-guide.md) | 登录优先、配置进度、厂商开发者模式说明、通知配对与一次连接 |
 | [App 图标](design/app-icon.md) | 确认稿、蓝色环带矢量资源、自适应图层与单色图标 |
 | [聊天页玻璃控件](design/glass-controls.md) | Backdrop 接入、背景采样、深浅主题、平台降级与验收范围 |
+| [对话时间线样式](design/conversation-timeline-style.md) | 回复与过程的层次、过程行、间距规则、主题与验收范围 |
 | [悬浮对话](design/floating-conversation.md) | 悬浮球职责、共享会话执行与时间线、屏幕识别入口、窗口生命周期和验收范围 |
 | [平板与折叠屏自适应界面重构方案](design/adaptive-large-screen.md) | 窗口与铰链布局、状态所有权、实施方案与首版实现状态 |
 | [交互三层架构与 Runtime 技术设计](design/conversation-runtime-architecture.html) | Compose 展示包、三层职责、Runtime 模块、固定接口与事件协议、数据所有权和迁移验收 |

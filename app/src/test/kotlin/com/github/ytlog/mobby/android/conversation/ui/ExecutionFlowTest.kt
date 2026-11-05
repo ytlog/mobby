@@ -129,6 +129,19 @@ class ExecutionFlowTest {
         assertEquals("失败 · 1 个步骤", empty.copy(phase = ExecutionPhase.FAILED, steps = listOf(step)).executionHeadline())
     }
 
+    // A stopped turn stamped "已停止" on every earlier group, though those steps had finished and later work followed.
+    @Test fun `only the group the run ended in reports how the run ended`() {
+        val done = step.copy(id = "done", order = 1)
+        val failed = step.copy(id = "failed", outcome = "FAILED", order = 2)
+        val unresolved = step.copy(id = "open", outcome = null, order = 3)
+        val last = step.copy(id = "last", order = 4)
+        val stopped = empty.copy(phase = ExecutionPhase.CANCELLED, steps = listOf(done, failed, unresolved, last))
+        assertEquals("已完成 1 个步骤", stopped.executionHeadline(listOf(done)))
+        assertEquals("失败 · 1 个步骤", stopped.executionHeadline(listOf(failed)))
+        assertEquals("已停止 · 1 个步骤", stopped.executionHeadline(listOf(unresolved)))
+        assertEquals("已停止 · 1 个步骤", stopped.executionHeadline(listOf(last)))
+    }
+
     @Test fun `dark conversation colors come from the shared palette`() {
         val conversation = MobbyColors.Dark.Conversation
         assertEquals(Color(0xFF111111), conversation.canvas)

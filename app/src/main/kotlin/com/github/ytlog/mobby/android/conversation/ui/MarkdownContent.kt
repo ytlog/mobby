@@ -5,6 +5,7 @@ import com.github.ytlog.mobby.android.conversation.ui.UiStrings as AppStrings
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.ClickableText
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
@@ -12,6 +13,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
@@ -23,6 +28,8 @@ import androidx.compose.ui.text.*
 import androidx.compose.ui.text.font.*
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
+import androidx.compose.ui.unit.sp
 import org.commonmark.node.*
 import org.commonmark.parser.Parser
 import org.commonmark.ext.gfm.tables.*
@@ -68,14 +75,23 @@ private data class ParsedReply(val source: String, val document: Node)
 }
 
 @Composable private fun MarkdownBlocks(nodes: List<Node>, read: (String, String) -> Unit) {
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        nodes.forEach { node -> when (node) {
-            is Heading -> MarkdownInline(node, when (node.level) { 1 -> MaterialTheme.typography.headlineSmall; 2 -> MaterialTheme.typography.titleLarge; else -> MaterialTheme.typography.titleMedium }, Modifier.semantics { heading() })
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        nodes.forEachIndexed { index, node -> when (node) {
+            is Heading -> MarkdownInline(node, when (node.level) {
+                1 -> MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp, lineHeight = 28.sp, fontWeight = FontWeight.SemiBold)
+                2 -> MaterialTheme.typography.titleLarge.copy(fontSize = 18.sp, lineHeight = 26.sp, fontWeight = FontWeight.SemiBold)
+                else -> MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+            }, Modifier.padding(top = if (index > 0) 6.dp else 0.dp).semantics { heading() })
             is org.commonmark.node.Paragraph -> MarkdownInline(node)
             is FencedCodeBlock -> CodeContent(node.info.ifBlank { AppStrings.code }, node.literal, read)
             is IndentedCodeBlock -> CodeContent(AppStrings.code, node.literal, read)
-            is BlockQuote -> Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant).padding(12.dp)) {
-                MarkdownBlocks(ReplyMarkdown.children(node), read)
+            is BlockQuote -> {
+                val bar = toolCallBorder()
+                Box(Modifier.fillMaxWidth().drawBehind {
+                    drawRoundRect(bar, size = Size(3.dp.toPx(), size.height), cornerRadius = CornerRadius(1.5.dp.toPx()))
+                }.padding(start = 14.dp)) {
+                    CompositionLocalProvider(LocalContentColor provides toolCallInk()) { MarkdownBlocks(ReplyMarkdown.children(node), read) }
+                }
             }
             is BulletList -> MarkdownList(node, null, read)
             is OrderedList -> MarkdownList(node, node.markerStartNumber ?: 1, read)
@@ -94,7 +110,7 @@ private data class ParsedReply(val source: String, val document: Node)
             val children = ReplyMarkdown.children(item)
             val task = children.filterIsInstance<TaskListItemMarker>().firstOrNull()
             Row(Modifier.fillMaxWidth()) {
-                Text(if (task != null) if (task.isChecked) "☑" else "☐" else if (start == null) "•" else "${start + index}.", Modifier.widthIn(min = 28.dp).padding(end = 8.dp), style = MaterialTheme.typography.bodyLarge)
+                Text(if (task != null) if (task.isChecked) "☑" else "☐" else if (start == null) "•" else "${start + index}.", Modifier.widthIn(min = 20.dp).padding(end = 4.dp), style = MaterialTheme.typography.bodyLarge, color = toolCallInk())
                 Box(Modifier.weight(1f)) { MarkdownBlocks(children.filterNot { it is TaskListItemMarker }, read) }
             }
         }
@@ -116,7 +132,7 @@ private data class ParsedReply(val source: String, val document: Node)
         val available = constraints.maxWidth
         Layout(
             content = { rows.forEach { row -> repeat(columns) { column -> MarkdownTableCell(row.getOrNull(column), outline) } } },
-            modifier = Modifier.horizontalScroll(rememberScrollState()).border(1.dp, outline),
+            modifier = Modifier.clip(RoundedCornerShape(10.dp)).border(1.dp, outline, RoundedCornerShape(10.dp)).horizontalScroll(rememberScrollState()),
         ) { measurables, _ ->
             val grid = measurables.chunked(columns)
             val shortest = 64.dp.roundToPx(); val longest = 320.dp.roundToPx(); val floor = 120.dp.roundToPx()
@@ -138,7 +154,7 @@ private data class ParsedReply(val source: String, val document: Node)
 
 @Composable private fun MarkdownTableCell(cell: TableCell?, outline: Color) {
     Box(Modifier.testTag("markdown-table-cell")
-        .background(if (cell?.isHeader == true) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface)
+        .background(if (cell?.isHeader == true) conversationCardColor() else Color.Transparent)
         .border(0.5.dp, outline).padding(10.dp)) {
         cell ?: return@Box
         val alignment = when (cell.alignment) { TableCell.Alignment.CENTER -> androidx.compose.ui.text.style.TextAlign.Center; TableCell.Alignment.RIGHT -> androidx.compose.ui.text.style.TextAlign.End; else -> androidx.compose.ui.text.style.TextAlign.Start }
@@ -182,7 +198,7 @@ private fun spread(base: List<Int>, weights: List<Int>, extra: Int): List<Int> {
             fun visit(current: Node) {
                 when (current) {
                     is org.commonmark.node.Text -> append(current.literal)
-                    is Code -> withStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = codeBackground)) { append(current.literal) }
+                    is Code -> withStyle(SpanStyle(fontFamily = FontFamily.Monospace, fontSize = 0.88.em, background = codeBackground)) { append(current.literal) }
                     is SoftLineBreak, is HardLineBreak -> append('\n')
                     is Emphasis -> withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { ReplyMarkdown.children(current).forEach(::visit) }
                     is StrongEmphasis -> withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { ReplyMarkdown.children(current).forEach(::visit) }

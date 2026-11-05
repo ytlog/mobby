@@ -8,7 +8,6 @@ import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -18,7 +17,7 @@ import com.github.ytlog.mobby.android.conversation.domain.ConversationId
 import com.github.ytlog.mobby.android.conversation.ui.ConversationEntry
 import com.github.ytlog.mobby.android.conversation.ui.ConversationHostActions
 import com.github.ytlog.mobby.android.conversation.ui.ProgramNavigation
-import com.github.ytlog.mobby.android.conversation.ui.mobbySystemBarColor
+import com.github.ytlog.mobby.android.conversation.ui.mobbySystemBarStyle
 import com.github.ytlog.mobby.android.programcenter.ProgramCenterPage
 import com.github.ytlog.mobby.android.programcenter.ProgramOpenHistory
 import com.github.ytlog.mobby.android.programcenter.ProgramUiActivity
@@ -61,8 +60,7 @@ class MainActivity : ComponentActivity() {
         val host = ConversationHostActions(share = { text ->
             startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text), AppStrings.shareMessage))
         }, appearance = { dark ->
-            val background = mobbySystemBarColor(dark)
-            val style = if (dark) SystemBarStyle.dark(background) else SystemBarStyle.light(background, background)
+            val style = mobbySystemBarStyle(dark)
             enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
         }, pet = { want ->
             if (!want) {
