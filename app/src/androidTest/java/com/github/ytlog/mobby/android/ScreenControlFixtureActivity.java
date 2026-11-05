@@ -12,12 +12,18 @@ public final class ScreenControlFixtureActivity extends Activity {
     @Override public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         LinearLayout content = new LinearLayout(this); content.setOrientation(LinearLayout.VERTICAL);
+        content.setFocusableInTouchMode(true);
         content.setPadding(24, 24, 24, 24);
         TextView value = new TextView(this); value.setText("Count: 0"); content.addView(value);
         Button increment = new Button(this); increment.setText("Increment");
         increment.setOnClickListener(view -> value.setText("Count: " + (++count))); content.addView(increment);
         EditText input = new EditText(this); input.setHint("Probe input"); input.setContentDescription("Probe input");
         input.setSingleLine(true); input.setShowSoftInputOnFocus(false); content.addView(input);
+        Button detail = new Button(this); detail.setText("Open detail");
+        detail.setOnClickListener(view -> startActivity(new android.content.Intent(this, Detail.class))); content.addView(detail);
+        Button secure = new Button(this); secure.setText("Secure field");
+        secure.setOnClickListener(view -> input.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD));
+        content.addView(secure);
         TextView geometry = new TextView(this); content.addView(geometry);
         increment.post(() -> {
             int[] location = new int[2]; increment.getLocationOnScreen(location);
@@ -32,5 +38,12 @@ public final class ScreenControlFixtureActivity extends Activity {
         for (int i = 0; i < 60; i++) { TextView row = new TextView(this); row.setText("Probe row " + i); row.setPadding(0, 16, 0, 16); rows.addView(row); }
         scroll.addView(rows); content.addView(scroll);
         setContentView(content);
+        content.requestFocus();
+    }
+    public static final class Detail extends Activity {
+        @Override public void onCreate(Bundle state) {
+            super.onCreate(state);
+            TextView text = new TextView(this); text.setText("Probe detail"); setContentView(text);
+        }
     }
 }

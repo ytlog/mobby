@@ -2,9 +2,13 @@ package com.github.ytlog.mobby.android.device.privileged;
 
 import android.accessibilityservice.AccessibilityServiceInfo;
 import android.app.UiAutomation;
+import android.app.ActivityManager;
+import android.app.ActivityOptions;
 import android.content.Context;
 import android.content.ContextWrapper;
 import android.content.AttributionSource;
+import android.content.ComponentName;
+import android.content.pm.ActivityInfo;
 import android.graphics.Bitmap;
 import android.graphics.PixelFormat;
 import android.graphics.Rect;
@@ -18,6 +22,7 @@ import android.view.*;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityWindowInfo;
 import org.json.JSONObject;
+import org.json.JSONArray;
 import java.io.*;
 import java.lang.reflect.Constructor;
 import java.nio.ByteBuffer;
@@ -39,6 +44,9 @@ final class VirtualScreen implements AutoCloseable {
     private volatile long frameAt;
     private volatile boolean closed;
     private int displayId = -1;
+    private Context context;
+    private Object taskManager;
+    private Class<?> taskInterface;
 
     VirtualScreen() {
         operations.start(); callbacks.start(); handler = new Handler(operations.getLooper());
@@ -51,7 +59,7 @@ final class VirtualScreen implements AutoCloseable {
             Object thread = activityThread.getMethod("currentActivityThread").invoke(null);
             if (thread == null) thread = activityThread.getMethod("systemMain").invoke(null);
             Context system = (Context) activityThread.getMethod("getSystemContext").invoke(thread);
-            Context context = new ContextWrapper(system) {
+            context = new ContextWrapper(system) {
                 @Override public String getPackageName() { return "com.android.shell"; }
                 @Override public String getOpPackageName() { return "com.android.shell"; }
                 @Override public Context getApplicationContext() { return this; }
@@ -85,6 +93,8 @@ final class VirtualScreen implements AutoCloseable {
             AccessibilityServiceInfo info = automation.getServiceInfo();
             info.flags |= AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS | AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS;
             automation.setServiceInfo(info);
+            taskInterface = Class.forName("android.app.IActivityTaskManager");
+            taskManager = Class.forName("android.app.ActivityTaskManager").getMethod("getService").invoke(null);
             return metadata(new JSONObject());
         });
     }
@@ -95,17 +105,19 @@ final class VirtualScreen implements AutoCloseable {
             if (display == null || displayId <= 0 || !display.getDisplay().isValid()) throw new IllegalStateException("invalid_display");
             if ("frame".equals(action)) return screenshot(metadata(new JSONObject()));
             if ("apps".equals(action)) return metadata(new JSONObject().put("text", apps()));
+            if ("tasks".equals(action)) return metadata(new JSONObject().put("tasks", virtualTasks()));
+            if ("focus_task".equals(action)) {
+                focusTask(args.getInt("id")); return observe("Restored virtual task", false);
+            }
+            if ("observe".equals(action)) return observe("Closed virtual navigation", true);
+            if ("navigation_snapshot".equals(action)) {
+                awaitPackage("com.github.ytlog.mobby.android");
+                AccessibilityNodeInfo node = root();
+                try { return snapshot(node); } finally { node.recycle(); }
+            }
             if ("launch".equals(action)) {
-                String name = args.getString("package");
-                if (!name.matches("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+") || name.startsWith("com.github.ytlog.mobby"))
-                    throw new IllegalArgumentException("invalid_package");
-                String resolved = command("/system/bin/cmd", "package", "resolve-activity", "--brief", "--user", "current", "-a", "android.intent.action.MAIN", "-c", "android.intent.category.LAUNCHER", name);
-                String component = Arrays.stream(resolved.split("\\R")).map(String::trim)
-                    .filter(line -> line.matches("[A-Za-z0-9_.$]+/[A-Za-z0-9_.$]+") && line.startsWith(name + "/"))
-                    .findFirst().orElseThrow(() -> new IllegalStateException("launcher_not_found"));
-                command("/system/bin/am", "start", "-W", "--display", String.valueOf(displayId), "--user", "current",
-                    "-f", "0x18000000", "-n", component);
-                return observe("Launch requested for " + name, true);
+                String name = args.getString("package"); launch(name);
+                return observe("Opened " + name + " on virtual display", false);
             }
             if ("tap".equals(action) || "swipe".equals(action)) {
                 float x = fraction(args, "x") * (WIDTH - 1), y = fraction(args, "y") * (HEIGHT - 1);
@@ -113,7 +125,6 @@ final class VirtualScreen implements AutoCloseable {
                 else gesture(x, y, fraction(args, "toX") * (WIDTH - 1), fraction(args, "toY") * (HEIGHT - 1), 350);
                 return observe("Input delivered to virtual display", true);
             }
-            if ("home".equals(action) || "recents".equals(action)) throw new UnsupportedOperationException("use_apps_and_launch_on_virtual_display");
             if ("back".equals(action)) {
                 int key = KeyEvent.KEYCODE_BACK;
                 long now = SystemClock.uptimeMillis();
@@ -137,7 +148,9 @@ final class VirtualScreen implements AutoCloseable {
                     if (text.length() > 2000 || text.isEmpty()) throw new IllegalArgumentException("invalid_text");
                     AccessibilityNodeInfo focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
                     try {
-                        if (focused == null || !focused.isEditable() || focused.isPassword()) throw new IllegalStateException("no_editable_field");
+                        if (focused != null && !focused.isEditable()) { focused.recycle(); focused = null; }
+                        if (focused == null) focused = soleEditable(root);
+                        if (focused == null || focused.isPassword()) throw new IllegalStateException("no_editable_field");
                         Bundle bundle = new Bundle(); bundle.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text);
                         if (!focused.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, bundle)) throw new IllegalStateException("text_refused");
                     } finally { if (focused != null) focused.recycle(); }
@@ -151,6 +164,14 @@ final class VirtualScreen implements AutoCloseable {
         List<AccessibilityWindowInfo> windows = automation.getWindowsOnAllDisplays().get(displayId);
         if (windows == null) throw new IllegalStateException("no_virtual_window");
         try {
+            windows.sort(Comparator.comparingInt(AccessibilityWindowInfo::getLayer).reversed());
+            for (AccessibilityWindowInfo window : windows) {
+                AccessibilityNodeInfo node = window.getRoot();
+                if (node != null) {
+                    if (node.isVisibleToUser() && "com.github.ytlog.mobby.android".contentEquals(node.getPackageName())) return node;
+                    node.recycle();
+                }
+            }
             for (AccessibilityWindowInfo window : windows) {
                 if (window.getType() == AccessibilityWindowInfo.TYPE_APPLICATION) {
                     AccessibilityNodeInfo node = window.getRoot();
@@ -190,13 +211,90 @@ final class VirtualScreen implements AutoCloseable {
         List<AccessibilityNodeInfo> found = args.has("query") ? matches(root, args.getString("query")) : new ArrayList<>();
         int count = found.size(); for (AccessibilityNodeInfo node : found) node.recycle();
         AccessibilityNodeInfo focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
+        boolean focusedEditable = focused != null && focused.isEditable();
+        if (!focusedEditable) { if (focused != null) focused.recycle(); focused = soleEditable(root); }
         try {
             boolean input = focused != null && focused.isEditable();
             boolean password = input && focused.isPassword();
             return metadata(new JSONObject().put("packageName", String.valueOf(root.getPackageName())).put("shape", hash.toString())
-                .put("matches", count).put("editable", editable[0]).put("focusedEditable", input).put("passwordInput", password)
+                .put("matches", count).put("editable", editable[0]).put("focusedEditable", focusedEditable).put("passwordInput", password)
                 .put("inputMatches", input && !password && args.has("expectedInput") && args.getString("expectedInput").contentEquals(focused.getText() == null ? "" : focused.getText())));
         } finally { if (focused != null) focused.recycle(); }
+    }
+    private AccessibilityNodeInfo soleEditable(AccessibilityNodeInfo root) {
+        List<AccessibilityNodeInfo> inputs = new ArrayList<>();
+        walk(root, 0, new int[]{0}, (node, depth) -> {
+            if (node.isEditable() && node.isEnabled() && node.isVisibleToUser()) inputs.add(AccessibilityNodeInfo.obtain(node));
+        });
+        if (inputs.size() == 1) return inputs.get(0);
+        for (AccessibilityNodeInfo node : inputs) node.recycle();
+        return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<ActivityManager.RunningTaskInfo> tasks() throws Exception {
+        // AOSP 13 has three arguments; 14+ adds the display filter. Always validate it ourselves too.
+        if (Build.VERSION.SDK_INT >= 34)
+            return (List<ActivityManager.RunningTaskInfo>) taskInterface.getMethod("getTasks", int.class, boolean.class, boolean.class, int.class)
+                .invoke(taskManager, 1000, false, false, -1);
+        return (List<ActivityManager.RunningTaskInfo>) taskInterface.getMethod("getTasks", int.class, boolean.class, boolean.class)
+            .invoke(taskManager, 1000, false, false);
+    }
+    private int taskDisplay(ActivityManager.RunningTaskInfo task) throws Exception {
+        return task.getClass().getField("displayId").getInt(task);
+    }
+    private boolean belongsTo(ActivityManager.RunningTaskInfo task, String name) {
+        return task.baseActivity != null && name.equals(task.baseActivity.getPackageName());
+    }
+    private JSONArray virtualTasks() throws Exception {
+        JSONArray items = new JSONArray();
+        for (ActivityManager.RunningTaskInfo task : tasks()) {
+            if (taskDisplay(task) == displayId && task.baseActivity != null)
+                items.put(new JSONObject().put("id", task.taskId).put("package", task.baseActivity.getPackageName()));
+        }
+        return items;
+    }
+    private void focusTask(int id) throws Exception {
+        ActivityManager.RunningTaskInfo selected = null;
+        for (ActivityManager.RunningTaskInfo task : tasks()) if (task.taskId == id && taskDisplay(task) == displayId) selected = task;
+        if (selected == null) throw new IllegalStateException("virtual_task_not_found");
+        String name = (selected.topActivity != null ? selected.topActivity : selected.baseActivity).getPackageName();
+        // Only a task still on our display may be brought forward; no main-display task IDs are accepted.
+        Bundle options = ActivityOptions.makeBasic().setLaunchDisplayId(displayId).toBundle();
+        taskInterface.getMethod("moveTaskToFront", Class.forName("android.app.IApplicationThread"), String.class, int.class, int.class, Bundle.class)
+            .invoke(taskManager, null, "com.android.shell", id, 0, options);
+        awaitPackage(name);
+    }
+    private void launch(String name) throws Exception {
+        if (!name.matches("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+") || name.equals("com.github.ytlog.mobby.android"))
+            throw new IllegalArgumentException("invalid_package");
+        for (ActivityManager.RunningTaskInfo task : tasks()) {
+            if (taskDisplay(task) == displayId && belongsTo(task, name)) { focusTask(task.taskId); return; }
+        }
+        String resolved = command("/system/bin/cmd", "package", "resolve-activity", "--brief", "--user", "current", "-a", "android.intent.action.MAIN", "-c", "android.intent.category.LAUNCHER", name);
+        String component = Arrays.stream(resolved.split("\\R")).map(String::trim)
+            .filter(line -> line.matches("[A-Za-z0-9_.$]+/[A-Za-z0-9_.$]+") && line.startsWith(name + "/"))
+            .findFirst().orElseThrow(() -> new IllegalStateException("launcher_not_found"));
+        ActivityInfo info = context.getPackageManager().getActivityInfo(ComponentName.unflattenFromString(component), 0);
+        // Single-task/single-instance apps can steal their existing task from another display.
+        if (info.launchMode != ActivityInfo.LAUNCH_MULTIPLE && info.launchMode != ActivityInfo.LAUNCH_SINGLE_TOP) {
+            for (ActivityManager.RunningTaskInfo task : tasks())
+                if (taskDisplay(task) != displayId && belongsTo(task, name)) throw new UnsupportedOperationException("app_already_on_other_display");
+        }
+        command("/system/bin/am", "start", "-W", "--display", String.valueOf(displayId), "--user", "current",
+            "-f", "0x18000000", "-n", component);
+        awaitPackage(name);
+    }
+    private void awaitPackage(String name) throws Exception {
+        long until = SystemClock.uptimeMillis() + 3000;
+        do {
+            try {
+                AccessibilityNodeInfo node = root();
+                try { if (name.contentEquals(node.getPackageName())) return; } finally { node.recycle(); }
+            } catch (IllegalStateException noWindow) { /* A launch transition may not have a window yet. */ }
+            SystemClock.sleep(50);
+        } while (SystemClock.uptimeMillis() < until);
+        throw new IllegalStateException("app_not_on_virtual_display");
     }
     private interface NodeVisitor { void visit(AccessibilityNodeInfo node, int depth); }
     private void walk(AccessibilityNodeInfo node, int depth, int[] count, NodeVisitor visitor) {

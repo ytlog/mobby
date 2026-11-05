@@ -2,6 +2,14 @@
     <application>
         <activity android:name="com.github.ytlog.mobby.android.ScreenControlFixtureActivity"
             android:exported="true" android:resizeableActivity="true"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <activity android:name="com.github.ytlog.mobby.android.ScreenControlFixtureActivity$Detail"
+            android:exported="false" android:resizeableActivity="true"
             android:theme="@android:style/Theme.Material.Light.NoActionBar" />
     </application>
 </manifest>

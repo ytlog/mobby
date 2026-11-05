@@ -17,7 +17,7 @@ public final class AdbScreenMain {
                      FileOutputStream output = new FileOutputStream("/dev/null")) {
                     Os.dup2(input.getFD(), 0); Os.dup2(output.getFD(), 1); Os.dup2(output.getFD(), 2);
                 }
-                server.await();
+                server.loop();
             }
         } else if (args.length == 0) {
             ProcessBuilder builder = new ProcessBuilder("/system/bin/app_process", "/system/bin", AdbScreenMain.class.getName(), "--worker");

@@ -173,15 +173,46 @@ object ScreenControl {
             val opened = request(connected, "open")
             val id = opened.getInt("displayId")
             check(id > 0) { "Virtual screen must not be the main display" }
+            val navigation = VirtualScreenNavigation(context, id)
             changes.value = state.value.copy(active = true, displayId = id, jpeg = null, error = null)
             object : ScreenSession {
+                private fun onDisplay(action: String, args: Map<String, String> = emptyMap()) =
+                    request(connected, action, args).also { check(it.getInt("displayId") == id) { "Virtual display changed" } }
+
+                private fun openNavigation(home: Boolean): JSONObject {
+                    val entries = if (home) onDisplay("apps").getString("text").lineSequence()
+                        .filter { it.isNotBlank() && it != context.packageName }
+                        .map { VirtualScreenNavigation.Entry(it, "launch", mapOf("package" to it)) }.toList()
+                    else onDisplay("tasks").getJSONArray("tasks").let { tasks ->
+                        (0 until tasks.length()).map { index ->
+                            val task = tasks.getJSONObject(index)
+                            val taskId = task.getInt("id").toString()
+                            VirtualScreenNavigation.Entry("${task.getString("package")} (task $taskId)", "focus_task", mapOf("id" to taskId))
+                        }
+                    }
+                    navigation.show(if (home) "Virtual apps" else "Virtual tasks", entries)
+                    return onDisplay("navigation_snapshot")
+                }
+
                 override fun operate(action: String, args: Map<String, String>, checkActive: () -> Unit): ScreenAccessService.Observation =
                     ScreenCoordinator.chatAction {
                         checkActive()
                         requireUnlocked(context)
-                        val result = request(connected, action, args)
+                        var result = when {
+                            action == "home" || action == "recents" -> openNavigation(action == "home")
+                            action == "back" && navigation.visible -> { navigation.hide(); onDisplay("observe") }
+                            action == "launch" -> { navigation.hide(); onDisplay(action, args) }
+                            else -> onDisplay(action, args)
+                        }
+                        if (navigation.visible && action in setOf("click", "tap", "swipe")) {
+                            navigation.takeSelection()?.let { entry ->
+                                checkActive()
+                                requireUnlocked(context)
+                                navigation.hide()
+                                result = onDisplay(entry.action, entry.args)
+                            }
+                        }
                         checkActive()
-                        check(result.getInt("displayId") == id) { "Virtual display changed" }
                         val jpeg = result.optString("jpeg").takeIf(String::isNotEmpty)?.let { Base64.decode(it, Base64.NO_WRAP) }
                         changes.value = state.value.copy(jpeg = jpeg ?: state.value.jpeg, packageName = result.optString("packageName"), error = null)
                         ScreenAccessService.Observation(result.optString("text"), result.optString("packageName"),
@@ -197,7 +228,7 @@ object ScreenControl {
                 }
                 override fun close() {
                     synchronized(connected) {
-                        try { request(connected, "close") }
+                        try { try { navigation.hide() } finally { request(connected, "close") } }
                         finally { changes.value = state.value.copy(active = false, displayId = null, jpeg = null, packageName = "") }
                     }
                 }

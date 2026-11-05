@@ -5,6 +5,7 @@ Only a temporary jar in /data/local/tmp is written; the tested app opens on a ne
 """
 import argparse
 import json
+import re
 import select
 import socket
 import struct
@@ -75,20 +76,24 @@ def probe(adb, jar, package):
             assert observed['displayId'] == display
             assert observed['packageName'] == package, 'target app escaped the selected display'
             assert observed.get('jpeg'), 'no virtual display frame'
-            if package == 'dev.mobby.screenprobe':
+            if package in ('dev.mobby.screenprobe', 'com.github.ytlog.mobby.android.test'):
                 request({'action': 'click', 'args': {'query': 'Increment'}})
                 assert 'Count: 1' in request({'action': 'snapshot'})['text']
                 # The fixture's button occupies x=24..696 and y about 50..122 on the 720x1280 display.
-                request({'action': 'tap', 'args': {'x': '0.5', 'y': '0.07'}})
+                if package.endswith('.test'):
+                    geometry = re.search(r'Button center: (\d+),(\d+)/(\d+),(\d+)', request({'action': 'snapshot'})['text'])
+                    assert geometry, 'fixture did not expose its real display geometry'
+                    px, py, width, height = map(int, geometry.groups())
+                    request({'action': 'tap', 'args': {'x': str(px / width), 'y': str(py / height)}})
+                else:
+                    request({'action': 'tap', 'args': {'x': '0.5', 'y': '0.07'}})
                 assert 'Count: 2' in request({'action': 'snapshot'})['text']
-                request({'action': 'click', 'args': {'query': 'Probe input'}})
                 request({'action': 'type', 'args': {'text': '虚拟屏中文输入'}})
                 assert '虚拟屏中文输入' in request({'action': 'snapshot'})['text']
                 before_scroll = request({'action': 'snapshot'})['text']
                 request({'action': 'swipe', 'args': {'x': '0.5', 'y': '0.85', 'toX': '0.5', 'toY': '0.4'}})
                 after_scroll = request({'action': 'snapshot'})['text']
                 assert before_scroll != after_scroll, 'swipe did not change the fixture list'
-                request({'action': 'back'})
             inspected = request({'action': 'inspect'})
             assert inspected['packageName'] == package
             if package == 'com.android.settings':
@@ -103,20 +108,17 @@ def probe(adb, jar, package):
                 pass
             else:
                 raise AssertionError('invalid coordinates were accepted')
-            # These global keys must not escape to the main display.
-            for action in ['home', 'recents']:
-                try:
-                    request({'action': action})
-                except RuntimeError:
-                    pass
-                else:
-                    raise AssertionError(action + ' should be refused in virtual mode')
-            if package == 'com.android.settings':
-                request({'action': 'back'})
+            # The host owns the actual navigation panel. Probe the worker's scoped task API.
+            tasks = request({'action': 'tasks'})['tasks']
+            assert all(task['package'] == package for task in tasks), 'main-display tasks escaped the filter'
+            task = next(task for task in tasks if task['package'] == package)
+            request({'action': 'focus_task', 'args': {'id': task['id']}})
+            assert request({'action': 'snapshot'})['packageName'] == package
+            request({'action': 'back'})
             request({'action': 'close'})
             print(json.dumps({'workerUid': endpoint['uid'], 'displayId': display, 'package': package,
                               'screenshot': observed['screenshotStatus'], 'nodeTree': bool(observed['text']),
-                              'invalidInputRefused': True, 'globalKeysRefused': True, 'tapAndSwipeDelivered': True, 'closed': True}))
+                              'invalidInputRefused': True, 'virtualTaskRestored': True, 'tapAndSwipeDelivered': package in ('com.android.settings', 'dev.mobby.screenprobe', 'com.github.ytlog.mobby.android.test'), 'closed': True}))
     finally:
         if stream:
             stream.close()

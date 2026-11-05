@@ -4,7 +4,7 @@ package com.github.ytlog.mobby.android.device.privileged;
 public final class ScreenProbeMain {
     public static void main(String[] args) throws Exception {
         try (ScreenServer server = new ScreenServer()) {
-            System.out.println(server.endpoint()); System.out.flush(); server.await();
+            System.out.println(server.endpoint()); System.out.flush(); server.loop();
         }
         System.exit(0);
     }

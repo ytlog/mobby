@@ -31,6 +31,9 @@ class BuiltinAdbPairingDeviceTest {
         assumeTrue(InstrumentationRegistry.getArguments().getString("pairAdb") == "true")
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val target = instrumentation.targetContext
+        if (android.os.Build.VERSION.SDK_INT >= 34) assertEquals("The packaged pairing service needs its dataSync permission",
+            android.content.pm.PackageManager.PERMISSION_GRANTED,
+            target.checkSelfPermission(android.Manifest.permission.FOREGROUND_SERVICE_DATA_SYNC))
         val previous = ScreenControl.state.value.mode
         assertFalse(ScreenControl.state.value.active)
         ScreenControl.select(target, ScreenMode.ADB)

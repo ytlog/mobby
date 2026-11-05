@@ -5,7 +5,7 @@ public final class RootScreenMain {
     public static void main(String[] args) throws Exception {
         if (android.os.Process.myUid() != 0) throw new SecurityException("root_required");
         try (ScreenServer server = new ScreenServer()) {
-            System.out.println(server.endpoint()); System.out.flush(); server.await();
+            System.out.println(server.endpoint()); System.out.flush(); server.loop();
         }
         System.exit(0);
     }

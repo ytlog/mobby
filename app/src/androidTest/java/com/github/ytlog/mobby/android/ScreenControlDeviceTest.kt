@@ -1,7 +1,5 @@
 package com.github.ytlog.mobby.android
 
-import android.app.ActivityOptions
-import android.content.ComponentName
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
@@ -103,10 +101,8 @@ class ScreenControlDeviceTest {
                 assertEquals(mode == ScreenMode.CURRENT, display == 0)
                 perform("launch", mapOf("package" to "com.android.settings"))
                 val fixturePackage = instrumentation.context.packageName
-                val fixtureIntent = Intent().setComponent(ComponentName(fixturePackage, ScreenControlFixtureActivity::class.java.name))
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
-                val options = ActivityOptions.makeBasic().setLaunchDisplayId(display).toBundle()
-                target.startActivity(fixtureIntent, options)
+                // Use the actual Agent launch path, including its selected-display contract.
+                perform("launch", mapOf("package" to fixturePackage))
                 SystemClock.sleep(1000)
                 var observed = perform("snapshot")
                 assertEquals(fixturePackage, observed.getString("packageName"))
@@ -119,7 +115,7 @@ class ScreenControlDeviceTest {
                 val y = geometry.groupValues[2].toFloat() / geometry.groupValues[4].toFloat()
                 perform("tap", mapOf("x" to x.toString(), "y" to y.toString()))
                 assertTrue(perform("snapshot").getString("text").contains("Count: 2"))
-                perform("click", mapOf("query" to "Probe input"))
+                // Like current-screen mode, a sole editable field need not already have focus.
                 perform("type", mapOf("text" to "虚拟屏中文输入"))
                 val before = perform("snapshot").getString("text")
                 assertTrue(before.contains("虚拟屏中文输入"))
@@ -127,7 +123,14 @@ class ScreenControlDeviceTest {
                 assertEquals(0, scrollPosition(before))
                 perform("swipe", mapOf("x" to "0.5", "y" to "0.85", "toX" to "0.5", "toY" to "0.4"))
                 assertTrue("Swipe must move the actual scroll container", scrollPosition(perform("snapshot").getString("text")) > 0)
+                perform("click", mapOf("query" to "Open detail"))
+                assertTrue(perform("snapshot").getString("text").contains("Probe detail"))
+                perform("back")
+                assertTrue("Back must return within the selected display", perform("snapshot").getString("text").contains("Count: 2"))
                 if (mode != ScreenMode.CURRENT) {
+                    perform("click", mapOf("query" to "Secure field"))
+                    assertNotEquals("Password inputs must remain refused", "succeeded",
+                        request("type", mapOf("text" to "probe-only-dummy")).optString("status"))
                     assertTrue(ScreenControl.state.value.active)
                     assertNotNull(ScreenControl.state.value.jpeg)
                     instrumentation.runOnMainSync {
@@ -137,10 +140,19 @@ class ScreenControlDeviceTest {
                     }
                     instrumentation.sendStatus(0, Bundle().apply { putString("screen_probe_phase", "virtual_preview") })
                     SystemClock.sleep(3000)
-                    for (action in listOf("home", "recents")) {
-                        val refusal = request(action)
-                        assertNotEquals("succeeded", refusal.optString("status"))
-                        assertEquals("UNSUPPORTED_CAPABILITY", refusal.getJSONObject("error").getString("code"))
+                    perform("home")
+                    assertTrue(perform("snapshot").getString("text").contains("Virtual apps"))
+                    perform("recents")
+                    observed = perform("snapshot")
+                    assertTrue(observed.getString("text").contains("Virtual tasks"))
+                    assertTrue(observed.getString("text").contains(fixturePackage))
+                    perform("click", mapOf("query" to fixturePackage))
+                    observed = perform("snapshot")
+                    assertEquals(fixturePackage, observed.getString("packageName"))
+                    assertTrue("Switching tasks must preserve App state", observed.getString("text").contains("Count: 2"))
+                    instrumentation.runOnMainSync {
+                        assertTrue("mobby must stay resumed on the main screen",
+                            ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED).contains(main))
                     }
                 }
                 perform("back")

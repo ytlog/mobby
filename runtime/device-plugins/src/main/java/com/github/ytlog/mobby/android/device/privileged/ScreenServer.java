@@ -19,6 +19,8 @@ public final class ScreenServer implements AutoCloseable {
 
     public ScreenServer() throws IOException {
         if (Process.myUid() != 0 && Process.myUid() != 2000) throw new SecurityException("privileged_uid_required");
+        // UiAutomation on API 37 also binds a handler to the process main looper.
+        if (android.os.Looper.getMainLooper() == null) android.os.Looper.prepareMainLooper();
         server = new ServerSocket(0, 1, InetAddress.getByName("127.0.0.1"));
         server.setSoTimeout(15_000);
         byte[] secret = new byte[32];
@@ -33,7 +35,13 @@ public final class ScreenServer implements AutoCloseable {
         catch (Exception e) { throw new IllegalStateException(e); }
     }
 
-    public void await() throws InterruptedException { thread.join(); }
+    public void loop() {
+        new Thread(() -> {
+            try { thread.join(); System.exit(0); }
+            catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); System.exit(1); }
+        }, "screen-worker-exit").start();
+        android.os.Looper.loop();
+    }
 
     private void serve() {
         long deadline = System.nanoTime() + 15_000_000_000L;
