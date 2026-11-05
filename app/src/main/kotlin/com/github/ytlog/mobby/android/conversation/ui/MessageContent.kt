@@ -22,6 +22,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.github.ytlog.mobby.android.conversation.domain.*
 import com.github.ytlog.mobby.android.deviceoperation.ui.showsFoldedPreview
 import com.github.ytlog.mobby.android.runtime.api.device.DeviceRecord
@@ -164,6 +165,10 @@ internal fun stepKindIcon(kind: String): AppGlyph = when (kind.lowercase()) {
     else -> AppIcons.More
 }
 internal val ProcessRowHeight = 36.dp
+internal val ProcessTextSize = 13.sp
+
+/** Secondary lines of a run: small enough to sit clearly below the reply text they accompany. */
+@Composable internal fun processTextStyle(): TextStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = ProcessTextSize, lineHeight = 18.sp)
 
 /** One quiet line of a run, aligned with the reply text: what happened, how it went, and a way to open it. */
 @Composable internal fun ProcessRow(
@@ -174,7 +179,7 @@ internal val ProcessRowHeight = 36.dp
     modifier: Modifier = Modifier,
     status: String? = null,
     statusColor: Color = Color.Unspecified,
-    style: TextStyle = MaterialTheme.typography.bodyMedium,
+    style: TextStyle = processTextStyle(),
 ) {
     val ink = toolCallInk()
     Row(
@@ -184,7 +189,7 @@ internal val ProcessRowHeight = 36.dp
     ) {
         if (leading != null) {
             leading()
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(6.dp))
         }
         Text(title, Modifier.weight(1f, fill = false), maxLines = 1, overflow = TextOverflow.Ellipsis, style = style, color = ink)
         if (status != null) {
@@ -193,7 +198,7 @@ internal val ProcessRowHeight = 36.dp
         }
         if (expanded != null) {
             Spacer(Modifier.width(2.dp))
-            AppIcon(if (expanded) AppIcons.ChevronDown else AppIcons.ChevronRight, if (expanded) AppStrings.expanded else AppStrings.collapsed, Modifier.size(14.dp), tint = ink)
+            AppIcon(if (expanded) AppIcons.ChevronDown else AppIcons.ChevronRight, if (expanded) AppStrings.expanded else AppStrings.collapsed, Modifier.size(12.dp), tint = ink)
         }
     }
 }
@@ -271,7 +276,7 @@ internal val ProcessRowHeight = 36.dp
         Column(Modifier.fillMaxWidth().testTag("execution-flow")) {
             ProcessRow(
                 turn.executionHeadline(steps, steps.size + devices.size),
-                leading = if (failed) ({ AppIcon(AppIcons.Error, null, Modifier.size(16.dp), tint = error) }) else null,
+                leading = if (failed) ({ AppIcon(AppIcons.Error, null, Modifier.size(14.dp), tint = error) }) else null,
                 expanded = expanded,
                 onClick = { vm.enqueue { vm.actions.stepExpansion(turn.id, groupKey, !expanded) } },
             )
@@ -339,7 +344,7 @@ internal fun stepStatusLabel(outcome: String?, phase: ExecutionPhase?): String =
         "CANCELLED" -> AppIcons.Close
         else -> stepKindIcon(kind)
     }
-    AppIcon(icon, stepStatusLabel(outcome, phase), Modifier.size(16.dp), tint = when (outcome) {
+    AppIcon(icon, stepStatusLabel(outcome, phase), Modifier.size(14.dp), tint = when (outcome) {
         "FAILED" -> MaterialTheme.colorScheme.error
         else -> toolCallInk()
     })

@@ -192,16 +192,16 @@ private fun spread(base: List<Int>, weights: List<Int>, extra: Int): List<Int> {
 
 @Composable private fun MarkdownInline(node: Node, style: TextStyle = MaterialTheme.typography.bodyLarge, modifier: Modifier = Modifier) {
     val linkColor = MaterialTheme.colorScheme.primary
-    val codeBackground = MaterialTheme.colorScheme.surfaceVariant
+    val codeBackground = MaterialTheme.colorScheme.surfaceContainer
     val value = remember(node, linkColor, codeBackground) {
         buildAnnotatedString {
             fun visit(current: Node) {
                 when (current) {
                     is org.commonmark.node.Text -> append(current.literal)
-                    is Code -> withStyle(SpanStyle(fontFamily = FontFamily.Monospace, fontSize = 0.88.em, background = codeBackground)) { append(current.literal) }
+                    is Code -> withStyle(SpanStyle(fontFamily = FontFamily.Monospace, fontSize = 0.85.em, background = codeBackground)) { append(current.literal) }
                     is SoftLineBreak, is HardLineBreak -> append('\n')
                     is Emphasis -> withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { ReplyMarkdown.children(current).forEach(::visit) }
-                    is StrongEmphasis -> withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { ReplyMarkdown.children(current).forEach(::visit) }
+                    is StrongEmphasis -> withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { ReplyMarkdown.children(current).forEach(::visit) }
                     is Strikethrough -> withStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)) { ReplyMarkdown.children(current).forEach(::visit) }
                     is Link -> {
                         if (ReplyMarkdown.safeLink(current.destination)) {

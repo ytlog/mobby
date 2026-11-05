@@ -56,7 +56,7 @@ class DeviceCardActions(
     Column(if (folded) Modifier else Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(if (folded) 6.dp else 10.dp)) {
         if (folded) ProcessRow(
             title,
-            leading = { AppIcon(deviceIcon(operation.plugin), null, Modifier.size(16.dp), tint = toolCallInk()) },
+            leading = { AppIcon(deviceIcon(operation.plugin), null, Modifier.size(14.dp), tint = toolCallInk()) },
             expanded = false,
             onClick = { expanded = true },
             status = status,

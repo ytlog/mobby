@@ -902,8 +902,9 @@ internal fun Turn.showsSeparateActivity(): Boolean = occupied || pending
     val accent = statusAccentColor()
     val action: @Composable () -> Unit = {
         val compact = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
-        if (turn.queued) TextButton(onClick = onCancelQueued, contentPadding = compact, colors = textButtonColors()) { Text(AppStrings.cancelQueuedMessage, style = MaterialTheme.typography.labelLarge) }
-        else if (!turn.occupied) TextButton(onClick = onRestore, contentPadding = compact, colors = textButtonColors()) { Text(AppStrings.restoreToInput, style = MaterialTheme.typography.labelLarge) }
+        val label = processTextStyle()
+        if (turn.queued) TextButton(onClick = onCancelQueued, contentPadding = compact, colors = textButtonColors()) { Text(AppStrings.cancelQueuedMessage, style = label) }
+        else if (!turn.occupied) TextButton(onClick = onRestore, contentPadding = compact, colors = textButtonColors()) { Text(AppStrings.restoreToInput, style = label) }
     }
     if (failure != null) Surface(
         color = if (darkChrome()) MobbyColors.Dark.statusCard else MobbyColors.Light.statusCard,
@@ -922,9 +923,9 @@ internal fun Turn.showsSeparateActivity(): Boolean = occupied || pending
         val calm = turn.queued || turn.phase == ExecutionPhase.CANCELLED
         val ink = if (calm) toolCallInk() else accent
         Row(Modifier.fillMaxWidth().testTag("turn-status"), verticalAlignment = Alignment.CenterVertically) {
-            AppIcon(if (turn.queued) AppIcons.Send else if (calm) AppIcons.Close else AppIcons.Error, null, Modifier.size(16.dp), tint = ink)
-            Spacer(Modifier.width(8.dp))
-            Text(if (turn.queued) AppStrings.queuedMessageWaiting else turn.phase.label(), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = ink)
+            AppIcon(if (turn.queued) AppIcons.Send else if (calm) AppIcons.Close else AppIcons.Error, null, Modifier.size(14.dp), tint = ink)
+            Spacer(Modifier.width(6.dp))
+            Text(if (turn.queued) AppStrings.queuedMessageWaiting else turn.phase.label(), Modifier.weight(1f), style = processTextStyle(), color = ink)
             action()
         }
     }

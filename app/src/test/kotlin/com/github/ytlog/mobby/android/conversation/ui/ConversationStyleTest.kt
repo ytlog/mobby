@@ -4,6 +4,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -36,6 +37,27 @@ class ConversationStyleTest {
     @Test fun `reply text keeps a comfortable reading measure`() {
         assertEquals(16.sp, MobbyTypography.bodyLarge.fontSize)
         assertTrue(MobbyTypography.bodyLarge.lineHeight.value >= 25f)
+    }
+
+    private fun contrast(a: Color, b: Color): Float {
+        val (hi, lo) = listOf(a.luminance(), b.luminance()).sortedDescending()
+        return (hi + 0.05f) / (lo + 0.05f)
+    }
+
+    // Near-pure black reply text beside warm neutral greys and softer chrome read as unrelated type.
+    @Test fun `light text shares one soft ink family that stays readable`() {
+        val canvas = MobbyColors.Light.Conversation.canvas
+        val ink = MobbyColors.Light.Conversation.ink
+        val secondary = MobbyColors.Light.Conversation.toolInk
+        assertEquals("replies and chrome use one ink", MobbyLightScheme.onSurface, ink)
+        assertTrue("softer than near-black", ink.luminance() > Color(0xFF1A1A1A).luminance())
+        assertTrue(contrast(ink, canvas) >= 12f)
+        assertTrue("secondary text stays readable", contrast(secondary, canvas) >= 4.5f)
+        assertTrue("greys lean the same way as the ink", secondary.blue > secondary.red && ink.blue > ink.red)
+    }
+
+    @Test fun `process text sits clearly below reply text`() {
+        assertTrue(ProcessTextSize.value <= MobbyTypography.bodyLarge.fontSize.value - 3f)
     }
 
     // Unset scheme fields fall back to Material's baseline purple, as the selected context chip showed.

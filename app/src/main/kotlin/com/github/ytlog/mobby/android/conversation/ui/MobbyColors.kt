@@ -71,8 +71,8 @@ internal object MobbyColors {
         val surfaceVariant = Color(0xFFF0F1F3)
         val primary = Color(0xFF2F80FF)
         val onPrimary = Color.White
-        val ink = Color(0xFF1A1A1A)
-        val muted = Color(0xFF8A8A8A)
+        val ink = Color(0xFF24272C)
+        val muted = Color(0xFF8A8F98)
         val outline = Color(0xFFE6E6E8)
         val menuInk = Color(0xFF1C1C1E)
         val menuAccent = Color(0xFF007AFF)
@@ -96,10 +96,10 @@ internal object MobbyColors {
 
         object Conversation {
             val canvas = Color.White
-            val ink = Color(0xFF111111)
-            val toolInk = Color(0xFF686868)
+            val ink = Light.ink
+            val toolInk = Color(0xFF71767F)
             val toolBorder = Color(0xFFDFDFDF)
-            val userBubble = Color(0xFFF5F5F5)
+            val userBubble = Color(0xFFF3F4F6)
             val inputShadow = Color(0x03000000)
         }
     }
