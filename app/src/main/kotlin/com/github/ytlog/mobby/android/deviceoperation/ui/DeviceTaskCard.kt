@@ -56,7 +56,6 @@ class DeviceCardActions(
     Column(if (folded) Modifier else Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(if (folded) 6.dp else 10.dp)) {
         if (folded) ProcessRow(
             title,
-            leading = { AppIcon(deviceIcon(operation.plugin), null, Modifier.size(14.dp), tint = toolCallInk()) },
             expanded = false,
             onClick = { expanded = true },
             status = status,
@@ -134,13 +133,6 @@ class DeviceCardActions(
 internal fun DeviceOperation.showsFoldedPreview(): Boolean = status.terminal && displayType == "capture" &&
     result?.kind == "capture_resource" && result!!.data.text("mediaType").startsWith("image/")
 
-private fun deviceIcon(plugin: String) = when (plugin) {
-    "camera" -> AppIcons.Camera
-    "media" -> AppIcons.Photo
-    "storage" -> AppIcons.File
-    "appfunction" -> AppIcons.Plugin
-    else -> AppIcons.Phone
-}
 private val knownDisplays = setOf("basic", "screen_control", "message_list", "message_send", "media_grid", "batch_change", "file_list", "file_transfer", "capture", "record_change", "measurement", "connection", "system_handoff")
 private fun JsonObject.text(key: String) = (get(key) as? JsonPrimitive)?.contentOrNull.orEmpty()
 private fun JsonObject.objects(key: String) = (get(key) as? JsonArray)?.mapNotNull { it as? JsonObject }.orEmpty()

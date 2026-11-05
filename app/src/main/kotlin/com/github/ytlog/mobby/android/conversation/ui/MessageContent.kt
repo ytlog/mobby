@@ -17,6 +17,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -144,39 +146,22 @@ internal fun Turn.executionHeadline(steps: List<Step> = this.steps, count: Int =
         else -> AppStrings.steps(phase.label(), count)
     }
 }
-internal fun Step.glyphKind(): String = when (this) {
-    is Step.Thinking -> "thinking"
-    is Step.Command -> "command_execution"
-    is Step.FileRead -> "read"
-    is Step.FileWrite -> "write"
-    is Step.FileDiff -> "file_change"
-    is Step.Action -> name
-}
-internal fun stepKindIcon(kind: String): AppGlyph = when (kind.lowercase()) {
-    "websearch", "web_search", "grep", "glob" -> AppIcons.Search
-    "webfetch" -> AppIcons.Globe
-    "read", "write", "edit", "editnotebook", "ls", "file_change" -> AppIcons.File
-    "bash", "shell", "command_execution" -> AppIcons.Terminal
-    "thinking" -> AppIcons.Thought
-    "todo_list", "task" -> AppIcons.Skill
-    "mcp_tool_call", "tool", "snapshot", "click", "type", "tap", "back", "home", "recents" -> AppIcons.Phone
-    "mcp__phone__snapshot", "mcp__phone__click", "mcp__phone__type", "mcp__phone__tap",
-    "mcp__phone__back", "mcp__phone__home", "mcp__phone__recents" -> AppIcons.Phone
-    else -> AppIcons.More
-}
 internal val ProcessRowHeight = 36.dp
 internal val ProcessTextSize = 13.sp
 
 /** Secondary lines of a run: small enough to sit clearly below the reply text they accompany. */
 @Composable internal fun processTextStyle(): TextStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = ProcessTextSize, lineHeight = 18.sp)
 
-/** One quiet line of a run, aligned with the reply text: what happened, how it went, and a way to open it. */
+/**
+ * One quiet line of a run, its text starting at the same edge as the reply text. Rows carry no icon: words say what
+ * happened and color says when it needs a look.
+ */
 @Composable internal fun ProcessRow(
     title: String,
-    leading: (@Composable () -> Unit)?,
     expanded: Boolean?,
     onClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
+    titleColor: Color = toolCallInk(),
     status: String? = null,
     statusColor: Color = Color.Unspecified,
     style: TextStyle = processTextStyle(),
@@ -187,11 +172,7 @@ internal val ProcessTextSize = 13.sp
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (leading != null) {
-            leading()
-            Spacer(Modifier.width(6.dp))
-        }
-        Text(title, Modifier.weight(1f, fill = false), maxLines = 1, overflow = TextOverflow.Ellipsis, style = style, color = ink)
+        Text(title, Modifier.weight(1f, fill = false), maxLines = 1, overflow = TextOverflow.Ellipsis, style = style, color = titleColor)
         if (status != null) {
             Spacer(Modifier.width(8.dp))
             Text(status, maxLines = 1, overflow = TextOverflow.Ellipsis, style = style, color = if (statusColor == Color.Unspecified) ink else statusColor)
@@ -232,9 +213,11 @@ internal val ProcessTextSize = 13.sp
     val open = step.id in turn.expandedSteps
     val view = remember(step, LanguagePreferences.current) { ToolPresentation.present(step) }
     val liveThought = turn.occupied && step.id == group.lastOrNull { it is Step.Thinking && it.outcome == null }?.id
+    val statusLabel = stepStatusLabel(step.outcome, turn.phase)
     ProcessRow(
         view.title,
-        leading = { StepGlyph(step.glyphKind(), step.outcome, turn.phase) },
+        modifier = Modifier.semantics { stateDescription = statusLabel },
+        titleColor = if (step.outcome == "FAILED") MaterialTheme.colorScheme.error else ink,
         expanded = open,
         onClick = {
             val next = !open
@@ -271,12 +254,11 @@ internal val ProcessTextSize = 13.sp
     val expanded = if (steps.isNotEmpty()) turn.toolGroupExpanded(steps) else groupKey in turn.expandedSteps
     val rail = toolCallBorder()
     val failed = steps.any { it.outcome == "FAILED" }
-    val error = MaterialTheme.colorScheme.error
     CompositionLocalProvider(LocalToolCodeActionScale provides 2f / 3f) {
         Column(Modifier.fillMaxWidth().testTag("execution-flow")) {
             ProcessRow(
                 turn.executionHeadline(steps, steps.size + devices.size),
-                leading = if (failed) ({ AppIcon(AppIcons.Error, null, Modifier.size(14.dp), tint = error) }) else null,
+                titleColor = if (failed) MaterialTheme.colorScheme.error else toolCallInk(),
                 expanded = expanded,
                 onClick = { vm.enqueue { vm.actions.stepExpansion(turn.id, groupKey, !expanded) } },
             )
@@ -336,20 +318,4 @@ internal fun stepStatusLabel(outcome: String?, phase: ExecutionPhase?): String =
         else -> AppStrings.stepResultUnconfirmed
     }
     else -> AppStrings.stepResultUnconfirmed
-}
-
-@Composable internal fun StepGlyph(kind: String, outcome: String?, phase: ExecutionPhase?) {
-    val icon = when (outcome) {
-        "FAILED" -> AppIcons.Error
-        "CANCELLED" -> AppIcons.Close
-        else -> stepKindIcon(kind)
-    }
-    AppIcon(icon, stepStatusLabel(outcome, phase), Modifier.size(14.dp), tint = when (outcome) {
-        "FAILED" -> MaterialTheme.colorScheme.error
-        else -> toolCallInk()
-    })
-}
-
-@Composable internal fun StepStatus(outcome: String?, phase: ExecutionPhase?) {
-    StepGlyph("", outcome, phase)
 }

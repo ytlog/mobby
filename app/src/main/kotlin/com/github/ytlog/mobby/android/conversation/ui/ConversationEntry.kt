@@ -933,8 +933,6 @@ internal fun Turn.showsSeparateActivity(): Boolean = occupied || pending
         val calm = turn.queued || turn.phase == ExecutionPhase.CANCELLED
         val ink = if (calm) toolCallInk() else accent
         Row(Modifier.fillMaxWidth().testTag("turn-status"), verticalAlignment = Alignment.CenterVertically) {
-            AppIcon(if (turn.queued) AppIcons.Send else if (calm) AppIcons.Close else AppIcons.Error, null, Modifier.size(14.dp), tint = ink)
-            Spacer(Modifier.width(6.dp))
             Text(if (turn.queued) AppStrings.queuedMessageWaiting else turn.phase.label(), Modifier.weight(1f), style = processTextStyle(), color = ink)
             action()
         }

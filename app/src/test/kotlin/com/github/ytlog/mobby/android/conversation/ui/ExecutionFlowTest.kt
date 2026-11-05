@@ -158,6 +158,25 @@ class ExecutionFlowTest {
         assertEquals("失败 · 1 个步骤", turn.executionHeadline(listOf(bad)))
     }
 
+    // Some rows had icons and some did not, so their text started at different places.
+    @Test fun `every process row starts its text at the same left edge`() {
+        val failed = step.copy(id = "f", outcome = "FAILED", order = 1)
+        val done = step.copy(id = "d", order = 2)
+        val stopped = empty.copy(phase = ExecutionPhase.CANCELLED, steps = listOf(failed, done))
+        val model = vm()
+        val operation = device("op", 3, DeviceStatus.UNCONFIRMED).operation
+        compose.setContent { MaterialTheme { androidx.compose.foundation.layout.Column {
+            ExecutionFlow(stopped, model, listOf(failed)) { _, _ -> }
+            ExecutionFlow(stopped, model, listOf(done)) { _, _ -> }
+            com.github.ytlog.mobby.android.deviceoperation.ui.DeviceTaskCard(operation, com.github.ytlog.mobby.android.deviceoperation.ui.DeviceCardActions())
+            TurnStatus(stopped, onCancelQueued = {}, onRestore = {})
+        } } }
+        val lefts = listOf("失败 · 1 个步骤", "已完成 1 个步骤", "屏幕", "已停止").map { text ->
+            compose.onNode(hasText(text, substring = true), useUnmergedTree = true).getBoundsInRoot().left
+        }
+        assertEquals(lefts.toString(), 1, lefts.distinct().size)
+    }
+
     @Test fun `the headline counts folded device operations`() {
         val first = step.copy(id = "a", order = 1)
         assertEquals("已完成 3 个步骤", empty.copy(steps = listOf(first)).executionHeadline(listOf(first), 3))

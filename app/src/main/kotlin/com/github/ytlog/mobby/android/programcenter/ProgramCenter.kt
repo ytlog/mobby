@@ -569,7 +569,7 @@ internal fun configKeyboard(type: ConfigType?) = when (type) {
         AppStrings.programIdeaReminderAsk to AppStrings.programIdeaReminderRequest,
         AppStrings.programIdeaWatchAsk to AppStrings.programIdeaWatchRequest,
     )
-    Column(Modifier.fillMaxWidth().padding(start = 48.dp, end = 16.dp, bottom = 14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(AppStrings.programIdeas, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             ideas.forEach { (ask, request) ->

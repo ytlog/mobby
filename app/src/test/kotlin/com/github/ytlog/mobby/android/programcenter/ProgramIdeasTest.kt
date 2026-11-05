@@ -1,5 +1,7 @@
 package com.github.ytlog.mobby.android.programcenter
 
+import androidx.compose.ui.test.getBoundsInRoot
+import androidx.compose.ui.unit.dp
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -53,5 +55,13 @@ class ProgramIdeasTest {
     @Test fun `an idea fills an empty draft and is added after text already typed`() {
         assertEquals("写一个记账程序", withIdea("", "写一个记账程序"))
         assertEquals("先看看\n写一个记账程序", withIdea("先看看  ", "写一个记账程序"))
+    }
+
+    // A 48dp inset pushed the bubbles far from the card's left edge and forced them to wrap early.
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    @Test fun `idea bubbles start at the card's own text margin`() {
+        compose.setContent { androidx.compose.material3.MaterialTheme { ProgramIdeas {} } }
+        val first = compose.onAllNodesWithTag("program-idea-bubble")[0].getBoundsInRoot()
+        org.junit.Assert.assertTrue("bubble starts at ${first.left}", first.left <= 16.dp)
     }
 }
