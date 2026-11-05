@@ -60,7 +60,8 @@ class ScreenControlSettingsActivity : ComponentActivity() {
 
 @Composable internal fun ScreenControlSettings(controller: ScreenControlPort, onBack: () -> Unit,
     statusOverride: ScreenSetupStatus? = null, settingsOverride: ((ScreenSettingsTarget) -> Unit)? = null,
-    onFinished: () -> Unit = onBack, embedded: Boolean = false, stepOffset: Int = 0) {
+    onFinished: () -> Unit = onBack, embedded: Boolean = false, stepOffset: Int = 0,
+    canSelectPrefix: (Int) -> Boolean = { false }, selectPrefix: (Int) -> Unit = {}) {
     val state by controller.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -268,7 +269,7 @@ class ScreenControlSettingsActivity : ComponentActivity() {
                 history = arrayListOf(ScreenSetupStep.MODE.name, ScreenSetupStep.CONNECT.name)
             }
             step == ScreenSetupStep.COMPLETE -> if (ready) onFinished() else go(next(ScreenSetupStep.MODE))
-            complete -> go(next(step))
+            complete -> go(next(ScreenSetupStep.MODE))
             step == ScreenSetupStep.NOTIFICATIONS -> notifications()
             step == ScreenSetupStep.ACCESSIBILITY -> open(ScreenSettingsTarget.ACCESSIBILITY)
             step == ScreenSetupStep.WIFI -> open(ScreenSettingsTarget.WIFI)
@@ -286,13 +287,27 @@ class ScreenControlSettingsActivity : ComponentActivity() {
     val path = screenSetupPath(if (step == ScreenSetupStep.MODE) selectedMode else state.mode)
     val parentStep = history.asReversed().map(ScreenSetupStep::valueOf).first { !it.auxiliary }
     val stepNumber = path.indexOf(parentStep).coerceAtLeast(0) + 1
+    var furthestStep by androidx.compose.runtime.saveable.rememberSaveable(state.mode) { mutableIntStateOf(0) }
+    SideEffect { furthestStep = maxOf(furthestStep, stepNumber - 1) }
     val stepLabels = (if (embedded) setupAgentStepLabels() else emptyList()) + path.map(::screenStepLabel)
+    fun canReview(index: Int): Boolean {
+        if (busy || state.active || state.adbPairing) return false
+        if (index < stepOffset) return canSelectPrefix(index)
+        val target = path.getOrNull(index - stepOffset) ?: return false
+        return index - stepOffset <= furthestStep && target != parentStep &&
+            (target == ScreenSetupStep.MODE || screenStepComplete(target, state, status, forcePair, developerConfirmed, wirelessConfirmed))
+    }
     Box(chrome) {
         SetupWizardFrame(if (embedded) AppStrings.setupGuide else AppStrings.screenModeTitle,
             stepOffset + stepNumber, heading, description,
             back = ::previous, primaryText = primaryText, primary = ::primary, enabled = enabled, busy = busy,
             secondaryText = if (state.adbPairing && !step.auxiliary) AppStrings.adbCancelPairing else if (step == ScreenSetupStep.MODE && !embedded) AppStrings.back else AppStrings.wizardPrevious,
-            error = error ?: state.error ?: if (state.active) AppStrings.screenModeBusy else null, steps = stepLabels) {
+            error = error ?: state.error ?: if (state.active) AppStrings.screenModeBusy else null, steps = stepLabels,
+            canSelectStep = ::canReview, selectStep = { index ->
+                if (canReview(index)) {
+                    if (index < stepOffset) selectPrefix(index) else go(path[index - stepOffset])
+                }
+            }) {
             when (step) {
                 ScreenSetupStep.MODE -> {
                     SettingsGroup {

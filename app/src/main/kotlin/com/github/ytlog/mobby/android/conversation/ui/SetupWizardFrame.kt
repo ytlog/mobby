@@ -2,6 +2,7 @@ package com.github.ytlog.mobby.android.conversation.ui
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
@@ -25,9 +26,9 @@ import com.github.ytlog.mobby.android.conversation.ui.UiStrings as AppStrings
 
 internal val LocalWizardFooterInset = staticCompositionLocalOf<(Dp) -> Unit> { {} }
 
-/** Progress stays visible while the current task scrolls. Navigation remains in the footer. */
+/** Completed tasks can be reviewed while pending tasks stay behind their prerequisite checks. */
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
-@Composable private fun WizardSteps(labels: List<String>, current: Int) {
+@Composable private fun WizardSteps(labels: List<String>, current: Int, canSelect: (Int) -> Boolean, select: (Int) -> Unit) {
     val scroll = rememberScrollState()
     val active = remember { BringIntoViewRequester() }
     LaunchedEffect(current, labels) { active.bringIntoView() }
@@ -36,15 +37,20 @@ internal val LocalWizardFooterInset = staticCompositionLocalOf<(Dp) -> Unit> { {
         labels.forEachIndexed { index, label ->
             val selected = index == current
             Surface(shape = RoundedCornerShape(16.dp), color = if (selected) MaterialTheme.colorScheme.primary else cardColor(),
-                modifier = (if (selected) Modifier.bringIntoViewRequester(active) else Modifier).clearAndSetSemantics {
+                modifier = (if (selected) Modifier.bringIntoViewRequester(active) else Modifier)
+                    .selectable(selected, enabled = canSelect(index), role = Role.Tab, onClick = { select(index) }).semantics {
                     contentDescription = "${AppStrings.wizardStep(index + 1)}：$label"
                     this.selected = selected
                 }) {
-                Row(Modifier.heightIn(min = 40.dp).padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically,
+                Row(Modifier.heightIn(min = 48.dp).padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    val ink = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-                    Text("${index + 1}", color = ink, style = MaterialTheme.typography.labelLarge)
-                    if (selected) Text(label, color = ink, style = MaterialTheme.typography.labelLarge)
+                    val ink = when {
+                        selected -> MaterialTheme.colorScheme.onPrimary
+                        canSelect(index) -> MaterialTheme.colorScheme.primary
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                    }
+                    Text("${index + 1}", Modifier.clearAndSetSemantics {}, color = ink, style = MaterialTheme.typography.labelLarge)
+                    if (selected) Text(label, Modifier.clearAndSetSemantics {}, color = ink, style = MaterialTheme.typography.labelLarge)
                 }
             }
         }
@@ -55,13 +61,14 @@ internal val LocalWizardFooterInset = staticCompositionLocalOf<(Dp) -> Unit> { {
 @Composable internal fun SetupWizardFrame(title: String, number: Int, heading: String, description: String,
     back: () -> Unit, primaryText: String, primary: () -> Unit, enabled: Boolean = true,
     secondaryText: String = AppStrings.wizardPrevious, secondary: () -> Unit = back,
-    busy: Boolean = false, error: String? = null, steps: List<String> = emptyList(), content: @Composable ColumnScope.() -> Unit = {}) {
+    busy: Boolean = false, error: String? = null, steps: List<String> = emptyList(),
+    canSelectStep: (Int) -> Boolean = { false }, selectStep: (Int) -> Unit = {}, content: @Composable ColumnScope.() -> Unit = {}) {
     val density = LocalDensity.current
     val footerInset = LocalWizardFooterInset.current
     DisposableEffect(footerInset) { onDispose { footerInset(0.dp) } }
     Column(Modifier.fillMaxSize().imePadding().testTag("setup-wizard")) {
         PageHeader(title, back)
-        if (steps.isNotEmpty()) WizardSteps(steps, (number - 1).coerceIn(steps.indices))
+        if (steps.isNotEmpty()) WizardSteps(steps, (number - 1).coerceIn(steps.indices), { !busy && canSelectStep(it) }, selectStep)
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (steps.isEmpty()) Text(AppStrings.wizardStep(number), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)

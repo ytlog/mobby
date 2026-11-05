@@ -298,7 +298,7 @@ class ConversationHostActions(
                             selectAgent = { setupAgent = it; setupProgress.selectAgent(it) },
                             api = { gatewayStartAdding = true; connectionFromSetup = true; gatewayFromIntro = true; gatewayFromConnections = false; navigate(AppPage.GATEWAY) },
                             next = { showSetup(if (setupStep == SetupStep.AGENTS) SetupStep.SIGN_IN else SetupStep.SCREEN) },
-                            previous = ::previousSetup, finish = ::finishSetup) }
+                            previous = ::previousSetup, finish = ::finishSetup, review = ::showSetup) }
                         AppPage.CONNECTIONS -> AgentConnectionsPage(vm, initialAgent = loginAgent,
                             back = ::connectionsBack,
                             gateway = { gatewayStartAdding = false; gatewayFromConnections = true; navigate(AppPage.GATEWAY) },

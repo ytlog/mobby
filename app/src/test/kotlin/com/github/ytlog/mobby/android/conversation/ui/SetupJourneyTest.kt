@@ -92,6 +92,18 @@ class SetupJourneyTest {
         compose.onNodeWithText("选择一个 Agent").assertDoesNotExist()
         compose.onNodeWithText("选择屏幕操作方式").assertDoesNotExist()
     }
+    @Test fun `setup tabs revisit completed agent and sign in steps while future steps stay locked`() {
+        show()
+        compose.onNodeWithContentDescription("第 2 步：连接 AI 服务").assertIsNotEnabled()
+        next()
+        compose.onNodeWithText("暂不登录，继续设置").performClick()
+        compose.onNodeWithContentDescription("第 1 步：选择一个 Agent").performScrollTo().performClick()
+        compose.onNodeWithText("Codex").assertIsSelected()
+        compose.onNodeWithContentDescription("第 3 步：选择屏幕操作方式").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("第 2 步：连接 AI 服务").performScrollTo().performClick()
+        button("登录 Codex").assertIsDisplayed()
+        compose.runOnIdle { Assert.assertTrue(accounts.isEmpty()) }
+    }
     @Test fun `previous restores the chosen agent without changing an account`() {
         show()
         compose.onNodeWithText("Claude Code").performClick()

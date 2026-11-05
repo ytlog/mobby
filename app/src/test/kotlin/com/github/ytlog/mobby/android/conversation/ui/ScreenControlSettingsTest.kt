@@ -128,6 +128,34 @@ class ScreenControlSettingsTest {
         button("连接").performClick()
         compose.runOnIdle { assertEquals("12345", controller.port); assertEquals(1, controller.events.count { it == "connect" }) }
     }
+    @Test fun `tabs review completed steps without executing or skipping an incomplete connection`() {
+        val controller = TestController(ScreenControlState(mode = ScreenMode.ADB, adbPaired = true))
+        show(controller)
+        next()
+        compose.onNodeWithContentDescription("第 1 步：选择屏幕操作方式").performScrollTo().performClick()
+        compose.onNodeWithText("虚拟屏幕（内置 ADB）").assertIsDisplayed()
+        compose.onNodeWithContentDescription("第 7 步：连接").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("第 5 步：开启无线调试").performScrollTo().performClick()
+        compose.onNodeWithText("开启无线调试").assertIsDisplayed()
+        compose.runOnIdle { assertTrue(controller.events.isEmpty()) }
+        next()
+        button("连接").assertIsDisplayed()
+        compose.runOnIdle { assertTrue(controller.events.isEmpty()) }
+    }
+    @Test fun `review continues at the first missing prerequisite and pairing locks tabs`() {
+        val controller = TestController(ScreenControlState(mode = ScreenMode.ADB, adbPaired = true))
+        val status = mutableStateOf(ready)
+        compose.setContent { MaterialTheme { ScreenControlSettings(controller, {}, statusOverride = status.value, settingsOverride = {}) } }
+        next()
+        compose.runOnIdle { controller.state.value = controller.state.value.copy(adbPairing = true) }
+        compose.onNodeWithContentDescription("第 1 步：选择屏幕操作方式").assertIsNotEnabled()
+        compose.runOnIdle { controller.state.value = controller.state.value.copy(adbPairing = false); status.value = ready.copy(wirelessEnabled = false) }
+        compose.onNodeWithContentDescription("第 5 步：开启无线调试").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("第 3 步：连接 Wi-Fi").performScrollTo().performClick()
+        next()
+        button("打开无线调试").assertIsDisplayed()
+        compose.runOnIdle { assertTrue(controller.events.isEmpty()) }
+    }
     @Test fun `user started pairing connects once only after a real success and foreground return`() {
         val controller = TestController(ScreenControlState(mode = ScreenMode.ADB))
         val status = mutableStateOf(ready)

@@ -52,7 +52,8 @@ internal class SetupProgress(context: Context) {
 }
 
 @Composable internal fun SetupGuidePage(vm: ConversationViewModel, step: SetupStep, selectedAgent: AgentId?,
-    selectAgent: (AgentId?) -> Unit, api: () -> Unit, next: () -> Unit, previous: () -> Unit, finish: () -> Unit) {
+    selectAgent: (AgentId?) -> Unit, api: () -> Unit, next: () -> Unit, previous: () -> Unit, finish: () -> Unit,
+    review: (SetupStep) -> Unit) {
     val accounts by vm.nativeAccounts.collectAsStateWithLifecycle()
     val system by vm.status.collectAsStateWithLifecycle()
     val routes by vm.connections.collectAsStateWithLifecycle()
@@ -60,9 +61,14 @@ internal class SetupProgress(context: Context) {
     var showLogin by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var completing by remember { mutableStateOf(false) }
+    var furthestStep by androidx.compose.runtime.saveable.rememberSaveable { mutableIntStateOf(step.ordinal) }
+    SideEffect { furthestStep = maxOf(furthestStep, step.ordinal) }
+    fun canReview(index: Int) = !completing && !showLogin && index < furthestStep && index != step.ordinal
+    fun reviewStep(index: Int) { if (canReview(index)) review(SetupStep.entries[index]) }
     if (step == SetupStep.SCREEN) {
         val controller = ScreenUi.controller
-        if (controller != null) ScreenControlSettings(controller, onBack = previous, onFinished = finish, embedded = true, stepOffset = 2)
+        if (controller != null) ScreenControlSettings(controller, onBack = previous, onFinished = finish, embedded = true, stepOffset = 2,
+            canSelectPrefix = ::canReview, selectPrefix = ::reviewStep)
         else SetupWizardFrame(AppStrings.setupGuide, 3, AppStrings.wizardChooseMode, AppStrings.setupRuntimePreparing,
             previous, AppStrings.wizardNext, {}, enabled = false,
             steps = setupAgentStepLabels() + screenSetupPath(com.github.ytlog.mobby.android.runtime.api.device.ScreenMode.CURRENT).map(::screenStepLabel))
@@ -80,15 +86,16 @@ internal class SetupProgress(context: Context) {
         enabled = choosing || selectedAgent == null || system.ready,
         secondaryText = if (choosing) AppStrings.later else AppStrings.wizardPrevious, secondary = previous,
         busy = completing, error = error,
+        canSelectStep = ::canReview, selectStep = ::reviewStep,
         steps = setupAgentStepLabels() + screenSetupPath(ScreenUi.controller?.state?.value?.mode
             ?: com.github.ytlog.mobby.android.runtime.api.device.ScreenMode.CURRENT).map(::screenStepLabel)) {
         if (choosing) SettingsGroup {
             listOf(AgentId.CODEX, AgentId.CLAUDE_CODE, AgentId.PI, AgentId.OPEN_CODE).forEachIndexed { index, agent ->
                 if (index > 0) GroupDivider()
-                ChoiceRow(agent.label(), selectedAgent == agent, { selectAgent(agent) })
+                ChoiceRow(agent.label(), selectedAgent == agent, { if (selectedAgent != agent) furthestStep = 0; selectAgent(agent) })
             }
             GroupDivider()
-            ChoiceRow(AppStrings.wizardUseApi, selectedAgent == null, { selectAgent(null) })
+            ChoiceRow(AppStrings.wizardUseApi, selectedAgent == null, { if (selectedAgent != null) furthestStep = 0; selectAgent(null) })
         }
         else {
             if (!system.ready && selectedAgent != null) Text(AppStrings.setupRuntimePreparing, color = MaterialTheme.colorScheme.onSurfaceVariant)
