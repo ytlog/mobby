@@ -303,29 +303,42 @@ class ScreenControlSettingsActivity : ComponentActivity() {
                     if (embedded) TextButton(onClick = onFinished, enabled = !state.active && !state.adbPairing) { Text(AppStrings.wizardSkipScreen) }
                 }
                 ScreenSetupStep.DEVELOPER -> {
-                    Text(family.label(), style = MaterialTheme.typography.labelLarge)
-                    Text(family.instructions(), style = MaterialTheme.typography.bodyLarge)
-                    TextButton(onClick = { go(ScreenSetupStep.BRANDS) }) { Text(AppStrings.screenOtherBrands) }
-                    if (status.developerEnabled == null) TextButton(onClick = { developerConfirmed = true; go(next(step)) }) { Text(AppStrings.wizardConfirmEnabled) }
+                    SettingsGroup(family.label()) {
+                        Text(family.instructions(), Modifier.padding(16.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                        GroupDivider()
+                        SettingsItem(AppStrings.screenOtherBrands, { go(ScreenSetupStep.BRANDS) })
+                    }
+                    if (status.developerEnabled == null) SettingsGroup {
+                        SettingsAction(AppStrings.wizardConfirmEnabled) { developerConfirmed = true; go(next(step)) }
+                    }
                 }
-                ScreenSetupStep.WIRELESS -> if (status.wirelessEnabled == null) TextButton(onClick = { wirelessConfirmed = true; go(next(step)) }) { Text(AppStrings.wizardConfirmEnabled) }
+                ScreenSetupStep.WIRELESS -> if (status.wirelessEnabled == null) SettingsGroup {
+                    SettingsAction(AppStrings.wizardConfirmEnabled) { wirelessConfirmed = true; go(next(step)) }
+                }
                 ScreenSetupStep.BRANDS -> SettingsGroup {
                     DeviceSettingsFamily.entries.forEachIndexed { index, candidate ->
                         if (index > 0) GroupDivider()
                         ChoiceRow(candidate.label(), candidate == family, { family = candidate })
                     }
                 }
-                ScreenSetupStep.PAIR -> TextButton(onClick = { go(ScreenSetupStep.PAIR_HELP) }) { Text(AppStrings.screenNoNotificationReply) }
+                ScreenSetupStep.PAIR -> SettingsGroup { SettingsItem(AppStrings.screenNoNotificationReply, { go(ScreenSetupStep.PAIR_HELP) }) }
                 ScreenSetupStep.CONNECT -> {
-                    Text(if (state.connected) AppStrings.screenBackendReady else AppStrings.screenBackendDisconnected, style = MaterialTheme.typography.bodyMedium)
+                    SettingsCaption(if (state.connected) AppStrings.screenBackendReady else AppStrings.screenBackendDisconnected)
                     if (state.mode == ScreenMode.ADB) {
-                        TextButton(onClick = { go(ScreenSetupStep.PORT) }, enabled = enabled && !busy) { Text(AppStrings.screenManualPort) }
-                        if (error != null || state.error != null) TextButton(onClick = { forcePair = true; go(ScreenSetupStep.PAIR) }, enabled = enabled && !busy) { Text(AppStrings.screenPairAgain) }
+                        SettingsGroup {
+                            SettingsItem(AppStrings.screenManualPort, { go(ScreenSetupStep.PORT) }, enabled = enabled && !busy)
+                            if (error != null || state.error != null) {
+                                GroupDivider()
+                                SettingsItem(AppStrings.screenPairAgain, { forcePair = true; go(ScreenSetupStep.PAIR) }, enabled = enabled && !busy)
+                            }
+                        }
                     }
                 }
                 ScreenSetupStep.PORT -> SettingsGroup { SettingsField(connectionPort, { connectionPort = it }, AppStrings.adbConnectionPort,
                     enabled = enabled && !busy, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)) }
-                ScreenSetupStep.COMPLETE -> if (state.mode != ScreenMode.CURRENT && state.connected) TextButton(onClick = { go(ScreenSetupStep.DISCONNECT) }, enabled = enabled) { Text(AppStrings.disconnectScreen) }
+                ScreenSetupStep.COMPLETE -> if (state.mode != ScreenMode.CURRENT && state.connected) SettingsGroup {
+                    SettingsItem(AppStrings.disconnectScreen, { go(ScreenSetupStep.DISCONNECT) }, enabled = enabled)
+                }
                 else -> Unit
             }
         }

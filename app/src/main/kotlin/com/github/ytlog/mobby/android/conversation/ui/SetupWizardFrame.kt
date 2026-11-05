@@ -28,18 +28,18 @@ internal val LocalWizardFooterInset = staticCompositionLocalOf<(Dp) -> Unit> { {
     DisposableEffect(footerInset) { onDispose { footerInset(0.dp) } }
     Column(Modifier.fillMaxSize().imePadding().testTag("setup-wizard")) {
         PageHeader(title, back)
-        Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp)) {
+        Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(AppStrings.wizardStep(number), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-            Text(heading, style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
-            if (description.isNotBlank()) Text(description, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(heading, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface)
+            if (description.isNotBlank()) Text(description, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             content()
             if (busy) LinearProgressIndicator(Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.primary, trackColor = MaterialTheme.colorScheme.surfaceVariant)
-            error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
+            error?.let { SettingsCaption(it, error = true) }
         }
         Row(Modifier.fillMaxWidth().onSizeChanged { footerInset(with(density) { it.height.toDp() }) }.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            TextButton(onClick = secondary, modifier = Modifier.heightIn(min = 48.dp)) { Text(secondaryText) }
-            Button(onClick = primary, enabled = enabled && !busy, modifier = Modifier.weight(1f).heightIn(min = 48.dp), shape = RoundedCornerShape(22.dp)) {
+            TextButton(onClick = secondary, modifier = Modifier.heightIn(min = 48.dp), colors = textButtonColors()) { Text(secondaryText) }
+            Button(onClick = primary, enabled = enabled && !busy, modifier = Modifier.weight(1f).heightIn(min = 48.dp), shape = RoundedCornerShape(22.dp), colors = filledButtonColors()) {
                 Text(primaryText)
             }
         }
