@@ -90,8 +90,7 @@ import kotlinx.coroutines.launch
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
-    AlertDialog(onDismissRequest = { if (!busy) dismiss() }, containerColor = raisedColor(), shape = RoundedCornerShape(24.dp),
-        title = { Text(AppStrings.projectRules) }, text = {
+    AlertDialog(onDismissRequest = { if (!busy) dismiss() }, title = { Text(AppStrings.projectRules) }, text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(value, { value = it; error = null }, Modifier.fillMaxWidth().heightIn(min = 160.dp),
                     placeholder = { Text(AppStrings.projectRuleHint) }, enabled = !busy)
@@ -117,8 +116,7 @@ import kotlinx.coroutines.launch
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val available = skills.filter { it.available }.map { it.name }.toSet()
-    AlertDialog(onDismissRequest = { if (!busy) dismiss() }, containerColor = raisedColor(), shape = RoundedCornerShape(24.dp),
-        title = { Text(AppStrings.skills) }, text = {
+    AlertDialog(onDismissRequest = { if (!busy) dismiss() }, title = { Text(AppStrings.skills) }, text = {
             Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 (available + selected).sorted().forEach { name ->
                     ChoiceRow(if (name in available) name else "$name · ${AppStrings.unavailable}", name in selected,

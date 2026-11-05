@@ -25,7 +25,7 @@ internal data class ProjectEditor(val name: String = "", val busy: Boolean = fal
 
 @Composable internal fun ProjectGroupDialog(conversation: Conversation, projects: List<Project>, dismiss: () -> Unit, save: (String?) -> Unit) {
     var selected by rememberSaveable(conversation.id.value) { mutableStateOf(conversation.project) }
-    AlertDialog(onDismissRequest = dismiss, containerColor = raisedColor(), shape = RoundedCornerShape(24.dp), title = { Text(AppStrings.addToProject) }, text = {
+    AlertDialog(onDismissRequest = dismiss, title = { Text(AppStrings.addToProject) }, text = {
         Column(Modifier.verticalScroll(rememberScrollState())) {
             Text(AppStrings.movingConversationChangesFutureExecutionDirectory)
             ProjectChoices(projects, selected) { selected = it?.name }
@@ -56,8 +56,7 @@ internal data class ProjectEditor(val name: String = "", val busy: Boolean = fal
             if (state.projects.isEmpty() && !state.loading && state.error == null) EmptyPlaceholder(AppStrings.noProjectsYet, AppStrings.createProjectsToGroupConversationsByWorkspace)
         }
     }
-    editor?.let { current -> AlertDialog(onDismissRequest = vm::dismissProject, containerColor = raisedColor(), shape = RoundedCornerShape(24.dp), tonalElevation = 0.dp,
-        title = { Text(AppStrings.newProject, style = MaterialTheme.typography.titleMedium) }, text = {
+    editor?.let { current -> AlertDialog(onDismissRequest = vm::dismissProject, title = { Text(AppStrings.newProject, style = MaterialTheme.typography.titleMedium) }, text = {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 OutlinedTextField(current.name, { vm.editProject(current.copy(name = it)) }, Modifier.fillMaxWidth(),
                     label = { Text(AppStrings.projectName) }, singleLine = true, enabled = !current.busy)

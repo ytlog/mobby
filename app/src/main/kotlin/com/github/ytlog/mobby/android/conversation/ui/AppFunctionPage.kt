@@ -82,8 +82,7 @@ import com.github.ytlog.mobby.android.conversation.ui.UiStrings as AppStrings
         }
     }
     detail?.let { function ->
-        AlertDialog(onDismissRequest = { detail = null }, containerColor = raisedColor(), shape = RoundedCornerShape(24.dp),
-            title = { Text(function.functionId.substringAfterLast('#').substringAfterLast('.')) },
+        AlertDialog(onDismissRequest = { detail = null }, title = { Text(function.functionId.substringAfterLast('#').substringAfterLast('.')) },
             text = {
                 Column(Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(function.appName + " · " + function.packageName, style = MaterialTheme.typography.bodySmall,

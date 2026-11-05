@@ -40,7 +40,7 @@ import kotlinx.coroutines.*
 
 @Composable internal fun TextEditDialog(title: String, initial: String, dismiss: () -> Unit, save: (String) -> Unit) {
     var value by rememberSaveable { mutableStateOf(initial) }
-    AlertDialog(onDismissRequest = dismiss, containerColor = raisedColor(), shape = RoundedCornerShape(24.dp), title = { Text(title) }, text = { OutlinedTextField(value, { value = it }, singleLine = true) },
+    AlertDialog(onDismissRequest = dismiss, title = { Text(title) }, text = { OutlinedTextField(value, { value = it }, singleLine = true) },
         confirmButton = { TextButton(onClick = { save(value) }) { Text(AppStrings.save) } }, dismissButton = { TextButton(onClick = dismiss) { Text(AppStrings.cancel) } })
 }
 @Composable internal fun AgentConfigMenu(expanded: Boolean, dismiss: () -> Unit, c: Conversation, vm: ConversationViewModel, anchor: IntRect = IntRect.Zero, manageConnections: () -> Unit = {}) {
@@ -322,7 +322,7 @@ private fun pluginCatalogTabs(tablet: Boolean) = listOf(if (tablet) AppStrings.t
     Column(Modifier.fillMaxSize()) {
         PageHeader(AppStrings.plugins, onBack)
         rationale?.let { (explanation, needed) ->
-            AlertDialog(onDismissRequest = { rationale = null }, containerColor = raisedColor(), shape = RoundedCornerShape(24.dp), title = { Text(if (tablet) AppStrings.allowThisPluginToUseTabletCapabilities else AppStrings.allowThisPluginToUseDeviceCapabilities) }, text = { Text(explanation) },
+            AlertDialog(onDismissRequest = { rationale = null }, title = { Text(if (tablet) AppStrings.allowThisPluginToUseTabletCapabilities else AppStrings.allowThisPluginToUseDeviceCapabilities) }, text = { Text(explanation) },
                 confirmButton = { TextButton(onClick = { val request = needed; rationale = null; permissions.launch(request.toTypedArray()) }) { Text(AppStrings.`continue`) } },
                 dismissButton = { TextButton(onClick = { rationale = null }) { Text(AppStrings.cancel) } })
         }
@@ -384,7 +384,7 @@ private fun pluginCatalogTabs(tablet: Boolean) = listOf(if (tablet) AppStrings.t
 @Composable internal fun FindDialog(detail: ConversationDetail, onDismiss: () -> Unit, onSelect: (SearchHit) -> Unit) {
     var query by rememberSaveable { mutableStateOf("") }
     val results = remember(detail, query) { ConversationSearch.find(detail, query) }
-    AlertDialog(onDismissRequest = onDismiss, containerColor = raisedColor(), shape = RoundedCornerShape(24.dp), title = { Text(AppStrings.findInChat) }, text = {
+    AlertDialog(onDismissRequest = onDismiss, title = { Text(AppStrings.findInChat) }, text = {
         Column {
             OutlinedTextField(query, { query = it }, label = { Text(AppStrings.findMessages) }, singleLine = true)
             if (query.isBlank()) EmptyPlaceholder(AppStrings.enterASearchTerm, AppStrings.onlyMessagesInThisConversationAreSearched)
@@ -406,7 +406,7 @@ private fun pluginCatalogTabs(tablet: Boolean) = listOf(if (tablet) AppStrings.t
 @Composable internal fun ShareDialog(detail: ConversationDetail, share: (String) -> Unit, onDismiss: () -> Unit) {
     val messages = detail.turns.flatMap { turn -> listOf("user:${turn.id.value}" to turn.userText) + turn.messages.map { "${turn.id.value}:${it.id}" to it.text } }
     var selected by remember { mutableStateOf(emptySet<String>()) }
-    AlertDialog(onDismissRequest = onDismiss, containerColor = raisedColor(), shape = RoundedCornerShape(24.dp), title = { Text(AppStrings.selectMessagesToShare) }, text = {
+    AlertDialog(onDismissRequest = onDismiss, title = { Text(AppStrings.selectMessagesToShare) }, text = {
         LazyColumn(Modifier.heightIn(max = 420.dp)) {
             item { Text(AppStrings.runtimeLogsAndConfigurationAreExcludedByDefault, style = MaterialTheme.typography.bodySmall) }
             items(messages, key = { it.first }) { (id, text) ->
@@ -425,7 +425,7 @@ private fun pluginCatalogTabs(tablet: Boolean) = listOf(if (tablet) AppStrings.t
     }
     when (val value = result) {
         is DataResult.Loaded -> content(value.value)
-        else -> AlertDialog(onDismissRequest = dismiss, containerColor = raisedColor(), shape = RoundedCornerShape(24.dp), title = { Text(AppStrings.readConversationHistory) }, text = {
+        else -> AlertDialog(onDismissRequest = dismiss, title = { Text(AppStrings.readConversationHistory) }, text = {
             if (value is DataResult.Failed) Text(value.message) else CircularProgressIndicator()
         }, confirmButton = { TextButton(onClick = dismiss) { Text(AppStrings.close) } })
     }

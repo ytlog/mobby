@@ -162,9 +162,6 @@ internal suspend fun ConversationViewModel.completeNativeSignIn(agent: AgentId) 
     AlertDialog(
         onDismissRequest = { job?.cancel(); dismiss() },
         modifier = Modifier.testTag("native-login-dialog"),
-        containerColor = raisedColor(),
-        shape = RoundedCornerShape(24.dp),
-        tonalElevation = 0.dp,
         title = { Text("${agent.label()} · ${AppStrings.signInAgent}", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface) },
         text = {
             Column(Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {

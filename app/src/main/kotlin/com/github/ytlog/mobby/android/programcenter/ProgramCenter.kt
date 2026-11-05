@@ -1,5 +1,6 @@
 package com.github.ytlog.mobby.android.programcenter
 
+import com.github.ytlog.mobby.android.conversation.ui.AlertDialog
 import android.content.Intent
 import android.provider.Settings
 import android.widget.Toast
@@ -9,7 +10,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -424,8 +424,7 @@ internal fun screenAccessMissing(programs: List<ProgramView>): Boolean = program
             logs.forEach { Line("${formatTime(it.at)} ${it.message}${it.dataJson?.let { data -> " $data" } ?: ""}") }
         }
     }
-    if (confirmDelete) AlertDialog(onDismissRequest = { confirmDelete = false }, containerColor = raisedColor(), shape = RoundedCornerShape(24.dp),
-        title = { Text(AppStrings.deleteProgram) }, text = { Text(AppStrings.deleteConfirm(program.name)) },
+    if (confirmDelete) AlertDialog(onDismissRequest = { confirmDelete = false }, title = { Text(AppStrings.deleteProgram) }, text = { Text(AppStrings.deleteConfirm(program.name)) },
         confirmButton = {
             Column {
                 TextButton(onClick = { confirmDelete = false; scope.launch { platform.delete(program.id, withData = false); back() } }) { Text(AppStrings.deleteKeepData) }

@@ -57,8 +57,6 @@ internal val LocalAttachmentPreviewHost = staticCompositionLocalOf<((String) -> 
     }
     if (expanded && image) AlertDialog(
         onDismissRequest = { expanded = false },
-        containerColor = raisedColor(),
-        shape = RoundedCornerShape(24.dp),
         title = { Text(attachment.name, maxLines = 2, overflow = TextOverflow.Ellipsis) },
         text = { AttachmentImage(attachment.ref, attachment.name, true, loadPreview, Modifier.fillMaxWidth().heightIn(min = 120.dp, max = 360.dp)) },
         confirmButton = { TextButton(onClick = { expanded = false }) { Text(AppStrings.closePreview) } }

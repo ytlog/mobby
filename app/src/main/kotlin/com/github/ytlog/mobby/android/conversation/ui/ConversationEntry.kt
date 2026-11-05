@@ -55,7 +55,10 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -318,7 +321,7 @@ class ConversationHostActions(
                             }, navigation.program)
                         }
                         AppPage.ARCHIVED -> ArchivedPage(state, vm) { navigation = navigation.open(AppPage.SETTINGS) }
-                        AppPage.SKILLS -> SkillsPage(vm, onBack = { navigation = navigation.openAddSheet() }, onConversation = { navigation = navigation.open(AppPage.CONVERSATION) })
+                        AppPage.SKILLS -> CompositionLocalProvider(LocalSheetPlacement provides SheetPlacement(sheetOffset, overlayWidth)) { SkillsPage(vm, onBack = { navigation = navigation.openAddSheet() }, onConversation = { navigation = navigation.open(AppPage.CONVERSATION) }) }
                         AppPage.PLUGINS -> PluginPage(vm) { navigation = navigation.openAddSheet() }
                         AppPage.APP_FUNCTIONS -> AppFunctionPage(vm) { navigation = navigation.openAddSheet() }
                         AppPage.CONVERSATION -> ConversationPane(
@@ -351,7 +354,8 @@ class ConversationHostActions(
                         IntOffset(x + ((progress - 1f) * pixels).roundToInt(), y)
                     }.then(swipe))
                 SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(bottom = if (navigation.page == AppPage.SETUP) wizardFooterInset else 0.dp))
-                if (navigation.addSheetOpen) ModalBottomSheet(onDismissRequest = { navigation = navigation.closeAddSheet() }, modifier = Modifier.offset(x = sheetOffset), sheetMaxWidth = overlayWidth, shape = RoundedCornerShape(28.dp, 28.dp, 0.dp, 0.dp), containerColor = addSheetColor(), contentColor = addInkColor()) {
+                val sheetPlacement = SheetPlacement(sheetOffset, overlayWidth)
+                if (navigation.addSheetOpen) AppSheet(onDismissRequest = { navigation = navigation.closeAddSheet() }, placement = sheetPlacement) {
                     val target = state.selected?.conversation
                     val availability = attachmentAvailability(target, agentOptions, system.ready, camera.busy)
                     AddSheetBody(maxHeight = (availableHeight - 48.dp).coerceAtLeast(120.dp),
@@ -377,7 +381,7 @@ class ConversationHostActions(
                 reading?.let { (title, text) ->
                     val ink = readerInk()
                     val muted = readerMuted()
-                    ModalBottomSheet(onDismissRequest = { reading = null }, modifier = Modifier.offset(x = sheetOffset), sheetMaxWidth = overlayWidth, containerColor = raisedColor(), contentColor = if (dark) ink else contentColorFor(raisedColor())) {
+                    AppSheet(onDismissRequest = { reading = null }, placement = sheetPlacement) {
                         Column(Modifier.fillMaxWidth().heightIn(max = (availableHeight - 48.dp).coerceAtLeast(120.dp))) {
                             Text(title, Modifier.fillMaxWidth().padding(horizontal = 16.dp), color = if (dark) muted else Color.Unspecified, style = MaterialTheme.typography.titleMedium)
                             val clipboard = LocalClipboardManager.current
@@ -395,8 +399,7 @@ class ConversationHostActions(
                 }
                 val c = state.selected?.conversation
                 if (dialog == "gateway-intro") AlertDialog(
-                    onDismissRequest = { dialog = null }, containerColor = raisedColor(), shape = RoundedCornerShape(24.dp),
-                    title = { Text(AppStrings.connectAgentsTitle) },
+                    onDismissRequest = { dialog = null }, title = { Text(AppStrings.connectAgentsTitle) },
                     text = { Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                         Text(AppStrings.setupAgentBody)
                         val accounts by vm.nativeAccounts.collectAsStateWithLifecycle()
@@ -411,9 +414,9 @@ class ConversationHostActions(
                 if (c != null) when (dialog) {
                     "rename" -> TextEditDialog(AppStrings.rename, c.title, { dialog = null }) { value -> vm.enqueue { vm.report(actions.rename(c.id, value)) }; dialog = null }
                     "project" -> ProjectGroupDialog(c, state.projects, { dialog = null }) { project -> vm.enqueue { vm.report(actions.project(c.id, project)) }; dialog = null }
-                    "delete" -> AlertDialog(onDismissRequest = { dialog = null }, containerColor = raisedColor(), shape = RoundedCornerShape(24.dp), title = { Text(AppStrings.deleteConversation) }, text = { Text(AppStrings.theConversationMovesToRecentlyDeletedAndCanBe) },
+                    "delete" -> AlertDialog(onDismissRequest = { dialog = null }, title = { Text(AppStrings.deleteConversation) }, text = { Text(AppStrings.theConversationMovesToRecentlyDeletedAndCanBe) },
                         confirmButton = { TextButton(onClick = { vm.enqueue { vm.report(actions.delete(c.id, true)) }; dialog = null }) { Text(AppStrings.delete) } }, dismissButton = { TextButton(onClick = { dialog = null }) { Text(AppStrings.cancel) } })
-                    "attachments" -> HistoryDialog(c.id, vm, { dialog = null }) { full -> AlertDialog(onDismissRequest = { dialog = null }, containerColor = raisedColor(), shape = RoundedCornerShape(24.dp), title = { Text(AppStrings.conversationAttachments) }, text = { Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                    "attachments" -> HistoryDialog(c.id, vm, { dialog = null }) { full -> AlertDialog(onDismissRequest = { dialog = null }, title = { Text(AppStrings.conversationAttachments) }, text = { Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
                         Text(AppStrings.sentAttachments)
                         val sent = full.turns.filter { it.execution != null }.groupBy { it.workspace }
                         if (sent.values.all { turns -> turns.all { it.attachments.isEmpty() } }) EmptyPlaceholder(AppStrings.noSentAttachments)
@@ -497,7 +500,7 @@ class ConversationHostActions(
         Surface(modifier, color = drawerColor(), contentColor = conversationInk()) {
             Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = if (onCollapse != null) 10.dp else 12.dp)) {
                 Row(Modifier.fillMaxWidth().padding(bottom = if (darkChrome()) 0.dp else 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(AppStrings.appName, Modifier.weight(1f), color = conversationInk(), style = MaterialTheme.typography.headlineSmall)
+                    DrawerBrand(Modifier.weight(1f))
                     DrawerPill(onNew, Modifier.testTag("drawer-new")) {
                         AppIcon(AppIcons.New, null, Modifier.size(22.dp))
                         Spacer(Modifier.width(8.dp))
@@ -544,6 +547,16 @@ class ConversationHostActions(
                 }
             }
         }
+    }
+}
+
+/** The app's mark in the current ink beside its name, sized to sit level with the buttons around it. */
+@Composable internal fun DrawerBrand(modifier: Modifier = Modifier) {
+    val ink = conversationInk()
+    // The launcher mark has empty space around it; the offset lines its left edge up with the rows below.
+    Row(modifier.offset(x = (-6).dp).testTag("drawer-brand"), verticalAlignment = Alignment.CenterVertically) {
+        Icon(painterResource(com.github.ytlog.mobby.android.R.drawable.ic_launcher_monochrome), null, Modifier.size(34.dp), tint = ink)
+        Text(AppStrings.appName, color = ink, style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp, fontWeight = FontWeight.SemiBold))
     }
 }
 
@@ -1161,10 +1174,9 @@ private fun Modifier.conversationEdgeFade(color: Color, topFade: Dp, bottomFade:
 }
 
 @Composable internal fun AddSheetBody(maxHeight: Dp, tiles: @Composable RowScope.() -> Unit, capabilities: @Composable ColumnScope.() -> Unit) {
-    Column(Modifier.fillMaxWidth().heightIn(max = maxHeight).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), content = tiles)
+    SheetBody(maxHeight) {
+        Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 4.dp, bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), content = tiles)
         capabilities()
-        Spacer(Modifier.height(16.dp))
     }
 }
 
@@ -1175,9 +1187,9 @@ internal const val PROGRAM_DEVELOPMENT = "plugin:device:programs"
  * Program development is the single entry for writing, installing, running and granting programs.
  */
 @Composable internal fun AddSheetCapabilities(programs: Boolean, open: (AppPage) -> Unit) {
-    CapabilityRow(AppStrings.devicePlugins, AppStrings.connectDeviceCapabilitiesToExpandYourTasks, AppIcons.Plugin) { open(AppPage.PLUGINS) }
-    if (programs) CapabilityRow(AppStrings.programDevelopment, AppStrings.programDevelopmentEntrySummary, AppIcons.Terminal) { open(AppPage.PROGRAMS) }
-    CapabilityRow(AppStrings.skills, AppStrings.reuseExpertiseForSpecificTasks, AppIcons.Skill) { open(AppPage.SKILLS) }
+    SheetRow(AppStrings.devicePlugins, AppStrings.connectDeviceCapabilitiesToExpandYourTasks, AppIcons.Plugin) { open(AppPage.PLUGINS) }
+    if (programs) SheetRow(AppStrings.programDevelopment, AppStrings.programDevelopmentEntrySummary, AppIcons.Terminal) { open(AppPage.PROGRAMS) }
+    SheetRow(AppStrings.skills, AppStrings.reuseExpertiseForSpecificTasks, AppIcons.Skill) { open(AppPage.SKILLS) }
 }
 
 internal fun capabilityLabel(ref: String): String {

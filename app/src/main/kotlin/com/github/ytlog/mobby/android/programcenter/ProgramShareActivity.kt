@@ -1,5 +1,6 @@
 package com.github.ytlog.mobby.android.programcenter
 
+import com.github.ytlog.mobby.android.conversation.ui.AlertDialog
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -10,7 +11,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Column
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*

@@ -832,7 +832,6 @@ open class StringCatalog(private val fixedLanguage: AppLanguage? = null) {
     val added get() = text("已添加", "Added")
     val featured get() = text("精选", "Featured")
     val addSkill get() = text("添加技能", "Add skill")
-    val chooseHowToAddSkill get() = text("选择创建或导入方式", "Choose how to create or import a skill")
     val createSkillWithCurrentConversation get() = text("在当前 Agent 会话中描述你的需求", "Describe what you need in the current agent conversation")
     val skillCreatorUnavailable get() = text("Skill Creator 暂不可用", "Skill Creator is unavailable")
     val skillCreatorRequiresConversation get() = text("请先打开一个会话，再通过对话创建技能", "Open a conversation first to create a skill by chatting")

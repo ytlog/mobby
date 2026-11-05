@@ -4,7 +4,6 @@ import android.content.Intent
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -74,7 +73,6 @@ internal fun rememberDirectPluginSelector(vm: ConversationViewModel, conversatio
     rationale?.let { plugin ->
         AlertDialog(
             onDismissRequest = { finishAccess(false) },
-            containerColor = raisedColor(),
             title = { Text(if (tablet) AppStrings.allowThisPluginToUseTabletCapabilities else AppStrings.allowThisPluginToUseDeviceCapabilities) },
             text = { Text(plugin.description) },
             confirmButton = { TextButton(onClick = { rationale = null; permissions.launch(plugin.permissions.toTypedArray()) }) { Text(AppStrings.`continue`) } },

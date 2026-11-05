@@ -1,5 +1,6 @@
 package com.github.ytlog.mobby.android.deviceoperation.ui
 
+import com.github.ytlog.mobby.android.conversation.ui.AlertDialog
 import android.graphics.BitmapFactory
 import android.media.MediaPlayer
 import androidx.compose.foundation.Image
@@ -29,8 +30,7 @@ class DevicePreview(val name: String, val mediaType: String, val bytes: ByteArra
     var player by remember { mutableStateOf<MediaPlayer?>(null) }
     var audioFile by remember { mutableStateOf<File?>(null) }
     DisposableEffect(ref) { onDispose { player?.release(); audioFile?.delete() } }
-    AlertDialog(onDismissRequest = onDismiss, containerColor = raisedColor(), shape = RoundedCornerShape(24.dp),
-        title = { Text(preview?.name ?: DeviceLabels.text("附件", "Attachment")) },
+    AlertDialog(onDismissRequest = onDismiss, title = { Text(preview?.name ?: DeviceLabels.text("附件", "Attachment")) },
         text = { Column(Modifier.fillMaxWidth().heightIn(max = 500.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             when {
                 loading -> CircularProgressIndicator()

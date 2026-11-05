@@ -138,11 +138,8 @@ private val skillCatalogTabs get() = listOf(AppStrings.added, AppStrings.feature
             }
         }
     }
-    if (adding) ModalBottomSheet(onDismissRequest = { adding = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = addSheetColor(), contentColor = addInkColor(), shape = RoundedCornerShape(28.dp, 28.dp, 0.dp, 0.dp)) {
-        SkillAddBody {
-                val ink = addInkColor()
-                Text(AppStrings.addSkill, Modifier.padding(horizontal = 4.dp), style = MaterialTheme.typography.titleLarge, color = ink)
-                Text(AppStrings.chooseHowToAddSkill, Modifier.padding(horizontal = 4.dp), style = MaterialTheme.typography.bodySmall, color = ink)
+    if (adding) AppSheet(onDismissRequest = { adding = false }) {
+        SheetBody(title = AppStrings.addSkill) {
                 val creator = skills.firstOrNull { it.name == "skill-creator" && it.available }
                 val canCreateWithAgent = creator != null && conversation != null
                 val creatorDetail = when {
@@ -150,7 +147,7 @@ private val skillCatalogTabs get() = listOf(AppStrings.added, AppStrings.feature
                     conversation == null -> AppStrings.skillCreatorRequiresConversation
                     else -> AppStrings.createSkillWithCurrentConversation
                 }
-                SkillAddAction(AppStrings.createWithMobby, creatorDetail,
+                SheetRow(AppStrings.createWithMobby, creatorDetail,
                     AppIcons.Skill, canCreateWithAgent) {
                     adding = false
                     if (conversation != null) vm.enqueue {
@@ -160,33 +157,12 @@ private val skillCatalogTabs get() = listOf(AppStrings.added, AppStrings.feature
                         }
                     }
                 }
-                SkillAddAction(AppStrings.importSkillFileMd, AppStrings.importExistingSkillDescription, AppIcons.Upload) {
+                SheetRow(AppStrings.importSkillFileMd, AppStrings.importExistingSkillDescription, AppIcons.Upload) {
                     adding = false; importAgent = agent; picker.launch(arrayOf("text/markdown", "text/plain", "text/x-markdown", "application/octet-stream"))
                 }
-                SkillAddAction(AppStrings.createManually, AppStrings.createManualSkillDescription, AppIcons.Edit) {
+                SheetRow(AppStrings.createManually, AppStrings.createManualSkillDescription, AppIcons.Edit) {
                     adding = false; vm.openManualSkill(agent); page = "editor"
                 }
-                Spacer(Modifier.height(14.dp))
-        }
-    }
-}
-
-@Composable internal fun SkillAddBody(content: @Composable ColumnScope.() -> Unit) {
-    Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp), content = content)
-}
-
-@Composable internal fun SkillAddAction(title: String, detail: String, icon: AppGlyph, enabled: Boolean = true, onClick: () -> Unit) {
-    val ink = addInkColor()
-    val content = if (enabled) ink else ink.copy(alpha = 0.38f)
-    Surface(onClick = onClick, enabled = enabled, shape = RoundedCornerShape(18.dp), color = addTileColor(), contentColor = content) {
-        Row(Modifier.fillMaxWidth().heightIn(min = 76.dp).padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            AppIcon(icon, null, Modifier.size(24.dp), tint = content)
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(title, style = MaterialTheme.typography.bodyLarge, color = content)
-                Text(detail, style = MaterialTheme.typography.bodySmall, color = content)
-            }
-            AppIcon(AppIcons.ChevronRight, null, Modifier.size(18.dp), tint = content)
         }
     }
 }
@@ -249,7 +225,7 @@ private val skillCatalogTabs get() = listOf(AppStrings.added, AppStrings.feature
     val state by vm.skillProposal.collectAsStateWithLifecycle()
     LaunchedEffect(proposal.ref) { vm.openSkillProposal(proposal) }
     val editor = state?.takeIf { it.proposal.ref == proposal.ref } ?: return
-    AlertDialog(onDismissRequest = { if (!editor.busy) onDismiss() }, containerColor = raisedColor(), shape = RoundedCornerShape(24.dp), title = { Text(AppStrings.skillDraft) }, text = {
+    AlertDialog(onDismissRequest = { if (!editor.busy) onDismiss() }, title = { Text(AppStrings.skillDraft) }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(AppStrings.theSkillIsAddedToTheDirectoryOnlyAfter, style = MaterialTheme.typography.bodySmall)
             if (!sourceAvailable) Text(AppStrings.draftSourceTemporarilyUnavailableYourEditsArePreserved, color = MaterialTheme.colorScheme.error)

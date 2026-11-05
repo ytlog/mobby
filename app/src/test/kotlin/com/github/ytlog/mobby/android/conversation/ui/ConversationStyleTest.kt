@@ -71,6 +71,14 @@ class ConversationStyleTest {
         assertEquals(Color(0xFF80BAFF), MobbyDarkScheme.primary)
     }
 
+    // At headline size the name towered over every control in the drawer.
+    @Test fun `the drawer brand sits level with the controls around it`() {
+        compose.setContent { MaterialTheme(colorScheme = MobbyLightScheme, typography = MobbyTypography) { DrawerBrand() } }
+        compose.onNodeWithText(UiStrings.appName).assertExists()
+        val brand = compose.onNodeWithTag("drawer-brand").getBoundsInRoot()
+        assertTrue("brand height ${brand.bottom - brand.top}", brand.bottom - brand.top <= ToolbarControl)
+    }
+
     @Test fun `process text sits clearly below reply text`() {
         assertTrue(ProcessTextSize.value <= MobbyTypography.bodyLarge.fontSize.value - 3f)
     }

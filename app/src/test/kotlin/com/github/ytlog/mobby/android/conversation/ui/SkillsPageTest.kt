@@ -29,9 +29,9 @@ class SkillsPageTest {
     @Test fun `the add skill panel buttons are not glass and still respond`() {
         var glass = true
         var opened = 0
-        compose.setContent { MaterialTheme { SkillAddBody {
+        compose.setContent { MaterialTheme { SheetBody(title = "fixture title") {
             glass = LocalGlassControls.current
-            SkillAddAction("fixture action", "fixture detail", AppIcons.Skill) { opened++ }
+            SheetRow("fixture action", "fixture detail", AppIcons.Skill) { opened++ }
         } } }
         compose.runOnIdle { assertFalse(glass) }
         compose.onNodeWithText("fixture action").performClick()

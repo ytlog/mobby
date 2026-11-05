@@ -1,5 +1,6 @@
 package com.github.ytlog.mobby.android.deviceoperation
 
+import com.github.ytlog.mobby.android.conversation.ui.AlertDialog
 import androidx.activity.compose.LocalActivityResultRegistryOwner
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -13,7 +14,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -114,8 +114,6 @@ internal fun ConversationDevicePermissionDialog(detail: ConversationDetail, vm: 
         val action = DeviceLabels.title(operation.plugin, operation.action)
         AlertDialog(
             onDismissRequest = { respond("cancel") },
-            containerColor = raisedColor(),
-            shape = RoundedCornerShape(24.dp),
             title = { Text(DeviceLabels.text("允许使用「$capability」？", "Allow $capability?")) },
             text = { Text(DeviceLabels.text(
                 "这条会话请求执行「$action」。授权后可继续使用，点输入框上方标签的 × 可撤销。",
@@ -142,8 +140,6 @@ private fun PrivateScreenInputDialog(operation: DeviceOperation) {
     AlertDialog(
         onDismissRequest = { respond(null) },
         properties = DialogProperties(securePolicy = SecureFlagPolicy.SecureOn),
-        containerColor = raisedColor(),
-        shape = RoundedCornerShape(24.dp),
         title = { Text(DeviceLabels.text("请填写副屏字段", "Fill the field on the secondary display")) },
         text = {
             Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()),

@@ -161,7 +161,7 @@ internal class CapturePictureContract : ActivityResultContracts.TakePicture() {
 
 @Composable internal fun CameraReviewDialog(capture: CameraCapture, busy: Boolean, preview: suspend (Boolean) -> DataResult<AttachmentPreview>, onDiscard: () -> Unit, onConfirm: () -> Unit, onCheck: () -> Unit, problem: String? = null) {
     var ready by remember(capture.id) { mutableStateOf(false) }
-    AlertDialog(onDismissRequest = { if (!busy) onDiscard() }, containerColor = raisedColor(), shape = RoundedCornerShape(24.dp), title = { Text(AppStrings.photoPreview) },
+    AlertDialog(onDismissRequest = { if (!busy) onDiscard() }, title = { Text(AppStrings.photoPreview) },
         text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (problem != null) Text(problem, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             if (busy) Text(AppStrings.processingPhoto, style = MaterialTheme.typography.bodySmall)

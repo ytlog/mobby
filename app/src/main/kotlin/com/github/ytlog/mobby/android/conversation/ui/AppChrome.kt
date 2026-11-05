@@ -105,25 +105,6 @@ internal fun Modifier.lightInputShadow(corner: Dp): Modifier = drawBehind {
     }
 }
 
-@Composable internal fun CapabilityRow(title: String, detail: String, icon: AppGlyph, value: String? = null, enabled: Boolean = true, onClick: () -> Unit) {
-    val ink = addInkColor()
-    TextButton(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
-        enabled = enabled,
-        colors = textButtonColors(ink),
-    ) {
-        AppIcon(icon, null, Modifier.size(22.dp), tint = ink)
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
-            Text(title, style = MaterialTheme.typography.titleMedium, color = ink)
-            Text(detail, style = MaterialTheme.typography.bodySmall, color = ink)
-        }
-        if (value != null) Text(value, color = ink)
-        AppIcon(AppIcons.ChevronRight, null, Modifier.size(18.dp), tint = ink)
-    }
-}
-
 @Composable internal fun settingsFieldColors() = OutlinedTextFieldDefaults.colors(
     focusedTextColor = MaterialTheme.colorScheme.onSurface,
     unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
