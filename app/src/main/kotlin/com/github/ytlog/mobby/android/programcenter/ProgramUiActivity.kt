@@ -24,6 +24,7 @@ import com.github.ytlog.mobby.android.MobbyApplication
 import com.github.ytlog.mobby.android.conversation.ui.MobbyDarkScheme
 import com.github.ytlog.mobby.android.conversation.ui.MobbyLightScheme
 import com.github.ytlog.mobby.android.conversation.ui.PageHeader
+import com.github.ytlog.mobby.android.conversation.ui.VirtualScreenPreviewLayer
 import com.github.ytlog.mobby.android.conversation.ui.TextButton
 import com.github.ytlog.mobby.android.localization.AppStrings
 import com.github.ytlog.mobby.android.programs.ui.UiAttach
@@ -72,6 +73,7 @@ class ProgramUiActivity : ComponentActivity() {
                             }, modifier = Modifier.fillMaxSize())
                         }
                     }
+                    VirtualScreenPreviewLayer()
                 }
                 link?.let { uri ->
                     AlertDialog(onDismissRequest = { link = null }, title = { Text(AppStrings.openLinkTitle) }, text = { Text(uri.toString()) },

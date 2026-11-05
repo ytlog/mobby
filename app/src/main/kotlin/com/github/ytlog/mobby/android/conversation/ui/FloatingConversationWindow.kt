@@ -121,7 +121,7 @@ class FloatingConversationWindow internal constructor(
     }
 }
 
-private class FloatingOwner : LifecycleOwner, ViewModelStoreOwner, SavedStateRegistryOwner {
+internal class FloatingOwner : LifecycleOwner, ViewModelStoreOwner, SavedStateRegistryOwner {
     val registry = LifecycleRegistry(this)
     override val lifecycle: Lifecycle get() = registry
     override val viewModelStore = ViewModelStore()

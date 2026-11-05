@@ -5,7 +5,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -16,11 +15,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.repeatOnLifecycle
 import com.github.ytlog.mobby.android.MobbyApplication
 import com.github.ytlog.mobby.android.conversation.domain.Appearance
 import com.github.ytlog.mobby.android.runtime.api.device.ScreenControlPort
@@ -52,6 +49,7 @@ class ScreenControlSettingsActivity : ComponentActivity() {
             MaterialTheme(colorScheme = if (dark) MobbyDarkScheme else MobbyLightScheme) {
                 Surface(Modifier.fillMaxSize()) {
                     ScreenUi.controller?.let { ScreenControlSettings(it, onBack = ::finish) }
+                    VirtualScreenPreviewLayer()
                 }
             }
         }
@@ -366,41 +364,5 @@ class ScreenControlSettingsActivity : ComponentActivity() {
                 else -> Unit
             }
         }
-    }
-}
-
-@Composable internal fun VirtualScreenPreview() {
-    val controller = ScreenUi.controller ?: return
-    val state by controller.state.collectAsStateWithLifecycle()
-    var expanded by remember { mutableStateOf(true) }
-    if (!state.active) return
-    val view = androidx.compose.ui.platform.LocalView.current
-    DisposableEffect(view) {
-        val previous = view.keepScreenOn
-        view.keepScreenOn = true
-        onDispose { view.keepScreenOn = previous }
-    }
-    val lifecycle = androidx.compose.ui.platform.LocalLifecycleOwner.current.lifecycle
-    LaunchedEffect(state.displayId, expanded, lifecycle) {
-        if (expanded) lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
-            while (isActive) {
-                try { controller.refreshPreview() }
-                catch (cancelled: CancellationException) { throw cancelled }
-                catch (_: Exception) { break }
-                delay(700)
-            }
-        }
-    }
-    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(AppStrings.virtualScreenPreview, style = MaterialTheme.typography.labelLarge)
-            TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) AppStrings.hideVirtualScreen else AppStrings.showVirtualScreen) }
-        }
-        if (expanded) {
-            val bitmap = remember(state.jpeg) { state.jpeg?.let { android.graphics.BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() } }
-            if (bitmap != null) Image(bitmap, AppStrings.virtualScreenPreview, Modifier.fillMaxWidth().heightIn(max = 240.dp))
-            else Text(AppStrings.virtualScreenWaiting, style = MaterialTheme.typography.bodySmall)
-        }
-        state.error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
     }
 }

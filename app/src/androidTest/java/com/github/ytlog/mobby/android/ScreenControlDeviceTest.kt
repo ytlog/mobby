@@ -8,13 +8,18 @@ import android.database.sqlite.SQLiteDatabase
 import android.graphics.BitmapFactory
 import android.os.Bundle
 import android.os.SystemClock
+import android.provider.Settings
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
+import android.view.inspector.WindowInspector
+import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.SdkSuppress
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
+import com.github.ytlog.mobby.android.conversation.ui.ScreenControlSettingsActivity
 import com.github.ytlog.mobby.android.device.DeviceHost
 import com.github.ytlog.mobby.android.device.ScreenAccessService
 import com.github.ytlog.mobby.android.device.ScreenControl
@@ -137,8 +142,6 @@ class ScreenControlDeviceTest {
                         assertTrue(main.window.decorView.isShown)
                         assertTrue("App preview must keep the main display awake", hasKeepScreen(main.window.decorView))
                     }
-                    instrumentation.sendStatus(0, Bundle().apply { putString("screen_probe_phase", "virtual_preview") })
-                    SystemClock.sleep(3000)
                     perform("home")
                     assertTrue(perform("snapshot").getString("text").contains("Virtual apps"))
                     perform("recents")
@@ -153,6 +156,18 @@ class ScreenControlDeviceTest {
                         assertTrue("mobby must stay resumed on the main screen",
                             ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED).contains(main))
                     }
+                    ActivityScenario.launch(ScreenControlSettingsActivity::class.java).use { settings ->
+                        waitFor("The preview must also be visible on the screen settings page") {
+                            var visible = false
+                            settings.onActivity { visible = hasKeepScreen(it.window.decorView) }
+                            visible
+                        }
+                    }
+                    val returned = foregroundMobby()
+                    SystemClock.sleep(1000)
+                    instrumentation.sendStatus(0, Bundle().apply { putString("screen_probe_phase", "virtual_preview") })
+                    SystemClock.sleep(3000)
+                    verifyBackgroundPreview(returned)
                 }
                 perform("back")
                 session.awaitIdle { }
@@ -167,6 +182,32 @@ class ScreenControlDeviceTest {
             root.deleteRecursively()
             foregroundMobby()
         }
+    }
+
+    private fun verifyBackgroundPreview(main: MainActivity) {
+        val permitted = Settings.canDrawOverlays(target)
+        instrumentation.runOnMainSync {
+            assertTrue("Move mobby out of the foreground", main.moveTaskToBack(true))
+        }
+        waitFor("Background preview must follow the system overlay permission ($permitted)") {
+            var matches = false
+            instrumentation.runOnMainSync {
+                val stopped = ActivityLifecycleMonitorRegistry.getInstance().getLifecycleStageOf(main) == Stage.STOPPED
+                matches = stopped && hasSystemPreview() == permitted
+            }
+            matches
+        }
+        val returned = foregroundMobby()
+        waitFor("The preview must return to mobby without a second system window") {
+            var restored = false
+            instrumentation.runOnMainSync { restored = hasKeepScreen(returned.window.decorView) && !hasSystemPreview() }
+            restored
+        }
+    }
+
+    private fun hasSystemPreview() = WindowInspector.getGlobalWindowViews().any {
+        (it.layoutParams as? WindowManager.LayoutParams)?.type == WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY &&
+            hasKeepScreen(it)
     }
 
     private fun hasKeepScreen(view: View): Boolean = view.keepScreenOn ||

@@ -17,6 +17,8 @@ import com.github.ytlog.mobby.android.conversation.domain.StopResult
 import com.github.ytlog.mobby.android.conversation.ui.DesktopPet
 import com.github.ytlog.mobby.android.conversation.ui.FloatingConversationWindow
 import com.github.ytlog.mobby.android.conversation.ui.AppUpdateManager
+import com.github.ytlog.mobby.android.conversation.ui.ScreenUi
+import com.github.ytlog.mobby.android.conversation.ui.VirtualScreenPreview
 import com.github.ytlog.mobby.android.conversation.ui.TaskResultNotifier
 import com.github.ytlog.mobby.android.conversation.ui.finishedRuns
 import com.github.ytlog.mobby.android.programcenter.ProgramLauncherShortcuts
@@ -37,6 +39,8 @@ class MobbyApplication : Application() {
     private val petScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private lateinit var pet: DesktopPet
     private lateinit var floatingConversation: FloatingConversationWindow
+    internal var screenPreview: VirtualScreenPreview? = null
+        private set
     lateinit var updates: AppUpdateManager
         private set
     private var latest = ConversationState()
@@ -65,12 +69,14 @@ class MobbyApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         if (isLocalModelProcess()) return
-        com.github.ytlog.mobby.android.conversation.ui.ScreenUi.controller = com.github.ytlog.mobby.android.graph.AndroidScreenControl(this)
+        val screen = com.github.ytlog.mobby.android.graph.AndroidScreenControl(this)
+        ScreenUi.controller = screen
         updates = AppUpdateManager(this)
         com.github.ytlog.mobby.android.conversation.ui.LanguagePreferences.initialize(this)
         graph = AppGraph(this) {
             PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
         }
+        screenPreview = VirtualScreenPreview(this, screen, petScope)
         permitted = Settings.canDrawOverlays(this)
         floatingConversation = FloatingConversationWindow(this, conversations, ::openConversation, ::syncPet)
         pet = DesktopPet(this, onStop = { id ->
@@ -110,7 +116,10 @@ class MobbyApplication : Application() {
                 .collect { list -> withContext(Dispatchers.IO) { syncShareEntry(this@MobbyApplication, list) } }
         }
         registerComponentCallbacks(object : ComponentCallbacks2 {
-            override fun onConfigurationChanged(newConfig: Configuration) = syncPet()
+            override fun onConfigurationChanged(newConfig: Configuration) {
+                syncPet()
+                screenPreview?.refreshWindow()
+            }
             override fun onTrimMemory(level: Int) = Unit
             @Deprecated("Deprecated in Android")
             override fun onLowMemory() = Unit

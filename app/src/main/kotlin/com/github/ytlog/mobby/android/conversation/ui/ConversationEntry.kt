@@ -431,6 +431,7 @@ class ConversationHostActions(
                     "share" -> HistoryDialog(c.id, vm, { dialog = null }) { full -> ShareDialog(full, hostActions.share, onDismiss = { dialog = null }) }
                 }
             }
+            VirtualScreenPreviewLayer()
         }
     }
 }
@@ -450,7 +451,6 @@ class ConversationHostActions(
                 ConversationToolbar(state.selected?.conversation, vm,
                     modifier = Modifier.fillMaxWidth(),
                     onMenu = onMenu, onNew = onNew, onMore = onMore, onAnchor = onAnchor, showMenu = showMenu, menuLabel = menuLabel)
-                VirtualScreenPreview()
                 if (!system.connected || !system.ready) Text(
                     system.message,
                     Modifier.padding(horizontal = 20.dp, vertical = 4.dp).align(Alignment.CenterHorizontally),
