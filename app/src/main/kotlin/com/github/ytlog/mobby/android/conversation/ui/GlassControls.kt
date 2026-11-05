@@ -39,10 +39,8 @@ internal fun GlassSurface(
 ) {
     val backdrop = LocalConversationBackdrop.current
     val dark = darkChrome()
-    val neutralLight = !dark && (tint == Color.Unspecified ||
-        (minOf(tint.red, tint.green, tint.blue) > 0.7f &&
-            maxOf(tint.red, tint.green, tint.blue) - minOf(tint.red, tint.green, tint.blue) < 0.08f))
-    val base = if (neutralLight) Color(0xFFE3E9F1)
+    val neutralLight = !dark && neutralLightTint(tint)
+    val base = if (neutralLight) MobbyColors.Light.glassBase
         else if (tint == Color.Unspecified) buttonColor() else tint
     val accented = tint != Color.Unspecified && !neutralLight
     val opticalGlass = Build.VERSION.SDK_INT >= 31 && backdrop != null
@@ -58,11 +56,11 @@ internal fun GlassSurface(
             style = HighlightStyle.Default(intensity = if (dark) 0.36f else if (neutralLight) 0.80f else 0.40f, falloff = 6f)) },
         shadow = { Shadow(radius = if (neutralLight) 10.dp else 12.dp,
             offset = DpOffset(0.dp, if (neutralLight) 3.dp else 4.dp),
-            color = Color.Black.copy(alpha = if (dark) 0.10f else if (neutralLight) 0.12f else 0.07f)) },
+            color = (if (dark) Color.Black else MobbyColors.Light.glassShadow).copy(alpha = if (dark) 0.10f else if (neutralLight) 0.12f else 0.07f)) },
         innerShadow = { if (neutralLight) InnerShadow(
             radius = 4.dp,
             offset = DpOffset(0.dp, 1.5.dp),
-            color = Color(0xFF506078).copy(alpha = 0.26f)) else null },
+            color = MobbyColors.Light.glassInnerShadow.copy(alpha = 0.26f)) else null },
         onDrawSurface = surface,
     ) else Modifier.background(if (neutralLight) base.copy(alpha = 0.14f) else base, shape).clip(shape).drawBehind(surface)
     // The library already draws a directional highlight. A second border turns it into chrome.
@@ -79,6 +77,10 @@ internal fun GlassSurface(
         CompositionLocalProvider(LocalContentColor provides onButtonColor(), content = content)
     }
 }
+
+/** A control with no tint, or a near-white one, is ordinary glass; anything more colorful is an accent. */
+internal fun neutralLightTint(tint: Color): Boolean = tint == Color.Unspecified ||
+    (minOf(tint.red, tint.green, tint.blue) > 0.7f && maxOf(tint.red, tint.green, tint.blue) - minOf(tint.red, tint.green, tint.blue) < 0.08f)
 
 /** Lighting over the sampled image; kept separate so transmission can be pixel-tested without AGSL. */
 internal fun DrawScope.drawGlassLighting(base: Color, dark: Boolean, accented: Boolean) {

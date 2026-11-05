@@ -64,27 +64,30 @@ internal object MobbyColors {
     }
 
     object Light {
-        val statusCard = Color(0xFFF5F1E9)
-        val statusAccent = Color(0xFF79551C)
-        val page = Color(0xFFF5F5F7)
-        val card = Color.White
-        val surfaceVariant = Color(0xFFF0F1F3)
-        val primary = Color(0xFF2F80FF)
+        val glassBase = Color(0xFFE9E3D8)
+        val glassInnerShadow = Color(0xFF6B5D48)
+        val glassShadow = Color(0xFF3A2E1F)
+        val statusCard = Color(0xFFF6EFE6)
+        val statusAccent = Color(0xFF8A5A12)
+        val page = Color(0xFFF6F4EF)
+        val card = Color(0xFFFFFDF9)
+        val surfaceVariant = Color(0xFFEFECE5)
+        val primary = Color(0xFFB4552F)
         val onPrimary = Color.White
-        val ink = Color(0xFF24272C)
-        val muted = Color(0xFF8A8F98)
-        val outline = Color(0xFFE6E6E8)
-        val menuInk = Color(0xFF1C1C1E)
-        val menuAccent = Color(0xFF007AFF)
-        val menuScrim = Color(0xCCF5F5F7)
+        val ink = Color(0xFF2C2A26)
+        val muted = Color(0xFF8C8779)
+        val outline = Color(0xFFE8E3D9)
+        val menuInk = Color(0xFF2C2A26)
+        val menuAccent = Color(0xFFB4552F)
+        val menuScrim = Color(0xCCF6F4EF)
         val menuStroke = Color.Black.copy(alpha = 0.06f)
-        val drawer = Color(0xFFF5F5F5)
-        val drawerControl = Color.White
-        val addSheet = Color(0xFFF5F5F5)
-        val addTile = Color(0xFFEEEEEE)
-        val addInk = Color(0xFF191919)
-        val voiceTrack = Color(0xFFE4EEFF)
-        val voiceWash = Color(0xFFD9E8FF)
+        val drawer = Color(0xFFF4F1EA)
+        val drawerControl = Color(0xFFFFFDF9)
+        val addSheet = Color(0xFFF4F1EA)
+        val addTile = Color(0xFFEAE6DD)
+        val addInk = Color(0xFF2C2A26)
+        val voiceTrack = Color(0xFFF4E4DA)
+        val voiceWash = Color(0xFFF2DFD2)
         val voiceCancel = Color(0xFFFFE4E6)
         val catalog = listOf(
             Color(0xFF1E88E5) to Color(0xFFE3F2FD),
@@ -95,11 +98,11 @@ internal object MobbyColors {
         )
 
         object Conversation {
-            val canvas = Color.White
+            val canvas = Color(0xFFFBFAF7)
             val ink = Light.ink
-            val toolInk = Color(0xFF71767F)
-            val toolBorder = Color(0xFFDFDFDF)
-            val userBubble = Color(0xFFF3F4F6)
+            val toolInk = Color(0xFF736E63)
+            val toolBorder = Color(0xFFE3DED3)
+            val userBubble = Color(0xFFF1EEE7)
             val inputShadow = Color(0x03000000)
         }
     }
@@ -159,25 +162,26 @@ internal val MobbyLightScheme: ColorScheme = lightColorScheme(
     surface = MobbyColors.Light.page,
     surfaceVariant = MobbyColors.Light.surfaceVariant,
     surfaceTint = MobbyColors.Light.primary,
-    surfaceContainerLowest = Color.White,
-    surfaceContainerLow = Color(0xFFF6F6F7),
-    surfaceContainer = Color(0xFFF2F2F4),
-    surfaceContainerHigh = Color(0xFFECECEE),
-    surfaceContainerHighest = Color(0xFFE6E6E9),
+    surfaceContainerLowest = Color(0xFFFFFDF9),
+    surfaceContainerLow = Color(0xFFF4F1EA),
+    surfaceContainer = Color(0xFFF1EEE7),
+    surfaceContainerHigh = Color(0xFFEBE7DF),
+    surfaceContainerHighest = Color(0xFFE5E0D6),
     primary = MobbyColors.Light.primary,
     onPrimary = MobbyColors.Light.onPrimary,
-    primaryContainer = Color(0xFFDCE9FF),
-    onPrimaryContainer = Color(0xFF0B2A5B),
-    secondaryContainer = Color(0xFFE8EEF8),
-    onSecondaryContainer = Color(0xFF24344D),
+    primaryContainer = Color(0xFFF4E4DA),
+    onPrimaryContainer = Color(0xFF6E3219),
+    secondaryContainer = Color(0xFFF4E9E1),
+    onSecondaryContainer = Color(0xFF6E3219),
     tertiary = MobbyColors.Light.primary,
     onTertiary = MobbyColors.Light.onPrimary,
-    tertiaryContainer = Color(0xFFDCE9FF),
-    onTertiaryContainer = Color(0xFF0B2A5B),
+    tertiaryContainer = Color(0xFFF4E4DA),
+    onTertiaryContainer = Color(0xFF6E3219),
     onBackground = MobbyColors.Light.ink,
     onSurface = MobbyColors.Light.ink,
     onSurfaceVariant = MobbyColors.Light.muted,
     secondary = MobbyColors.Light.primary,
+    error = Color(0xFFB3362B),
     outline = MobbyColors.Light.outline,
     outlineVariant = MobbyColors.Light.outline,
 )

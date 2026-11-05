@@ -44,16 +44,31 @@ class ConversationStyleTest {
         return (hi + 0.05f) / (lo + 0.05f)
     }
 
-    // Near-pure black reply text beside warm neutral greys and softer chrome read as unrelated type.
-    @Test fun `light text shares one soft ink family that stays readable`() {
-        val canvas = MobbyColors.Light.Conversation.canvas
-        val ink = MobbyColors.Light.Conversation.ink
-        val secondary = MobbyColors.Light.Conversation.toolInk
-        assertEquals("replies and chrome use one ink", MobbyLightScheme.onSurface, ink)
-        assertTrue("softer than near-black", ink.luminance() > Color(0xFF1A1A1A).luminance())
-        assertTrue(contrast(ink, canvas) >= 12f)
-        assertTrue("secondary text stays readable", contrast(secondary, canvas) >= 4.5f)
-        assertTrue("greys lean the same way as the ink", secondary.blue > secondary.red && ink.blue > ink.red)
+    private fun Color.warm() = red > blue
+
+    // White, cool grey and a pale blue accent gave the page no character; this is the warm paper palette the user chose.
+    @Test fun `the light palette is warm paper with readable ink and accent`() {
+        val c = MobbyColors.Light.Conversation
+        val light = MobbyColors.Light
+        listOf(c.canvas, c.ink, c.toolInk, c.userBubble, light.page, light.card, light.drawer, light.muted, light.glassBase)
+            .forEach { assertTrue("$it should lean warm", it.warm()) }
+        assertEquals("replies and chrome use one ink", MobbyLightScheme.onSurface, c.ink)
+        assertTrue(contrast(c.ink, c.canvas) >= 12f)
+        assertTrue("secondary text stays readable", contrast(c.toolInk, c.canvas) >= 4.5f)
+        assertTrue("accent text stays readable", contrast(MobbyLightScheme.primary, c.canvas) >= 4.5f)
+        assertTrue("text on the accent stays readable", contrast(MobbyLightScheme.onPrimary, MobbyLightScheme.primary) >= 4.5f)
+        assertTrue("warning stays readable", contrast(light.statusAccent, c.canvas) >= 4.5f)
+    }
+
+    @Test fun `warm near-white controls stay ordinary glass while the accent stays an accent`() {
+        assertTrue(neutralLightTint(MobbyColors.Light.card))
+        assertTrue(neutralLightTint(MobbyColors.Light.drawerControl))
+        assertFalse(neutralLightTint(MobbyLightScheme.primary))
+    }
+
+    // Dark mode was not part of this choice.
+    @Test fun `the dark palette keeps its accent`() {
+        assertEquals(Color(0xFF80BAFF), MobbyDarkScheme.primary)
     }
 
     @Test fun `process text sits clearly below reply text`() {

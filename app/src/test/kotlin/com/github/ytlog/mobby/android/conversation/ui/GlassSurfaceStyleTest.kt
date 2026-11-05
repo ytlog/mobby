@@ -111,7 +111,7 @@ class GlassSurfaceStyleTest {
             androidx.compose.foundation.Canvas(Modifier.size(240.dp, 80.dp).testTag("light-transmission")) {
                 drawRect(Color.Black)
                 drawRect(Color.White, topLeft = androidx.compose.ui.geometry.Offset(size.width / 2f, 0f))
-                drawGlassLighting(Color(0xFFE3E9F1), dark = false, accented = false)
+                drawGlassLighting(MobbyColors.Light.glassBase, dark = false, accented = false)
             }
         }
         val bounds = compose.onNodeWithTag("light-transmission").fetchSemanticsNode().boundsInRoot
