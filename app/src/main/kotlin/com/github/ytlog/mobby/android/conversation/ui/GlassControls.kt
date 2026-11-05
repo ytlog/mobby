@@ -35,7 +35,6 @@ internal fun GlassSurface(
     modifier: Modifier = Modifier,
     shape: Shape = androidx.compose.foundation.shape.RoundedCornerShape(26.dp),
     tint: Color = Color.Unspecified,
-    emphasizeInnerEdge: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val backdrop = LocalConversationBackdrop.current
@@ -61,9 +60,9 @@ internal fun GlassSurface(
             offset = DpOffset(0.dp, if (neutralLight) 3.dp else 4.dp),
             color = Color.Black.copy(alpha = if (dark) 0.10f else if (neutralLight) 0.12f else 0.07f)) },
         innerShadow = { if (neutralLight) InnerShadow(
-            radius = if (emphasizeInnerEdge) 4.dp else 3.dp,
-            offset = DpOffset(0.dp, if (emphasizeInnerEdge) 1.5.dp else 1.dp),
-            color = Color(0xFF506078).copy(alpha = if (emphasizeInnerEdge) 0.26f else 0.12f)) else null },
+            radius = 4.dp,
+            offset = DpOffset(0.dp, 1.5.dp),
+            color = Color(0xFF506078).copy(alpha = 0.26f)) else null },
         onDrawSurface = surface,
     ) else Modifier.background(if (neutralLight) base.copy(alpha = 0.14f) else base, shape).clip(shape).drawBehind(surface)
     // The library already draws a directional highlight. A second border turns it into chrome.
