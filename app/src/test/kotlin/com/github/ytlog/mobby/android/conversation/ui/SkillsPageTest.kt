@@ -25,6 +25,19 @@ class SkillsPageTest {
     private inline fun <reified T> stub(crossinline body: (String, Array<out Any?>) -> Any?): T =
         Proxy.newProxyInstance(T::class.java.classLoader, arrayOf(T::class.java)) { _, method, args -> body(method.name, args ?: emptyArray()) } as T
 
+    // The user asked for this panel's buttons to be plain, like the composer's add sheet.
+    @Test fun `the add skill panel buttons are not glass and still respond`() {
+        var glass = true
+        var opened = 0
+        compose.setContent { MaterialTheme { SkillAddBody {
+            glass = LocalGlassControls.current
+            SkillAddAction("fixture action", "fixture detail", AppIcons.Skill) { opened++ }
+        } } }
+        compose.runOnIdle { assertFalse(glass) }
+        compose.onNodeWithText("fixture action").performClick()
+        compose.runOnIdle { assertEquals(1, opened) }
+    }
+
     @Test fun `catalog cards filter by source and 使用 joins the draft`() {
         val conversation = Conversation(ConversationId("c"), NextTurnConfig(AgentId.CODEX, "model", null, "default", "CODEX"))
         val conversations = MutableStateFlow(ConversationState(loading = false, selected = ConversationDetail(conversation, emptyList())))

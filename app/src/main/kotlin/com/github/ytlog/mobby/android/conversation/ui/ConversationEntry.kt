@@ -378,20 +378,19 @@ class ConversationHostActions(
                     val ink = readerInk()
                     val muted = readerMuted()
                     ModalBottomSheet(onDismissRequest = { reading = null }, modifier = Modifier.offset(x = sheetOffset), sheetMaxWidth = overlayWidth, containerColor = raisedColor(), contentColor = if (dark) ink else contentColorFor(raisedColor())) {
-                        GlassControlScope(background = raisedColor()) {
-                            Column(Modifier.fillMaxWidth().heightIn(max = (availableHeight - 48.dp).coerceAtLeast(120.dp))) {
-                                Text(title, Modifier.fillMaxWidth().padding(horizontal = 16.dp), color = if (dark) muted else Color.Unspecified, style = MaterialTheme.typography.titleMedium)
-                                val clipboard = LocalClipboardManager.current
-                                TextButton(onClick = { clipboard.setText(AnnotatedString(text)) }, colors = if (dark) textButtonColors(muted) else textButtonColors()) { Text(AppStrings.copyOriginalText) }
-                                androidx.compose.foundation.text.selection.SelectionContainer {
-                                    Text(
-                                        if (dark) readerBody(text, ink, muted) else AnnotatedString(text),
-                                        Modifier.heightIn(max = (availableHeight - 180.dp).coerceAtLeast(100.dp)).verticalScroll(rememberScrollState()).padding(16.dp),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                    )
-                                }
+                        Column(Modifier.fillMaxWidth().heightIn(max = (availableHeight - 48.dp).coerceAtLeast(120.dp))) {
+                            Text(title, Modifier.fillMaxWidth().padding(horizontal = 16.dp), color = if (dark) muted else Color.Unspecified, style = MaterialTheme.typography.titleMedium)
+                            val clipboard = LocalClipboardManager.current
+                            TextButton(onClick = { clipboard.setText(AnnotatedString(text)) }, colors = if (dark) textButtonColors(muted) else textButtonColors()) { Text(AppStrings.copyOriginalText) }
+                            androidx.compose.foundation.text.selection.SelectionContainer {
+                                Text(
+                                    if (dark) readerBody(text, ink, muted) else AnnotatedString(text),
+                                    Modifier.heightIn(max = (availableHeight - 180.dp).coerceAtLeast(100.dp)).verticalScroll(rememberScrollState()).padding(16.dp),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
                             }
                         }
+                    
                     }
                 }
                 val c = state.selected?.conversation
@@ -444,7 +443,7 @@ class ConversationHostActions(
     state.selected?.let { com.github.ytlog.mobby.android.deviceoperation.ConversationDevicePermissionDialog(it, vm) }
     val canvas = conversationCanvas()
     val backdrop = rememberCanvasBackdrop { drawRect(canvas) }
-    CompositionLocalProvider(LocalConversationBackdrop provides backdrop) {
+    CompositionLocalProvider(LocalGlassEnabled provides true, LocalConversationBackdrop provides backdrop) {
         Column(modifier.background(canvas)) {
             ConversationToolbarLayer(Modifier.fillMaxWidth().background(canvas).testTag("conversation-toolbar")) {
                 ConversationToolbar(state.selected?.conversation, vm,

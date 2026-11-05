@@ -76,7 +76,7 @@ class GlassTransmissionDeviceTest {
                                 } else drawRect(if (backgroundMode.value == 2) Color.Black else Color.White,
                                     topLeft = Offset(size.width / 2f, 0f))
                             }
-                            CompositionLocalProvider(LocalConversationBackdrop provides backdrop) {
+                            CompositionLocalProvider(LocalGlassEnabled provides true, LocalConversationBackdrop provides backdrop) {
                                 Box(Modifier.align(Alignment.Center).size(240.dp, 80.dp).onGloballyPositioned {
                                     val r = it.boundsInWindow()
                                     bounds.set(Rect(r.left.roundToInt(), r.top.roundToInt(), r.right.roundToInt(), r.bottom.roundToInt()))

@@ -37,9 +37,16 @@ internal fun GlassSurface(
     tint: Color = Color.Unspecified,
     content: @Composable () -> Unit,
 ) {
-    val backdrop = LocalConversationBackdrop.current
     val dark = darkChrome()
     val neutralLight = !dark && neutralLightTint(tint)
+    if (!LocalGlassEnabled.current) {
+        val fill = if (neutralLight) conversationCardColor() else if (tint == Color.Unspecified) buttonColor() else tint
+        Box(modifier.background(fill, shape).clip(shape), propagateMinConstraints = true) {
+            CompositionLocalProvider(LocalContentColor provides onButtonColor(), content = content)
+        }
+        return
+    }
+    val backdrop = LocalConversationBackdrop.current
     val base = if (neutralLight) MobbyColors.Light.glassBase
         else if (tint == Color.Unspecified) buttonColor() else tint
     val accented = tint != Color.Unspecified && !neutralLight

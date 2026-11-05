@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -35,8 +36,6 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionOnScreen
-import com.kyant.backdrop.backdrops.rememberLayerBackdrop
-import com.kyant.backdrop.backdrops.layerBackdrop
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextAlign
@@ -100,7 +99,6 @@ import kotlin.math.roundToInt
     }
     Popup(popupPositionProvider = position, onDismissRequest = onDismissRequest, properties = PopupProperties(focusable = true, clippingEnabled = false)) {
         val popupView = LocalView.current
-        val backdrop = rememberLayerBackdrop()
         SideEffect { clearPopupChrome(popupView) }
         Box(
             Modifier
@@ -113,13 +111,13 @@ import kotlin.math.roundToInt
                     actualOrigin = IntOffset(origin.x.roundToInt() - hostOrigin[0], origin.y.roundToInt() - hostOrigin[1])
                 },
         ) {
-            Box(Modifier.matchParentSize().layerBackdrop(backdrop)) {
+            Box(Modifier.matchParentSize()) {
                 frost?.let { image ->
                     Image(image, contentDescription = null, modifier = Modifier.matchParentSize(), contentScale = ContentScale.Crop)
                 }
                 Box(Modifier.matchParentSize().background(scrim))
             }
-            GlassControlScope(background = cardColor(), backdrop = backdrop, glassButtons = false) {
+            CompositionLocalProvider(LocalGlassEnabled provides false, LocalGlassControls provides false, LocalConversationBackdrop provides null) {
                 MaterialTheme(
                     colorScheme = MaterialTheme.colorScheme.copy(
                         primary = menuAccent(),

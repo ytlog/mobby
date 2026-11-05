@@ -38,13 +38,65 @@ class GlassSurfaceStyleTest {
     @get:Rule val compose = createComposeRule()
     private lateinit var view: View
 
+    // The user wants glass only on the home page and in the drawer.
+    @Test fun `outside the home page and drawer a surface is plain and opaque`() {
+        var expected = Color.Unspecified
+        compose.setContent {
+            val host = LocalView.current
+            SideEffect { view = host }
+            MaterialTheme(colorScheme = MobbyLightScheme) {
+                expected = conversationCardColor()
+                Box(Modifier.background(Color.Black)) {
+                    GlassSurface(Modifier.size(240.dp, 80.dp).testTag("plain")) {}
+                }
+            }
+        }
+        val bounds = compose.onNodeWithTag("plain").fetchSemanticsNode().boundsInRoot
+        val pixels = compose.runOnIdle {
+            val bitmap = Bitmap.createBitmap(bounds.width.toInt(), bounds.height.toInt(), Bitmap.Config.ARGB_8888)
+            view.draw(Canvas(bitmap).apply { translate(-bounds.left, -bounds.top) })
+            bitmap.asImageBitmap().toPixelMap()
+        }
+        listOf(pixels[120, 12], pixels[120, 40], pixels[120, 68]).forEach { pixel ->
+            org.junit.Assert.assertEquals(expected.red, pixel.red, 0.01f)
+            org.junit.Assert.assertEquals(expected.blue, pixel.blue, 0.01f)
+        }
+    }
+
+    @Test fun `a menu opened from the home page is not glass`() {
+        var enabled = true
+        var buttons = true
+        compose.setContent {
+            MaterialTheme(colorScheme = MobbyLightScheme) {
+                androidx.compose.runtime.CompositionLocalProvider(LocalGlassEnabled provides true) {
+                    FrostedMenu(true, {}) {
+                        enabled = LocalGlassEnabled.current
+                        buttons = LocalGlassControls.current
+                    }
+                }
+            }
+        }
+        compose.runOnIdle {
+            org.junit.Assert.assertFalse(enabled)
+            org.junit.Assert.assertFalse(buttons)
+        }
+    }
+
+    @Test fun `the drawer scope keeps glass on`() {
+        var enabled = false
+        compose.setContent { MaterialTheme(colorScheme = MobbyLightScheme) { GlassControlScope(MobbyColors.Light.drawer) { enabled = LocalGlassEnabled.current } } }
+        compose.runOnIdle { assertTrue(enabled) }
+    }
+
     @Test fun `clear glass retains visible depth on a plain white conversation`() {
         compose.setContent {
             val host = LocalView.current
             SideEffect { view = host }
             MaterialTheme(colorScheme = MobbyLightScheme) {
-                Box(Modifier.background(Color.White)) {
-                    GlassSurface(Modifier.size(240.dp, 80.dp).testTag("glass")) {}
+                androidx.compose.runtime.CompositionLocalProvider(LocalGlassEnabled provides true) {
+                    Box(Modifier.background(Color.White)) {
+                        GlassSurface(Modifier.size(240.dp, 80.dp).testTag("glass")) {}
+                    }
                 }
             }
         }
@@ -66,7 +118,9 @@ class GlassSurfaceStyleTest {
             SideEffect { view = host }
             MaterialTheme(colorScheme = MobbyDarkScheme) {
                 Box(Modifier.background(MobbyColors.Dark.Conversation.canvas)) {
-                    GlassSurface(Modifier.size(240.dp, 80.dp).testTag("dark-glass")) {}
+                    androidx.compose.runtime.CompositionLocalProvider(LocalGlassEnabled provides true) {
+                        GlassSurface(Modifier.size(240.dp, 80.dp).testTag("dark-glass")) {}
+                    }
                 }
             }
         }

@@ -139,9 +139,8 @@ private val skillCatalogTabs get() = listOf(AppStrings.added, AppStrings.feature
         }
     }
     if (adding) ModalBottomSheet(onDismissRequest = { adding = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = addSheetColor(), contentColor = addInkColor(), shape = RoundedCornerShape(28.dp, 28.dp, 0.dp, 0.dp)) {
-        GlassControlScope(background = addSheetColor()) {
-            val ink = addInkColor()
-            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        SkillAddBody {
+                val ink = addInkColor()
                 Text(AppStrings.addSkill, Modifier.padding(horizontal = 4.dp), style = MaterialTheme.typography.titleLarge, color = ink)
                 Text(AppStrings.chooseHowToAddSkill, Modifier.padding(horizontal = 4.dp), style = MaterialTheme.typography.bodySmall, color = ink)
                 val creator = skills.firstOrNull { it.name == "skill-creator" && it.available }
@@ -168,25 +167,26 @@ private val skillCatalogTabs get() = listOf(AppStrings.added, AppStrings.feature
                     adding = false; vm.openManualSkill(agent); page = "editor"
                 }
                 Spacer(Modifier.height(14.dp))
-            }
         }
     }
 }
 
-@Composable private fun SkillAddAction(title: String, detail: String, icon: AppGlyph, enabled: Boolean = true, onClick: () -> Unit) {
+@Composable internal fun SkillAddBody(content: @Composable ColumnScope.() -> Unit) {
+    Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp), content = content)
+}
+
+@Composable internal fun SkillAddAction(title: String, detail: String, icon: AppGlyph, enabled: Boolean = true, onClick: () -> Unit) {
     val ink = addInkColor()
     val content = if (enabled) ink else ink.copy(alpha = 0.38f)
-    GlassControlSurface(shape = RoundedCornerShape(18.dp)) {
-        Surface(onClick = onClick, enabled = enabled, shape = RoundedCornerShape(18.dp), color = if (LocalGlassControls.current) Color.Transparent else addTileColor(), contentColor = content) {
-            Row(Modifier.fillMaxWidth().heightIn(min = 76.dp).padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                AppIcon(icon, null, Modifier.size(24.dp), tint = content)
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Text(title, style = MaterialTheme.typography.bodyLarge, color = content)
-                    Text(detail, style = MaterialTheme.typography.bodySmall, color = content)
-                }
-                AppIcon(AppIcons.ChevronRight, null, Modifier.size(18.dp), tint = content)
+    Surface(onClick = onClick, enabled = enabled, shape = RoundedCornerShape(18.dp), color = addTileColor(), contentColor = content) {
+        Row(Modifier.fillMaxWidth().heightIn(min = 76.dp).padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            AppIcon(icon, null, Modifier.size(24.dp), tint = content)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(title, style = MaterialTheme.typography.bodyLarge, color = content)
+                Text(detail, style = MaterialTheme.typography.bodySmall, color = content)
             }
+            AppIcon(AppIcons.ChevronRight, null, Modifier.size(18.dp), tint = content)
         }
     }
 }
