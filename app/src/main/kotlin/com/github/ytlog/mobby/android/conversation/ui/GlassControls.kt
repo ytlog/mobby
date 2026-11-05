@@ -59,15 +59,15 @@ internal fun GlassSurface(
             blur((if (neutralLight) 3.dp else 12.dp).toPx())
             lens(6.dp.toPx(), 20.dp.toPx())
         },
-        highlight = { Highlight(width = if (neutralLight) 0.85.dp else 0.4.dp, blurRadius = if (neutralLight) 0.25.dp else 0.5.dp,
-            style = HighlightStyle.Default(intensity = if (dark) 0.36f else if (neutralLight) 0.80f else 0.40f, falloff = 6f)) },
-        shadow = { Shadow(radius = if (neutralLight) 10.dp else 12.dp,
-            offset = DpOffset(0.dp, if (neutralLight) 3.dp else 4.dp),
-            color = (if (dark) Color.Black else MobbyColors.Light.glassShadow).copy(alpha = if (dark) 0.10f else if (neutralLight) 0.12f else 0.07f)) },
+        highlight = { Highlight(width = if (neutralLight) 1.2.dp else 0.4.dp, blurRadius = if (neutralLight) 0.25.dp else 0.5.dp,
+            style = HighlightStyle.Default(intensity = if (dark) 0.36f else if (neutralLight) 1f else 0.40f, falloff = 6f)) },
+        shadow = { Shadow(radius = if (neutralLight) 16.dp else 12.dp,
+            offset = DpOffset(0.dp, if (neutralLight) 5.dp else 4.dp),
+            color = (if (dark) Color.Black else MobbyColors.Light.glassShadow).copy(alpha = if (dark) 0.10f else if (neutralLight) 0.22f else 0.07f)) },
         innerShadow = { if (neutralLight) InnerShadow(
-            radius = 4.dp,
+            radius = 5.dp,
             offset = DpOffset(0.dp, 1.5.dp),
-            color = MobbyColors.Light.glassInnerShadow.copy(alpha = 0.26f)) else null },
+            color = MobbyColors.Light.glassInnerShadow.copy(alpha = 0.34f)) else null },
         onDrawSurface = surface,
     ) else Modifier.background(if (neutralLight) base.copy(alpha = 0.14f) else base, shape).clip(shape).drawBehind(surface)
     // The library already draws a directional highlight. A second border turns it into chrome.
@@ -94,9 +94,9 @@ internal fun DrawScope.drawGlassLighting(base: Color, dark: Boolean, accented: B
     drawRect(base.copy(alpha = if (accented) 0.94f else if (dark) 0.32f else 0.14f))
     if (!accented) {
         drawRect(Brush.verticalGradient(
-            0f to Color.White.copy(alpha = if (dark) 0.012f else 0.18f),
+            0f to Color.White.copy(alpha = if (dark) 0.012f else 0.34f),
             0.35f to Color.White.copy(alpha = if (dark) 0.004f else 0.008f),
-            1f to Color.Black.copy(alpha = if (dark) 0.008f else 0.025f),
+            1f to Color.Black.copy(alpha = if (dark) 0.008f else 0.05f),
             endY = size.height,
         ))
         drawRect(Brush.linearGradient(

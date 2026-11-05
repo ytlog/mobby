@@ -64,7 +64,7 @@ internal object MobbyColors {
     }
 
     object Light {
-        val glassBase = Color(0xFFE9E3D8)
+        val glassBase = Color(0xFFE2DACC)
         val glassInnerShadow = Color(0xFF6B5D48)
         val glassShadow = Color(0xFF3A2E1F)
         val statusCard = Color(0xFFF6EFE6)
