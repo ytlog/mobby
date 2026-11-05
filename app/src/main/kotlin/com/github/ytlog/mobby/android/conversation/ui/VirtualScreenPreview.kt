@@ -25,9 +25,11 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.*
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -183,7 +185,8 @@ internal fun VirtualScreenPreviewCard(
                 Text(
                     UiStrings.virtualScreenPreview,
                     Modifier.weight(1f).padding(start = 8.dp),
-                    style = MaterialTheme.typography.labelLarge,
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold, letterSpacing = 0.sp),
+                    color = colors.onSurface,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -197,7 +200,7 @@ internal fun VirtualScreenPreviewCard(
             if (expanded) {
                 error?.let {
                     Text(it, Modifier.padding(start = 10.dp, end = 10.dp, bottom = 6.dp),
-                        style = MaterialTheme.typography.labelSmall, color = colors.error,
+                        style = MaterialTheme.typography.bodySmall, color = colors.error,
                         maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
                 val ratio = bitmap?.let { it.width.toFloat() / it.height } ?: 9f / 16f
