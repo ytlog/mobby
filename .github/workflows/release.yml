@@ -74,7 +74,8 @@ jobs:
       - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: temurin
-          java-version: '17'
+          # Backdrop 1.0.0 uses Java 21 bytecode, which host unit tests load directly.
+          java-version: '21'
 
       - name: Install Android build dependencies
         shell: bash
