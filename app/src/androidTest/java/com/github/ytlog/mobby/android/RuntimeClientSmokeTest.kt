@@ -1,6 +1,6 @@
 package com.github.ytlog.mobby.android
 
-import android.content.Intent
+import android.os.ParcelFileDescriptor
 import androidx.test.platform.app.InstrumentationRegistry
 import com.github.ytlog.mobby.android.runtime.api.*
 import kotlinx.coroutines.*
@@ -16,7 +16,11 @@ class RuntimeClientSmokeTest {
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
     private val host get() = (instrumentation.targetContext.applicationContext as MobbyApplication).runtime
     @Before fun ready() = runBlocking {
-        instrumentation.startActivitySync(Intent(instrumentation.targetContext, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        val component = "${instrumentation.targetContext.packageName}/.MainActivity"
+        // Some devices block activity launches from a background instrumentation process.
+        val launch = instrumentation.uiAutomation.executeShellCommand("am start -W -n $component")
+        val output = ParcelFileDescriptor.AutoCloseInputStream(launch).bufferedReader().use { it.readText() }
+        assertTrue("MainActivity launch failed: $output", output.lineSequence().any { it.trim() == "Status: ok" })
         val ready = withTimeout(150_000) { host.admin.environment.first { it.phase != EnvironmentPhase.INITIALIZING } }
         assertEquals(EnvironmentPhase.READY, ready.phase)
     }
