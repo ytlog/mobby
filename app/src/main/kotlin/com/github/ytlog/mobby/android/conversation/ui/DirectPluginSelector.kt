@@ -1,5 +1,6 @@
 package com.github.ytlog.mobby.android.conversation.ui
 
+import android.app.Activity
 import android.content.Intent
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -69,6 +70,9 @@ internal fun rememberDirectPluginSelector(vm: ConversationViewModel, conversatio
         }
     }
     val accessibility = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { finishAccess(true) }
+    val screenSetup = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        finishAccess(result.resultCode == Activity.RESULT_OK)
+    }
 
     rationale?.let { plugin ->
         AlertDialog(
@@ -89,6 +93,10 @@ internal fun rememberDirectPluginSelector(vm: ConversationViewModel, conversatio
                     val plugin = result.value.firstOrNull { it.ref == ref }
                     when {
                         plugin == null -> vm.report(OperationResult.Failed(AppStrings.unknownPlugin))
+                        ref == "plugin:device:screen" && shouldRecommendAdb(ScreenUi.controller?.state?.value) -> {
+                            pending = id to ref
+                            screenSetup.launch(screenSetupIntent(context))
+                        }
                         plugin.available -> vm.report(vm.actions.setPlugin(id, plugin, true))
                         plugin.access == PluginAccess.ACCESSIBILITY -> {
                             pending = id to ref

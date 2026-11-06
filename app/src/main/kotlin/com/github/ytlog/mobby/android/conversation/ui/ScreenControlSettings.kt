@@ -1,5 +1,7 @@
 package com.github.ytlog.mobby.android.conversation.ui
 
+import android.app.Activity
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -46,7 +48,10 @@ class ScreenControlSettingsActivity : ComponentActivity() {
             }
             MaterialTheme(colorScheme = if (dark) MobbyDarkScheme else MobbyLightScheme, typography = MobbyTypography) {
                 Surface(Modifier.fillMaxSize()) {
-                    ScreenUi.controller?.let { ScreenControlSettings(it, onBack = ::finish) }
+                    ScreenUi.controller?.let { ScreenControlSettings(it, onBack = ::finish, onFinished = {
+                        setResult(Activity.RESULT_OK)
+                        finish()
+                    }) }
                     VirtualScreenPreviewLayer()
                 }
             }
@@ -68,7 +73,10 @@ class ScreenControlSettingsActivity : ComponentActivity() {
         mutableStateOf(arrayListOf(ScreenSetupStep.MODE.name).apply { if (controller.state.value.adbPairing) add(ScreenSetupStep.PAIR.name) })
     }
     val step = ScreenSetupStep.valueOf(history.last())
-    var selectedMode by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(state.mode) }
+    val sdk = statusOverride?.sdk ?: Build.VERSION.SDK_INT
+    var selectedMode by androidx.compose.runtime.saveable.rememberSaveable {
+        mutableStateOf(if (shouldRecommendAdb(state, sdk)) ScreenMode.ADB else state.mode)
+    }
     var family by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(DeviceSettingsFamily.detect()) }
     var busy by remember { mutableStateOf(false) }
     var operation by remember { mutableStateOf<Job?>(null) }
@@ -256,7 +264,10 @@ class ScreenControlSettingsActivity : ComponentActivity() {
         when {
             step == ScreenSetupStep.MODE -> execute {
                 check(!state.active && !state.adbPairing) { AppStrings.screenModeBusy }
-                if (selectedMode != state.mode) { controller.select(selectedMode); connectionPort = "" }
+                if (selectedMode != state.mode || !state.modeConfigured) {
+                    controller.select(selectedMode)
+                    connectionPort = ""
+                }
                 go(next(ScreenSetupStep.MODE))
             }
             step == ScreenSetupStep.PORT -> execute { controller.setAdbPort(connectionPort); previous() }
@@ -311,10 +322,12 @@ class ScreenControlSettingsActivity : ComponentActivity() {
             }) {
             when (step) {
                 ScreenSetupStep.MODE -> {
+                    if (sdk >= 33) Text(AppStrings.adbScreenRecommendation, style = MaterialTheme.typography.bodyMedium)
+                    val modes = if (sdk >= 33) listOf(ScreenMode.ADB, ScreenMode.CURRENT, ScreenMode.ROOT) else ScreenMode.entries
                     SettingsGroup {
-                        ScreenMode.entries.forEachIndexed { index, mode ->
+                        modes.forEachIndexed { index, mode ->
                             if (index > 0) GroupDivider()
-                            ChoiceRow(screenModeLabel(mode), selectedMode == mode, { selectedMode = mode }, enabled = !busy && !state.active && !state.adbPairing)
+                            ChoiceRow(screenModeLabel(mode), selectedMode == mode, { selectedMode = mode }, enabled = !busy && !state.active && !state.adbPairing && (mode == ScreenMode.CURRENT || sdk >= 33))
                         }
                     }
                     Text(when (selectedMode) { ScreenMode.CURRENT -> AppStrings.currentScreenModeHelp; ScreenMode.ADB -> AppStrings.virtualScreenModeHelp; ScreenMode.ROOT -> AppStrings.screenRootGuide },

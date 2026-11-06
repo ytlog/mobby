@@ -15,6 +15,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
+import com.github.ytlog.mobby.android.device.ScreenControl
+import com.github.ytlog.mobby.android.graph.AndroidScreenControl
+import com.github.ytlog.mobby.android.runtime.api.device.ScreenMode
+import org.junit.After
+import org.junit.Before
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -29,6 +34,18 @@ import java.lang.reflect.Proxy
 @Config(sdk = [34])
 class DirectPluginSelectorTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+
+    private var previousController: com.github.ytlog.mobby.android.runtime.api.device.ScreenControlPort? = null
+
+    @Before fun selectCurrentScreen() {
+        previousController = ScreenUi.controller
+        ScreenUi.controller = AndroidScreenControl(compose.activity)
+        ScreenControl.select(compose.activity, ScreenMode.CURRENT)
+    }
+
+    @After fun restoreController() {
+        ScreenUi.controller = previousController
+    }
 
     private inline fun <reified T> stub(crossinline body: (String, Array<out Any?>) -> Any?): T =
         Proxy.newProxyInstance(T::class.java.classLoader, arrayOf(T::class.java)) { _, method, args -> body(method.name, args ?: emptyArray()) } as T
@@ -93,6 +110,32 @@ class DirectPluginSelectorTest {
         compose.waitUntil(5_000) { vm.feedback.tryReceive().getOrNull()?.let { feedback = it }; feedback != null }
         assertEquals("fixture directory permission denied", feedback)
         assertTrue(written.isEmpty())
+    }
+
+    @Test fun `first screen selection opens the mobby guide even if accessibility is available`() {
+        val context = compose.activity
+        context.getSharedPreferences("screen-control", 0).edit().clear().commit()
+        ScreenControl.initialize(context)
+        val written = mutableListOf<String>()
+        val ref = "plugin:device:screen"
+        val (vm, conversation) = viewModel({ Plugin(ref, "屏幕", "AI 操作手机", true, null) }, written)
+        compose.setContent { MaterialTheme { EmptyConversationPlugins(emptySet(), onSelect = rememberDirectPluginSelector(vm, conversation)) } }
+        compose.onNodeWithText("AI 操作手机").performClick()
+        val shadow = Shadows.shadowOf(context)
+        compose.waitUntil(5_000) { shadow.peekNextStartedActivityForResult() != null }
+        val guide = shadow.nextStartedActivityForResult.intent
+        assertEquals(ScreenControlSettingsActivity::class.java.name, guide.component?.className)
+        assertTrue(written.isEmpty())
+        compose.runOnIdle { shadow.receiveResult(guide, android.app.Activity.RESULT_CANCELED, null) }
+        compose.waitForIdle()
+        assertTrue(written.isEmpty())
+
+        compose.onNodeWithText("AI 操作手机").performClick()
+        compose.waitUntil(5_000) { shadow.peekNextStartedActivityForResult() != null }
+        val completed = shadow.nextStartedActivityForResult.intent
+        compose.runOnIdle { shadow.receiveResult(completed, android.app.Activity.RESULT_OK, null) }
+        compose.waitUntil(5_000) { written.isNotEmpty() }
+        assertEquals(listOf(ref), written)
     }
 
     @Test fun `available plugin attaches to the current conversation from its card`() {

@@ -49,6 +49,15 @@ class ScreenControlSettingsTest {
     }
     @After fun restore() { ScreenControl.select(RuntimeEnvironment.getApplication(), ScreenMode.CURRENT) }
 
+    @Test fun `first screen setup recommends ADB before saving a mode`() {
+        val controller = TestController()
+        show(controller)
+        compose.onNodeWithText("虚拟屏幕（内置 ADB）").assertIsSelected()
+        compose.runOnIdle { assertEquals(ScreenMode.CURRENT, controller.state.value.mode) }
+        next()
+        compose.runOnIdle { assertEquals(ScreenMode.ADB, controller.state.value.mode) }
+    }
+
     @Test fun `choosing a screen mode does not change configuration or show later tasks`() {
         val controller = TestController()
         show(controller)
@@ -80,10 +89,19 @@ class ScreenControlSettingsTest {
         compose.onNodeWithText("手动填写连接端口").assertDoesNotExist()
         compose.runOnIdle { assertEquals(emptyList<String>(), controller.events) }
     }
+    @Test fun `an explicitly chosen current screen remains selected`() {
+        val controller = TestController(ScreenControlState(modeConfigured = true))
+        show(controller)
+        compose.onNodeWithText("当前屏幕（无障碍）").assertIsSelected()
+        next()
+        compose.runOnIdle { assertEquals(ScreenMode.CURRENT, controller.state.value.mode) }
+    }
+
     @Test fun `current screen only asks for accessibility after completed notifications`() {
         val controller = TestController()
         val status = mutableStateOf(ready.copy(accessibilityEnabled = false))
         compose.setContent { MaterialTheme { ScreenControlSettings(controller, {}, statusOverride = status.value, settingsOverride = { opened += it }) } }
+        compose.onNodeWithText("当前屏幕（无障碍）").performClick()
         next()
         button("打开无障碍设置").assertIsDisplayed().performClick()
         compose.onNodeWithText("开启开发者模式").assertDoesNotExist()
@@ -230,7 +248,7 @@ class ScreenControlSettingsTest {
     }
     @Test @Config(sdk = [34], qualifiers = "w320dp-h480dp-mdpi")
     fun `navigation remains visible on a small screen without scrolling to the footer`() {
-        show(TestController(), ready.copy(accessibilityEnabled = false))
+        show(TestController(ScreenControlState(modeConfigured = true)), ready.copy(accessibilityEnabled = false))
         button("下一步").assertIsDisplayed().performClick()
         button("打开无障碍设置").assertIsDisplayed()
         button("上一步").assertIsDisplayed()
@@ -295,7 +313,7 @@ class ScreenControlSettingsTest {
         override val state = MutableStateFlow(initial)
         val events = mutableListOf<String>()
         var port = ""
-        override suspend fun select(mode: ScreenMode) { state.value = state.value.copy(mode = mode) }
+        override suspend fun select(mode: ScreenMode) { state.value = state.value.copy(mode = mode, modeConfigured = true) }
         override suspend fun setAdbPort(port: String) { events += "port:$port"; this.port = port }
         override suspend fun connect() { events += "connect"; failure?.let { error(it) }; state.value = state.value.copy(connected = true) }
         override suspend fun disconnect() { events += "disconnect"; state.value = state.value.copy(connected = false) }

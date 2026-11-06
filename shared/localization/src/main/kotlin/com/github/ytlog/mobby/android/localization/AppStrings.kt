@@ -142,6 +142,10 @@ open class StringCatalog(private val fixedLanguage: AppLanguage? = null) {
     val playRecording get() = text("试听录音", "Play recording")
     val screenModeTitle get() = text("屏幕操作模式", "Screen control mode")
     val currentScreenMode get() = text("当前屏幕（无障碍）", "Current screen (accessibility)")
+    val adbScreenRecommendation get() = text(
+        "推荐使用内置 ADB。Agent 在独立虚拟屏操作，你可以留在 mobby 查看进度。首次使用需开启无线调试并配对。",
+        "Built-in ADB is recommended. The agent works on a separate display while you follow its progress in mobby. First use requires Wireless debugging and pairing.")
+    val setUpRecommendedScreen get() = text("设置推荐的屏幕模式", "Set up recommended screen mode")
     val adbScreenMode get() = text("虚拟屏幕（内置 ADB）", "Virtual screen (built-in ADB)")
     val adbStartPairing get() = text("通过通知配对", "Pair through notification")
     val adbCancelPairing get() = text("取消配对", "Cancel pairing")

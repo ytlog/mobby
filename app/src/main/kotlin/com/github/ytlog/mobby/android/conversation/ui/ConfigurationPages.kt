@@ -289,6 +289,8 @@ private fun pluginCatalogTabs(tablet: Boolean) = listOf(if (tablet) AppStrings.t
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
     val conversation = state.selected?.conversation
+    val selectPlugin = rememberDirectPluginSelector(vm, conversation)
+    val screen = ScreenUi.controller?.state?.collectAsStateWithLifecycle()?.value
     val catalogue by vm.plugins.collectAsStateWithLifecycle()
     val error by vm.pluginsError.collectAsStateWithLifecycle()
     val loading by vm.pluginsLoading.collectAsStateWithLifecycle()
@@ -366,6 +368,9 @@ private fun pluginCatalogTabs(tablet: Boolean) = listOf(if (tablet) AppStrings.t
                             actionEnabled = !plugin.available || conversation != null,
                             onAction = {
                                 if (chosen && conversation != null) vm.enqueue { vm.report(vm.actions.setPlugin(conversation.id, plugin, false)) }
+                                else if (plugin.ref == "plugin:device:screen" && shouldRecommendAdb(screen)) {
+                                    if (conversation != null) selectPlugin(plugin.ref) else context.startActivity(screenSetupIntent(context))
+                                }
                                 else if (!plugin.available) requestAccess(plugin)
                                 else if (conversation != null) vm.enqueue { vm.report(vm.actions.setPlugin(conversation.id, plugin, true)) }
                             },

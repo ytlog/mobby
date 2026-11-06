@@ -41,14 +41,14 @@ object ScreenControl {
 
     fun initialize(context: Context) {
         val saved = context.getSharedPreferences("screen-control", Context.MODE_PRIVATE).getString("mode", null)
-        changes.value = ScreenControlState(mode = ScreenMode.restore(saved), adbPaired = EmbeddedAdb.paired(context))
+        changes.value = ScreenControlState(mode = ScreenMode.restore(saved), adbPaired = EmbeddedAdb.paired(context), modeConfigured = saved != null)
     }
 
     @Synchronized fun select(context: Context, mode: ScreenMode) {
         check(leases == 0 && !connecting && !state.value.adbPairing) { AppStrings.screenModeBusy }
         check(context.getSharedPreferences("screen-control", Context.MODE_PRIVATE).edit().putString("mode", mode.name).commit())
         disconnect()
-        changes.value = ScreenControlState(mode, adbPaired = EmbeddedAdb.paired(context), adbPairingSuccess = state.value.adbPairingSuccess)
+        changes.value = ScreenControlState(mode, adbPaired = EmbeddedAdb.paired(context), adbPairingSuccess = state.value.adbPairingSuccess, modeConfigured = true)
     }
 
     fun available(context: Context): Boolean = when (state.value.mode) {
@@ -162,7 +162,7 @@ object ScreenControl {
         channel?.close(); channel = null
         release?.invoke(); release = null
         changes.value = ScreenControlState(mode = state.value.mode, adbPaired = state.value.adbPaired, adbPairing = state.value.adbPairing,
-            adbPairingSuccess = state.value.adbPairingSuccess)
+            adbPairingSuccess = state.value.adbPairingSuccess, modeConfigured = state.value.modeConfigured)
     }
 
     @Synchronized internal fun open(context: Context): ScreenSession {
