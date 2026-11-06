@@ -968,6 +968,22 @@ class RoomConversationStoreTest {
         assertTrue(repository.saveSkillProposal(proposal, "third edit") is DataResult.Failed)
         assertEquals(listOf("user edit"), importedProposals)
     }
+    @Test fun `old Claude stream and compact snapshot pairs render once while distinct replies stay visible`() {
+        val agent = RuntimeAgent.CLAUDE_CODE
+        val config = RunConfigSnapshot(agent, WorkspaceRef("default"), "sonnet", null, GatewayProfileRef("gateway", 0), emptySet())
+        val frozen = StoredConversation("chat", agent.name, "sonnet", null, "default", "gateway", 0)
+        val chunks = listOf("先看", "屏幕", "先看屏幕", "先看屏幕", "独立回复")
+            .mapIndexed { index, text -> ChunkRow("run/$index", "run", text) }
+        val ids = listOf("msg_one#1", "msg_one#1", "msg_one", "msg_two", "msg_three")
+        val segments = ids.mapIndexed { index, id -> OutputSegment(id, index.toLong(), ResourceRef(chunks[index].ref)) }
+        val snapshot = RunSnapshot(RunId("run"), RunPhase.SUCCEEDED, 1, 10, config, outputSegments = segments)
+        val row = TurnRow("turn", "chat", "看一下手机", storageJson.encodeToString(frozen), 1, runId = "run",
+            snapshot = storageJson.encodeToString(snapshot), pending = false, occupied = false)
+        val history = com.github.ytlog.mobby.android.conversation.data.management.MessageManager().render(row, chunks.associateBy { it.ref })
+        assertEquals(listOf("msg_one#1", "msg_two", "msg_three"), history.messages.map { it.id })
+        assertEquals(listOf("先看屏幕", "先看屏幕", "独立回复"), history.messages.map { it.text })
+    }
+
     @Test fun `projected replies keep chunk order and adjacent tools form one run`() = runBlocking {
         val c = state().selected!!.conversation
         repository.editDraft(c.id, "phone", 5, 5)

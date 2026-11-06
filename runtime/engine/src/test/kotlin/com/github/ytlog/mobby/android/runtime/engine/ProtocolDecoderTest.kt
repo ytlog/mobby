@@ -53,6 +53,19 @@ class ProtocolDecoderTest {
         assertTrue(snapshot.filterIsInstance<AgentFact.Tool>().none { it.output == "private" })
         assertEquals(listOf(AgentFact.Completed(true)), decoder.decode("""{"type":"result","subtype":"success","is_error":false,"result":"answer"}"""))
     }
+    @Test fun `claude compact snapshots use the current message instead of accumulating previous replies at the same index`() {
+        val decoder = ProtocolDecoder(AgentId.CLAUDE_CODE)
+        for ((id, text) in listOf("msg_one" to "先看屏幕", "msg_two" to "再打开设置", "msg_three" to "再打开设置")) {
+            decoder.decode("""{"type":"stream_event","event":{"type":"message_start","message":{"id":"$id"}}}""")
+            val delta = decoder.decode("""{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"$text"}}}""")
+            assertEquals(listOf(AgentFact.Text("$id#1", text)), delta)
+            val snapshot = decoder.decode("""{"type":"assistant","message":{"id":"$id","content":[{"type":"text","text":"$text"}]}}""")
+            assertTrue(snapshot.none { it is AgentFact.Text })
+            decoder.decode("""{"type":"user","message":{"id":"tool-result","content":[]}}""")
+        }
+        assertEquals(listOf(AgentFact.Completed(true)), decoder.decode("""{"type":"result","subtype":"success","is_error":false,"result":"再打开设置"}"""))
+    }
+
     @Test fun `codex reasoning text stays on the thinking step and a misplaced answer becomes the reply`() {
         val decoder = ProtocolDecoder(AgentId.CODEX)
         val started = decoder.decode("""{"type":"item.started","item":{"id":"r","type":"reasoning","text":"private"}}""")

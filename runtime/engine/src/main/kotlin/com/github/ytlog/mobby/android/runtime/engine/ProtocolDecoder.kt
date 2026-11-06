@@ -21,11 +21,10 @@ sealed interface AgentFact {
 class ProtocolDecoder(private val agent: AgentId, private val requestedOutput: RequestedOutput = RequestedOutput.TEXT) {
     private var skillResult: SkillGeneration.Result? = null
     private val structuredTools = mutableSetOf<String>()
-    private var lastAssistant = ""
+    private var lastClaudeTextMessageId: String? = null
     private var fallbackId = 0
     private var streamMessageId: String? = null
-    private val streamedText = mutableSetOf<String>()
-    private val streamedParts = sortedMapOf<Int, StringBuilder>()
+    private val claudeTextByMessage = mutableMapOf<String, java.util.SortedMap<Int, StringBuilder>>()
     private val startedTools = mutableSetOf<String>()
     private val codexText = mutableMapOf<String, String>()
     private val reasoningText = mutableMapOf<String, String>()
@@ -282,7 +281,6 @@ class ProtocolDecoder(private val agent: AgentId, private val requestedOutput: R
                 if (value.text("type") == "assistant") claudeErrorTag = value.text("error")
                 val message = value["message"] as? JsonObject
                 val id = message?.text("id") ?: streamMessageId ?: "message-${fallbackId++}"
-                streamMessageId = id
                 val blocks = message?.get("content") as? JsonArray ?: return@buildList
                 val thinkingIds = blocks.mapIndexedNotNull { index, element ->
                     val block = element as? JsonObject ?: return@mapIndexedNotNull null
@@ -290,7 +288,7 @@ class ProtocolDecoder(private val agent: AgentId, private val requestedOutput: R
                     if (type == "thinking" || type == "redacted_thinking") "thinking:$id#$index" else null
                 }
                 if (thinkingStep !in thinkingIds) addAll(finishThinking())
-                val texts = mutableListOf<String>()
+                var hasText = false
                 for (index in blocks.indices) {
                     val block = blocks[index] as? JsonObject ?: continue
                     if (requestedOutput == RequestedOutput.SKILL_PROPOSAL) {
@@ -304,8 +302,8 @@ class ProtocolDecoder(private val agent: AgentId, private val requestedOutput: R
                     "text" -> {
                         val text = block.text("text").orEmpty()
                         if (text.isNotEmpty() && value.text("type") == "assistant") {
-                            texts += text
-                            rememberAssistantText(textId, index, text) { add(it) }
+                            hasText = true
+                            rememberAssistantText(id, textId, index, text) { add(it) }
                         }
                     }
                     "tool_use" -> add(toolFact(block.text("id") ?: "tool-${fallbackId++}", block.text("name") ?: "tool", block["input"], null, null))
@@ -325,11 +323,12 @@ class ProtocolDecoder(private val agent: AgentId, private val requestedOutput: R
                     else -> add(AgentFact.Diagnostic(block.text("type") ?: "unknown-content", block.toString()))
                     }
                 }
-                if (texts.isNotEmpty()) lastAssistant = streamedParts.values.joinToString("\n") { it.toString() }
+                if (hasText) lastClaudeTextMessageId = id
             }
             "result" -> {
                 addAll(finishThinking())
                 val result = value.text("result").orEmpty()
+                val lastAssistant = claudeTextByMessage[lastClaudeTextMessageId]?.values?.joinToString("\n").orEmpty()
                 if (requestedOutput == RequestedOutput.TEXT && result.isNotEmpty() && result != lastAssistant) add(AgentFact.Text("result", result))
                 val denied = (value["permission_denials"] as? JsonArray)?.isNotEmpty() == true
                 val error = (value["is_error"] as? JsonPrimitive)?.booleanOrNull
@@ -389,9 +388,9 @@ class ProtocolDecoder(private val agent: AgentId, private val requestedOutput: R
                 val index = (event["index"] as? JsonPrimitive)?.intOrNull ?: 0
                 val messageId = streamMessageId ?: "message-$fallbackId".also { streamMessageId = it }
                 val id = if (index == 0) messageId else "$messageId#$index"
-                streamedText += id
-                streamedParts.getOrPut(index) { StringBuilder() }.append(text)
-                lastAssistant = streamedParts.values.joinToString("\n") { it.toString() }
+                val parts = claudeTextByMessage.getOrPut(messageId) { sortedMapOf() }
+                parts.getOrPut(index) { StringBuilder() }.append(text)
+                lastClaudeTextMessageId = messageId
                 finishThinking() + listOf(AgentFact.Text(id, text))
             }
             else -> emptyList()
@@ -598,16 +597,16 @@ class ProtocolDecoder(private val agent: AgentId, private val requestedOutput: R
         thinkingStep = null
         return listOf(AgentFact.Tool(id, StepBody.Thinking, outcome = ToolOutcome.SUCCEEDED))
     }
-    private fun rememberAssistantText(textId: String, index: Int, text: String, emit: (AgentFact) -> Unit) {
-        val known = streamedParts.values.joinToString("\n") { it.toString() }
-        val already = text == known || streamedParts.values.any { it.toString() == text }
+    private fun rememberAssistantText(messageId: String, textId: String, index: Int, text: String, emit: (AgentFact) -> Unit) {
+        val parts = claudeTextByMessage.getOrPut(messageId) { sortedMapOf() }
+        // A compact assistant envelope can move a streamed block to index zero.
+        // Compare within this message, since another response starts its indexes over.
+        val already = parts.values.any { it.toString() == text } || text == parts.values.joinToString("\n")
         when {
-            textId in streamedText -> streamedParts[index] = StringBuilder(text)
-            already -> streamedText += textId
-            else -> {
+            index in parts -> parts[index] = StringBuilder(text)
+            !already -> {
                 emit(AgentFact.Text(textId, text))
-                streamedText += textId
-                streamedParts[index] = StringBuilder(text)
+                parts[index] = StringBuilder(text)
             }
         }
     }

@@ -4,6 +4,7 @@ import com.github.ytlog.mobby.android.conversation.data.*
 import com.github.ytlog.mobby.android.conversation.domain.*
 import com.github.ytlog.mobby.android.runtime.api.*
 import com.github.ytlog.mobby.android.conversation.domain.AgentId as DomainAgent
+import com.github.ytlog.mobby.android.runtime.api.AgentId as RuntimeAgent
 import com.github.ytlog.mobby.android.localization.AppStrings
 
 /** Renders persisted turn output and preserves the directory recorded when each message was sent. */
@@ -20,12 +21,29 @@ internal class MessageManager {
                 previousExpired = row.expired
             }
         }
-        fun List<OutputSegment>.messages(separator: String = "") = sortedBy { it.chunkIndex }.groupBy { it.messageId }
-            .map { (id, parts) -> Message(id, parts.renderSegments(separator), parts.minOf { it.chunkIndex }) }
+        fun List<OutputSegment>.messages(separator: String = "", collapseClaudeEchoes: Boolean = false): List<Message> {
+            val groups = sortedBy { it.chunkIndex }.groupBy { it.messageId }.values.toList()
+            return buildList {
+                groups.forEachIndexed { index, parts ->
+                    val first = parts.first()
+                    val text = parts.renderSegments(separator)
+                    val previous = groups.getOrNull(index - 1)
+                    // Old Claude runs could persist a compact snapshot as a second reply at index zero.
+                    val compactEcho = collapseClaudeEchoes && parts.size == 1 && first.messageId.startsWith("msg_") &&
+                        '#' !in first.messageId && previous != null && previous.last().chunkIndex + 1 == first.chunkIndex &&
+                        previous.first().messageId.substringBeforeLast('#') == first.messageId &&
+                        previous.first().messageId.substringAfterLast('#').toIntOrNull()?.let { it > 0 } == true &&
+                        text.isNotBlank() && lastOrNull()?.text == text &&
+                        content[first.ref.value]?.expired == false && previous.all { content[it.ref.value]?.expired == false }
+                    if (!compactEcho) add(Message(first.messageId, text, first.chunkIndex))
+                }
+            }
+        }
         val pendingOrder = ((snapshot?.outputSegments.orEmpty() + snapshot?.steps.orEmpty().flatMap { it.output }).maxOfOrNull { it.chunkIndex } ?: -1L) + 1
         var nextOrder = pendingOrder
         Turn(TurnId(id), userText, runId?.let(::ExecutionId), snapshot?.let { RunStateRules.displayedPhase(it).domain() },
-            snapshot?.outputSegments?.filterNot { it.messageId.startsWith("diagnostic:") }?.messages().orEmpty() +
+            snapshot?.outputSegments?.filterNot { it.messageId.startsWith("diagnostic:") }
+                ?.messages(collapseClaudeEchoes = snapshot.acceptedConfig.agentId == RuntimeAgent.CLAUDE_CODE).orEmpty() +
                 if (snapshot?.artifacts?.any { content[it.value]?.expired == true } == true) listOf(Message("retained-artifact-notice", AppStrings.skillDraftWasCleanedUpByTheRetentionPolicy)) else emptyList(),
             snapshot?.steps?.map { step ->
                 val order = if (step.order >= 0) step.order else step.output.minOfOrNull { it.chunkIndex } ?: nextOrder++
