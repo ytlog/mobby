@@ -34,6 +34,18 @@ MODULE_DIRS = {
     "localization": "shared/localization",
 }
 REMOVED = {"interaction-ui", "device-operation", "device-operation-ui", "plugin:appfunction"}
+# These app entry points bind Android permissions, an in-memory private form,
+# and the floating preview. Keep the exceptions local to their callers; UI
+# still cannot import storage or reach arbitrary runtime/plugin internals.
+APP_PLATFORM_BINDINGS = {
+    "deviceoperation/DevicePermissionPrompt.kt": {
+        "device.DeviceAccess", "device.DeviceCatalog", "device.DeviceHost", "device.PrivateScreenInput",
+    },
+    "deviceoperation/ConversationDeviceCard.kt": {"device.PrivateScreenInput.submit"},
+    "conversation/ui/ScreenSetupEnvironment.kt": {"device.ScreenAccessService"},
+    "conversation/ui/ScreenControlSettings.kt": {"MobbyApplication"},
+    "conversation/ui/VirtualScreenPreview.kt": {"MobbyApplication"},
+}
 SCREEN_LIBRARIES = {
     "screen-adb-transport": ("third_party/libadb-android", {"screen-adb-spake2"}),
     "screen-adb-spake2": ("third_party/spake2-java", set()),
@@ -100,10 +112,13 @@ class ModuleBoundaryTests(unittest.TestCase):
                     self.assertFalse(forbidden_references(text, ("conversation.domain.", "localization.", "runtime.api.device.")), str(source))
                 package = re.search(r"(?m)^package\s+(\S+)", text)
                 if module == "app" and package and (package[1].startswith(BASE + "conversation.ui") or package[1].startswith(BASE + "deviceoperation")):
+                    bindings = APP_PLATFORM_BINDINGS.get(source.relative_to(
+                        ROOT / "app/src/main/kotlin/com/github/ytlog/mobby/android"
+                    ).as_posix(), set())
                     self.assertFalse(forbidden_references(text, (
                         "conversation.ui.", "conversation.domain.", "deviceoperation.",
                         "runtime.api.device.", "speech.", "localization.", "R.",
-                    )), str(source))
+                    )) - {BASE + binding for binding in bindings}, str(source))
 
     def test_program_platform_stays_below_runtime_and_app(self):
         for source in (ROOT / MODULE_DIRS["device-plugins"] / "src/main").rglob("*.kt"):

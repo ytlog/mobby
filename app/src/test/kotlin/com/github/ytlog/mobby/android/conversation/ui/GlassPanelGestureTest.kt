@@ -19,7 +19,7 @@ import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
-class GlassPanelInteractionTest {
+class GlassPanelGestureTest {
     @get:Rule val compose = createComposeRule()
 
     @Test fun `glass panel buttons keep full width targets and dispatch once`() {
