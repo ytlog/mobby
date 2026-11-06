@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.serialization.json.*
 
 /** Commands the long-lived OpenCode server adapter over the gateway process' stdin. */
-class OpenCodeServerSession(private val model: String, initialSession: String?) : AgentSession {
+class OpenCodeServerSession(private val model: String, initialSession: String?, private val variant: String? = null) : AgentSession {
     override val supportsNewSession = true
     private val queue = Channel<ByteArray>(18)
     override val input = queue.receiveAsFlow()
@@ -30,6 +30,7 @@ class OpenCodeServerSession(private val model: String, initialSession: String?) 
         require(turn.images.all { it.path.startsWith("/") && '\u0000' !in it.path })
         val command = buildJsonObject {
             put("type", "prompt"); put("requestId", turn.requestId.value); put("text", turn.prompt); put("model", model)
+            variant?.let { put("variant", it) }
             if (newSession) put("newSession", true)
             sessionId?.let { put("sessionId", it) }
             putJsonArray("images") { turn.images.forEach { image ->

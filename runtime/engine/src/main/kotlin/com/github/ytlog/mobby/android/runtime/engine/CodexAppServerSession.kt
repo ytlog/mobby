@@ -10,7 +10,7 @@ import kotlinx.serialization.json.*
  * Outbound lines use the same events as `exec --json`, so the runtime has one decoder.
  * `thread/resume` is used only when this process is created for a saved session.
  */
-class CodexAppServerSession(private val cwd: String, private val model: String, private val resumeThreadId: String?, private val provider: String = "mobby") : AgentSession {
+class CodexAppServerSession(private val cwd: String, private val model: String, private val resumeThreadId: String?, private val provider: String = "mobby", private val effort: String? = null) : AgentSession {
     override val supportsInsertion = true
     override val supportsNewSession = true
     private val queue = Channel<ByteArray>(18)
@@ -176,6 +176,7 @@ class CodexAppServerSession(private val cwd: String, private val model: String, 
         turnEnded = false
         send(id(), "turn/start", buildJsonObject {
             put("threadId", threadId); put("cwd", cwd); put("model", model); put("modelProvider", provider); put("approvalPolicy", "never")
+            effort?.let { put("effort", it) }
             putJsonObject("sandboxPolicy") { put("type", "dangerFullAccess") }
             putJsonArray("input") {
                 add(buildJsonObject { put("type", "text"); put("text", turn.prompt) })

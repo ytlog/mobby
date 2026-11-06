@@ -43,6 +43,13 @@ function rpc(process) {
       new Promise(resolve=> { const listener=event=> { if(event.method===method) { listeners.delete(listener); resolve(event.params); } }; listeners.add(listener); }); }
   };
 }
+function catalogModel(id, name, levels = [], defaultReasoning) {
+  if (typeof id !== 'string' || !id.trim()) throw Error('invalid_native_model');
+  const reasoningLevels=[...new Set(levels.filter(level =>
+    typeof level === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}$/.test(level)))];
+  return {id, name:name || id, reasoningLevels,
+    defaultReasoning:reasoningLevels.includes(defaultReasoning) ? defaultReasoning : undefined};
+}
 async function codex(operation, method, executable, env) {
   if (operation==='methods') { emit({type:'methods',methods:[{id:'chatgpt',label:'ChatGPT'},{id:'chatgptDeviceCode',label:'ChatGPT · Device code'}]}); return; }
   const process=child(executable,['-c','model_provider="openai"','-c','cli_auth_credentials_store="file"','app-server','--listen','stdio://'],env);
@@ -61,7 +68,12 @@ async function codex(operation, method, executable, env) {
     let cursor=null; const models=[];
     do {
       const page=await client.call('model/list',{limit:100,cursor,includeHidden:false});
-      for(const model of page.data || []) models.push({id:model.model || model.id,name:model.displayName || model.model || model.id});
+      for (const model of page.data || []) {
+        if (model.hidden) continue;
+        const entry = catalogModel(model.model || model.id, model.displayName,
+          (model.supportedReasoningEfforts || []).map(option => option.reasoningEffort), model.defaultReasoningEffort);
+        if (model.isDefault) models.unshift(entry); else models.push(entry);
+      }
       cursor=page.nextCursor;
       if(models.length>2000) throw Error('native_catalog_too_large');
     } while(cursor);
@@ -94,7 +106,11 @@ async function pi(operation, method, env) {
   });
   const auth=await runtime.checkAuth(method);
   if(auth?.type!=='oauth') throw Error('native_account_missing');
-  const models=(await runtime.getAvailable(method)).filter(compatible).map(model=>({id:model.id,name:model.name || model.id}));
+  const {getSupportedThinkingLevels,clampThinkingLevel} = await import(pathToFileURL(path.join(root,'node_modules/@earendil-works/pi-ai/dist/models.js')));
+  const {DEFAULT_THINKING_LEVEL} = await import(pathToFileURL(path.join(root,'dist/core/defaults.js')));
+  const models=(await runtime.getAvailable(method)).filter(compatible)
+    .map(model => catalogModel(model.id, model.name, model.reasoning ? getSupportedThinkingLevels(model) : [],
+      clampThinkingLevel(model,DEFAULT_THINKING_LEVEL)));
   emit({type:'account',provider:method,label:methods.find(provider=>provider.id===method).auth.oauth.name,models});
 }
 async function claude(operation, method, executable, env) {
@@ -129,7 +145,26 @@ async function claude(operation, method, executable, env) {
   process.stdout.on('data',chunk=>{result+=chunk;if(result.length>65536)process.kill('SIGTERM');});
   await completed(process);
   if(!JSON.parse(result).loggedIn) throw Error('native_account_missing');
-  emit({type:'account',provider:'anthropic',label:'Claude',models:['sonnet','opus','haiku'].map(id=>({id,name:id}))});
+  const catalog=child(executable,['-p','--input-format','stream-json','--output-format','stream-json','--verbose'],env);
+  try {
+    const models=await new Promise((resolve,reject)=>{
+      const requestId='mobby-model-catalog';
+      catalog.once('error',reject);
+      catalog.once('exit',()=>reject(Error('native_catalog_exited')));
+      readline.createInterface({input:catalog.stdout}).on('line',line=>{
+        try {
+          const message=JSON.parse(line);
+          const response=message.response;
+          if(message.type!=='control_response' || response?.request_id!==requestId) return;
+          if(response.subtype!=='success') throw Error('native_catalog_failed');
+          resolve(response.response.models.map(model =>
+            catalogModel(model.value,model.displayName,model.supportedEffortLevels)));
+        } catch(error) {reject(error);}
+      });
+      catalog.stdin.write(JSON.stringify({type:'control_request',request_id:requestId,request:{subtype:'initialize',hooks:null}})+'\n');
+    });
+    emit({type:'account',provider:'anthropic',label:'Claude',models});
+  } finally {catalog.kill('SIGTERM');}
 }
 async function openCode(operation, method, executable, env) {
   const password=randomBytes(32).toString('hex');
@@ -154,8 +189,8 @@ async function openCode(operation, method, executable, env) {
     const available=(methods.openai || []).map((value,index)=>({...value,index})).filter(value=>value.type==='oauth');
     if(operation==='methods') {emit({type:'methods',methods:available.map(value=>({id:String(value.index),label:value.label}))});return;}
     const selected=available.find(value=>String(value.index)===method);
-    if(!selected) throw Error('unsupported_login_method');
     if(operation==='login') {
+      if(!selected) throw Error('unsupported_login_method');
       const inputs={};
       for(const prompt of selected.prompts || []) {
         emit({type:'update',prompt:prompt.message,options:prompt.options?.map(value=>({id:value.value,label:value.label}))});
@@ -169,7 +204,7 @@ async function openCode(operation, method, executable, env) {
     const catalog=await request('/provider');
     if(!catalog.connected?.includes('openai')) throw Error('native_account_missing');
     const provider=catalog.all?.find(value=>value.id==='openai');
-    const models=Object.values(provider?.models || {}).map(model=>({id:model.id,name:model.name || model.id}));
+    const models=Object.values(provider?.models || {}).map(model => catalogModel(model.id,model.name,Object.keys(model.variants || {})));
     const credentials=JSON.parse(fs.readFileSync(path.join(env.XDG_DATA_HOME,'opencode/auth.json'),'utf8'));
     if(credentials.openai?.type!=='oauth') throw Error('native_account_missing');
     emit({type:'account',provider:'openai',label:'ChatGPT',models});

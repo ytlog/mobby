@@ -10,7 +10,9 @@
 
 Agent 详情中的“原生登录”使用单个登录入口：未登录时标题为“登录”、副标题为“未登录”；登录后标题为“切换账号”、副标题显示账号登录状态；失效时使用“登录”并说明需要重新登录。“退出登录”是独立操作。状态不再单独占据一个可点击条目。
 
-空聊天库的默认会话也按实际可用连接初始化，避免只有 Claude 登录时创建不可用的 Codex 占位会话。会话菜单与新建菜单只展示当前有可执行连接的 Agent。只登录 Codex 且没有网关时，只能选择 Codex；连接了兼容网关后，其他 Agent 可通过该网关使用。每个 Agent 只出现一次，并在会话工具栏和来源菜单展示原生登录/API 来源。模型随来源切换；登录方式由各 Agent 的原生接口提供。
+空聊天库的默认会话也按实际可用连接初始化，避免只有 Claude 登录时创建不可用的 Codex 占位会话。会话菜单与新建菜单只展示当前有可执行连接的 Agent。只登录 Codex 且没有网关时，只能选择 Codex；连接了兼容网关后，其他 Agent 可通过该网关使用。每个 Agent 只出现一次，并在会话工具栏和来源菜单展示原生登录/API 来源。模型随来源切换。登录方式由各 Agent 的原生接口提供。
+
+原生登录成功后，在对话的 Agent 配置菜单选择当前账号的模型和思考程度。选择在下一轮生效，模型没有可调档位时使用默认值。原生目录与档位保存在该 Agent 的加密账号记录中，API 网关继续使用自己的模型配置。在「Agent 与 AI 服务」中可刷新已有登录的账号模型。刷新失败保留上次目录，刷新成功后会按新目录校验已选模型和档位。换账号时按新账号的目录重新选择。
 
 登录界面展示原生认证返回的浏览器地址、设备码或输入提示，可以取消。账号密码留在系统浏览器；mobby 不重建 OAuth、令牌交换、授权回调或刷新协议。打开页面不算登录成功；只有原生认证检查和模型枚举完成才保存新登录。失败和取消保留旧登录。
 
@@ -21,7 +23,7 @@ Agent 详情中的“原生登录”使用单个登录入口：未登录时标�
 | Agent | 使用的原生能力 | 模型与协议 |
 | --- | --- | --- |
 | Codex 0.155.1 | app-server `account/login/start` 的 ChatGPT 浏览器/设备码方式，`account/read` 检查，`model/list` 分页 | 使用原生 OpenAI provider，Responses；切换来源后 `thread/start`/`thread/resume` 明确选择 provider |
-| Claude Code 2.1.112 | `claude auth login --claudeai` 与 `claude auth status --json` | Messages；提供 CLI 原生 `sonnet`、`opus`、`haiku` 别名，实际账号访问权限由服务端确定 |
+| Claude Code 2.1.112 | `claude auth login --claudeai` 与 `claude auth status --json` | Messages；读取 CLI 的 stdio 初始化响应中提供的模型与思考档位，实际调用权限由服务端判定 |
 | Pi 0.87.1 | 内置 `ModelRuntime` 的 provider OAuth、交互回调与认证存储 | 只枚举实际提供 `openai-responses`/`openai-codex-responses` 模型的 OAuth provider，并筛选这两种协议的模型 |
 | OpenCode 1.18.32-0 | 本机带随机密码的原生 server：`/provider/auth`、OAuth authorize/callback、`/provider` | 当前接入内置 OpenAI provider 的原生 OAuth 方式，使用其 Responses 路径；保留内置认证插件 |
 

@@ -246,8 +246,9 @@ internal class RuntimeSystemAdapter(private val context: android.content.Context
             diagnostic.phase?.let { !it.terminal || it == RunPhase.OUTCOME_UNKNOWN } == true)
     }
     override val diagnostic = diagnostics.state.map { DiagnosticOutput(it.phase?.domain(), it.output) }
+    override suspend fun refreshNativeModels(agent: DomainAgent) = admin.refreshNativeModels(RuntimeAgent.valueOf(agent.name)).operation()
     override suspend fun nativeAccounts(): List<AgentLogin> = when (val result = admin.nativeAccounts()) {
-        is AdminResult.Success -> result.value.map { value -> AgentLogin(DomainAgent.valueOf(value.agent.name), value.provider, value.label, value.version, value.models.map { GatewayModel(it.id, it.name) }, value.expired) }
+        is AdminResult.Success -> result.value.map { value -> AgentLogin(DomainAgent.valueOf(value.agent.name), value.provider, value.label, value.version, value.models.map { GatewayModel(it.id, it.name) }, value.expired, value.models.associate { it.id to it.reasoningLevels }) }
         is AdminResult.Failed -> throw IllegalStateException(result.error.message())
     }
     override suspend fun connectionSettings(): List<AgentConnectionPreference> = when (val result = admin.connectionSettings()) {

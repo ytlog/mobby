@@ -14,7 +14,7 @@ class CodexAppServerSessionTest {
     private val turn = AgentTurn(RequestId("turn"), "look", listOf(TurnImage("image/png", "/private/image.png", "AQI=")),
         Json.parseToJsonElement("""{"type":"object"}"""))
     @Test fun `a new conversation starts an independent thread on the live server`() = runTest {
-        val session = CodexAppServerSession("/workspace", "model", null).also { it.submit(turn) }
+        val session = CodexAppServerSession("/workspace", "model", null, provider = "openai", effort = "high").also { it.submit(turn) }
         val sent = Channel<JsonObject>(8)
         backgroundScope.launch { session.input.collect { sent.send(Json.parseToJsonElement(it.decodeToString()).jsonObject) } }
         runCurrent(); sent.receive() // initialize
@@ -22,7 +22,9 @@ class CodexAppServerSessionTest {
         sent.receive() // initialized
         assertEquals("thread/start", sent.receive().getValue("method").jsonPrimitive.content)
         session.onStdout("""{"id":"2","result":{"thread":{"id":"thread-one"}}}"""); runCurrent()
-        assertEquals("turn/start", sent.receive().getValue("method").jsonPrimitive.content)
+        val firstTurn = sent.receive()
+        assertEquals("turn/start", firstTurn.getValue("method").jsonPrimitive.content)
+        assertEquals("high", firstTurn.getValue("params").jsonObject.getValue("effort").jsonPrimitive.content)
         session.onStdout("""{"id":"3","result":{"turn":{"id":"turn-one"}}}""")
         session.onStdout("""{"method":"turn/completed","params":{"turn":{"id":"turn-one","status":"completed"}}}""")
         assertTrue(session.takeTurnEnded())

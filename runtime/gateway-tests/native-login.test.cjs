@@ -88,13 +88,13 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
   result={authUrl:'https://auth.openai.com/authorize?state=synthetic',loginId:'fixture'};
  }
  if(value.method==='account/read')result={account:{type:'chatgpt',email:'private-fixture@example.invalid'}};
- if(value.method==='model/list')result={data:[{model:'account-model',displayName:'Account model'}],nextCursor:null};
+ if(value.method==='model/list')result={data:[{model:'account-model',displayName:'Account model',supportedReasoningEfforts:[{reasoningEffort:'high'}]}],nextCursor:null};
  console.log(JSON.stringify({id:value.id,result}));
  if(value.method==='account/login/start')console.log(JSON.stringify({method:'account/login/completed',params:{success:true}}));
 });`);
   assert.equal(result.code,0);assert.equal(result.stderr,'');
   assert.equal(result.events.find(event=>event.type==='account').provider,'openai');
-  assert.deepEqual(result.events.find(event=>event.type==='account').models,[{id:'account-model',name:'Account model'}]);
+  assert.deepEqual(result.events.find(event=>event.type==='account').models,[{id:'account-model',name:'Account model',reasoningLevels:['high']}]);
   assert.ok(result.events.some(event=>event.type==='update'&&event.url.startsWith('https://auth.openai.com/')));
   assert.ok(!result.stdout.includes('synthetic-private-native-token'));assert.ok(!result.stdout.includes('private-fixture@example.invalid'));
 });
@@ -106,8 +106,15 @@ if(process.argv.slice(2).join(' ')==='auth login --claudeai') {
  console.log('A raw diagnostic that must not be forwarded: synthetic-private-native-token');
  console.log("If the browser didn't open, visit: https://claude.ai/oauth/authorize?state=synthetic");
 }else if(process.argv.slice(2).join(' ')==='auth status --json')console.log(JSON.stringify({loggedIn:true,authMethod:'claude.ai'}));
-else process.exit(2);`);
+else if(process.argv.includes('--input-format')) {
+ require('readline').createInterface({input:process.stdin}).once('line',line=>{
+  const req=JSON.parse(line);
+  if(req.request.subtype!=='initialize')process.exit(2);
+  console.log(JSON.stringify({type:'control_response',response:{subtype:'success',request_id:req.request_id,response:{models:[{value:'account-sonnet',displayName:'Account Sonnet',supportedEffortLevels:['low','high']}]}}}));
+ });
+}else process.exit(2);`);
   assert.equal(result.code,0);assert.equal(result.events.find(event=>event.type==='account').provider,'anthropic');
+  assert.deepEqual(result.events.find(event=>event.type==='account').models,[{id:'account-sonnet',name:'Account Sonnet',reasoningLevels:['low','high']}]);
   assert.ok(result.events.some(event=>event.type==='update'&&event.url.startsWith('https://claude.ai/')));
   assert.ok(!result.stdout.includes('synthetic-private-native-token'));assert.ok(!result.stdout.includes('raw diagnostic'));
 });
@@ -128,11 +135,12 @@ http.createServer(async(req,res)=>{
  }else if(req.url==='/provider/openai/oauth/callback'){
   fs.mkdirSync(process.env.XDG_DATA_HOME+'/opencode',{recursive:true});
   fs.writeFileSync(process.env.XDG_DATA_HOME+'/opencode/auth.json',JSON.stringify({openai:{type:'oauth',access:'synthetic-private-native-token'}}));loggedIn=true;response=true;
- }else if(req.url==='/provider')response={connected:loggedIn?['openai']:[],all:[{id:'openai',models:{'account-model':{id:'account-model',name:'Account model'}}}]};
+ }else if(req.url==='/provider')response={connected:loggedIn?['openai']:[],all:[{id:'openai',models:{'account-model':{id:'account-model',name:'Account model',variants:{high:{reasoningEffort:'high'}}}}}]};
  else{res.writeHead(404);res.end();return;}
  res.setHeader('Content-Type','application/json');res.end(JSON.stringify(response));
 }).listen(port,'127.0.0.1');`);
   assert.equal(result.code,0);assert.equal(result.events.find(event=>event.type==='account').provider,'openai');
+  assert.deepEqual(result.events.find(event=>event.type==='account').models,[{id:'account-model',name:'Account model',reasoningLevels:['high']}]);
   assert.equal(result.events.find(event=>event.type==='update').instructions,'Enter synthetic-device-code on the page');
   assert.ok(!result.stdout.includes('synthetic-private-native-token'));
 });

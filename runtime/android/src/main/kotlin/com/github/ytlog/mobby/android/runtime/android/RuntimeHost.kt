@@ -68,6 +68,7 @@ class RuntimeHost(context: Context, notification: () -> PendingIntent) {
         override suspend fun stopShell() = connected()?.stopShell() ?: CommandResult.Rejected(RuntimeError(ErrorCode.DISCONNECTED, true))
     }
     val admin: RuntimeAdminClient = object : RuntimeAdminClient {
+        override suspend fun refreshNativeModels(agent: AgentId) = connected()?.refreshNativeModels(agent) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
         override suspend fun nativeAccounts() = connected()?.nativeAccounts() ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
         override suspend fun connectionSettings() = connected()?.connectionSettings() ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
         override suspend fun saveConnectionSetting(setting: AgentConnectionSetting) = connected()?.saveConnectionSetting(setting) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))

@@ -17,9 +17,10 @@ object ConversationGatewayResolver {
         val same = profiles.firstOrNull { it.id == config.gatewayProfile && it.agent == config.agent && it.model.isNotBlank() }
         // A lost connection must not silently change the engine of an existing conversation.
         val target = same ?: profiles.firstOrNull { it.agent == config.agent && it.model.isNotBlank() } ?: return null
-        val model = config.model.takeIf { same != null && target.offers(it) } ?: target.model
+        val sameAccount = same != null && (target.source == ConnectionSource.API || config.gatewayVersion == target.version)
+        val model = config.model.takeIf { sameAccount && target.offers(it) } ?: target.model
         val updated = config.copy(agent = target.agent, model = model,
-            reasoning = config.reasoning.takeIf { target.agent == config.agent && model == config.model },
+            reasoning = config.reasoning?.takeIf { sameAccount && model == config.model && (target.source == ConnectionSource.API || it in target.nativeReasoning[model].orEmpty()) },
             gatewayProfile = target.id, gatewayVersion = target.version)
         return updated.takeIf { it != config }
     }
@@ -31,15 +32,24 @@ object ConversationGatewayResolver {
     ): NextTurnConfig? {
         val recent = (listOfNotNull(current) + conversations.map { it.conversation })
             .filter { !it.deleted && it.config.agent == agent }
-            .maxByOrNull { it.updatedAt }
-            ?.config
+            .sortedByDescending { it.updatedAt }
+            .map { it.config }
         val selectedProfile = defaultGateway?.takeIf { it.agent == agent }?.let { choice ->
             profiles.firstOrNull { it.agent == agent && it.id == choice.id && it.model.isNotBlank() }
         }
-        val recentProfile = profiles.firstOrNull { it.agent == agent && it.id == recent?.gatewayProfile && it.model.isNotBlank() }
+        val recentProfile = recent.firstNotNullOfOrNull { config ->
+            profiles.firstOrNull { it.agent == agent && it.id == config.gatewayProfile && it.model.isNotBlank() }
+        }
         val gateway = selectedProfile ?: recentProfile ?: profiles.firstOrNull { it.agent == agent && it.model.isNotBlank() } ?: return null
-        val model = recent?.model?.takeIf(gateway::offers) ?: gateway.model
-        val reasoning = recent?.reasoning?.takeIf { recent.gatewayProfile == gateway.id && model == recent.model }
+        val selection = recent.firstOrNull {
+            it.gatewayProfile == gateway.id && (gateway.source == ConnectionSource.API || it.gatewayVersion == gateway.version)
+        }
+        val lastApi = recent.firstOrNull { !it.gatewayProfile.startsWith("native:") }
+        val previous = selection ?: lastApi.takeIf { gateway.source == ConnectionSource.API }
+        val model = previous?.model?.takeIf(gateway::offers) ?: gateway.model
+        val reasoning = selection?.reasoning?.takeIf {
+            model == selection.model && (gateway.source == ConnectionSource.API || it in gateway.nativeReasoning[model].orEmpty())
+        }
         return NextTurnConfig(agent, model, reasoning, "default", gateway.id, gateway.version)
     }
 }

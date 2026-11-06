@@ -8,7 +8,6 @@ import android.security.keystore.KeyProperties
 import android.system.Os
 import android.util.Base64
 import com.github.ytlog.mobby.android.runtime.api.*
-import com.github.ytlog.mobby.android.runtime.api.gateway.GatewayModelSummary
 import kotlinx.serialization.json.*
 import java.io.Closeable
 import java.io.File
@@ -67,12 +66,10 @@ internal class NativeAuthStore(private val context: Context, private val key: ()
     fun accounts(): List<NativeAccountSummary> = synchronized(lock) {
         AgentId.values().mapNotNull { agent -> account(agent)?.let { value ->
             NativeAccountSummary(agent, value.getValue("provider").jsonPrimitive.content, value.getValue("label").jsonPrimitive.content,
-                value.getValue("generation").jsonPrimitive.long, value.getValue("models").jsonArray.map {
-                    GatewayModelSummary(it.jsonObject.getValue("id").jsonPrimitive.content, it.jsonObject.getValue("name").jsonPrimitive.content)
-                }, value["expired"]?.jsonPrimitive?.booleanOrNull ?: false)
+                value.getValue("generation").jsonPrimitive.long, nativeModels(value), value["expired"]?.jsonPrimitive?.booleanOrNull ?: false)
         } }
     }
-    fun saveLogin(agent: AgentId, provider: String, label: String, models: List<GatewayModelSummary>, credential: String, supplemental: Map<String, String> = emptyMap()) = synchronized(lock) {
+    fun saveLogin(agent: AgentId, provider: String, label: String, models: List<NativeModelSummary>, credential: String, supplemental: Map<String, String> = emptyMap()) = synchronized(lock) {
         require(provider.isNotBlank() && models.isNotEmpty() && models.size <= 2000 && models.all { it.id.isNotBlank() })
         require(credential.length in 2..262144)
         Json.parseToJsonElement(credential).jsonObject
@@ -83,10 +80,16 @@ internal class NativeAuthStore(private val context: Context, private val key: ()
         val value = buildJsonObject {
             put("generation", generation); put("provider", provider); put("label", label); put("credential", credential)
             put("supplemental", JsonObject(supplemental.mapValues { JsonPrimitive(it.value) }))
-            putJsonArray("models") { models.distinctBy { it.id }.forEach { model -> add(buildJsonObject { put("id", model.id); put("name", model.name) }) } }
+            put("models", encodeNativeModels(models))
         }
         check(edit.putString("account:${agent.name}", encrypt(value))
             .putString("generation:${agent.name}", encrypt(buildJsonObject { put("value", generation) })).commit())
+    }
+    fun refreshModels(agent: AgentId, generation: Long, provider: String, models: List<NativeModelSummary>) = synchronized(lock) {
+        val current = requireNotNull(account(agent))
+        require(current.getValue("generation").jsonPrimitive.long == generation)
+        require(current.getValue("provider").jsonPrimitive.content == provider)
+        write("account:${agent.name}", JsonObject(current + ("models" to encodeNativeModels(models))))
     }
     fun logout(agent: AgentId) = synchronized(lock) {
         // Generation is retained so an old live process cannot resurrect a logged-out/replaced account.
@@ -188,4 +191,23 @@ internal class NativeAuthStore(private val context: Context, private val key: ()
         val root = File(context.cacheDir, "native-agent-auth")
         if (root.exists()) java.nio.file.Files.walk(root.toPath()).use { paths -> paths.sorted(Comparator.reverseOrder()).forEach(java.nio.file.Files::deleteIfExists) }
     }
+}
+
+internal fun nativeModels(value: JsonObject): List<NativeModelSummary> = value.getValue("models").jsonArray.map { entry ->
+    val model = entry.jsonObject
+    NativeModelSummary(model.getValue("id").jsonPrimitive.content, model.getValue("name").jsonPrimitive.content,
+        model["reasoningLevels"]?.jsonArray?.map { it.jsonPrimitive.content }?.toSet().orEmpty(),
+        model["defaultReasoning"]?.jsonPrimitive?.contentOrNull)
+}
+
+private fun encodeNativeModels(models: List<NativeModelSummary>): JsonArray {
+    require(models.isNotEmpty() && models.size <= 2000 && models.all { it.id.isNotBlank() })
+    return JsonArray(models.distinctBy { it.id }.map { model ->
+        buildJsonObject {
+            put("id", model.id)
+            put("name", model.name)
+            model.defaultReasoning?.let { put("defaultReasoning", it) }
+            putJsonArray("reasoningLevels") { model.reasoningLevels.forEach { add(JsonPrimitive(it)) } }
+        }
+    })
 }

@@ -40,4 +40,20 @@ class ConversationGatewayResolverTest {
         assertEquals("base", config?.model)
         assertNull(config?.reasoning)
     }
+    @Test fun `native selection stays with the account and uses its current effort catalog`() {
+        val login = AgentLogin(AgentId.CODEX, "openai", "ChatGPT", 5, main.models,
+            reasoningByModel = mapOf("chosen" to setOf("low", "high")))
+        val route = login.route()
+        val config = NextTurnConfig(AgentId.CODEX, "chosen", "high", "default", route.id, route.version)
+        assertNull(ConversationGatewayResolver.repair(config, listOf(route), null))
+        val updated = login.copy(reasoningByModel = mapOf("chosen" to setOf("low"))).route()
+        assertEquals(config.copy(reasoning = null), ConversationGatewayResolver.repair(config, listOf(updated), null))
+        val otherAccount = login.copy(version = 6).route()
+        assertEquals(config.copy(model = "base", reasoning = null, gatewayVersion = 6),
+            ConversationGatewayResolver.repair(config, listOf(otherAccount), null))
+        val current = Conversation(ConversationId("native"), config, updatedAt = 20)
+        val apiConfig = ConversationGatewayResolver.newConversation(AgentId.CODEX, current, emptyList(), listOf(main), selected)
+        assertEquals("base", apiConfig?.model)
+        assertNull(apiConfig?.reasoning)
+    }
 }

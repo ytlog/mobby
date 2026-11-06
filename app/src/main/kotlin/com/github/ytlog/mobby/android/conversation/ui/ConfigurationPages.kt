@@ -33,6 +33,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.github.ytlog.mobby.android.conversation.domain.*
 import com.github.ytlog.mobby.android.conversation.ui.gateway.gatewayLabel
+import com.github.ytlog.mobby.android.conversation.domain.gateway.ConnectionSource
 import com.github.ytlog.mobby.android.conversation.domain.gateway.GatewayProfile
 import com.github.ytlog.mobby.android.conversation.domain.gateway.GatewayDefault
 import com.github.ytlog.mobby.android.conversation.domain.gateway.ConversationGatewayResolver
@@ -51,8 +52,8 @@ import kotlinx.coroutines.*
     var gatewayId by rememberSaveable(c.id.value) { mutableStateOf(c.config.gatewayProfile) }
     var model by rememberSaveable(c.id.value) { mutableStateOf(c.config.model) }
     var reasoning by rememberSaveable(c.id.value) { mutableStateOf(c.config.reasoning) }
-    val option = agents.firstOrNull { it.agent == agent }
-    val levels = option?.models?.get(model).orEmpty()
+    val profile = profiles.firstOrNull { it.agent == agent && it.id == gatewayId }
+    val levels = profile?.nativeReasoning?.get(model).orEmpty()
     FrostedMenu(true, dismiss, anchor) {
         Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()).padding(bottom = 12.dp)) {
             MenuSection(AppStrings.agentLabel) {
@@ -69,11 +70,17 @@ import kotlinx.coroutines.*
                 if (profiles.none { it.agent == agent }) MenuCaption(AppStrings.connectAgentFirst)
             }
             MenuSection(AppStrings.model) {
-                val gateway = profiles.firstOrNull { it.agent == agent && it.id == gatewayId }
-                if (gateway?.models.isNullOrEmpty()) MenuCaption(AppStrings.noModelsConfiguredOpenGatewaySettings)
-                val names = option?.modelNames.orEmpty()
-                gateway?.models?.forEach { item -> MenuOption(modelMenuLabel(item.id, names), model == item.id) { model = item.id; reasoning = null } }
-                val known = gateway?.models?.map { it.id }.orEmpty().toSet()
+                if (profile?.models.isNullOrEmpty()) MenuCaption(
+                    if (profile?.source == ConnectionSource.NATIVE) AppStrings.noNativeModels
+                    else AppStrings.noModelsConfiguredOpenGatewaySettings
+                )
+                val names = profile?.models.orEmpty().associate { it.id to it.name }
+                profile?.models?.forEach { item ->
+                    MenuOption(modelMenuLabel(item.id, names), model == item.id) {
+                        if (model != item.id) { model = item.id; reasoning = null }
+                    }
+                }
+                val known = profile?.models?.map { it.id }.orEmpty().toSet()
                 if (known.isNotEmpty() && model.isNotBlank() && model !in known) MenuCaption(AppStrings.currentModelIsNotInTheSavedListSelect)
             }
             MenuSection(AppStrings.reasoningEffort) {
@@ -92,15 +99,14 @@ import kotlinx.coroutines.*
         }
         Button(
             onClick = {
-                val p = profiles.firstOrNull { it.agent == agent && it.id == gatewayId }
-                if (p != null) vm.enqueue {
-                    val config = NextTurnConfig(agent, model, reasoning, c.config.workspace, p.id, p.version)
+                if (profile != null) vm.enqueue {
+                    val config = NextTurnConfig(agent, model, reasoning?.takeIf { it in levels }, c.config.workspace, profile.id, profile.version)
                     vm.actions.configure(c.id, config)
                     vm.rememberAgentSelection(config)
                 }
                 dismiss()
             },
-            enabled = profiles.any { it.agent == agent && it.id == gatewayId },
+            enabled = profile?.offers(model) == true,
             modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 20.dp).heightIn(min = 48.dp),
             shape = RoundedCornerShape(22.dp),
             colors = filledButtonColors(if (darkChrome()) MobbyColors.Dark.button else menuAccent(), if (darkChrome()) MobbyColors.Dark.onButton else MobbyColors.onAccent),

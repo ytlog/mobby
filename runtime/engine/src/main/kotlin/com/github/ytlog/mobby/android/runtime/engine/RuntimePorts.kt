@@ -10,11 +10,11 @@ data class ProcessResult(val exitCode: Int?, val terminationConfirmed: Boolean, 
 /** A live CLI can take another turn only when the process, engine, workspace, model, gateway, skills and output mode are unchanged. */
 data class LiveSessionBinding(
     val agentId: AgentId, val workspaceRef: WorkspaceRef, val modelId: String, val gatewayProfileRef: GatewayProfileRef,
-    val capabilityRefs: Set<CapabilityRef>, val requestedOutput: RequestedOutput, val sessionId: String,
+    val capabilityRefs: Set<CapabilityRef>, val requestedOutput: RequestedOutput, val sessionId: String, val reasoningLevel: String? = null,
 ) {
     private fun sameExecution(request: RunRequest) = agentId == request.agentId && workspaceRef == request.workspaceRef && modelId == request.modelId &&
         gatewayProfileRef == request.gatewayProfileRef && capabilityRefs == request.capabilityRefs &&
-        requestedOutput == request.requestedOutput
+        requestedOutput == request.requestedOutput && reasoningLevel == request.reasoningLevel
     fun accepts(request: RunRequest) = sameExecution(request) && sessionId == request.sessionRef?.value
     fun acceptsNewSession(request: RunRequest) = sameExecution(request) && request.sessionRef == null
 }

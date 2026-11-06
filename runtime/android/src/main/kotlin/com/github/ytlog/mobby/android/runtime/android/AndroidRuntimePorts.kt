@@ -44,9 +44,10 @@ internal class AndroidRuntimePorts(
     override fun offerDeviceResponse(request: DeviceOperationResponse) =
         com.github.ytlog.mobby.android.device.DeviceCapture.respond(request.operationId, request.response) || DeviceHost.respond(request) || AppFunctionHost.respond(request)
     override fun offerApproval(requestId: RequestId, approvalId: String, choice: ApprovalChoice) = control?.offer(requestId, approvalId, choice) == true
-    suspend fun shutdownLive() {
+    suspend fun shutdownLive(awaitExit: Boolean = false) {
         val current = gate.withLock { held.also { held = null } }
         current?.shutdown(force = true)
+        if (awaitExit) current?.job?.join()
         liveState.value = false
     }
     private val skills get() = SkillStore(runtime.sdk.vfs.homeDir)
@@ -66,9 +67,11 @@ internal class AndroidRuntimePorts(
         if (nativeAgent != null) {
             require(nativeAgent == request.agentId)
             val account = nativeStore.accounts().first { it.agent == nativeAgent && it.version == request.gatewayProfileRef.version && !it.expired }
-            require(account.models.any { it.id == request.modelId })
+            val model = account.models.first { it.id == request.modelId }
+            require(request.reasoningLevel == null || request.reasoningLevel in model.reasoningLevels)
             return Route(native = account, model = request.modelId, redactor = nativeStore.redactor(account.agent))
         }
+        require(request.reasoningLevel == null)
         val stored = gateways.load(request.gatewayProfileRef.id, request.gatewayProfileRef.version).config(mode(request.agentId))
         stored.validateFor(mode(request.agentId)); require(stored.accepts(request.modelId))
         return Route(gateway = stored.forRun(request.modelId), model = request.modelId)
@@ -84,7 +87,7 @@ internal class AndroidRuntimePorts(
             val native = accounts.firstOrNull { it.agent == agent && !it.expired && setting.mode != AgentConnectionMode.API_ONLY }
             val configs = if (native != null || setting.mode == AgentConnectionMode.NATIVE_ONLY) emptyList() else
                 gateways.list().filter { setting.gatewayId == null || it.id == setting.gatewayId }.mapNotNull { record -> runCatching { record.config(mode(agent)).also { it.validateFor(mode(agent)) } }.getOrNull() }
-            val models = (native?.models.orEmpty().map { ModelCapability(it.id, emptySet(), it.name) } + configs.flatMap { config ->
+            val models = (native?.models.orEmpty().map { ModelCapability(it.id, it.reasoningLevels, it.name) } + configs.flatMap { config ->
                 if (config.models.isNotEmpty()) config.models.map { ModelCapability(it.id, emptySet(), it.name) }
                 else listOf(ModelCapability(config.model, emptySet()))
             }).distinctBy { it.id }
@@ -102,7 +105,7 @@ internal class AndroidRuntimePorts(
     override suspend fun validate(request: RunRequest): RuntimeError? = withContext(Dispatchers.IO) {
         if (state.value.phase != EnvironmentPhase.READY) return@withContext RuntimeError(ErrorCode.NOT_READY, true)
         if (runtime.workspaces.resolve(request.workspaceRef) == null) return@withContext RuntimeError(ErrorCode.PERMISSION_DENIED)
-        if (request.reasoningLevel != null)
+        if (request.reasoningLevel != null && NativeConnectionRef.agent(request.gatewayProfileRef.id) == null)
             return@withContext RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY)
         val pluginRefs = request.capabilityRefs.map { it.value }.filter { it.startsWith("plugin:") }.toSet()
         val deviceRefs = pluginRefs.filter { it.startsWith("plugin:device:") }.toSet()
@@ -168,7 +171,7 @@ internal class AndroidRuntimePorts(
                 try { reusable.run(prepared.turn, stop, submit = true, newSession = request.sessionRef == null) { line, error -> output(sanitize(line, config), error) } }
                 finally { activeInput = null }
             } else {
-                shutdownLive()
+                shutdownLive(awaitExit = true)
                 start(request, config, stop, devices) { line, error -> output(sanitize(line, config), error) }
             }
         } catch (_: TimeoutCancellationException) {
@@ -277,7 +280,10 @@ internal class AndroidRuntimePorts(
             }
             val ready = assemble(request, extras)
             prepared = ready
-            val connection = AgentSessions.connect(request, runtime.executable(mode(request.agentId)), workingDirectory.absolutePath, ready.turn)
+            val defaultEffort = config.native?.models?.firstOrNull { it.id == request.modelId }?.defaultReasoning
+            val launchRequest = if (request.reasoningLevel == null && defaultEffort != null)
+                request.copy(reasoningLevel = defaultEffort) else request
+            val connection = AgentSessions.connect(launchRequest, runtime.executable(mode(request.agentId)), workingDirectory.absolutePath, ready.turn)
             val agent = LiveAgent(request, connection.session, extras, deviceStop, session, appFunctionSession, config.redactor) { nativeLease?.flush() }
             control = connection.session
             val exit = AtomicReference<Int?>(null)
@@ -391,7 +397,7 @@ private class LiveAgent(
         val id = session.sessionId()
         if (retain && alive && job.isActive && id != null) {
             checkpoint()
-            binding = LiveSessionBinding(anchor.agentId, anchor.workspaceRef, anchor.modelId, anchor.gatewayProfileRef, anchor.capabilityRefs, anchor.requestedOutput, id)
+            binding = LiveSessionBinding(anchor.agentId, anchor.workspaceRef, anchor.modelId, anchor.gatewayProfileRef, anchor.capabilityRefs, anchor.requestedOutput, id, anchor.reasoningLevel)
             return ProcessResult(null, true, retained = true)
         }
         shutdown(force = force || !alive)

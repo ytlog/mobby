@@ -71,6 +71,17 @@ internal fun connectionLabel(profile: GatewayProfile): String = if (profile.sour
                         { showLogin = true },
                         if (login == null) AppStrings.agentSignedOut else if (login.expired) AppStrings.nativeLoginExpired else "${AppStrings.agentSignedIn} · ${login.label}",
                     )
+                    if (login != null && !login.expired) {
+                        GroupDivider()
+                        SettingsAction(AppStrings.refreshNativeModels) { vm.enqueue {
+                            val result = vm.actions.refreshNativeModels(agent)
+                            vm.report(result)
+                            if (result == OperationResult.Done) {
+                                vm.refresh()
+                                notice = AppStrings.nativeModelsRefreshed
+                            }
+                        } }
+                    }
                     if (login != null) {
                         GroupDivider()
                         SettingsAction(AppStrings.signOutAgent) { vm.enqueue {
@@ -96,7 +107,6 @@ internal fun connectionLabel(profile: GatewayProfile): String = if (profile.sour
                 SettingsCaption("${AppStrings.currentConnection}：${current?.let(::connectionLabel) ?: AppStrings.noAvailableConnection}")
                 if (login?.expired == true && current?.source == ConnectionSource.API) SettingsCaption(AppStrings.nativeFallbackActive)
                 SettingsCaption(AppStrings.failedNoSourceRetry)
-                SettingsCaption(AppStrings.nativeModelAliases)
                 notice?.let { SettingsCaption(it) }
             }
         }

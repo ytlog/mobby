@@ -13,6 +13,7 @@ class LiveSessionBindingTest {
         assertTrue(binding.acceptsNewSession(request))
         assertFalse(binding.acceptsNewSession(request.copy(sessionRef = SessionRef("prior"))))
         assertFalse(binding.acceptsNewSession(request.copy(workspaceRef = WorkspaceRef("two"))))
+        assertFalse(binding.acceptsNewSession(request.copy(reasoningLevel = "high")))
         assertFalse(binding.acceptsNewSession(request.copy(modelId = "another-model")))
         assertFalse(binding.acceptsNewSession(request.copy(gatewayProfileRef = GatewayProfileRef("gateway", 2))))
         assertFalse(binding.acceptsNewSession(request.copy(capabilityRefs = emptySet())))

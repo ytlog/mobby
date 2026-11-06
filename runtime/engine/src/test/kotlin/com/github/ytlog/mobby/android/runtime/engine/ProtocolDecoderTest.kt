@@ -6,6 +6,16 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ProtocolDecoderTest {
+    @Test fun `native Pi and Claude receive the chosen effort at launch`() {
+        val pi = RunRequest(RequestId("r"), AgentId.PI, WorkspaceRef("default"), emptyList(), "model",
+            GatewayProfileRef("native:PI", 1), reasoningLevel = "high")
+        assertTrue(AgentCommand.arguments(pi, "pi", "prompt").windowed(2).contains(listOf("--thinking", "high")))
+        val api = pi.copy(gatewayProfileRef = GatewayProfileRef("api", 1), reasoningLevel = null)
+        assertTrue(AgentCommand.arguments(api, "pi", "prompt").windowed(2).contains(listOf("--thinking", "off")))
+        val claude = pi.copy(agentId = AgentId.CLAUDE_CODE, gatewayProfileRef = GatewayProfileRef("native:CLAUDE_CODE", 1))
+        assertTrue(AgentCommand.arguments(claude, "claude", "prompt").windowed(2).contains(listOf("--effort", "high")))
+    }
+
     @Test fun `codex new and resumed runs use the authorized Android app permission boundary`() {
         for (session in listOf(null, SessionRef("session-123"))) {
             val request = RunRequest(RequestId("r"), AgentId.CODEX, WorkspaceRef("default"), emptyList(), "model", GatewayProfileRef("g", 0), sessionRef = session)

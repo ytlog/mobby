@@ -2,7 +2,6 @@ package com.github.ytlog.mobby.android.runtime.android
 
 import android.content.Context
 import com.github.ytlog.mobby.android.runtime.api.*
-import com.github.ytlog.mobby.android.runtime.api.gateway.GatewayModelSummary
 import com.github.ytlog.mobby.android.runtime.engine.launchMode
 import com.libtermux.executor.OutputLine
 import kotlinx.coroutines.*
@@ -51,12 +50,33 @@ internal class NativeAgentAdmin(private val context: Context, private val runtim
                     }
                     val value = requireNotNull(account)
                     check(lease.credential.isFile && lease.credential.length() <= 262144)
-                    val models = value.getValue("models").jsonArray.map {
-                        GatewayModelSummary(it.jsonObject.getValue("id").jsonPrimitive.content, it.jsonObject.getValue("name").jsonPrimitive.content)
-                    }
                     currentCoroutineContext().ensureActive()
                     store.saveLogin(agent, value.getValue("provider").jsonPrimitive.content,
-                        value.getValue("label").jsonPrimitive.content, models, lease.credential.readText(), lease.supplemental())
+                        value.getValue("label").jsonPrimitive.content, nativeModels(value), lease.credential.readText(), lease.supplemental())
+                }
+            } }
+        } catch (_: TimeoutCancellationException) { AdminResult.Failed(RuntimeError(ErrorCode.TIMEOUT, true)) }
+        finally { loginGate.unlock() }
+    }
+    suspend fun refreshModels(agent: AgentId): AdminResult<Unit> = withContext(Dispatchers.IO) {
+        if (!ready(agent)) return@withContext AdminResult.Failed(RuntimeError(ErrorCode.NOT_READY, true))
+        if (!loginGate.tryLock()) return@withContext AdminResult.Failed(RuntimeError(ErrorCode.BUSY, true))
+        try {
+            withTimeout(30_000) { result {
+                val account = store.accounts().first { it.agent == agent && !it.expired }
+                store.open(agent, runtime.sdk.vfs.homeDir, expectedGeneration = account.version).use { lease ->
+                    val method = when (agent) {
+                        AgentId.PI -> account.provider
+                        AgentId.CLAUDE_CODE -> "claudeai"
+                        else -> ""
+                    }
+                    var catalog: JsonObject? = null
+                    run("verify", agent, method, lease, {}, emptyFlow()) { message ->
+                        if (message["type"]?.jsonPrimitive?.content == "account") catalog = message
+                    }
+                    val value = requireNotNull(catalog)
+                    currentCoroutineContext().ensureActive()
+                    store.refreshModels(agent, account.version, value.getValue("provider").jsonPrimitive.content, nativeModels(value))
                 }
             } }
         } catch (_: TimeoutCancellationException) { AdminResult.Failed(RuntimeError(ErrorCode.TIMEOUT, true)) }

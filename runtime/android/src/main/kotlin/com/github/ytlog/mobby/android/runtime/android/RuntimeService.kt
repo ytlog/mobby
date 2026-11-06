@@ -244,6 +244,12 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
         return importSkill(request.agent, preview.markdown)
     }
     private val nativeAdmin by lazy { NativeAgentAdmin(this, runtime, environment) }
+    override suspend fun refreshNativeModels(agent: AgentId): AdminResult<Unit> = submission.withLock {
+        if (coordinator.active.value != null || authenticating.value)
+            return@withLock AdminResult.Failed(RuntimeError(ErrorCode.BUSY, true))
+        ports.shutdownLive(awaitExit = true)
+        nativeAdmin.refreshModels(agent)
+    }
     override suspend fun nativeAccounts() = nativeAdmin.accounts()
     override suspend fun connectionSettings() = nativeAdmin.settings()
     override suspend fun saveConnectionSetting(setting: AgentConnectionSetting) = nativeAdmin.save(setting)

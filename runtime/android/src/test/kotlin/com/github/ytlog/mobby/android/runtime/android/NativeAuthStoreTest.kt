@@ -1,7 +1,7 @@
 package com.github.ytlog.mobby.android.runtime.android
 
 import com.github.ytlog.mobby.android.runtime.api.*
-import com.github.ytlog.mobby.android.runtime.api.gateway.GatewayModelSummary
+import com.github.ytlog.mobby.android.runtime.api.NativeModelSummary
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
@@ -16,7 +16,7 @@ import javax.crypto.KeyGenerator
 class NativeAuthStoreTest {
     private val context get() = org.robolectric.RuntimeEnvironment.getApplication()
     private val key = KeyGenerator.getInstance("AES").apply { init(256) }.generateKey()
-    private val models = listOf(GatewayModelSummary("account-model", "Account model"))
+    private val models = listOf(NativeModelSummary("account-model", "Account model", setOf("high")))
     private val credential = """{"tokens":{"access_token":"synthetic-native-token","unknown":{"preserved":true}}}"""
     private fun store() = NativeAuthStore(context) { key }
     @Before fun clear() {
@@ -31,6 +31,7 @@ class NativeAuthStoreTest {
         store().save(AgentConnectionSetting(AgentId.CODEX, AgentConnectionMode.API_ONLY, "existing-api"))
         val reopened = store()
         assertEquals("ChatGPT", reopened.accounts().single().label)
+        assertEquals(models, reopened.accounts().single().models)
         assertEquals(AgentConnectionMode.API_ONLY, reopened.settings().first { it.agent == AgentId.CODEX }.mode)
         assertEquals(AgentConnectionMode.AUTO, reopened.settings().first { it.agent == AgentId.PI }.mode)
         assertEquals("existing-encrypted-gateway-fixture", gateway.getString("existing", null))

@@ -632,7 +632,9 @@ object AgentCommand {
         require(session == null || AgentSessionId.matches(session))
         return when (request.agentId) {
             AgentId.PI -> buildList {
-                addAll(listOf(executable, "--mode", "rpc", "--provider", "mobby", "--model", request.modelId, "--thinking", "off"))
+                addAll(listOf(executable, "--mode", "rpc", "--provider", "mobby", "--model", request.modelId))
+                val thinking = if (NativeConnectionRef.agent(request.gatewayProfileRef.id) != null) request.reasoningLevel else "off"
+                thinking?.let { addAll(listOf("--thinking", it)) }
                 if (session != null) addAll(listOf("--session", session))
             }
             AgentId.CODEX -> buildList {

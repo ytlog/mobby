@@ -144,6 +144,7 @@ interface SystemPort {
     suspend fun saveManualSkill(agent: AgentId, name: String, description: String, body: String): DataResult<Skill>
     val status: Flow<SystemStatus>
     val diagnostic: Flow<DiagnosticOutput>
+    suspend fun refreshNativeModels(agent: AgentId): OperationResult = OperationResult.Failed(AppStrings.unsupportedOperation)
     suspend fun nativeAccounts(): List<AgentLogin> = emptyList()
     suspend fun connectionSettings(): List<AgentConnectionPreference> = emptyList()
     suspend fun saveConnectionSetting(setting: AgentConnectionPreference): OperationResult = OperationResult.Failed(AppStrings.unsupportedOperation)
@@ -378,6 +379,7 @@ class ConversationUseCases(
     suspend fun previewReplyImage(workspace: String, source: String, expanded: Boolean) = system.previewReplyImage(workspace, source, expanded)
     suspend fun restoreDraft(id: ConversationId, turn: Turn) = repository.restoreDraft(id, turn.userText, turn.attachments)
     suspend fun removeAttachment(id: ConversationId, ref: String) = repository.setAttachment(id, ref, false)
+    suspend fun refreshNativeModels(agent: AgentId) = system.refreshNativeModels(agent)
     suspend fun nativeAccounts() = system.nativeAccounts()
     suspend fun connectionSettings() = system.connectionSettings()
     suspend fun saveConnectionSetting(setting: AgentConnectionPreference) = system.saveConnectionSetting(setting)

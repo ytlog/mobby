@@ -49,7 +49,7 @@ if(args[0]==='serve'){
     // A reply cut at the output limit ends the turn too; the next prompt must not find OpenCode still running.
     child.stdin.write(JSON.stringify({type:'prompt',text:'cut',model:'test',sessionId:'ses_persisted',images:[]})+'\n');
     await waitFor('"reason":"length"');
-    child.stdin.write(JSON.stringify({type:'prompt',text:'two',model:'test',sessionId:'ses_persisted',images:[]})+'\n');
+    child.stdin.write(JSON.stringify({type:'prompt',text:'two',model:'test',sessionId:'ses_persisted',variant:'high',images:[]})+'\n');
     await waitFor('answer-two');
     child.stdin.write(JSON.stringify({type:'prompt',text:'three',model:'test',newSession:true,images:[]})+'\n');
     await waitFor('answer-three');
@@ -62,6 +62,7 @@ if(args[0]==='serve'){
     assert.ok(!calls[1].includes('--session'));
     assert.deepEqual(calls[3].slice(calls[3].indexOf('--session'),calls[3].indexOf('--session')+2),
       ['--session','ses_persisted']);
+    assert.deepEqual(calls[3].slice(calls[3].indexOf('--variant'),calls[3].indexOf('--variant')+2), ['--variant','high']);
     assert.ok(!calls[4].includes('--session'));
     assert.equal(child.exitCode,null);
   } finally {

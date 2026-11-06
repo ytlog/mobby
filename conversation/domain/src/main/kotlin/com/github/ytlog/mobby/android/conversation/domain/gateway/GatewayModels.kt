@@ -8,7 +8,8 @@ data class GatewayAddresses(val responses: String, val messages: String = "") {
 }
 /** An execution route; native routes are ephemeral projections, never saved in the gateway store. */
 data class GatewayProfile(val agent: AgentId, val id: String, val version: Long, val endpoint: String, val model: String, val protocol: String, val hasCredential: Boolean, val models: List<GatewayModel> = emptyList(), val catalogError: String? = null, val temporary: Boolean = false,
-    val source: ConnectionSource = ConnectionSource.API, val connectionLabel: String = "") {
+    val source: ConnectionSource = ConnectionSource.API, val connectionLabel: String = "",
+    val nativeReasoning: Map<String, Set<String>> = emptyMap()) {
     fun offers(modelId: String): Boolean = modelId.isNotBlank() && (modelId == model || models.any { it.id == modelId })
 }
 data class GatewayDefault(val agent: AgentId, val id: String, val version: Long)

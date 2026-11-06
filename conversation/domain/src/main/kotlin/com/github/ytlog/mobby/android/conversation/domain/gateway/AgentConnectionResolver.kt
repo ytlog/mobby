@@ -12,10 +12,10 @@ data class AgentLoginUpdate(val url: String? = null, val code: String? = null, v
     override fun toString() = "AgentLoginUpdate([transient])"
 }
 data class AgentLogin(val agent: AgentId, val provider: String, val label: String, val version: Long,
-    val models: List<GatewayModel>, val expired: Boolean = false) {
+    val models: List<GatewayModel>, val expired: Boolean = false, val reasoningByModel: Map<String, Set<String>> = emptyMap()) {
     fun route() = GatewayProfile(agent, "native:${agent.name}", version, "", models.firstOrNull()?.id.orEmpty(),
         if (agent == AgentId.CLAUDE_CODE) "MESSAGES" else "RESPONSES", true, models,
-        source = ConnectionSource.NATIVE, connectionLabel = label)
+        source = ConnectionSource.NATIVE, connectionLabel = label, nativeReasoning = reasoningByModel)
 }
 
 /** Resolve before admission only. An accepted turn keeps its route, even when execution fails. */

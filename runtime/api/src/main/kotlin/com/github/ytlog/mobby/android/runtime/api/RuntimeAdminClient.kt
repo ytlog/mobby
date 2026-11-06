@@ -14,6 +14,7 @@ data class EventHistorySettings(val retentionDays: Int = 30, val budgetMiB: Int 
 }
 data class WorkspaceSummary(val ref: WorkspaceRef, val name: String)
 interface RuntimeAdminClient {
+    suspend fun refreshNativeModels(agent: AgentId): AdminResult<Unit> = AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
     suspend fun nativeAccounts(): AdminResult<List<NativeAccountSummary>> = AdminResult.Success(emptyList())
     suspend fun connectionSettings(): AdminResult<List<AgentConnectionSetting>> = AdminResult.Success(emptyList())
     suspend fun saveConnectionSetting(setting: AgentConnectionSetting): AdminResult<Unit> = AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
