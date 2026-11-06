@@ -678,10 +678,12 @@ internal fun LazyListScope.programSection(shortcuts: List<ProgramShortcut>, quer
                     ) {
                         val agent = c?.config?.agent
                         if (agent != null) {
-                            AppIcon(agent.glyph(), null, Modifier.size(18.dp))
+                            AppIcon(agent.glyph(), AppStrings.changeCurrentAgent(agent.label()), Modifier.size(20.dp))
                             Spacer(Modifier.width(6.dp))
+                            AppIcon(if (config) AppIcons.ChevronUp else AppIcons.ChevronDown, null, Modifier.size(14.dp))
+                        } else {
+                            Text(AppStrings.selectAgent)
                         }
-                        Text(agent?.label() ?: AppStrings.selectAgent)
                     }
                     }
                 }

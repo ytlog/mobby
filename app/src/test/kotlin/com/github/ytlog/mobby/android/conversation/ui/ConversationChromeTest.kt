@@ -78,7 +78,7 @@ class ConversationChromeTest {
         }
         compose.waitForIdle()
 
-        assertAgentChipHasNoArrow("Claude Code")
+        assertCompactAgentChip("Claude Code")
         compose.onNodeWithText("程序开发 ×").assertIsDisplayed()
         val withContext = compose.onNodeWithTag("conversation-composer").getBoundsInRoot()
         compose.runOnIdle {
@@ -107,7 +107,7 @@ class ConversationChromeTest {
             )))
         }
         compose.waitForIdle()
-        assertAgentChipHasNoArrow("Codex")
+        assertCompactAgentChip("Codex")
         compose.onNodeWithText("最新消息").assertDoesNotExist()
         val jump = compose.onNodeWithContentDescription("最新消息").assertIsDisplayed().getBoundsInRoot()
         assertTranscriptClearOfChrome()
@@ -133,11 +133,12 @@ class ConversationChromeTest {
         assertTranscriptClearOfChrome()
     }
 
-    private fun assertAgentChipHasNoArrow(label: String) {
-        val text = compose.onNodeWithText(label, useUnmergedTree = true).getBoundsInRoot()
-        val chip = compose.onNodeWithText(label).getBoundsInRoot()
-        val trailing = chip.right - text.right
-        assertTrue("$label chip keeps a trailing arrow ($trailing)", trailing < 32.dp)
+    private fun assertCompactAgentChip(label: String) {
+        val toolbar = hasAnyAncestor(hasTestTag("conversation-toolbar"))
+        val chip = compose.onNode(toolbar and hasContentDescription("当前 Agent 为 $label，点击切换"))
+            .assertIsDisplayed().assertHasClickAction().getBoundsInRoot()
+        assertTrue("Agent icon and chevron should fit in a compact chip", chip.right - chip.left <= 80.dp)
+        compose.onNode(toolbar and hasText(label)).assertDoesNotExist()
     }
 
     private fun assertTranscriptClearOfChrome() {

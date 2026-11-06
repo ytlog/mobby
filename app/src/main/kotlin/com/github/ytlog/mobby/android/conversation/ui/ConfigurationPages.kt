@@ -15,27 +15,32 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.github.ytlog.mobby.android.conversation.domain.*
-import com.github.ytlog.mobby.android.conversation.ui.gateway.gatewayLabel
 import com.github.ytlog.mobby.android.conversation.domain.gateway.ConnectionSource
-import com.github.ytlog.mobby.android.conversation.domain.gateway.GatewayProfile
-import com.github.ytlog.mobby.android.conversation.domain.gateway.GatewayDefault
 import com.github.ytlog.mobby.android.conversation.domain.gateway.ConversationGatewayResolver
 import kotlinx.coroutines.*
 
@@ -48,50 +53,111 @@ import kotlinx.coroutines.*
     if (!expanded) return
     val agents by vm.agents.collectAsStateWithLifecycle()
     val profiles by vm.connections.collectAsStateWithLifecycle()
-    var agent by rememberSaveable(c.id.value) { mutableStateOf(c.config.agent) }
-    var gatewayId by rememberSaveable(c.id.value) { mutableStateOf(c.config.gatewayProfile) }
-    var model by rememberSaveable(c.id.value) { mutableStateOf(c.config.model) }
-    var reasoning by rememberSaveable(c.id.value) { mutableStateOf(c.config.reasoning) }
-    val profile = profiles.firstOrNull { it.agent == agent && it.id == gatewayId }
+    var selectedAgent by remember(c.id) { mutableStateOf<AgentId?>(null) }
+    val drafts = remember(c.id) { mutableStateMapOf<AgentId, NextTurnConfig>() }
+    var showSettings by remember(c.id) { mutableStateOf(false) }
+    val agent = selectedAgent ?: c.config.agent
+    var field by remember(c.id, agent, showSettings) { mutableStateOf<AgentSetting?>(null) }
+    val availableAgents = AgentId.entries.filter { value ->
+        profiles.any { it.agent == value } && agents.none { it.agent == value && it.unavailable != null }
+    }
+    val connections = profiles.filter { it.agent == agent }
+    val draft = drafts[agent] ?: if (agent == c.config.agent) c.config else connections.firstOrNull()?.let {
+        NextTurnConfig(agent, it.model, null, c.config.workspace, it.id, it.version)
+    }
+    val profile = connections.firstOrNull { it.id == draft?.gatewayProfile }
+    val model = draft?.model.orEmpty()
     val levels = profile?.nativeReasoning?.get(model).orEmpty()
+    val reasoning = draft?.reasoning?.takeIf { it in levels }
+    val names = profile?.models.orEmpty().associate { it.id to it.name }
+    val modelLabel = modelMenuLabel(model, names).ifBlank { AppStrings.unavailable }
+    val config = profile?.let { route ->
+        draft?.takeIf { route.offers(model) && agent in availableAgents }
+            ?.copy(reasoning = reasoning, workspace = c.config.workspace, gatewayVersion = route.version)
+    }
+    val changed = config != null && config != c.config
+    val openConnections = { dismiss(); manageConnections() }
     FrostedMenu(true, dismiss, anchor) {
-        Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()).padding(bottom = 12.dp)) {
-            MenuSection(AppStrings.agentLabel) {
-                AgentId.values().filter { value -> profiles.any { it.agent == value } && agents.none { it.agent == value && it.unavailable != null } }.forEach { value -> MenuOption(value.label(), agent == value, icon = value.glyph()) {
-                    agent = value
-                    val gateway = profiles.firstOrNull { it.agent == value && it.id == gatewayId } ?: profiles.firstOrNull { it.agent == value }
-                    gatewayId = gateway?.id.orEmpty(); model = gateway?.model.orEmpty(); reasoning = null
-                } }
+        Column(Modifier.weight(1f, fill = false).heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+            Row(
+                Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(agent.label(), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, color = menuInk())
+                Text(if (changed) AppStrings.pendingApply else AppStrings.nextTurn, style = MaterialTheme.typography.labelMedium, color = menuMuted())
             }
-            MenuSection(AppStrings.connectionSource) {
-                profiles.filter { it.agent == agent }.forEach { gateway ->
-                    MenuOption(connectionLabel(gateway), gatewayId == gateway.id) { gatewayId = gateway.id; model = gateway.model; reasoning = null }
-                }
-                if (profiles.none { it.agent == agent }) MenuCaption(AppStrings.connectAgentFirst)
+            if (availableAgents.isNotEmpty()) AgentIconRail(availableAgents, agent) { selectedAgent = it }
+            val settingsState = if (showSettings) AppStrings.expanded else AppStrings.collapsed
+            Row(
+                Modifier.fillMaxWidth()
+                    .clickable(role = Role.Button) { showSettings = !showSettings }
+                    .semantics { stateDescription = settingsState }
+                    .heightIn(min = 48.dp)
+                    .padding(horizontal = 20.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(AppStrings.modelAndReasoning, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = menuInk())
+                Text(modelLabel, Modifier.weight(1f, fill = false),
+                    maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = menuMuted())
+                if (levels.isNotEmpty()) Text(reasoning ?: AppStrings.default, style = MaterialTheme.typography.labelSmall, color = menuInk())
+                AppIcon(if (showSettings) AppIcons.ChevronUp else AppIcons.ChevronDown, null, Modifier.size(16.dp), tint = menuMuted())
             }
-            MenuSection(AppStrings.model) {
-                if (profile?.models.isNullOrEmpty()) MenuCaption(
-                    if (profile?.source == ConnectionSource.NATIVE) AppStrings.noNativeModels
-                    else AppStrings.noModelsConfiguredOpenGatewaySettings
-                )
-                val names = profile?.models.orEmpty().associate { it.id to it.name }
-                profile?.models?.forEach { item ->
-                    MenuOption(modelMenuLabel(item.id, names), model == item.id) {
-                        if (model != item.id) { model = item.id; reasoning = null }
+            if (showSettings) {
+                AgentSettingRow(
+                    AppStrings.connectionSource, profile?.let(::connectionLabel) ?: AppStrings.noAvailableConnection,
+                    expanded = field == AgentSetting.CONNECTION,
+                    expandable = connections.isNotEmpty() && (connections.size > 1 || profile == null),
+                ) { field = AgentSetting.CONNECTION.takeUnless { field == it } }
+                if (field == AgentSetting.CONNECTION) {
+                    connections.forEach { route ->
+                        MenuOption(connectionLabel(route), profile?.id == route.id) {
+                            if (profile?.id != route.id) drafts[agent] =
+                                NextTurnConfig(agent, route.model, null, c.config.workspace, route.id, route.version)
+                            field = null
+                        }
                     }
                 }
-                val known = profile?.models?.map { it.id }.orEmpty().toSet()
-                if (known.isNotEmpty() && model.isNotBlank() && model !in known) MenuCaption(AppStrings.currentModelIsNotInTheSavedListSelect)
-            }
-            MenuSection(AppStrings.reasoningEffort) {
-                if (levels.isEmpty()) MenuCaption(AppStrings.thisModelDoesNotOfferAdjustment)
-                else {
-                    MenuOption(AppStrings.default, reasoning == null) { reasoning = null }
-                    levels.forEach { level -> MenuOption(level, reasoning == level) { reasoning = level } }
+                if (profile != null && draft != null) {
+                    AgentSettingRow(AppStrings.model, modelLabel,
+                        expanded = field == AgentSetting.MODEL, expandable = profile.models.isNotEmpty(),
+                    ) { field = AgentSetting.MODEL.takeUnless { field == it } }
+                    when {
+                        profile.models.isEmpty() -> MenuCaption(
+                            if (profile.source == ConnectionSource.NATIVE) AppStrings.noNativeModels
+                            else AppStrings.noModelsConfiguredOpenGatewaySettings
+                        )
+                        field == AgentSetting.MODEL -> profile.models.forEach { item ->
+                            MenuOption(modelMenuLabel(item.id, names), model == item.id) {
+                                if (model != item.id) drafts[agent] = draft.copy(model = item.id, reasoning = null)
+                                field = null
+                            }
+                        }
+                    }
+                    if (names.isNotEmpty() && model.isNotBlank() && model !in names)
+                        MenuCaption(AppStrings.currentModelIsNotInTheSavedListSelect)
+                    AgentSettingRow(
+                        AppStrings.reasoningEffort,
+                        if (levels.isEmpty()) AppStrings.thisModelDoesNotOfferAdjustment else reasoning ?: AppStrings.default,
+                        expanded = field == AgentSetting.REASONING, expandable = levels.isNotEmpty(),
+                    ) { field = AgentSetting.REASONING.takeUnless { field == it } }
+                    if (field == AgentSetting.REASONING) {
+                        MenuOption(AppStrings.default, reasoning == null) {
+                            drafts[agent] = draft.copy(reasoning = null)
+                            field = null
+                        }
+                        levels.forEach { level ->
+                            MenuOption(level, reasoning == level) {
+                                drafts[agent] = draft.copy(reasoning = level)
+                                field = null
+                            }
+                        }
+                    }
                 }
             }
-            MenuSection(AppStrings.manageAgentConnections) { MenuOption(AppStrings.manageAgentConnections, false) { dismiss(); manageConnections() } }
-            MenuCaption(AppStrings.changesApplyToTheNextTurnTheCurrentExecution)
+            if (connections.isEmpty()) MenuCaption(AppStrings.connectAgentFirst)
+            if (showSettings || connections.isEmpty()) MenuAction(AppStrings.manageAgentConnections, icon = AppIcons.Settings, onClick = openConnections)
             if (agent != c.config.agent && c.hasTurns)
                 MenuCaption(AppStrings.continueInThisConversationCodexClaudeCodeAndOpencode)
             if (agent != c.config.agent && c.draft.capabilities.any { !it.startsWith("plugin:") })
@@ -99,20 +165,87 @@ import kotlinx.coroutines.*
         }
         Button(
             onClick = {
-                if (profile != null) vm.enqueue {
-                    val config = NextTurnConfig(agent, model, reasoning?.takeIf { it in levels }, c.config.workspace, profile.id, profile.version)
-                    vm.actions.configure(c.id, config)
-                    vm.rememberAgentSelection(config)
+                val applied = config ?: return@Button
+                vm.enqueue {
+                    vm.actions.configure(c.id, applied)
+                    vm.rememberAgentSelection(applied)
                 }
                 dismiss()
             },
-            enabled = profile?.offers(model) == true,
+            enabled = changed,
             modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 20.dp).heightIn(min = 48.dp),
             shape = RoundedCornerShape(22.dp),
             colors = filledButtonColors(if (darkChrome()) MobbyColors.Dark.button else menuAccent(), if (darkChrome()) MobbyColors.Dark.onButton else MobbyColors.onAccent),
             elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp, pressedElevation = 0.dp, focusedElevation = 0.dp, hoveredElevation = 0.dp),
         ) { Text(AppStrings.apply, fontWeight = FontWeight.SemiBold) }
-    
+    }
+}
+
+private enum class AgentSetting { CONNECTION, MODEL, REASONING }
+
+@Composable
+private fun AgentSettingRow(title: String, value: String, expanded: Boolean, expandable: Boolean, onClick: () -> Unit) {
+    val state = if (expanded) AppStrings.expanded else AppStrings.collapsed
+    val action = if (!expandable) Modifier else Modifier
+        .clickable(role = Role.Button, onClick = onClick)
+        .semantics { stateDescription = state }
+    Row(
+        Modifier.fillMaxWidth().then(action).heightIn(min = 48.dp).padding(horizontal = 20.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(title, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = menuInk())
+        Text(value, Modifier.weight(1f, fill = false), maxLines = 2, overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.bodySmall, color = menuMuted())
+        if (expandable)
+            AppIcon(if (expanded) AppIcons.ChevronUp else AppIcons.ChevronDown, null, Modifier.size(16.dp), tint = menuMuted())
+    }
+}
+
+@Composable
+private fun AgentIconRail(agents: List<AgentId>, selected: AgentId, select: (AgentId) -> Unit) {
+    val scroll = rememberScrollState()
+    val scope = rememberCoroutineScope()
+    val shape = RoundedCornerShape(12.dp)
+    val ink = menuInk()
+    BoxWithConstraints(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp).clip(shape)
+            .background(ink.copy(alpha = 0.07f)).padding(2.dp),
+    ) {
+        val overflows = maxWidth < 48.dp * agents.size
+        val showArrows = overflows && maxWidth >= 144.dp
+        val slot = if (overflows) 48.dp else maxWidth / agents.size
+        val slotPixels = with(LocalDensity.current) { slot.roundToPx() }
+        LaunchedEffect(agents, selected, slotPixels, scroll.viewportSize) {
+            val index = agents.indexOf(selected)
+            if (overflows && index >= 0 && scroll.viewportSize >= slotPixels) {
+                val start = index * slotPixels
+                val target = scroll.value.coerceIn((start + slotPixels - scroll.viewportSize).coerceAtLeast(0), start)
+                if (scroll.value != target) scroll.scrollTo(target)
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (showArrows) ActionIcon(AppStrings.previousAgentOptions,
+                { scope.launch { scroll.animateScrollTo((scroll.value - scroll.viewportSize).coerceAtLeast(0)) } },
+                AppIcons.Back, enabled = scroll.canScrollBackward, tint = ink)
+            Row(Modifier.weight(1f).horizontalScroll(scroll).selectableGroup()) {
+                agents.forEach { agent ->
+                    val active = agent == selected
+                    Box(
+                        Modifier.width(slot).height(48.dp).clip(shape)
+                            .background(if (active) menuAccent() else Color.Transparent)
+                            .selectable(selected = active, role = Role.RadioButton) { select(agent) }
+                            .semantics { contentDescription = agent.label() },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        AppIcon(agent.glyph(), null, Modifier.size(22.dp), tint = if (active) MobbyColors.onAccent else ink)
+                    }
+                }
+            }
+            if (showArrows) ActionIcon(AppStrings.nextAgentOptions,
+                { scope.launch { scroll.animateScrollTo((scroll.value + scroll.viewportSize).coerceAtMost(scroll.maxValue)) } },
+                AppIcons.ChevronRight, enabled = scroll.canScrollForward, tint = ink)
+        }
     }
 }
 @Composable internal fun ConfigDialog(vm: ConversationViewModel, c: Conversation?, onDismiss: () -> Unit, onApply: (NextTurnConfig, String?) -> Unit, anchor: IntRect = IntRect.Zero, manageConnections: () -> Unit = {}) {

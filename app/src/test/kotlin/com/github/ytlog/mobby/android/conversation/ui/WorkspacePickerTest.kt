@@ -32,6 +32,7 @@ class WorkspacePickerTest {
     private var projectReply: CompletableDeferred<OperationResult>? = null
     private val savedProjects = mutableListOf<Project>()
     private var projectConfig: NextTurnConfig? = null
+    private val appliedConfigs = mutableListOf<NextTurnConfig>()
     private var gatewayDefault: AgentId? = AgentId.CODEX
     private var gatewayReads = 0
     private var gatewayReadGate: CompletableDeferred<Unit>? = null
@@ -66,7 +67,7 @@ class WorkspacePickerTest {
         } }
         val repository = stub<ConversationStore> { name, args -> when (name) {
             "getState" -> conversations
-            "configure" -> args[0] as String
+            "configure" -> { appliedConfigs += args[1] as NextTurnConfig; args[0] as String }
             "create" -> { newSessionCreated = true; ConversationId("new") }
             "createInProject" -> { projectConfig = args[0] as NextTurnConfig; "project-created" }
             "editDraft" -> Draft(text = args[1] as String)
@@ -147,7 +148,7 @@ class WorkspacePickerTest {
             if (menuOpen.value) AgentConfigMenu(true, { menuOpen.value = false }, current, vm)
             if (showDialog.value) ConfigDialog(dialogVm, current, {}, { config, _ -> submitted = config })
         } }
-        compose.onNodeWithText("Claude Code").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Claude Code").performClick()
         compose.onNodeWithText("应用").performClick()
         compose.waitForIdle()
         Assert.assertEquals(AgentId.CLAUDE_CODE, gatewayDefault)
@@ -240,17 +241,53 @@ class WorkspacePickerTest {
         compose.setContent { MaterialTheme { AgentConfigMenu(true, {}, conversation, vm) } }
         compose.onNodeWithText("新建并使用此配置").assertDoesNotExist()
         compose.onNodeWithText("应用").assertExists()
-        compose.onNodeWithText("Agent").assertExists()
-        compose.onNodeWithText("Claude Code").performScrollTo().performClick()
+        compose.onNodeWithText("Codex").assertExists()
+        compose.onNodeWithContentDescription("Claude Code").performClick()
         compose.onNodeWithText("仍在当前对话中继续", substring = true).assertExists()
         compose.onNodeWithText("应用").assertExists()
     }
-    @Test fun `agent menu shows gateway without repeating its model list`() {
+    @Test fun `agent menu shows a model summary and expands gateway settings on demand`() {
         val vm = vm()
         val conversation = Conversation(ConversationId("c"), NextTurnConfig(AgentId.CODEX, "model", null, "default", "CODEX"))
         compose.setContent { MaterialTheme { AgentConfigMenu(true, {}, conversation, vm) } }
+        compose.onNodeWithText("model").assertExists()
+        compose.onNodeWithText("API · example.test").assertDoesNotExist()
+        compose.onNodeWithText("模型与思考程度").performClick()
         compose.onNodeWithText("API · example.test").assertExists()
         compose.onNodeWithText("example.test · model · 1 个模型").assertDoesNotExist()
-        compose.onNodeWithText("model").assertExists()
+    }
+
+    @Test fun `icon selection and account model edits are saved only on apply`() {
+        val vm = vm()
+        compose.waitForIdle()
+        val route = AgentLogin(
+            AgentId.CLAUDE_CODE, "fixture", "Account", 3,
+            listOf(GatewayModel("native-first", "First"), GatewayModel("native-other", "Other")),
+            reasoningByModel = mapOf("native-other" to setOf("high")),
+        ).route()
+        compose.runOnIdle { vm.connections.value = vm.connections.value.filterNot { it.agent == route.agent } + route }
+        val menuOpen = mutableStateOf(true)
+        val conversation = Conversation(ConversationId("c"), NextTurnConfig(AgentId.CODEX, "model", null, "second", "CODEX", 1))
+        compose.setContent { MaterialTheme { AgentConfigMenu(menuOpen.value, { menuOpen.value = false }, conversation, vm) } }
+
+        compose.onNodeWithText("应用").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("Claude Code").performClick().assertIsSelected()
+        compose.onNodeWithText("First").assertExists()
+        compose.runOnIdle { Assert.assertTrue(appliedConfigs.isEmpty()) }
+        compose.runOnIdle { menuOpen.value = false }
+        compose.onNodeWithText("应用").assertDoesNotExist()
+        compose.runOnIdle { menuOpen.value = true }
+        compose.onNodeWithContentDescription("Codex").assertIsSelected()
+        compose.onNodeWithContentDescription("Claude Code").performClick()
+        compose.onNodeWithText("模型与思考程度").performClick()
+        compose.onNodeWithText("模型").performScrollTo().performClick()
+        compose.onNodeWithText("claude-fixture").assertDoesNotExist()
+        compose.onNodeWithText("Other").performScrollTo().performClick()
+        compose.onNodeWithText("思考程度").performScrollTo().performClick()
+        compose.onNodeWithText("high").performScrollTo().performClick()
+        compose.runOnIdle { Assert.assertTrue(appliedConfigs.isEmpty()) }
+        compose.onNodeWithText("应用").performClick()
+        compose.waitForIdle()
+        Assert.assertEquals(listOf(NextTurnConfig(AgentId.CLAUDE_CODE, "native-other", "high", "second", route.id, 3)), appliedConfigs)
     }
 }
