@@ -135,7 +135,7 @@ internal fun EffectState.toEffect() = when (this) {
 internal fun DeviceFailure.toCapability(): CapabilityException {
     val code = when (error.code) {
         DeviceErrorCode.INVALID_ARGUMENT -> ProgramErrorCode.INVALID_ARGUMENT
-        DeviceErrorCode.UNAUTHORIZED, DeviceErrorCode.PERMISSION_REVOKED -> ProgramErrorCode.PERMISSION_DENIED
+        DeviceErrorCode.UNAUTHORIZED, DeviceErrorCode.PERMISSION_REVOKED, DeviceErrorCode.ADB_AUTHORIZATION_REQUIRED -> ProgramErrorCode.PERMISSION_DENIED
         DeviceErrorCode.UNSUPPORTED_CAPABILITY, DeviceErrorCode.INCOMPATIBLE_VERSION -> ProgramErrorCode.UNSUPPORTED
         DeviceErrorCode.REQUEST_CONFLICT -> ProgramErrorCode.REQUEST_CONFLICT
         DeviceErrorCode.NOT_FOUND, DeviceErrorCode.RESOURCE_MISSING -> ProgramErrorCode.RESOURCE_MISSING

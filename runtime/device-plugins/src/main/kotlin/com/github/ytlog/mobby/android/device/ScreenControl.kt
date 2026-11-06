@@ -1,6 +1,9 @@
 package com.github.ytlog.mobby.android.device
 
+import com.github.ytlog.mobby.android.runtime.api.device.DeviceErrorCode
+import com.github.ytlog.mobby.android.runtime.api.device.DeviceFailure
 import com.github.ytlog.mobby.android.runtime.api.device.ScreenMode
+import com.github.ytlog.mobby.android.runtime.api.device.deviceFailure
 
 import com.github.ytlog.mobby.android.runtime.api.device.ScreenControlState
 import android.content.ComponentName
@@ -60,6 +63,7 @@ object ScreenControl {
         available(context) -> null
         state.value.mode == ScreenMode.CURRENT -> AppStrings.enableMobbySScreenAccessibilityServiceInSystemSettings
         Build.VERSION.SDK_INT < 33 -> AppStrings.virtualScreenAndroidVersion
+        state.value.mode == ScreenMode.ADB && channel?.authorizationLost == true -> AppStrings.adbScreenAuthorizationRequired
         else -> AppStrings.connectScreenBackend
     }
     private fun currentScreenPermission(context: Context): Boolean {
@@ -180,7 +184,10 @@ object ScreenControl {
             check(leases == 0) { AppStrings.screenModeBusy }
             val connected = channel ?: error(AppStrings.connectScreenBackend)
             val initial = openVirtual(context, mode, connected)
-            if (mode == ScreenMode.ADB) RecoveringAdbScreenSession(initial, { channel?.alive == true && state.value.active }, { channel?.alive == true }) {
+            if (mode == ScreenMode.ADB) RecoveringAdbScreenSession(
+                initial, { channel?.alive == true && state.value.active }, { channel?.alive == true },
+                checkAuthorization = { channel?.requireAuthorization() },
+            ) {
                 synchronized(this) {
                     check(state.value.mode == ScreenMode.ADB)
                     requireUnlocked(context)
@@ -278,6 +285,7 @@ object ScreenControl {
             val current = state.value
             val display = current.displayId
             val connection = channel
+            connection?.requireAuthorization()
             if (!current.active || display == null || display <= 0 || connection?.alive != true)
                 com.github.ytlog.mobby.android.runtime.api.device.deviceFailure(
                     com.github.ytlog.mobby.android.runtime.api.device.DeviceErrorCode.UNSUPPORTED_CAPABILITY)
@@ -341,6 +349,13 @@ object ScreenControl {
             }
             return result
         } catch (failure: Exception) {
+            if (failure is DeviceFailure && failure.error.code == DeviceErrorCode.ADB_AUTHORIZATION_REQUIRED) {
+                changes.update { current ->
+                    if (channel !== connection) current else current.copy(connected = false, active = false,
+                        displayId = null, jpeg = null, packageName = "", adbPaired = false, error = AppStrings.adbScreenAuthorizationRequired)
+                }
+                throw failure
+            }
             // A failed lifecycle operation leaves ownership uncertain. Closing the socket
             // makes the worker release its display, even if the response was lost.
             if (action in setOf("open", "close", "ping") || failure is java.util.concurrent.TimeoutException) connection.close()
@@ -373,12 +388,23 @@ object ScreenControl {
 internal fun screenShellQuote(value: String): String = "'" + value.replace("'", "'\\''") + "'"
 
 /** A persistent socket makes process death release the display. Requests are serialized and never retried. */
-internal class ScreenChannel(endpoint: JSONObject, root: Boolean) : AutoCloseable {
+internal class ScreenChannel(
+    endpoint: JSONObject,
+    root: Boolean,
+    private val verifyAdbAuthorization: (() -> Unit)? = null,
+) : AutoCloseable {
     private val socket = Socket()
     private val input: DataInputStream
     private val output: DataOutputStream
     @Volatile var alive = true
         private set
+    @Volatile var authorizationLost = false
+        private set
+
+    fun requireAuthorization() {
+        if (authorizationLost) deviceFailure(DeviceErrorCode.ADB_AUTHORIZATION_REQUIRED, AppStrings.adbScreenAuthorizationRequired)
+    }
+
     init {
         try {
             val port = endpoint.getInt("port"); require(port in 1..65535)
@@ -391,7 +417,18 @@ internal class ScreenChannel(endpoint: JSONObject, root: Boolean) : AutoCloseabl
         } catch (failure: Exception) { socket.close(); throw failure }
     }
     @Synchronized fun request(action: String, args: Map<String, String>): JSONObject {
+        requireAuthorization()
         check(alive) { "virtual_screen_disconnected" }
+        // Maintenance reads and cleanup cannot dispatch Agent actions.
+        if (verifyAdbAuthorization != null && action !in MAINTENANCE_ACTIONS) {
+            try { verifyAdbAuthorization() }
+            catch (cancelled: java.util.concurrent.CancellationException) { throw cancelled }
+            catch (_: Exception) {
+                authorizationLost = true
+                close()
+                requireAuthorization()
+            }
+        }
         try {
             send(JSONObject().put("action", action).put("args", JSONObject(args)))
             return receive()
@@ -412,4 +449,8 @@ internal class ScreenChannel(endpoint: JSONObject, root: Boolean) : AutoCloseabl
         return JSONObject(bytes.toString(Charsets.UTF_8))
     }
     override fun close() { alive = false; socket.close() }
+
+    private companion object {
+        val MAINTENANCE_ACTIONS = setOf("frame", "close", "cancel_private_input")
+    }
 }

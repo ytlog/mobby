@@ -145,6 +145,8 @@ internal class DeviceWorkflowManager(
                 status = status, result = DeviceResult("workflow", effect, data),
                 error = if (status in setOf(DeviceStatus.FAILED, DeviceStatus.UNCONFIRMED))
                     DeviceError(DeviceErrorCode.RESULT_UNCONFIRMED, effectState = effect) else null))
+        } catch (error: DeviceFailure) {
+            if (dispatched) uncertain(error.error.code) else failure(error.error.code, error.error.message)
         } catch (error: IllegalArgumentException) {
             if (dispatched) uncertain(DeviceErrorCode.RESULT_UNCONFIRMED) else failure(DeviceErrorCode.INVALID_ARGUMENT, error.message.orEmpty().take(160))
         } catch (error: IllegalStateException) {
@@ -183,7 +185,7 @@ internal class DeviceWorkflowManager(
             if (step.action !in allow["screen"].orEmpty()) { reason = "action_not_authorized"; break }
             val input = if (step.action == "type") step.transientText ?: values["input_${index + 1}"] ?: step.slot?.let(values::get) else null
             if (step.action == "type" && input.isNullOrBlank()) { reason = "missing_input_${index + 1}"; break }
-            val before = observe(step.query, null)
+            val before = observe(step.query, null, propagateAdbAuthorization = true)
             if (before == null || before.packageName.isBlank() ||
                 (step.before != null && !step.before.matches(before)) ||
                 (step.action == "click" && before.matches != 1) ||
@@ -226,7 +228,13 @@ internal class DeviceWorkflowManager(
             before.packageName != after.packageName || before.shape != after.shape
     }
 
-    private fun observe(query: String?, input: String?): ScreenEvidence? = try { inspect(query, input) } catch (_: Exception) { null }
+    private fun observe(query: String?, input: String?, propagateAdbAuthorization: Boolean = false): ScreenEvidence? =
+        try { inspect(query, input) }
+        catch (failure: Exception) {
+            if (propagateAdbAuthorization && failure is DeviceFailure &&
+                failure.error.code == DeviceErrorCode.ADB_AUTHORIZATION_REQUIRED) throw failure
+            null
+        }
 
     private fun observeAfter(action: String, before: ScreenEvidence?, query: String?, input: String?,
         receipt: DeviceResponse?): ScreenEvidence? {

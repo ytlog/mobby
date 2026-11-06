@@ -60,6 +60,7 @@ object DeviceLabels {
         DeviceErrorCode.REQUEST_CONFLICT -> text("相同请求编号的参数不一致", "Request ID conflicts with previous arguments")
         DeviceErrorCode.STALE_DEVICE_PROMPT -> text("此交互已过期，请查看最新状态", "Conversation expired; check the latest state")
         DeviceErrorCode.NOT_FOUND -> text("未找到该对象", "Object not found")
+        DeviceErrorCode.ADB_AUTHORIZATION_REQUIRED -> com.github.ytlog.mobby.android.localization.AppStrings.adbScreenAuthorizationRequired
         DeviceErrorCode.PERMISSION_REVOKED -> text("权限已撤销", "Permission revoked")
         DeviceErrorCode.RESOURCE_MISSING -> text("附件已过期或无法读取", "Attachment expired or unavailable")
         DeviceErrorCode.TIMEOUT -> text("操作超时", "Operation timed out")

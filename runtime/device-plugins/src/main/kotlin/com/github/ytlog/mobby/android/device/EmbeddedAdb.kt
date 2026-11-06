@@ -10,6 +10,7 @@ import kotlinx.coroutines.*
 import java.io.ByteArrayOutputStream
 import java.net.InetAddress
 import java.net.NetworkInterface
+import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -61,21 +62,42 @@ internal object EmbeddedAdb {
             val selected = port ?: discover(context)
             return withContext(Dispatchers.IO) {
                 val identity = ScreenAdbIdentity.load(context)
-                AdbConnection.Builder("127.0.0.1", selected).setApi(Build.VERSION.SDK_INT)
-                    .setPrivateKey(identity.key).setCertificate(identity.certificate).setDeviceName("mobby-screen").build().use { adb ->
+                transport(selected, identity).use { adb ->
                     ensureActive()
                     check(adb.connect(15, TimeUnit.SECONDS, true)) { "adb_connection_timeout" }
                     adb.open(bootstrapCommand(context.applicationInfo.sourceDir)).use { stream ->
                         val line = readEndpointLine(stream.openInputStream()) { ensureActive() }
                         val endpoint = org.json.JSONObject(line)
                         check(endpoint.getInt("uid") == 2000) { "adb_worker_identity" }
-                        ScreenChannel(endpoint, root = false).also { created = it }
+                        val peerKey = checkNotNull(adb.tlsPeerPublicKey).encoded
+                        ScreenChannel(endpoint, root = false, verifyAdbAuthorization = {
+                            try {
+                                verifyAuthorization(selected, identity, peerKey)
+                            } catch (cancelled: InterruptedException) {
+                                throw java.util.concurrent.CancellationException("ADB verification interrupted").apply { initCause(cancelled) }
+                            } catch (failure: Exception) {
+                                context.getSharedPreferences("screen-control", Context.MODE_PRIVATE).edit().remove("adb-paired").apply()
+                                throw failure
+                            }
+                        }).also { created = it }
                     }
                 }
             }
         } catch (failure: Throwable) {
             created?.close()
             throw failure
+        }
+    }
+
+    private fun transport(port: Int, identity: ScreenAdbIdentity.Identity): AdbConnection =
+        AdbConnection.Builder("127.0.0.1", port).setApi(Build.VERSION.SDK_INT)
+            .setPrivateKey(identity.key).setCertificate(identity.certificate).setDeviceName("mobby-screen").build()
+
+    private fun verifyAuthorization(port: Int, identity: ScreenAdbIdentity.Identity, peerKey: ByteArray) {
+        transport(port, identity).use { probe ->
+            check(probe.connect(3, TimeUnit.SECONDS, true)) { "adb_authorization_timeout" }
+            val actualKey = checkNotNull(probe.tlsPeerPublicKey).encoded
+            check(MessageDigest.isEqual(peerKey, actualKey)) { "adb_daemon_changed" }
         }
     }
 

@@ -2,6 +2,7 @@ package com.github.ytlog.mobby.android.device
 
 import com.github.ytlog.mobby.android.localization.AppStrings
 import com.github.ytlog.mobby.android.runtime.api.device.DeviceErrorCode
+import com.github.ytlog.mobby.android.runtime.api.device.DeviceFailure
 import com.github.ytlog.mobby.android.runtime.api.device.ScreenMode
 import com.github.ytlog.mobby.android.runtime.api.device.deviceFailure
 
@@ -21,19 +22,22 @@ internal class RecoveringAdbScreenSession(
     private var session: ScreenSession,
     private val displayAlive: () -> Boolean,
     private val connected: () -> Boolean,
+    private val checkAuthorization: () -> Unit = {},
     private val reopen: () -> ScreenSession,
 ) : ScreenSession {
     private var needsObservation = false
 
     override fun operate(action: String, args: Map<String, String>, checkActive: () -> Unit): ScreenAccessService.Observation {
         checkActive()
+        checkAuthorization()
         if (!displayAlive()) recover(checkActive)
         if (needsObservation && action !in setOf("apps", "snapshot", "launch"))
             deviceFailure(DeviceErrorCode.UNAVAILABLE, AppStrings.adbScreenReadAfterReconnect)
         val result = try {
             session.operate(action, args, checkActive)
         } catch (failure: Exception) {
-            if (failure is java.util.concurrent.CancellationException || displayAlive()) throw failure
+            if (failure is java.util.concurrent.CancellationException ||
+                failure is DeviceFailure && failure.error.code == DeviceErrorCode.ADB_AUTHORIZATION_REQUIRED || displayAlive()) throw failure
             // The prior action may already have reached Android. Wait for recovery, then report it.
             recover(checkActive)
             throw failure
@@ -46,6 +50,7 @@ internal class RecoveringAdbScreenSession(
         val deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(60)
         while (!connected()) {
             checkActive()
+            checkAuthorization()
             if (System.nanoTime() >= deadline)
                 throw java.util.concurrent.TimeoutException(AppStrings.adbScreenReconnectTimedOut)
             Thread.sleep(200)
@@ -57,6 +62,7 @@ internal class RecoveringAdbScreenSession(
     }
 
     override fun inspect(query: String?, expectedInput: String?): ScreenEvidence {
+        checkAuthorization()
         if (needsObservation || !displayAlive())
             deviceFailure(DeviceErrorCode.UNAVAILABLE, AppStrings.adbScreenReadAfterReconnect)
         return session.inspect(query, expectedInput)

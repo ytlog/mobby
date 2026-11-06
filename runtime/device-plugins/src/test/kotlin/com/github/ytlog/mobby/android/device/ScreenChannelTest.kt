@@ -1,5 +1,7 @@
 package com.github.ytlog.mobby.android.device
 
+import com.github.ytlog.mobby.android.runtime.api.device.DeviceErrorCode
+import com.github.ytlog.mobby.android.runtime.api.device.DeviceFailure
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
@@ -45,6 +47,32 @@ class ScreenChannelTest {
         withServer { endpoint, server ->
             val worker = server.submit { read(); write(JSONObject().put("ok", true).put("uid", 0)) }
             assertThrows(IllegalStateException::class.java) { ScreenChannel(endpoint, root = false) }
+            worker.get(2, TimeUnit.SECONDS)
+        }
+    }
+
+    @Test fun `revoked ADB pairing blocks the next command while the worker socket is still open`() {
+        withServer { endpoint, server ->
+            val worker = server.submit {
+                read()
+                write(JSONObject().put("ok", true).put("uid", 2000))
+                assertEquals("tap", read().getString("action"))
+                write(JSONObject().put("ok", true).put("displayId", 7))
+                assertEquals(-1, input!!.read())
+            }
+            var paired = true
+            ScreenChannel(endpoint, root = false, verifyAdbAuthorization = {
+                if (!paired) throw java.io.IOException("fixture ADB rejection")
+            }).use { channel ->
+                assertEquals(7, channel.request("tap", emptyMap()).getInt("displayId"))
+                paired = false
+                assertTrue(channel.alive)
+                val denied = assertThrows(DeviceFailure::class.java) {
+                    channel.request("private_input", mapOf("values" to "[]"))
+                }
+                assertEquals(DeviceErrorCode.ADB_AUTHORIZATION_REQUIRED, denied.error.code)
+                assertFalse(channel.alive)
+            }
             worker.get(2, TimeUnit.SECONDS)
         }
     }

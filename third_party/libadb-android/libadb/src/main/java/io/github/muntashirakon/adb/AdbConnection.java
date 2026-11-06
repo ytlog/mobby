@@ -19,6 +19,7 @@ import java.io.UnsupportedEncodingException;
 import java.net.ConnectException;
 import java.net.Socket;
 import java.security.PrivateKey;
+import java.security.PublicKey;
 import java.security.cert.Certificate;
 import java.security.interfaces.RSAPublicKey;
 import java.util.Objects;
@@ -140,6 +141,15 @@ public class AdbConnection implements Closeable {
     private final ConcurrentHashMap<Integer, AdbStream> mOpenedStreams;
 
     private volatile boolean mIsTls = false;
+
+    // mobby uses the bootstrap peer's public key to authenticate later probes.
+    @Nullable
+    private volatile PublicKey mTlsPeerPublicKey;
+
+    @Nullable
+    public PublicKey getTlsPeerPublicKey() {
+        return mTlsPeerPublicKey;
+    }
 
     @GuardedBy("lock")
     @NonNull
@@ -291,6 +301,7 @@ public class AdbConnection implements Closeable {
                                 SSLSocket tlsSocket = (SSLSocket) sslContext.getSocketFactory()
                                         .createSocket(mSocket, mHost, mPort, true);
                                 tlsSocket.startHandshake();
+                                mTlsPeerPublicKey = tlsSocket.getSession().getPeerCertificates()[0].getPublicKey();
                                 Log.d(TAG, "Handshake succeeded.");
 
                                 synchronized (AdbConnection.this) {
