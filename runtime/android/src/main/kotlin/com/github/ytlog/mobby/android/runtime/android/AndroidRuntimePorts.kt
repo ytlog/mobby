@@ -190,14 +190,15 @@ internal class AndroidRuntimePorts(
     private fun assemble(request: RunRequest, extras: List<Pair<String, File>>): PreparedTurn {
         val prepared = resources.prepare(request.inputParts, request.workspaceRef)
         val skillRefs = request.capabilityRefs.filterNot { it.value.startsWith("plugin:") }.toSet()
-        var prompt = skills.prompt(request.agentId, skillRefs, prepared.prompt, extras)
+        val basePrompt = skills.prompt(request.agentId, skillRefs, prepared.prompt, extras)
         val structured = request.requestedOutput == RequestedOutput.SKILL_PROPOSAL
-        if (structured) prompt += "\n\n" + SkillGeneration.instruction
+        val schema = if (structured) Json.parseToJsonElement(SkillGeneration.schema) else null
         val files = if (prepared.images.isEmpty()) null else AgentInputFiles.create(File(context.filesDir, "agent-inputs"), prepared.images)
+        var prompt = files?.describe(basePrompt) ?: basePrompt
+        if (structured) prompt += "\n\n" + SkillGeneration.instruction
         val images = prepared.images.mapIndexed { index, image ->
             TurnImage(image.mediaType, files?.imagePaths?.get(index) ?: "/", Base64.getEncoder().encodeToString(image.bytes))
         }
-        val schema = if (structured) Json.parseToJsonElement(SkillGeneration.schema) else null
         return PreparedTurn(AgentTurn(request.requestId, prompt, images, schema), files)
     }
     private suspend fun start(request: RunRequest, config: Route, stop: StateFlow<StopCause?>, devices: DeviceOperationPort, output: suspend (String, Boolean) -> Unit): ProcessResult {

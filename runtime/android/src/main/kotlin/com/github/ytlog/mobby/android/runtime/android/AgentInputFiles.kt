@@ -1,5 +1,6 @@
 package com.github.ytlog.mobby.android.runtime.android
 
+import com.github.ytlog.mobby.android.localization.AppStrings
 import com.github.ytlog.mobby.android.runtime.api.RequestId
 import com.github.ytlog.mobby.android.runtime.engine.AgentTurn
 import com.github.ytlog.mobby.android.runtime.engine.TurnImage
@@ -13,6 +14,9 @@ import java.util.Base64
 /** Per-run private materialization, removed after exit/cancel and during post-recovery startup. */
 internal class AgentInputFiles private constructor(private val directory: File, val imagePaths: List<String>, val schemaPath: String?) : Closeable {
     override fun close() = cleanup(directory)
+    /** Names this run's image copies so the agent can edit them; results it wants shown belong in the workspace. */
+    fun describe(prompt: String): String = if (imagePaths.isEmpty()) prompt
+        else prompt + "\n\n" + AppStrings.selectedImageFiles + imagePaths.mapIndexed { index, path -> "${index + 1}. $path" }.joinToString("\n")
     companion object {
         fun claudeMessage(prompt: String, images: List<ResourceStore.Image>): JsonObject =
             AgentTurn(RequestId("input"), prompt, images.map {

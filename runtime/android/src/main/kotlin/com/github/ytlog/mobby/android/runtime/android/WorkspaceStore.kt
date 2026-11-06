@@ -12,7 +12,7 @@ import kotlinx.coroutines.sync.withLock
 
 /** Managed execution directories; names are display text, never caller-selected paths. */
 internal class WorkspaceStore(home: File) {
-    private val home = home.canonicalFile
+    val home: File = home.canonicalFile
     private val root get() = File(home, "workspaces")
     private val registry get() = File(root, ".names")
     fun resolve(ref: WorkspaceRef): File? {

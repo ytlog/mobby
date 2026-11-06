@@ -1060,7 +1060,12 @@ internal fun timelineGap(previous: TimelineBlock?, next: TimelineBlock): Dp = wh
                                 deviceRow = { com.github.ytlog.mobby.android.deviceoperation.ConversationDeviceCard(it.operation, turn, detail.conversation, vm) }, read = read)
                         }
                         is TimelineEntry.Reply -> block(entry.itemKey(turn), TimelineBlock.PROSE) {
-                            ReplyContent(entry.message.text, streaming = turn.occupied && turn.phase != ExecutionPhase.CANCELLING && entry.message.id == lastReply?.id, read = read)
+                            ReplyContent(
+                                entry.message.text,
+                                streaming = turn.occupied && turn.phase != ExecutionPhase.CANCELLING && entry.message.id == lastReply?.id,
+                                images = { source, expanded -> vm.actions.previewReplyImage(turn.workspace, source, expanded) },
+                                read = read,
+                            )
                         }
                     }
                 }

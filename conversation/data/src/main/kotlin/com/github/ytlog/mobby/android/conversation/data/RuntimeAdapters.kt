@@ -123,6 +123,20 @@ internal class RuntimeSystemAdapter(private val context: android.content.Context
         is AdminResult.Success -> DataResult.Loaded(AttachmentPreview(result.value.bytes))
         is AdminResult.Failed -> DataResult.Failed(result.error.message())
     }
+    override suspend fun previewReplyImage(workspace: String, source: String, expanded: Boolean): DataResult<AttachmentPreview> = when (val result = admin.previewReplyImage(WorkspaceRef(workspace), source, expanded)) {
+        is AdminResult.Success -> when (val preview = result.value) {
+            is ReplyImagePreview.Ready -> DataResult.Loaded(AttachmentPreview(preview.bytes))
+            is ReplyImagePreview.Rejected -> DataResult.Failed(when (preview.problem) {
+                ReplyImageProblem.UNSUPPORTED_SOURCE -> AppStrings.replyImageSourceNotSupported
+                ReplyImageProblem.OUTSIDE_WORKSPACE -> AppStrings.replyImageOutsideWorkspace
+                ReplyImageProblem.MISSING -> AppStrings.replyImageMissing
+                ReplyImageProblem.NOT_IMAGE -> AppStrings.replyImageNotAnImage
+                ReplyImageProblem.TOO_LARGE -> AppStrings.replyImageTooLarge
+                ReplyImageProblem.DOWNLOAD_FAILED -> AppStrings.replyImageDownloadFailed
+            })
+        }
+        is AdminResult.Failed -> DataResult.Failed(result.error.message())
+    }
     override suspend fun attachment(workspace: String, ref: String): DataResult<Attachment> = when (val result = admin.resource(ResourceRef(ref), WorkspaceRef(workspace))) {
         is AdminResult.Success -> DataResult.Loaded(Attachment(result.value.ref.value, result.value.name, result.value.sizeBytes, result.value.mediaType))
         is AdminResult.Failed -> DataResult.Failed(result.error.message())

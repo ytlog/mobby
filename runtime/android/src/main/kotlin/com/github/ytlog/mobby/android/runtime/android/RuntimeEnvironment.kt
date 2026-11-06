@@ -38,7 +38,7 @@ class RuntimeEnvironment(private val context: Context) {
         check(sdk.isInstalled) { AppStrings.apkIsMissingAnExecutableBashResource }
         output(AppStrings.preparingBundledRuntimeFiles)
         prepareFiles(nativeDir, output)
-        SkillStore(sdk.vfs.homeDir).installBundled(listOf("skill-creator", "skill-installer").associateWith { name ->
+        SkillStore(sdk.vfs.homeDir).installBundled(listOf("skill-creator", "skill-installer", "reply-images").associateWith { name ->
             context.assets.open("skills/$name/SKILL.md").bufferedReader().use { it.readText() }
         })
         com.github.ytlog.mobby.android.runtime.android.gateway.GatewayStore(context).preferPiDefault()

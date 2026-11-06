@@ -164,6 +164,13 @@ internal open class RuntimeService : Service(), RuntimeAdminClient, RuntimeDiagn
         try { AdminResult.Success(resources().summary(ref, workspace)) }
         catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.RESOURCE_MISSING)) }
     }
+    override suspend fun previewReplyImage(workspace: WorkspaceRef, source: String, expanded: Boolean): AdminResult<ReplyImagePreview> = withContext(Dispatchers.IO) {
+        val store = WorkspaceStore.forContext(this@RuntimeService)
+        val directory = store.resolve(workspace) ?: return@withContext AdminResult.Failed(RuntimeError(ErrorCode.RESOURCE_MISSING))
+        try { AdminResult.Success(ReplyImages(store.home).preview(directory, source, expanded)) }
+        catch (e: CancellationException) { throw e }
+        catch (_: Exception) { AdminResult.Failed(RuntimeError(ErrorCode.RESOURCE_MISSING)) }
+    }
     override suspend fun listWorkspaces(): AdminResult<List<WorkspaceSummary>> = withContext(Dispatchers.IO) {
         if (environment.value.phase != EnvironmentPhase.READY) return@withContext AdminResult.Failed(RuntimeError(ErrorCode.NOT_READY, true))
         try { AdminResult.Success(runtime.workspaces.list()) }

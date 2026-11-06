@@ -11,6 +11,10 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.semantics.Role
+import com.github.ytlog.mobby.android.conversation.domain.AttachmentPreview
+import com.github.ytlog.mobby.android.conversation.domain.DataResult
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -50,7 +54,22 @@ internal object ReplyMarkdown {
         uri.scheme?.lowercase() in setOf("https", "http", "mailto") &&
             if (uri.scheme.equals("mailto", true)) !uri.schemeSpecificPart.isNullOrBlank() else !uri.host.isNullOrBlank()
     }.getOrDefault(false)
+    /** Images the runtime can show: workspace paths and inline data load at once, https waits for the user. Others stay text. */
+    enum class ImageSource { LOCAL, REMOTE }
+    fun imageSource(destination: String): ImageSource? {
+        val value = destination.trim()
+        if (value.isEmpty()) return null
+        if (value.startsWith("data:image/", ignoreCase = true)) return ImageSource.LOCAL
+        return when (Regex("^([a-zA-Z][a-zA-Z0-9+.-]*):").find(value)?.groupValues?.get(1)?.lowercase()) {
+            null, "file" -> ImageSource.LOCAL
+            "https" -> ImageSource.REMOTE.takeIf { runCatching { !URI(value).host.isNullOrBlank() }.getOrDefault(false) }
+            else -> null
+        }
+    }
 }
+
+/** Loads an image named in a reply for the workspace the turn ran in. */
+internal fun interface ReplyImageLoader { suspend fun load(source: String, expanded: Boolean): DataResult<AttachmentPreview> }
 
 /** Text style for Markdown shown as process detail; null for a reply, which uses the full reading size. */
 internal val LocalReplyDetailStyle = staticCompositionLocalOf<TextStyle?> { null }
@@ -60,7 +79,7 @@ internal val LocalReplyParser = staticCompositionLocalOf<(String) -> Node> { Rep
 private val replyParsingDispatcher = Dispatchers.Default.limitedParallelism(1)
 private data class ParsedReply(val source: String, val document: Node)
 
-@Composable internal fun ReplyContent(text: String, streaming: Boolean = false, read: (String, String) -> Unit) {
+@Composable internal fun ReplyContent(text: String, streaming: Boolean = false, images: ReplyImageLoader? = null, read: (String, String) -> Unit) {
     val stream = if (streaming) rememberStreamPresentation(text, true) else StreamPresentation(text)
     val source = if (streaming) stream.markdown else text
     val parse = LocalReplyParser.current
@@ -70,14 +89,14 @@ private data class ParsedReply(val source: String, val document: Node)
     }
     val visible = parsed?.takeIf { source.startsWith(it.source) }
     Column {
-        visible?.let { MarkdownBlocks(ReplyMarkdown.children(it.document), read) }
+        visible?.let { MarkdownBlocks(ReplyMarkdown.children(it.document), read, images) }
         if (!streaming && source.isNotEmpty() && visible == null) {
             Text(AppStrings.formatting, style = MaterialTheme.typography.labelSmall)
         }
     }
 }
 
-@Composable private fun MarkdownBlocks(nodes: List<Node>, read: (String, String) -> Unit) {
+@Composable private fun MarkdownBlocks(nodes: List<Node>, read: (String, String) -> Unit, images: ReplyImageLoader?) {
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         nodes.forEachIndexed { index, node -> when (node) {
             is Heading -> MarkdownInline(node, LocalReplyDetailStyle.current?.copy(fontWeight = FontWeight.SemiBold) ?: when (node.level) {
@@ -85,7 +104,7 @@ private data class ParsedReply(val source: String, val document: Node)
                 2 -> MaterialTheme.typography.titleLarge.copy(fontSize = 18.sp, lineHeight = 26.sp, fontWeight = FontWeight.SemiBold)
                 else -> MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
             }, Modifier.padding(top = if (index > 0) 6.dp else 0.dp).semantics { heading() })
-            is org.commonmark.node.Paragraph -> MarkdownInline(node)
+            is org.commonmark.node.Paragraph -> MarkdownParagraph(node, images)
             is FencedCodeBlock -> CodeContent(node.info.ifBlank { AppStrings.code }, node.literal, read)
             is IndentedCodeBlock -> CodeContent(AppStrings.code, node.literal, read)
             is BlockQuote -> {
@@ -93,31 +112,95 @@ private data class ParsedReply(val source: String, val document: Node)
                 Box(Modifier.fillMaxWidth().drawBehind {
                     drawRoundRect(bar, size = Size(3.dp.toPx(), size.height), cornerRadius = CornerRadius(1.5.dp.toPx()))
                 }.padding(start = 14.dp)) {
-                    CompositionLocalProvider(LocalContentColor provides toolCallInk()) { MarkdownBlocks(ReplyMarkdown.children(node), read) }
+                    CompositionLocalProvider(LocalContentColor provides toolCallInk()) { MarkdownBlocks(ReplyMarkdown.children(node), read, images) }
                 }
             }
-            is BulletList -> MarkdownList(node, null, read)
-            is OrderedList -> MarkdownList(node, node.markerStartNumber ?: 1, read)
+            is BulletList -> MarkdownList(node, null, read, images)
+            is OrderedList -> MarkdownList(node, node.markerStartNumber ?: 1, read, images)
             is ThematicBreak -> HorizontalDivider()
             is TableBlock -> MarkdownTable(node)
             is HtmlBlock -> CodeContent("HTML", node.literal, read)
             is LinkReferenceDefinition -> Unit
-            else -> if (node.firstChild != null) MarkdownBlocks(ReplyMarkdown.children(node), read)
+            else -> if (node.firstChild != null) MarkdownBlocks(ReplyMarkdown.children(node), read, images)
         } }
     }
 }
 
-@Composable private fun MarkdownList(node: Node, start: Int?, read: (String, String) -> Unit) {
+@Composable private fun MarkdownList(node: Node, start: Int?, read: (String, String) -> Unit, images: ReplyImageLoader?) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         ReplyMarkdown.children(node).forEachIndexed { index, item ->
             val children = ReplyMarkdown.children(item)
             val task = children.filterIsInstance<TaskListItemMarker>().firstOrNull()
             Row(Modifier.fillMaxWidth()) {
                 Text(if (task != null) if (task.isChecked) "☑" else "☐" else if (start == null) "•" else "${start + index}.", Modifier.widthIn(min = 20.dp).padding(end = 4.dp), style = LocalReplyDetailStyle.current ?: MaterialTheme.typography.bodyLarge, color = toolCallInk())
-                Box(Modifier.weight(1f)) { MarkdownBlocks(children.filterNot { it is TaskListItemMarker }, read) }
+                Box(Modifier.weight(1f)) { MarkdownBlocks(children.filterNot { it is TaskListItemMarker }, read, images) }
             }
         }
     }
+}
+
+/** Displayable images become blocks in reading order; the text around them stays inline. */
+@Composable private fun MarkdownParagraph(node: org.commonmark.node.Paragraph, images: ReplyImageLoader?) {
+    if (images == null) return MarkdownInline(node)
+    val children = ReplyMarkdown.children(node)
+    fun shown(child: Node) = child is Image && ReplyMarkdown.imageSource(child.destination) != null
+    if (children.none(::shown)) return MarkdownInline(node)
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        val run = mutableListOf<Node>()
+        @Composable fun flush() {
+            val hasContent = run.any { node ->
+                when (node) {
+                    is SoftLineBreak, is HardLineBreak -> false
+                    is org.commonmark.node.Text -> node.literal.isNotBlank()
+                    else -> true
+                }
+            }
+            if (hasContent) MarkdownInline(run.toList(), trim = true)
+            run.clear()
+        }
+        children.forEach { child ->
+            if (shown(child)) {
+                flush()
+                ReplyImage(child as Image, images)
+            } else run += child
+        }
+        flush()
+    }
+}
+
+@Composable private fun ReplyImage(image: Image, images: ReplyImageLoader) {
+    val source = image.destination.trim()
+    val name = remember(image) { buildString {
+        fun visit(node: Node) { if (node is org.commonmark.node.Text) append(node.literal) else ReplyMarkdown.children(node).forEach(::visit) }
+        visit(image)
+    }.trim().ifEmpty { AppStrings.replyImage } }
+    val remote = ReplyMarkdown.imageSource(source) == ReplyMarkdown.ImageSource.REMOTE
+    var requested by remember(source) { mutableStateOf(!remote) }
+    var expanded by remember(source) { mutableStateOf(false) }
+    // The inline and full views share one load, so a web image is downloaded once.
+    var loaded by remember(source) { mutableStateOf<AttachmentPreview?>(null) }
+    val load: suspend (Boolean) -> DataResult<AttachmentPreview> = { _ ->
+        loaded?.let { DataResult.Loaded(it) } ?: images.load(source, true).also { if (it is DataResult.Loaded) loaded = it.value }
+    }
+    if (!requested) {
+        Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(12.dp)).padding(12.dp)) {
+            Text(AppStrings.networkImageFrom(URI(source).host), style = MaterialTheme.typography.bodySmall)
+            Text(name, style = MaterialTheme.typography.bodyMedium)
+            TextButton(onClick = { requested = true }) { Text(AppStrings.loadNetworkImage) }
+        }
+    } else {
+        val frame = Modifier.fillMaxWidth().heightIn(max = 320.dp)
+        val preview = if (loaded == null) frame else frame.clickable(role = Role.Button, onClickLabel = AppStrings.viewImage) {
+            expanded = true
+        }
+        AttachmentImage(source, name, true, load, preview)
+    }
+    if (expanded) AlertDialog(
+        onDismissRequest = { expanded = false },
+        title = { Text(name, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
+        text = { AttachmentImage(source, name, true, load, Modifier.fillMaxWidth().heightIn(min = 120.dp, max = 480.dp)) },
+        confirmButton = { TextButton(onClick = { expanded = false }) { Text(AppStrings.closePreview) } }
+    )
 }
 
 /**
@@ -193,10 +276,18 @@ private fun spread(base: List<Int>, weights: List<Int>, extra: Int): List<Int> {
     }
 }
 
-@Composable private fun MarkdownInline(node: Node, style: TextStyle = LocalReplyDetailStyle.current ?: MaterialTheme.typography.bodyLarge, modifier: Modifier = Modifier) {
+@Composable private fun MarkdownInline(node: Node, style: TextStyle = LocalReplyDetailStyle.current ?: MaterialTheme.typography.bodyLarge, modifier: Modifier = Modifier) =
+    MarkdownInline(listOf(node), style, modifier)
+
+@Composable private fun MarkdownInline(
+    nodes: List<Node>,
+    style: TextStyle = LocalReplyDetailStyle.current ?: MaterialTheme.typography.bodyLarge,
+    modifier: Modifier = Modifier,
+    trim: Boolean = false,
+) {
     val linkColor = MaterialTheme.colorScheme.primary
     val codeBackground = MaterialTheme.colorScheme.surfaceContainer
-    val value = remember(node, linkColor, codeBackground) {
+    val value = remember(nodes, linkColor, codeBackground, trim) {
         buildAnnotatedString {
             fun visit(current: Node) {
                 when (current) {
@@ -225,7 +316,10 @@ private fun spread(base: List<Int>, weights: List<Int>, extra: Int): List<Int> {
                     else -> ReplyMarkdown.children(current).forEach(::visit)
                 }
             }
-            visit(node)
+            nodes.forEach(::visit)
+        }.let { value ->
+            val start = if (trim) value.text.indexOfFirst { !it.isWhitespace() } else -1
+            if (start < 0) value else value.subSequence(start, value.text.indexOfLast { !it.isWhitespace() } + 1)
         }
     }
     val links = value.getStringAnnotations("URL", 0, value.length)

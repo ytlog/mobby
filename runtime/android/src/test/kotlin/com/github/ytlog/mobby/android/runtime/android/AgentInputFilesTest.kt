@@ -26,6 +26,19 @@ class AgentInputFilesTest {
         assertEquals("image/png", source.getValue("media_type").jsonPrimitive.content)
         assertArrayEquals(bytes, Base64.getDecoder().decode(source.getValue("data").jsonPrimitive.content))
     }
+    @Test fun `prompt names each image copy in order and asks for workspace results`() {
+        val root = temporary.newFolder()
+        val images = listOf(ResourceStore.Image("a.png", "image/png", byteArrayOf(1)), ResourceStore.Image("b.jpg", "image/jpeg", byteArrayOf(2)))
+        AgentInputFiles.create(root, images).use { input ->
+            val prompt = input.describe("修一下这两张")
+            assertTrue(prompt.startsWith("修一下这两张\n\n"))
+            val listed = prompt.lines().takeLast(2)
+            assertEquals(listOf("1. ${input.imagePaths[0]}", "2. ${input.imagePaths[1]}"), listed)
+            assertTrue(input.imagePaths.all { File(it).isAbsolute && File(it).isFile })
+            assertTrue("![" in prompt)
+        }
+        AgentInputFiles.create(root, emptyList()).use { assertEquals("only text", it.describe("only text")) }
+    }
     @Test fun `failed or interrupted scope and startup cleanup leave no temporary input and never follow links`() {
         val root = temporary.newFolder()
         assertThrows(IllegalStateException::class.java) {

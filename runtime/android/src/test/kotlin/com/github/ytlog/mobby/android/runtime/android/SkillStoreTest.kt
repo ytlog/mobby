@@ -12,6 +12,15 @@ import java.nio.file.Files
 class SkillStoreTest {
     @get:Rule val temporary = TemporaryFolder()
     private fun document(name: String = "review", body: String = "Review files") = SkillDocument.manual(name, "Use for reviewing", body).markdown
+    @Test fun `every bundled skill installs for all four agents`() {
+        val bundled = File("src/main/assets/skills").listFiles()!!.filter { it.isDirectory }.associate { it.name to File(it, "SKILL.md").readText() }
+        assertTrue("reply-images" in bundled)
+        val store = SkillStore(temporary.newFolder())
+        store.installBundled(bundled)
+        for (agent in listOf(AgentId.PI, AgentId.CODEX, AgentId.CLAUDE_CODE, AgentId.OPEN_CODE)) {
+            assertEquals(agent.name, bundled.keys, store.list(agent).filter { it.source == SkillSource.BUILTIN && it.available }.map { it.name }.toSet())
+        }
+    }
     @Test fun `Pi shares existing skills after upgrade without overwriting conflicts`() {
         for (conflict in listOf(false, true)) {
             val home = temporary.newFolder(); val store = SkillStore(home)

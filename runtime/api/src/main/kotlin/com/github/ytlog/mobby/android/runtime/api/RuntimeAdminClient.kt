@@ -28,6 +28,8 @@ interface RuntimeAdminClient {
     suspend fun previewResource(ref: ResourceRef, workspace: WorkspaceRef, expanded: Boolean): AdminResult<ResourcePreview>
     suspend fun importResource(request: ImportResourceRequest): AdminResult<ResourceSummary>
     suspend fun resource(ref: ResourceRef, workspace: WorkspaceRef): AdminResult<ResourceSummary>
+    /** [source] is a reply Markdown image destination: a file inside [workspace], an https URL, or a data URI. */
+    suspend fun previewReplyImage(workspace: WorkspaceRef, source: String, expanded: Boolean): AdminResult<ReplyImagePreview> = AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
     val environment: StateFlow<EnvironmentSnapshot>
     suspend fun listSkills(agent: AgentId): AdminResult<List<SkillSummary>>
     suspend fun listPlugins(): AdminResult<List<PluginSummary>> = AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
@@ -88,3 +90,11 @@ data class ResourceSummary(val ref: ResourceRef, val name: String, val sizeBytes
 
 /** Transient, bounded PNG preview; never persisted in conversation state. */
 class ResourcePreview(val bytes: ByteArray)
+
+/** Why an image named in a reply cannot be shown; each case reaches the user as is. */
+enum class ReplyImageProblem { UNSUPPORTED_SOURCE, OUTSIDE_WORKSPACE, MISSING, NOT_IMAGE, TOO_LARGE, DOWNLOAD_FAILED }
+sealed interface ReplyImagePreview {
+    /** Bounded PNG preview, like [ResourcePreview]. */
+    class Ready(val bytes: ByteArray) : ReplyImagePreview
+    data class Rejected(val problem: ReplyImageProblem) : ReplyImagePreview
+}

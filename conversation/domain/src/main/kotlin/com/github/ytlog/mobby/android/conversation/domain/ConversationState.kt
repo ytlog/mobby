@@ -131,6 +131,8 @@ interface SystemPort {
     suspend fun importAttachment(workspace: String, location: String): DataResult<Attachment>
     suspend fun previewAttachment(workspace: String, ref: String, expanded: Boolean): DataResult<AttachmentPreview>
     suspend fun attachment(workspace: String, ref: String): DataResult<Attachment>
+    /** [source] is an image destination written in a reply of a turn that ran in [workspace]. */
+    suspend fun previewReplyImage(workspace: String, source: String, expanded: Boolean): DataResult<AttachmentPreview> = DataResult.Failed(AppStrings.couldNotReadImagePreview)
     suspend fun skills(agent: AgentId): DataResult<List<Skill>>
     suspend fun plugins(): DataResult<List<Plugin>> = DataResult.Loaded(emptyList())
     suspend fun appFunctions(): DataResult<AppFunctionDirectory> = DataResult.Loaded(AppFunctionDirectory(AppFunctionAvailability.UNSUPPORTED_DEVICE))
@@ -373,6 +375,7 @@ class ConversationUseCases(
     suspend fun discardAttachment(id: ConversationId, pendingId: String) = repository.discardAttachment(id, pendingId)
     suspend fun previewAttachment(workspace: String, ref: String, expanded: Boolean) = system.previewAttachment(workspace, ref, expanded)
     suspend fun attachment(workspace: String, ref: String) = system.attachment(workspace, ref)
+    suspend fun previewReplyImage(workspace: String, source: String, expanded: Boolean) = system.previewReplyImage(workspace, source, expanded)
     suspend fun restoreDraft(id: ConversationId, turn: Turn) = repository.restoreDraft(id, turn.userText, turn.attachments)
     suspend fun removeAttachment(id: ConversationId, ref: String) = repository.setAttachment(id, ref, false)
     suspend fun nativeAccounts() = system.nativeAccounts()
