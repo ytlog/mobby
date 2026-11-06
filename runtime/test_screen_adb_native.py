@@ -17,5 +17,5 @@ class ScreenAdbNativeTest(unittest.TestCase):
             subprocess.run([shutil.which('cc'), '-I' + str(source / 'include'),
                             str(ROOT / 'runtime/device-plugins/spake2_entropy_test.c'),
                             str(source / 'spake2.c'), str(source / 'sha512.c'), '-o', str(executable)],
-                           check=True, capture_output=True, timeout=30)
+                           check=True, timeout=30)
             subprocess.run([str(executable)], check=True, capture_output=True, timeout=10)
