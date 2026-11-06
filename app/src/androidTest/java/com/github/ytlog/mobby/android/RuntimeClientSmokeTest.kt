@@ -32,7 +32,9 @@ class RuntimeClientSmokeTest {
         val stopped = withTimeout(10_000) { host.diagnostics.state.first { it.phase?.terminal == true } }
         assertEquals(RunPhase.CANCELLED, stopped.phase)
         assertEquals(CommandResult.Accepted, host.diagnostics.executeShell("node -e 'console.log(6*7)'"))
-        val next = withTimeout(10_000) { host.diagnostics.state.first { it.phase?.terminal == true } }
+        // The host relays service state asynchronously, so it can still expose the
+        // previous command's terminal state after accepting the next command.
+        val next = withTimeout(10_000) { host.diagnostics.state.first { it != stopped && it.phase?.terminal == true } }
         assertEquals(RunPhase.SUCCEEDED, next.phase)
         assertTrue(next.output.contains("42"))
     }
