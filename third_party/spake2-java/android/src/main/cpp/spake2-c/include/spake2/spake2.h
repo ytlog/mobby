@@ -17,7 +17,8 @@
 #ifndef _SPAKE2_H
 #define _SPAKE2_H 1
 
-#include<stdlib.h>
+#include <stdint.h>
+#include <stdlib.h>
 
 #ifdef __cplusplus
 extern "C" {
