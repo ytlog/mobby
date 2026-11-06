@@ -18,8 +18,8 @@
 | 依赖 | 版本 | 来源 |
 | --- | --- | --- |
 | Git | 2.56.0 | Termux 官方仓库 |
-| Node.js | 24.22.1 | Termux 官方仓库 |
-| npm | 12.2.1 | Termux 官方仓库 |
+| Node.js | 24.22.2 | Termux 官方仓库 |
+| npm | 12.2.2 | Termux 官方仓库 |
 | Claude Code | 2.1.112 | Anthropic 官方 npm JavaScript 版本 |
 | Codex | 0.155.1 | OpenAI 官方 npm ARM64 musl CLI |
 | OpenCode | 1.18.32-0 | C04-wq/opencode-termux，内含官方 1.18.32 musl 程序与 musl 加载器 |
@@ -31,7 +31,7 @@
 设备：M2007J1SC，Android 13 / API 33，ARM64。
 
 - 更新 APK 已覆盖安装到手机，应用启动后自动部署依赖。
-- 在应用 UID 下逐项验证五个命令，均返回上表中的实际版本。
+- 在应用 UID 下逐项验证五个命令，均返回当时锁定的版本。
 - Node.js 执行 `console.log(6*7)` 返回 `42`。
 - 自动创建的 workspace 中 `git rev-parse --is-inside-work-tree` 返回 `true`。
 - Node.js HTTPS 请求 npm 官方 ping 接口返回 200，证书链验证有效。

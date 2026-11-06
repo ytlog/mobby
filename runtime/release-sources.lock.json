@@ -1,6 +1,6 @@
 {
   "bootstrap_sha256": "1f48f4d05da9fab3ce74fb1d9b137fdbc745ba1f7a6f9e8f743fd89b7047d17b",
-  "agents_lock_sha256": "cb4d08e4a9188fa4ea7d0d0d5b36e6a079089b8ef3c313d5291c980954345d11",
+  "agents_lock_sha256": "1866eb0681081b34cc810aa000ac452b47132d20410d8678e8fab746aa19d686",
   "packages": [
     {
       "name": "pcre2",
@@ -60,19 +60,23 @@
     },
     {
       "name": "ca-certificates",
-      "version": "1:2026.10.20-1",
+      "version": "1:2026.11.05",
       "license": "MPL-2.0",
       "recipe": "ca-certificates",
-      "recipe_commit": "563197b5464c56971bb1e50cfb560fd6ccd0419c",
-      "recipe_source_input": "termux-runtime-recipes"
+      "recipe_commit": "5bb067b440eafcb1e3abe76adfefa52b58d44d90",
+      "recipe_source_input": "termux-november-runtime-recipes",
+      "source_inputs": [
+        "termux-ca-certificates-2026-11-05",
+        "termux-november-runtime-recipes"
+      ]
     },
     {
       "name": "zlib",
-      "version": "1.3.2",
+      "version": "1.4",
       "license": "ZLIB",
       "recipe": "zlib",
-      "recipe_commit": "e392c87ee0005397d3b3b9b43576c270bef76cd8",
-      "recipe_source_input": "termux-agent-recipes"
+      "recipe_commit": "5bb067b440eafcb1e3abe76adfefa52b58d44d90",
+      "recipe_source_input": "termux-november-runtime-recipes"
     },
     {
       "name": "openssl",
@@ -384,19 +388,19 @@
     },
     {
       "name": "libnghttp2",
-      "version": "1.70.0",
+      "version": "1.71.0",
       "license": "MIT",
       "recipe": "libnghttp2",
-      "recipe_commit": "e392c87ee0005397d3b3b9b43576c270bef76cd8",
-      "recipe_source_input": "termux-agent-recipes"
+      "recipe_commit": "5bb067b440eafcb1e3abe76adfefa52b58d44d90",
+      "recipe_source_input": "termux-november-runtime-recipes"
     },
     {
       "name": "libngtcp2",
-      "version": "1.25.0",
+      "version": "1.26.0",
       "license": "MIT",
       "recipe": "libngtcp2",
-      "recipe_commit": "e392c87ee0005397d3b3b9b43576c270bef76cd8",
-      "recipe_source_input": "termux-agent-recipes"
+      "recipe_commit": "5bb067b440eafcb1e3abe76adfefa52b58d44d90",
+      "recipe_source_input": "termux-november-runtime-recipes"
     },
     {
       "name": "resolv-conf",
@@ -510,11 +514,11 @@
     },
     {
       "name": "libnghttp3",
-      "version": "1.18.0",
+      "version": "1.19.0",
       "license": "MIT",
       "recipe": "libnghttp3",
-      "recipe_commit": "e392c87ee0005397d3b3b9b43576c270bef76cd8",
-      "recipe_source_input": "termux-agent-recipes"
+      "recipe_commit": "5bb067b440eafcb1e3abe76adfefa52b58d44d90",
+      "recipe_source_input": "termux-november-runtime-recipes"
     },
     {
       "name": "libssh2",
@@ -855,11 +859,11 @@
     },
     {
       "name": "libexpat",
-      "version": "2.9.0",
+      "version": "2.10.0",
       "license": "MIT",
       "recipe": "libexpat",
-      "recipe_commit": "563197b5464c56971bb1e50cfb560fd6ccd0419c",
-      "recipe_source_input": "termux-runtime-recipes"
+      "recipe_commit": "5bb067b440eafcb1e3abe76adfefa52b58d44d90",
+      "recipe_source_input": "termux-november-runtime-recipes"
     },
     {
       "name": "libicu",
@@ -871,27 +875,27 @@
     },
     {
       "name": "libsqlite",
-      "version": "3.54.1",
+      "version": "3.54.1-1",
       "license": "Public Domain",
       "recipe": "libsqlite",
-      "recipe_commit": "563197b5464c56971bb1e50cfb560fd6ccd0419c",
-      "recipe_source_input": "termux-runtime-recipes"
+      "recipe_commit": "5bb067b440eafcb1e3abe76adfefa52b58d44d90",
+      "recipe_source_input": "termux-november-runtime-recipes"
     },
     {
       "name": "nodejs-lts",
-      "version": "24.22.1",
+      "version": "24.22.2",
       "license": "MIT",
       "recipe": "nodejs-lts",
-      "recipe_commit": "563197b5464c56971bb1e50cfb560fd6ccd0419c",
-      "recipe_source_input": "termux-runtime-recipes"
+      "recipe_commit": "5bb067b440eafcb1e3abe76adfefa52b58d44d90",
+      "recipe_source_input": "termux-november-runtime-recipes"
     },
     {
       "name": "npm",
-      "version": "12.2.1",
+      "version": "12.2.2",
       "license": "Artistic-License-2.0",
       "recipe": "npm",
-      "recipe_commit": "563197b5464c56971bb1e50cfb560fd6ccd0419c",
-      "recipe_source_input": "termux-runtime-recipes"
+      "recipe_commit": "5bb067b440eafcb1e3abe76adfefa52b58d44d90",
+      "recipe_source_input": "termux-november-runtime-recipes"
     },
     {
       "name": "ripgrep",
@@ -1322,6 +1326,16 @@
       "url": "https://static.crates.io/crates/symphonia-metadata/symphonia-metadata-0.6.0.crate",
       "sha256": "a31acf5cd623398a6208e2225d18f4b20f761c55098a796a5247ad516a4a8681",
       "purpose": "MPL-2.0 covered Codex runtime dependency source"
+    },
+    {
+      "name": "termux-november-runtime-recipes",
+      "url": "https://codeload.github.com/termux/termux-packages/tar.gz/5bb067b440eafcb1e3abe76adfefa52b58d44d90",
+      "sha256": "28ebc438aee6cdc6ee36178fe1290aff5487b162e29401683c6d8b69d1a119ea"
+    },
+    {
+      "name": "termux-ca-certificates-2026-11-05",
+      "url": "https://curl.se/ca/cacert-2026-11-05.pem",
+      "sha256": "427c064216761a1e72a8b30f0d954d08cb6e4435a82091fb865afd20c8497285"
     }
   ],
   "webkit": {
