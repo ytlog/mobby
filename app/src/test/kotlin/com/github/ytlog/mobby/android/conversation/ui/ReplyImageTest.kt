@@ -1,6 +1,7 @@
 package com.github.ytlog.mobby.android.conversation.ui
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import com.github.ytlog.mobby.android.conversation.domain.*
@@ -32,17 +33,48 @@ class ReplyImageTest {
         assertEquals(listOf("out/photo.png" to true), requests)
     }
 
-    @Test fun `tapping a reply image opens a closable preview`() {
-        compose.setContent { MaterialTheme { ReplyContent("![结果](a.png)", images = { _, _ -> DataResult.Loaded(AttachmentPreview(bytes)) }) { _, _ -> } } }
+    @Test fun `tapping a reply image opens a zoomable preview without reloading`() {
+        var loads = 0
+        compose.setContent { MaterialTheme { ReplyContent("![结果](a.png)", images = { _, _ ->
+            loads++
+            DataResult.Loaded(AttachmentPreview(bytes))
+        }) { _, _ -> } } }
         waitFor(hasContentDescription("结果预览"))
         compose.onNodeWithContentDescription("结果预览").performClick()
+        waitFor(hasText("100%"))
+        compose.onNodeWithText("放大").assertIsDisplayed().performClick()
+        compose.onNodeWithText("150%").assertIsDisplayed()
+        compose.onNodeWithText("缩小").assertIsDisplayed().performClick()
+        compose.onNodeWithText("100%").assertIsDisplayed()
+        compose.onNode(hasContentDescription("结果预览") and hasAnyAncestor(isDialog())).performTouchInput {
+            val near = Offset(width * 0.1f, 0f)
+            val far = Offset(width * 0.3f, 0f)
+            pinch(center - near, center + near, center - far, center + far)
+        }
+        compose.onNodeWithText("100%").assertDoesNotExist()
         compose.onNodeWithText("关闭预览").assertIsDisplayed().performClick()
         compose.onNodeWithText("关闭预览").assertDoesNotExist()
+        assertEquals(1, loads)
+    }
+
+    @Test fun `linked and formatted images display with their surrounding text`() {
+        val requests = mutableListOf<String>()
+        compose.setContent { MaterialTheme {
+            ReplyContent("**修改前 [![原图](before.png)](https://example.com) 修改后 ![结果](after.png)**", images = { source, _ ->
+                requests += source
+                DataResult.Loaded(AttachmentPreview(bytes))
+            }) { _, _ -> }
+        } }
+        waitFor(hasContentDescription("原图预览"))
+        waitFor(hasContentDescription("结果预览"))
+        compose.onNodeWithText("修改前").assertExists()
+        compose.onNodeWithText("修改后").assertExists()
+        assertEquals(setOf("before.png", "after.png"), requests.toSet())
     }
 
     @Test fun `network images wait for the user before downloading`() {
         val requests = mutableListOf<String>()
-        compose.setContent { MaterialTheme { ReplyContent("![图表](https://img.example/chart.png)", images = { source, _ ->
+        compose.setContent { MaterialTheme { ReplyContent("[![图表](https://img.example/chart.png)](https://example.com)", images = { source, _ ->
             requests += source; DataResult.Loaded(AttachmentPreview(bytes))
         }) { _, _ -> } } }
         waitFor(hasText("img.example", substring = true))

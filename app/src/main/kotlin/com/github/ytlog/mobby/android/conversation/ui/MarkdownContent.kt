@@ -104,7 +104,7 @@ private data class ParsedReply(val source: String, val document: Node)
                 2 -> MaterialTheme.typography.titleLarge.copy(fontSize = 18.sp, lineHeight = 26.sp, fontWeight = FontWeight.SemiBold)
                 else -> MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
             }, Modifier.padding(top = if (index > 0) 6.dp else 0.dp).semantics { heading() })
-            is org.commonmark.node.Paragraph -> MarkdownParagraph(node, images)
+            is org.commonmark.node.Paragraph -> MarkdownInline(node, images = images)
             is FencedCodeBlock -> CodeContent(node.info.ifBlank { AppStrings.code }, node.literal, read)
             is IndentedCodeBlock -> CodeContent(AppStrings.code, node.literal, read)
             is BlockQuote -> {
@@ -139,35 +139,6 @@ private data class ParsedReply(val source: String, val document: Node)
     }
 }
 
-/** Displayable images become blocks in reading order; the text around them stays inline. */
-@Composable private fun MarkdownParagraph(node: org.commonmark.node.Paragraph, images: ReplyImageLoader?) {
-    if (images == null) return MarkdownInline(node)
-    val children = ReplyMarkdown.children(node)
-    fun shown(child: Node) = child is Image && ReplyMarkdown.imageSource(child.destination) != null
-    if (children.none(::shown)) return MarkdownInline(node)
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        val run = mutableListOf<Node>()
-        @Composable fun flush() {
-            val hasContent = run.any { node ->
-                when (node) {
-                    is SoftLineBreak, is HardLineBreak -> false
-                    is org.commonmark.node.Text -> node.literal.isNotBlank()
-                    else -> true
-                }
-            }
-            if (hasContent) MarkdownInline(run.toList(), trim = true)
-            run.clear()
-        }
-        children.forEach { child ->
-            if (shown(child)) {
-                flush()
-                ReplyImage(child as Image, images)
-            } else run += child
-        }
-        flush()
-    }
-}
-
 @Composable private fun ReplyImage(image: Image, images: ReplyImageLoader) {
     val source = image.destination.trim()
     val name = remember(image) { buildString {
@@ -195,12 +166,7 @@ private data class ParsedReply(val source: String, val document: Node)
         }
         AttachmentImage(source, name, true, load, preview)
     }
-    if (expanded) AlertDialog(
-        onDismissRequest = { expanded = false },
-        title = { Text(name, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
-        text = { AttachmentImage(source, name, true, load, Modifier.fillMaxWidth().heightIn(min = 120.dp, max = 480.dp)) },
-        confirmButton = { TextButton(onClick = { expanded = false }) { Text(AppStrings.closePreview) } }
-    )
+    if (expanded) ReplyImageViewer(source, name, load) { expanded = false }
 }
 
 /**
@@ -276,19 +242,19 @@ private fun spread(base: List<Int>, weights: List<Int>, extra: Int): List<Int> {
     }
 }
 
-@Composable private fun MarkdownInline(node: Node, style: TextStyle = LocalReplyDetailStyle.current ?: MaterialTheme.typography.bodyLarge, modifier: Modifier = Modifier) =
-    MarkdownInline(listOf(node), style, modifier)
+private data class InlineImage(val offset: Int, val node: Image)
 
 @Composable private fun MarkdownInline(
-    nodes: List<Node>,
+    node: Node,
     style: TextStyle = LocalReplyDetailStyle.current ?: MaterialTheme.typography.bodyLarge,
     modifier: Modifier = Modifier,
-    trim: Boolean = false,
+    images: ReplyImageLoader? = null,
 ) {
     val linkColor = MaterialTheme.colorScheme.primary
     val codeBackground = MaterialTheme.colorScheme.surfaceContainer
-    val value = remember(nodes, linkColor, codeBackground, trim) {
-        buildAnnotatedString {
+    val (value, replyImages) = remember(node, linkColor, codeBackground, images != null) {
+        val found = mutableListOf<InlineImage>()
+        val text = buildAnnotatedString {
             fun visit(current: Node) {
                 when (current) {
                     is org.commonmark.node.Text -> append(current.literal)
@@ -305,6 +271,11 @@ private fun spread(base: List<Int>, weights: List<Int>, extra: Int): List<Int> {
                         } else ReplyMarkdown.children(current).forEach(::visit)
                     }
                     is Image -> {
+                        if (images != null && ReplyMarkdown.imageSource(current.destination) != null) {
+                            found += InlineImage(length, current)
+                            append('\uFFFC')
+                            return
+                        }
                         append(AppStrings.image)
                         if (ReplyMarkdown.safeLink(current.destination)) pushStringAnnotation("URL", current.destination)
                         ReplyMarkdown.children(current).forEach(::visit)
@@ -316,12 +287,33 @@ private fun spread(base: List<Int>, weights: List<Int>, extra: Int): List<Int> {
                     else -> ReplyMarkdown.children(current).forEach(::visit)
                 }
             }
-            nodes.forEach(::visit)
-        }.let { value ->
-            val start = if (trim) value.text.indexOfFirst { !it.isWhitespace() } else -1
-            if (start < 0) value else value.subSequence(start, value.text.indexOfLast { !it.isWhitespace() } + 1)
+            visit(node)
         }
+        text to found
     }
+    if (images == null || replyImages.isEmpty()) {
+        MarkdownText(value, style, modifier)
+        return
+    }
+    // Slice the annotated text at image positions so formatting and links on either side survive.
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        var start = 0
+        @Composable fun textUntil(end: Int) {
+            while (start < end && value.text[start].isWhitespace()) start++
+            var last = end
+            while (last > start && value.text[last - 1].isWhitespace()) last--
+            if (last > start) MarkdownText(value.subSequence(start, last), style)
+        }
+        for (image in replyImages) {
+            textUntil(image.offset)
+            ReplyImage(image.node, images)
+            start = image.offset + 1
+        }
+        textUntil(value.length)
+    }
+}
+
+@Composable private fun MarkdownText(value: AnnotatedString, style: TextStyle, modifier: Modifier = Modifier) {
     val links = value.getStringAnnotations("URL", 0, value.length)
     val handler = LocalUriHandler.current
     val context = LocalContext.current

@@ -63,7 +63,17 @@ internal val LocalAttachmentPreviewHost = staticCompositionLocalOf<((String) -> 
     )
 }
 
-@Composable internal fun AttachmentImage(ref: String, name: String, expanded: Boolean, load: suspend (Boolean) -> DataResult<AttachmentPreview>, modifier: Modifier, onReady: (Boolean) -> Unit = {}) {
+@Composable internal fun AttachmentImage(
+    ref: String,
+    name: String,
+    expanded: Boolean,
+    load: suspend (Boolean) -> DataResult<AttachmentPreview>,
+    modifier: Modifier,
+    onReady: (Boolean) -> Unit = {},
+    render: @Composable (ImageBitmap, String, Modifier) -> Unit = { image, description, frame ->
+        Image(image, description, frame, contentScale = ContentScale.Fit)
+    },
+) {
     var bitmap by remember(ref, expanded) { mutableStateOf<ImageBitmap?>(null) }
     var error by remember(ref, expanded) { mutableStateOf<String?>(null) }
     var retry by remember(ref, expanded) { mutableIntStateOf(0) }
@@ -81,7 +91,7 @@ internal val LocalAttachmentPreviewHost = staticCompositionLocalOf<((String) -> 
         onReady(bitmap != null)
     }
     val ready = bitmap
-    if (ready != null) Image(ready, "$name${if (expanded) AppStrings.preview else AppStrings.thumbnail}", modifier, contentScale = ContentScale.Fit)
+    if (ready != null) render(ready, "$name${if (expanded) AppStrings.preview else AppStrings.thumbnail}", modifier)
     else Column(modifier) {
         if (error == null) Text(AppStrings.loadingImage, style = MaterialTheme.typography.bodySmall)
         else {
