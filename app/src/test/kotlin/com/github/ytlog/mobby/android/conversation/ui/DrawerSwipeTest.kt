@@ -55,6 +55,26 @@ class DrawerSwipeTest {
         commits.clear()
     }
 
+    @Test fun `the page slides over a drawer that lies beneath it`() {
+        val closed = drawerLayers(0f, 300f)
+        val half = drawerLayers(0.5f, 300f)
+        val open = drawerLayers(1f, 300f)
+        assertEquals(0f, closed.page, 0.001f)
+        assertEquals(150f, half.page, 0.001f)
+        assertEquals(300f, open.page, 0.001f)
+        assertEquals(0f, open.drawer, 0.001f)
+        // The drawer only drifts a little, so the page uncovers it rather than both sliding in together.
+        assertTrue("drawer should move less than the page: ${half.drawer}", half.drawer > -150f * 0.5f && half.drawer < 0f)
+        assertEquals(0f, closed.shadow, 0.001f)
+        assertEquals(1f, open.shadow, 0.001f)
+        // The page recedes into a card as it opens while the drawer rises to meet it.
+        assertEquals(1f, closed.pageScale, 0.001f)
+        assertTrue("open page should shrink: ${open.pageScale}", open.pageScale in 0.8f..0.95f)
+        assertTrue(half.pageScale > open.pageScale && half.pageScale < 1f)
+        assertTrue("closed drawer should sit smaller: ${closed.drawerScale}", closed.drawerScale < 1f)
+        assertEquals(1f, open.drawerScale, 0.001f)
+    }
+
     @Test fun `swiping right from the left edge opens the drawer`() {
         swipe(startX = 16.dp, step = 15.dp, steps = 10, gap = 16)
         compose.runOnIdle {

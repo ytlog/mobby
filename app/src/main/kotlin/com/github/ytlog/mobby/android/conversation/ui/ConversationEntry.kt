@@ -33,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -41,6 +42,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.util.VelocityTracker
@@ -241,7 +244,22 @@ class ConversationHostActions(
             actions.importAttachment(ConversationId(captured.conversation), captured.workspace, requireNotNull(captured.attachmentUri))
         }, { message -> vm.report(OperationResult.Failed(message)) })
         val pageColor = if (navigation.page == AppPage.CONVERSATION || navigation.page == AppPage.PROJECT_DETAIL) conversationCanvas() else MaterialTheme.colorScheme.background
+        // The page and the system bars around it recede together as one card over the drawer. The card
+        // behind the viewport paints the bars, so the status bar always matches the layer beneath it.
+        val card = remember { PageCardState() }
+        val drawerBackdrop = drawerColor()
         Surface(Modifier.fillMaxSize(), color = pageColor) {
+            Box(Modifier.fillMaxSize().drawBehind { if (card.progress > 0f) drawRect(drawerBackdrop) })
+            Box(Modifier.fillMaxSize().graphicsLayer {
+                val layers = drawerLayers(card.progress, card.slide)
+                transformOrigin = TransformOrigin(0f, 0.5f)
+                translationX = layers.page
+                scaleX = layers.pageScale
+                scaleY = layers.pageScale
+                shadowElevation = PageShadow.toPx() * layers.shadow
+                shape = RoundedCornerShape(PageCorner.toPx() * layers.shadow)
+                clip = true
+            }.background(pageColor))
             ConversationViewport(onPosition = { viewportOrigin = it }) {
                 val fullWidth = maxWidth
                 val density = LocalDensity.current
@@ -281,8 +299,42 @@ class ConversationHostActions(
                 val sheetOffset = with(density) { viewportOrigin.x.toDp() } + contentLeft + contentWidth / 2 - windowWidth / 2
                 val x = with(density) { contentLeft.roundToPx() }
                 val y = with(density) { contentTop.roundToPx() }
+                // Drawn first so the conversation page slides over it.
+                if (showSidebar || (!wide && (drawer || progress > 0f))) ConversationListPane(state, conversationQuery, { conversationQuery = it }, conversationListScroll,
+                    onSelect = { c -> vm.enqueue { actions.select(c.id) }; drawer = false; navigation = navigation.open(AppPage.CONVERSATION) },
+                    onNew = { drawer = false; dialog = newConversationDialog(connectionsRead, configuredConnections) }, onSettings = { navigate(AppPage.SETTINGS) }, onProjects = { navigateProjects(AppPage.CONVERSATION) },
+                    onProject = { name -> drawer = false; navigation = navigation.openProject(name) },
+                    programs = programShortcuts, onProgramPage = { id -> drawer = false; hostActions.openProgram(id) },
+                    onProgramDetails = { id -> drawer = false; navigation = navigation.openPrograms(program = id, fromSheet = false) },
+                    onAllPrograms = { drawer = false; navigation = navigation.openPrograms(fromSheet = false) },
+                    onCollapse = if (wide) ({ sidebarExpanded = false }) else null,
+                    modifier = if (layout is ConversationLayout.Dual) Modifier.width(layout.listWidth).height(layout.height).offset {
+                        IntOffset(with(density) { layout.listLeft.roundToPx() }, with(density) { layout.top.roundToPx() })
+                    } else Modifier.width(drawerWidth).height(availableHeight).offset {
+                        IntOffset(x + drawerLayers(progress, pixels).drawer.roundToInt(), y)
+                    }.graphicsLayer {
+                        val scale = drawerLayers(progress, pixels).drawerScale
+                        transformOrigin = TransformOrigin(0f, 0.5f)
+                        scaleX = scale
+                        scaleY = scale
+                    }.then(swipe))
+                val shown = if (wide) 0f else progress
+                SideEffect { card.progress = shown; card.slide = pixels }
+                val windowHeight = LocalView.current.rootView.height.toFloat()
+                // Moves the page exactly as the card behind it: scaled about the window's left middle.
+                val pageLayer = Modifier.graphicsLayer {
+                    val layers = drawerLayers(shown, pixels)
+                    val left = viewportOrigin.x + x
+                    val top = viewportOrigin.y + y
+                    transformOrigin = TransformOrigin(0f, if (size.height > 0f) (windowHeight / 2f - top) / size.height else 0.5f)
+                    translationX = layers.page + layers.pageScale * left - left
+                    scaleX = layers.pageScale
+                    scaleY = layers.pageScale
+                    shape = RoundedCornerShape(PageCorner.toPx() * layers.shadow)
+                    clip = shown > 0f
+                }
                 Surface(
-                    Modifier.requiredWidth(contentWidth).height(availableHeight).offset { IntOffset(x + if (wide) 0 else (pixels * progress).roundToInt(), y) }
+                    Modifier.requiredWidth(contentWidth).height(availableHeight).offset { IntOffset(x, y) }.then(pageLayer)
                         .then(if (drawer && !wide) Modifier.clearAndSetSemantics {} else Modifier),
                     color = pageColor,
                     shadowElevation = 0.dp,
@@ -342,20 +394,7 @@ class ConversationHostActions(
                         )
                     }
                 }
-                if (!wide && drawer) Box(Modifier.offset { IntOffset(x + (pixels * progress).roundToInt(), y) }.requiredWidth(contentWidth).height(availableHeight).then(swipe).clickable { drawer = false })
-                if (showSidebar || (!wide && (drawer || progress > 0f))) ConversationListPane(state, conversationQuery, { conversationQuery = it }, conversationListScroll,
-                    onSelect = { c -> vm.enqueue { actions.select(c.id) }; drawer = false; navigation = navigation.open(AppPage.CONVERSATION) },
-                    onNew = { drawer = false; dialog = newConversationDialog(connectionsRead, configuredConnections) }, onSettings = { navigate(AppPage.SETTINGS) }, onProjects = { navigateProjects(AppPage.CONVERSATION) },
-                    onProject = { name -> drawer = false; navigation = navigation.openProject(name) },
-                    programs = programShortcuts, onProgramPage = { id -> drawer = false; hostActions.openProgram(id) },
-                    onProgramDetails = { id -> drawer = false; navigation = navigation.openPrograms(program = id, fromSheet = false) },
-                    onAllPrograms = { drawer = false; navigation = navigation.openPrograms(fromSheet = false) },
-                    onCollapse = if (wide) ({ sidebarExpanded = false }) else null,
-                    modifier = if (layout is ConversationLayout.Dual) Modifier.width(layout.listWidth).height(layout.height).offset {
-                        IntOffset(with(density) { layout.listLeft.roundToPx() }, with(density) { layout.top.roundToPx() })
-                    } else Modifier.width(drawerWidth).height(availableHeight).offset {
-                        IntOffset(x + ((progress - 1f) * pixels).roundToInt(), y)
-                    }.then(swipe))
+                if (!wide && drawer) Box(Modifier.offset { IntOffset(x, y) }.then(pageLayer).requiredWidth(contentWidth).height(availableHeight).then(swipe).clickable { drawer = false })
                 SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(bottom = if (navigation.page == AppPage.SETUP) wizardFooterInset else 0.dp))
                 val sheetPlacement = SheetPlacement(sheetOffset, overlayWidth)
                 if (navigation.addSheetOpen) AppSheet(onDismissRequest = { navigation = navigation.closeAddSheet() }, placement = sheetPlacement) {
@@ -1278,6 +1317,28 @@ private tailrec fun Context.findHostActivity(): ComponentActivity? = when (this)
     is ComponentActivity -> this
     is ContextWrapper -> baseContext.findHostActivity()
     else -> null
+}
+
+/**
+ * Where the page and the drawer beneath it sit at an open fraction. The page slides the drawer's full
+ * width and recedes into a smaller card with a shadow, while the drawer only drifts and rises to full
+ * size, so opening uncovers a layer beneath instead of pushing a panel in beside it.
+ */
+internal data class DrawerLayers(val page: Float, val drawer: Float, val shadow: Float, val pageScale: Float, val drawerScale: Float)
+private const val DrawerDrift = 0.3f
+private const val PageShrink = 0.12f
+private const val DrawerRestScale = 0.94f
+private val PageShadow = 24.dp
+private val PageCorner = 28.dp
+internal fun drawerLayers(progress: Float, width: Float) = DrawerLayers(
+    page = width * progress, drawer = (progress - 1f) * width * DrawerDrift, shadow = progress,
+    pageScale = 1f - PageShrink * progress, drawerScale = DrawerRestScale + (1f - DrawerRestScale) * progress,
+)
+
+/** Open fraction and slide distance of the conversation card, read while drawing the card behind the viewport. */
+@Stable internal class PageCardState {
+    var progress by mutableFloatStateOf(0f)
+    var slide by mutableFloatStateOf(0f)
 }
 
 // Wide enough that a swipe can start inside the app, past the system back gesture inset.
