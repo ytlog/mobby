@@ -9,6 +9,7 @@ import android.os.Looper
 import android.view.PixelCopy
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -66,12 +67,16 @@ import kotlin.math.roundToInt
     onDismissRequest: () -> Unit,
     anchor: IntRect = IntRect.Zero,
     maxWidth: Dp = 420.dp,
+    dimBehind: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     if (!expanded) return
     val host = LocalView.current
-    var snapshot by remember { mutableStateOf(snapshotView(host)) }
-    LaunchedEffect(host) { captureWindow(host)?.let { snapshot = it } }
+    val snapshot = if (dimBehind) null else {
+        var captured by remember(host) { mutableStateOf(snapshotView(host)) }
+        LaunchedEffect(host) { captureWindow(host)?.let { captured = it } }
+        captured
+    }
     val density = LocalDensity.current
     val margin = with(density) { 16.dp.roundToPx() }
     val gap = with(density) { 8.dp.roundToPx() }
@@ -88,7 +93,8 @@ import kotlin.math.roundToInt
         snapshot?.let { frostRegion(it, actualOrigin.x, actualOrigin.y, popupWidth, cardHeight).asImageBitmap() }
     }
     val shape = RoundedCornerShape(22.dp)
-    val scrim = menuScrim()
+    val panelColor = if (dimBehind) cardColor() else menuScrim()
+    val dimAmount = if (darkChrome()) 0.26f else 0.18f
     val stroke = menuStroke()
     val position = remember(margin, gap, frostTop, anchor, popupLeft) {
         object : PopupPositionProvider {
@@ -106,7 +112,10 @@ import kotlin.math.roundToInt
     }
     Popup(popupPositionProvider = position, onDismissRequest = onDismissRequest, properties = PopupProperties(focusable = true, clippingEnabled = false)) {
         val popupView = LocalView.current
-        SideEffect { clearPopupChrome(popupView) }
+        SideEffect {
+            clearPopupChrome(popupView)
+            if (dimBehind) dimPopupBackdrop(popupView, dimAmount)
+        }
         Box(
             Modifier
                 .width(with(density) { popupWidth.toDp() })
@@ -122,7 +131,7 @@ import kotlin.math.roundToInt
                 frost?.let { image ->
                     Image(image, contentDescription = null, modifier = Modifier.matchParentSize(), contentScale = ContentScale.Crop)
                 }
-                Box(Modifier.matchParentSize().background(scrim))
+                Box(Modifier.matchParentSize().background(panelColor))
             }
             CompositionLocalProvider(LocalGlassEnabled provides false, LocalGlassControls provides false, LocalConversationBackdrop provides null) {
                 MaterialTheme(
@@ -137,6 +146,17 @@ import kotlin.math.roundToInt
                 }
             }
         }
+    }
+}
+
+private fun dimPopupBackdrop(view: View, amount: Float) {
+    val window = view.parent as? View ?: return
+    val params = window.layoutParams as? WindowManager.LayoutParams ?: return
+    val flags = params.flags or WindowManager.LayoutParams.FLAG_DIM_BEHIND
+    if (window.isAttachedToWindow && (params.flags != flags || params.dimAmount != amount)) {
+        params.flags = flags
+        params.dimAmount = amount
+        window.context.getSystemService(WindowManager::class.java).updateViewLayout(window, params)
     }
 }
 

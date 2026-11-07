@@ -78,7 +78,7 @@ import kotlinx.coroutines.*
     }
     val changed = config != null && config != c.config
     val openConnections = { dismiss(); manageConnections() }
-    FrostedMenu(true, dismiss, anchor, maxWidth = 304.dp) {
+    FrostedMenu(true, dismiss, anchor, maxWidth = 304.dp, dimBehind = true) {
         val ink = menuInk()
         val secondaryInk = ink.copy(alpha = 0.68f)
         val accent = menuAccent()
@@ -156,9 +156,9 @@ import kotlinx.coroutines.*
                 }
             }
         }
-        HorizontalDivider(Modifier.padding(horizontal = 14.dp), color = ink.copy(alpha = 0.10f))
+        HorizontalDivider(color = ink.copy(alpha = 0.10f))
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp),
+            Modifier.fillMaxWidth().background(ink.copy(alpha = 0.035f)).padding(horizontal = 14.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
             verticalAlignment = Alignment.CenterVertically,
         ) {
