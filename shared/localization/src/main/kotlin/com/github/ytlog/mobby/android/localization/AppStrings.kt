@@ -574,6 +574,7 @@ open class StringCatalog(private val fixedLanguage: AppLanguage? = null) {
         else -> level
     }
     val selectModel get() = text("选择模型", "Select model")
+    val readingConnections get() = text("正在读取连接…", "Reading connections…")
     val selectProject get() = text("选择项目", "Select project")
     val applyToNextTurn get() = text("应用到下一轮", "Apply to next turn")
     val thisModelDoesNotOfferAdjustment get() = text("当前模型未开放调整", "This model does not offer adjustment")

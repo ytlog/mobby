@@ -345,6 +345,9 @@ private fun Modifier.fadeScrolledEdges(scroll: ScrollState): Modifier =
         )
     }
 
+internal fun newConversationDialog(connectionsRead: Boolean, connections: List<GatewayProfile>): String =
+    if (connectionsRead && connections.isEmpty()) "gateway-intro" else "new"
+
 @Composable internal fun ConfigDialog(vm: ConversationViewModel, c: Conversation?, onDismiss: () -> Unit, onApply: (NextTurnConfig, String?) -> Unit, anchor: IntRect = IntRect.Zero, manageConnections: () -> Unit = {}) {
     val state by vm.state.collectAsStateWithLifecycle()
     var project by rememberSaveable { mutableStateOf(c?.project) }
@@ -365,6 +368,9 @@ private fun Modifier.fadeScrolledEdges(scroll: ScrollState): Modifier =
             agent = defaultGateway?.agent?.takeIf { candidate -> profiles.any { it.agent == candidate } } ?: profiles.first().agent
         }
     }
+    val connectionsRead by vm.connectionsRead.collectAsStateWithLifecycle()
+    val configured by vm.configuredConnections.collectAsStateWithLifecycle()
+    val agents by vm.agents.collectAsStateWithLifecycle()
     val connected = AgentId.entries.filter { value -> profiles.any { it.agent == value } }
     var choosingProject by remember { mutableStateOf(false) }
     FrostedMenu(true, onDismiss, anchor, maxWidth = 304.dp) {
@@ -379,7 +385,13 @@ private fun Modifier.fadeScrolledEdges(scroll: ScrollState): Modifier =
                 Text(AppStrings.newConversation2, Modifier.padding(start = 14.dp, end = 14.dp, top = 14.dp, bottom = 8.dp),
                     style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, color = menuInk())
                 if (connected.isNotEmpty()) AgentTiles(connected, agent) { agent = it; agentChosen = true }
-                if (connected.none { it == agent }) AgentMenuNote(AppStrings.connectAgentFirst)
+                val unavailable = agents.firstOrNull { it.agent == agent }?.unavailable
+                when {
+                    !connectionsRead -> AgentMenuNote(AppStrings.readingConnections)
+                    agent in connected -> Unit
+                    unavailable != null && configured.any { it.agent == agent } -> AgentMenuNote(unavailable)
+                    else -> AgentMenuNote(AppStrings.connectAgentFirst)
+                }
                 AgentMenuDivider()
                 AgentValueRow(AppStrings.project, project ?: AppStrings.noProject, onClick = { choosingProject = true })
                 AgentMenuDivider()

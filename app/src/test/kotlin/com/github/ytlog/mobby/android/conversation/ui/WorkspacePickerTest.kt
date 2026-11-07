@@ -40,6 +40,7 @@ class WorkspacePickerTest {
     private var gatewayDefault: AgentId? = AgentId.CODEX
     private var gatewayReads = 0
     private var gatewayReadGate: CompletableDeferred<Unit>? = null
+    private var agentOptions = listOf(AgentOption(AgentId.CLAUDE_CODE, mapOf("claude-fixture" to emptySet()), null, true, emptySet()))
     private var newSessionCreated = false
     private inline fun <reified T> stub(crossinline body: (String, Array<out Any?>) -> Any?): T =
         Proxy.newProxyInstance(T::class.java.classLoader, arrayOf(T::class.java)) { _, m, a -> body(m.name.substringBefore("-"), a ?: emptyArray()) } as T
@@ -47,7 +48,7 @@ class WorkspacePickerTest {
         val system = stub<SystemPort> { name, args -> when (name) {
             "getStatus" -> flowOf(SystemStatus(true, true))
             "getDiagnostic" -> flowOf(DiagnosticOutput(null, emptyList()))
-            "agents" -> listOf(AgentOption(AgentId.CLAUDE_CODE, mapOf("claude-fixture" to emptySet()), null, true, emptySet()))
+            "agents" -> agentOptions
             "nativeAccounts", "connectionSettings" -> emptyList<Any>()
             "gateways" -> {
                 gatewayReads++
@@ -113,6 +114,35 @@ class WorkspacePickerTest {
         compose.waitForIdle()
         Assert.assertTrue(newSessionCreated)
         Assert.assertEquals(1, gatewayReads)
+    }
+    @Test fun `the connect guide is offered only after connections were read and none exist`() {
+        val codex = GatewayProfile(AgentId.CODEX, "CODEX", 1, "https://example.test/v1", "model", "RESPONSES", true)
+        Assert.assertEquals("new", newConversationDialog(connectionsRead = false, connections = emptyList()))
+        Assert.assertEquals("gateway-intro", newConversationDialog(connectionsRead = true, connections = emptyList()))
+        Assert.assertEquals("new", newConversationDialog(connectionsRead = true, connections = listOf(codex)))
+    }
+    @Test fun `agents still being verified keep their connections out of the connect guide`() {
+        agentOptions = AgentId.entries.map { AgentOption(it, emptyMap(), "运行环境尚未就绪", false, emptySet()) }
+        val vm = vm()
+        compose.waitUntil { vm.connectionsRead.value }
+        Assert.assertTrue(vm.connections.value.isEmpty())
+        Assert.assertEquals("new", newConversationDialog(vm.connectionsRead.value, vm.configuredConnections.value))
+        compose.setContent { MaterialTheme { ConfigDialog(vm, null, {}, { _, _ -> }) } }
+        compose.onNodeWithText("运行环境尚未就绪").assertExists()
+        compose.onNodeWithText("这个 Agent 暂无可用连接", substring = true).assertDoesNotExist()
+    }
+    @Test fun `new conversation opened before connections are read waits instead of asking to connect`() {
+        gatewayReadGate = CompletableDeferred()
+        val vm = vm()
+        compose.setContent { MaterialTheme { ConfigDialog(vm, null, {}, { _, _ -> }) } }
+        compose.onNodeWithText("正在读取连接…").assertExists()
+        compose.onNodeWithText("这个 Agent 暂无可用连接", substring = true).assertDoesNotExist()
+        compose.onNodeWithText("创建").assertIsNotEnabled()
+        compose.runOnIdle { gatewayReadGate?.complete(Unit) }
+        compose.waitUntil { vm.connectionsRead.value }
+        compose.onNodeWithText("正在读取连接…").assertDoesNotExist()
+        compose.onNodeWithText("Claude Code").assertExists()
+        compose.onNodeWithText("创建").assertIsEnabled()
     }
     @Test fun `new conversation defaults to Pi even when the current conversation uses Codex`() {
         gatewayDefault = null

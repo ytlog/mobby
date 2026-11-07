@@ -112,6 +112,8 @@ class ConversationHostActions(
     val agentOptions by vm.agents.collectAsStateWithLifecycle()
     val gateways by vm.connections.collectAsStateWithLifecycle()
     val gatewaysLoaded by vm.gatewaysLoaded.collectAsStateWithLifecycle()
+    val connectionsRead by vm.connectionsRead.collectAsStateWithLifecycle()
+    val configuredConnections by vm.configuredConnections.collectAsStateWithLifecycle()
     var fileTarget by rememberSaveable { mutableStateOf<String?>(null) }
     var fileWorkspace by rememberSaveable { mutableStateOf<String?>(null) }
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -333,7 +335,7 @@ class ConversationHostActions(
                             showMenu = !showSidebar,
                             menuLabel = if (wide) AppStrings.expandConversationSidebar else AppStrings.openConversationDrawer,
                             onMenu = { keyboard?.hide(); focus.clearFocus(); if (wide) sidebarExpanded = true else drawer = true },
-                            onNew = { dialog = if (gateways.isEmpty()) "gateway-intro" else "new" }, onMore = { if (it == "connections") { loginAgent = null; gatewayFromIntro = false; connectionFromSetup = false; navigate(AppPage.CONNECTIONS) } else dialog = it },
+                            onNew = { dialog = newConversationDialog(connectionsRead, configuredConnections) }, onMore = { if (it == "connections") { loginAgent = null; gatewayFromIntro = false; connectionFromSetup = false; navigate(AppPage.CONNECTIONS) } else dialog = it },
                             onAnchor = { toolbarAnchor = it }, onAdd = { showAddSheet() },
                             onRead = { title, value -> reading = title to value },
                             contextBubblesVisible = wide || (!drawer && progress == 0f),
@@ -343,7 +345,7 @@ class ConversationHostActions(
                 if (!wide && drawer) Box(Modifier.offset { IntOffset(x + (pixels * progress).roundToInt(), y) }.requiredWidth(contentWidth).height(availableHeight).then(swipe).clickable { drawer = false })
                 if (showSidebar || (!wide && (drawer || progress > 0f))) ConversationListPane(state, conversationQuery, { conversationQuery = it }, conversationListScroll,
                     onSelect = { c -> vm.enqueue { actions.select(c.id) }; drawer = false; navigation = navigation.open(AppPage.CONVERSATION) },
-                    onNew = { drawer = false; dialog = if (gateways.isEmpty()) "gateway-intro" else "new" }, onSettings = { navigate(AppPage.SETTINGS) }, onProjects = { navigateProjects(AppPage.CONVERSATION) },
+                    onNew = { drawer = false; dialog = newConversationDialog(connectionsRead, configuredConnections) }, onSettings = { navigate(AppPage.SETTINGS) }, onProjects = { navigateProjects(AppPage.CONVERSATION) },
                     onProject = { name -> drawer = false; navigation = navigation.openProject(name) },
                     programs = programShortcuts, onProgramPage = { id -> drawer = false; hostActions.openProgram(id) },
                     onProgramDetails = { id -> drawer = false; navigation = navigation.openPrograms(program = id, fromSheet = false) },
@@ -399,6 +401,12 @@ class ConversationHostActions(
                     }
                 }
                 val c = state.selected?.conversation
+                // A new conversation opened before connections were read waits in its picker, and becomes
+                // the connect guide only once the read finds none. Agents still being verified keep their
+                // connections, so a runtime that is not ready yet never asks the user to connect again.
+                LaunchedEffect(dialog, connectionsRead, configuredConnections) {
+                    if (dialog == "new") dialog = newConversationDialog(connectionsRead, configuredConnections)
+                }
                 if (dialog == "gateway-intro") AlertDialog(
                     onDismissRequest = { dialog = null }, title = { Text(AppStrings.connectAgentsTitle) },
                     text = { Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {

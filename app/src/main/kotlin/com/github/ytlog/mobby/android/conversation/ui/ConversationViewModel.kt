@@ -42,6 +42,10 @@ internal class ConversationViewModel(val actions: ConversationUseCases) : ViewMo
     val nativeAccounts = MutableStateFlow<List<AgentLogin>>(emptyList())
     val connectionSettings = MutableStateFlow<List<AgentConnectionPreference>>(emptyList())
     val gatewaysLoaded = MutableStateFlow(false)
+    /** True once connections have been read at all, so an empty [configuredConnections] means none exist. */
+    val connectionsRead = MutableStateFlow(false)
+    /** Every signed-in or configured connection, including those whose Agent is not available right now. */
+    val configuredConnections = MutableStateFlow<List<GatewayProfile>>(emptyList())
     val defaultGateway = MutableStateFlow<GatewayDefault?>(null)
     val skills = MutableStateFlow<List<Skill>>(emptyList())
     val skillsError = MutableStateFlow<String?>(null)
@@ -426,8 +430,9 @@ internal class ConversationViewModel(val actions: ConversationUseCases) : ViewMo
         connectionSettings.value = settings
         gateways.value = profiles
         val options = actions.agents()
-        val resolved = AgentConnectionResolver.available(profiles, logins.filterNot { it.expired }.map { it.route() }, settings)
-            .filter { profile -> options.none { it.agent == profile.agent && it.unavailable != null } }
+        val configured = AgentConnectionResolver.available(profiles, logins.filterNot { it.expired }.map { it.route() }, settings)
+        val resolved = configured.filter { profile -> options.none { it.agent == profile.agent && it.unavailable != null } }
+        configuredConnections.value = configured
         connections.value = resolved
         if (selected == null) ConversationGatewayResolver.preferred(resolved, null)?.let { initial ->
             when (val result = actions.selectDefaultGateway(initial)) {
@@ -439,6 +444,7 @@ internal class ConversationViewModel(val actions: ConversationUseCases) : ViewMo
             ?: resolved.firstOrNull { it.agent == choice.agent } }
         defaultGateway.value = preferred?.let { GatewayDefault(it.agent, it.id, it.version) } ?: selected
         gatewaysLoaded.value = status.value.ready
+        connectionsRead.value = true
         repairSelectedConversation()
         agents.value = options
     }
