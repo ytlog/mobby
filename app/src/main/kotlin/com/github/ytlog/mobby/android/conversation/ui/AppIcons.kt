@@ -40,6 +40,7 @@ internal object AppIcons {
         listOf(6f, 12f, 18f).forEach { y -> addOval(Rect(10f, y - 2f, 14f, y + 2f)) }
     }, filled = true)
     val Plus = glyph("M12 5v14M5 12h14")
+    val Minus = glyph("M5 12h14")
     val Mic = glyph("M9 5a3 3 0 0 1 6 0v7a3 3 0 0 1-6 0zM5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8")
     val Keyboard = glyph("M4 6h16v12H4z M7 9h2 M11 9h2 M15 9h2 M7 12h2 M11 12h2 M15 12h2 M7 15h10")
     val Stop = mark("M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z")

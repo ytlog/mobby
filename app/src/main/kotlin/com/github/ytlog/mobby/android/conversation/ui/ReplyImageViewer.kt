@@ -3,20 +3,26 @@ package com.github.ytlog.mobby.android.conversation.ui
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -24,6 +30,14 @@ import com.github.ytlog.mobby.android.conversation.domain.AttachmentPreview
 import com.github.ytlog.mobby.android.conversation.domain.DataResult
 import com.github.ytlog.mobby.android.conversation.ui.UiStrings as AppStrings
 import kotlin.math.roundToInt
+
+private val ImageViewerColors = darkColorScheme(
+    surface = Color(0xFF111214),
+    surfaceContainer = Color(0xFF232529),
+    onSurface = Color(0xFFF0F0F2),
+    onSurfaceVariant = Color(0xFFB7B9C0),
+    primary = Color(0xFFE6E9F1),
+)
 
 @Composable internal fun ReplyImageViewer(
     source: String,
@@ -33,18 +47,30 @@ import kotlin.math.roundToInt
     actions: (@Composable () -> Unit)? = null,
 ) {
     Dialog(onDismissRequest = close, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(Modifier.fillMaxSize()) {
-            Column {
-                Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(name, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    TextButton(onClick = close) { Text(AppStrings.closePreview) }
+        MaterialTheme(colorScheme = ImageViewerColors) {
+            Surface(Modifier.fillMaxSize()) {
+                Column(Modifier.padding(top = 4.dp, bottom = 8.dp)) {
+                    FilledIconButton(
+                        onClick = close,
+                        modifier = Modifier.align(Alignment.End).padding(end = 12.dp),
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                            contentColor = MaterialTheme.colorScheme.onSurface,
+                        ),
+                    ) {
+                        AppIcon(AppIcons.Close, AppStrings.closePreview, Modifier.size(22.dp))
+                    }
+                    Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                        AttachmentImage(source, name, true, load, Modifier.fillMaxSize(), render = { bitmap, description, frame ->
+                            ZoomableImage(bitmap, description, frame)
+                        })
+                    }
+                    if (actions != null) Surface(
+                        Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                        shape = RoundedCornerShape(20.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainer,
+                    ) { actions() }
                 }
-                Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                    AttachmentImage(source, name, true, load, Modifier.fillMaxSize(), render = { bitmap, description, frame ->
-                        ZoomableImage(bitmap, description, frame)
-                    })
-                }
-                actions?.invoke()
             }
         }
     }
@@ -87,14 +113,23 @@ private const val ImageZoomStep = 1.5f
                 })
             }
         }
-        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = {
-                zoom = (zoom / ImageZoomStep).coerceAtLeast(1f)
-                if (zoom == 1f) offset = Offset.Zero
-            }, enabled = zoom > 1f) { Text(AppStrings.zoomOutImage) }
-            Text("${(zoom * 100).roundToInt()}%", Modifier.padding(horizontal = 12.dp), style = MaterialTheme.typography.labelLarge)
-            TextButton(onClick = { zoom = (zoom * ImageZoomStep).coerceAtMost(MaxImageZoom) }, enabled = zoom < MaxImageZoom) {
-                Text(AppStrings.zoomInImage)
+        Surface(
+            Modifier.align(Alignment.CenterHorizontally).padding(vertical = 8.dp),
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surfaceContainer,
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = {
+                    zoom = (zoom / ImageZoomStep).coerceAtLeast(1f)
+                    if (zoom == 1f) offset = Offset.Zero
+                }, enabled = zoom > 1f) {
+                    AppIcon(AppIcons.Minus, AppStrings.zoomOutImage, Modifier.size(20.dp))
+                }
+                Text("${(zoom * 100).roundToInt()}%", Modifier.widthIn(min = 52.dp), style = MaterialTheme.typography.labelLarge,
+                    textAlign = TextAlign.Center)
+                IconButton(onClick = { zoom = (zoom * ImageZoomStep).coerceAtMost(MaxImageZoom) }, enabled = zoom < MaxImageZoom) {
+                    AppIcon(AppIcons.Plus, AppStrings.zoomInImage, Modifier.size(20.dp))
+                }
             }
         }
     }

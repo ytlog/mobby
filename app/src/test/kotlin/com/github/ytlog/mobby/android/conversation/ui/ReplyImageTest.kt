@@ -46,7 +46,8 @@ class ReplyImageTest {
         waitFor(hasText("已保存到 ~/workspace/out/photo.png"))
         waitFor(hasContentDescription("~/workspace/out/photo.png预览"))
         compose.onNodeWithContentDescription("~/workspace/out/photo.png预览").performClick()
-        compose.onNodeWithText("~/workspace/out/photo.png").assertIsDisplayed()
+        compose.onNodeWithText("~/workspace/out/photo.png").assertDoesNotExist()
+        compose.onNodeWithContentDescription(UiStrings.closePreview).assertIsDisplayed()
         assertEquals(listOf("file://$path"), requests)
     }
 
@@ -59,9 +60,9 @@ class ReplyImageTest {
         waitFor(hasContentDescription("结果预览"))
         compose.onNodeWithContentDescription("结果预览").performClick()
         waitFor(hasText("100%"))
-        compose.onNodeWithText("放大").assertIsDisplayed().performClick()
+        compose.onNodeWithContentDescription(UiStrings.zoomInImage).assertIsDisplayed().performClick()
         compose.onNodeWithText("150%").assertIsDisplayed()
-        compose.onNodeWithText("缩小").assertIsDisplayed().performClick()
+        compose.onNodeWithContentDescription(UiStrings.zoomOutImage).assertIsDisplayed().performClick()
         compose.onNodeWithText("100%").assertIsDisplayed()
         compose.onNode(hasContentDescription("结果预览") and hasAnyAncestor(isDialog())).performTouchInput {
             val near = Offset(width * 0.1f, 0f)
@@ -69,8 +70,8 @@ class ReplyImageTest {
             pinch(center - near, center + near, center - far, center + far)
         }
         compose.onNodeWithText("100%").assertDoesNotExist()
-        compose.onNodeWithText("关闭预览").assertIsDisplayed().performClick()
-        compose.onNodeWithText("关闭预览").assertDoesNotExist()
+        compose.onNodeWithContentDescription(UiStrings.closePreview).assertIsDisplayed().performClick()
+        compose.onNodeWithContentDescription(UiStrings.closePreview).assertDoesNotExist()
         assertEquals(1, loads)
     }
 
@@ -115,7 +116,7 @@ class ReplyImageTest {
         compose.onNodeWithText(UiStrings.saveResultImage).assertExists()
         compose.onNodeWithText(UiStrings.shareResultFile).assertExists()
         compose.onNodeWithText(UiStrings.editResultImage).performClick()
-        compose.onNodeWithText(UiStrings.closePreview).assertDoesNotExist()
+        compose.onNodeWithContentDescription(UiStrings.closePreview).assertDoesNotExist()
         assertEquals(path, added)
     }
 

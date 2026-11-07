@@ -202,9 +202,10 @@ private data class ParsedReply(val source: String, val document: Node)
     }
     if (expanded) {
         val access = LocalResultFileAccess.current.takeIf { ReplyMarkdown.workspacePath(source) != null }
-        ReplyImageViewer(source, name, load, close = { expanded = false }, actions = {
-            if (access != null) ResultFileButtons(source, access, image = true) { expanded = false }
-        })
+        val actions: (@Composable () -> Unit)? = if (access == null) null else {
+            { ResultFileButtons(source, access, image = true) { expanded = false } }
+        }
+        ReplyImageViewer(source, name, load, close = { expanded = false }, actions = actions)
     }
 }
 
