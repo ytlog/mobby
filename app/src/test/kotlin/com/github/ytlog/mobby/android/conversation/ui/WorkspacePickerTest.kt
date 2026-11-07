@@ -362,9 +362,14 @@ class WorkspacePickerTest {
         compose.waitForIdle()
         Assert.assertEquals(listOf(NextTurnConfig(AgentId.CODEX, "model", null, "default", "CODEX", 1)), appliedConfigs)
     }
-    @Test fun `agent tiles give every name its own width and scroll when they cannot fit`() {
-        Assert.assertEquals(listOf(40, 70, 110), agentTileWidths(listOf(10, 40, 80), 220, 12))
-        Assert.assertEquals(listOf(22, 52, 92), agentTileWidths(listOf(10, 40, 80), 100, 12))
+    @Test fun `agent tiles share one width set by the longest name`() {
+        Assert.assertEquals(133, agentTileWidth(listOf(10, 40, 80), 400, 12))
+        Assert.assertEquals(92, agentTileWidth(listOf(10, 40, 80), 220, 12))
+    }
+    @Test fun `agent tiles are equally wide whatever their names`() {
+        compose.setContent { MaterialTheme { AgentTiles(AgentId.entries, AgentId.PI) {} } }
+        val widths = AgentId.entries.map { compose.onNodeWithText(it.label()).fetchSemanticsNode().size.width }
+        Assert.assertEquals(setOf(widths.first()), widths.toSet())
     }
     @Test fun `agent tiles scroll sideways instead of offering arrow buttons`() {
         compose.setContent { MaterialTheme { Box(Modifier.width(48.dp)) { AgentTiles(AgentId.entries, AgentId.PI) {} } } }

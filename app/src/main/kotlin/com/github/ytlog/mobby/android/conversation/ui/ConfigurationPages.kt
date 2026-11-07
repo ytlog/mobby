@@ -281,48 +281,49 @@ private fun AgentReasoningControl(levels: Set<String>, selected: String?, select
 }
 
 /**
- * Agent names differ widely in length, so each tile keeps its name on one line and the spare width
- * is shared evenly. When the names cannot all fit, tiles keep their minimum padding and the row scrolls.
+ * Every tile takes the same width, wide enough for the longest name, and the row's spare width is
+ * shared out. When that cannot fit, tiles keep it and the row scrolls sideways.
  */
-internal fun agentTileWidths(labelWidths: List<Int>, available: Int, minPadding: Int): List<Int> {
-    if (labelWidths.isEmpty()) return emptyList()
-    val spare = (available - labelWidths.sum()) / labelWidths.size
-    return labelWidths.map { it + maxOf(spare, minPadding) }
+internal fun agentTileWidth(labelWidths: List<Int>, available: Int, minPadding: Int): Int {
+    if (labelWidths.isEmpty()) return 0
+    return maxOf(labelWidths.max() + minPadding, available / labelWidths.size)
 }
 
+/** Only the icon carries the selection, so names of any length leave the tiles looking alike. */
 @Composable
 internal fun AgentTiles(agents: List<AgentId>, selected: AgentId, select: (AgentId) -> Unit) {
     val scroll = rememberScrollState()
-    val shape = RoundedCornerShape(12.dp)
     val ink = menuInk()
     val accent = menuAccent()
     val style = MaterialTheme.typography.bodySmall
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
     BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
-        val widths = with(density) {
-            agentTileWidths(agents.map { measurer.measure(it.label(), style, maxLines = 1).size.width }, maxWidth.roundToPx(), 12.dp.roundToPx())
+        val width = with(density) {
+            agentTileWidth(agents.map { measurer.measure(it.label(), style, maxLines = 1).size.width }, maxWidth.roundToPx(), 12.dp.roundToPx())
         }
-        LaunchedEffect(agents, selected, widths, scroll.viewportSize) {
+        LaunchedEffect(agents, selected, width, scroll.viewportSize) {
             val index = agents.indexOf(selected)
-            if (index >= 0 && scroll.maxValue > 0 && scroll.viewportSize >= widths[index]) {
-                val start = widths.take(index).sum()
-                val target = scroll.value.coerceIn((start + widths[index] - scroll.viewportSize).coerceAtLeast(0), start)
+            if (index >= 0 && scroll.maxValue > 0 && scroll.viewportSize >= width) {
+                val start = index * width
+                val target = scroll.value.coerceIn((start + width - scroll.viewportSize).coerceAtLeast(0), start)
                 if (scroll.value != target) scroll.scrollTo(target)
             }
         }
         Row(Modifier.fillMaxWidth().fadeScrolledEdges(scroll).horizontalScroll(scroll).selectableGroup()) {
-            agents.forEachIndexed { index, agent ->
+            agents.forEach { agent ->
                 val active = agent == selected
                 val tint = if (active) accent else ink
-                val fill = if (active) Modifier.background(accent.copy(alpha = 0.12f)) else Modifier
+                val fill = if (active) Modifier.background(accent.copy(alpha = 0.12f), RoundedCornerShape(12.dp)) else Modifier
                 Column(
-                    Modifier.width(with(density) { widths[index].toDp() }).clip(shape).then(fill)
+                    Modifier.width(with(density) { width.toDp() }).clip(RoundedCornerShape(12.dp))
                         .selectable(selected = active, role = Role.RadioButton) { select(agent) }
-                        .padding(vertical = 8.dp),
+                        .padding(vertical = 6.dp),
                     horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    AppIcon(agent.glyph(), null, Modifier.size(18.dp), tint = tint)
+                    Box(Modifier.size(44.dp, 36.dp).then(fill), contentAlignment = Alignment.Center) {
+                        AppIcon(agent.glyph(), null, Modifier.size(18.dp), tint = tint)
+                    }
                     Text(agent.label(), maxLines = 1, softWrap = false, style = style, color = tint)
                 }
             }
