@@ -281,12 +281,15 @@ private fun AgentReasoningControl(levels: Set<String>, selected: String?, select
 }
 
 /**
- * Every tile takes the same width, wide enough for the longest name, and the row's spare width is
- * shared out. When that cannot fit, tiles keep it and the row scrolls sideways.
+ * Every tile takes the same width. An even share of the row is used whenever each name fits its tile
+ * and neighbouring names keep [gap] between them; otherwise tiles take the longest name plus [gap]
+ * and the row scrolls sideways.
  */
-internal fun agentTileWidth(labelWidths: List<Int>, available: Int, minPadding: Int): Int {
+internal fun agentTileWidth(labelWidths: List<Int>, available: Int, gap: Int): Int {
     if (labelWidths.isEmpty()) return 0
-    return maxOf(labelWidths.max() + minPadding, available / labelWidths.size)
+    val even = available / labelWidths.size
+    val fitsEvenly = labelWidths.all { it <= even } && labelWidths.zipWithNext().all { (a, b) -> (a + b) / 2 + gap <= even }
+    return if (fitsEvenly) even else labelWidths.max() + gap
 }
 
 /** Only the icon carries the selection, so names of any length leave the tiles looking alike. */
@@ -298,9 +301,9 @@ internal fun AgentTiles(agents: List<AgentId>, selected: AgentId, select: (Agent
     val style = MaterialTheme.typography.bodySmall
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
-    BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+    BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 4.dp)) {
         val width = with(density) {
-            agentTileWidth(agents.map { measurer.measure(it.label(), style, maxLines = 1).size.width }, maxWidth.roundToPx(), 12.dp.roundToPx())
+            agentTileWidth(agents.map { measurer.measure(it.label(), style, maxLines = 1).size.width }, maxWidth.roundToPx(), 8.dp.roundToPx())
         }
         LaunchedEffect(agents, selected, width, scroll.viewportSize) {
             val index = agents.indexOf(selected)

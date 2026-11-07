@@ -365,6 +365,9 @@ class WorkspacePickerTest {
     @Test fun `agent tiles share one width set by the longest name`() {
         Assert.assertEquals(133, agentTileWidth(listOf(10, 40, 80), 400, 12))
         Assert.assertEquals(92, agentTileWidth(listOf(10, 40, 80), 220, 12))
+        // A long name between short ones still fits an even share: the names only need room beside each other.
+        Assert.assertEquals(75, agentTileWidth(listOf(10, 70, 10), 225, 12))
+        Assert.assertEquals(82, agentTileWidth(listOf(60, 70, 60), 225, 12))
     }
     @Test fun `agent tiles are equally wide whatever their names`() {
         compose.setContent { MaterialTheme { AgentTiles(AgentId.entries, AgentId.PI) {} } }
