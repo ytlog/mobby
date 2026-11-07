@@ -300,16 +300,16 @@ class ConversationHostActions(
                     }.drawerSwipe(motion, with(density) { DrawerSwipeEdge.toPx() }))
                 }
             }
-            // The page card, scaled about the window's left middle.
+            // Dims the whole drawer layer, its system bars included, while the page still covers it.
+            Box(Modifier.fillMaxSize().drawBehind {
+                val dim = drawerLayers(if (compact) motion.value else 1f, slide).drawerDim
+                if (motion.value > 0f && dim > 0f) drawRect(Color.Black.copy(alpha = dim))
+            })
+            // The page card slides at its full size.
             Box(Modifier.fillMaxSize().graphicsLayer {
                 val layers = drawerLayers(if (compact) motion.value else 0f, slide)
-                transformOrigin = TransformOrigin(0f, 0.5f)
                 translationX = layers.page
-                scaleX = layers.pageScale
-                scaleY = layers.pageScale
                 shadowElevation = PageShadow.toPx() * layers.shadow
-                shape = RoundedCornerShape(PageCorner.toPx() * layers.corner)
-                clip = layers.shadow > 0f
             }.background(pageColor)) { ConversationViewport {
                 val fullWidth = maxWidth
                 val density = LocalDensity.current
@@ -1321,24 +1321,19 @@ private tailrec fun Context.findHostActivity(): ComponentActivity? = when (this)
 
 /**
  * Where the page and the drawer beneath it sit at an open fraction. The page slides the drawer's full
- * width with a shadow, while the drawer only drifts and rises to full size, so opening uncovers a layer
- * beneath instead of pushing a panel in beside it. Only while it travels does the page recede into a
- * smaller rounded card ([corner] is that fraction of the corner radius); at rest it keeps its full size.
+ * width at its full size with a shadow on its edge. Beneath it the drawer only drifts, and rises from a
+ * smaller, dimmer layer ([drawerDim] is the black scrim over it) to full size and brightness, so opening
+ * lifts the page off a layer below instead of pushing a panel in beside it.
  */
-internal data class DrawerLayers(val page: Float, val drawer: Float, val shadow: Float, val pageScale: Float, val corner: Float, val drawerScale: Float)
+internal data class DrawerLayers(val page: Float, val drawer: Float, val shadow: Float, val drawerScale: Float, val drawerDim: Float)
 private const val DrawerDrift = 0.3f
-private const val PageShrink = 0.1f
 private const val DrawerRestScale = 0.94f
+private const val DrawerRestDim = 0.25f
 private val PageShadow = 24.dp
-private val PageCorner = 28.dp
-internal fun drawerLayers(progress: Float, width: Float): DrawerLayers {
-    val travel = 4f * progress * (1f - progress)
-    return DrawerLayers(
-        page = width * progress, drawer = (progress - 1f) * width * DrawerDrift, shadow = progress,
-        pageScale = 1f - PageShrink * travel, corner = travel,
-        drawerScale = DrawerRestScale + (1f - DrawerRestScale) * progress,
-    )
-}
+internal fun drawerLayers(progress: Float, width: Float) = DrawerLayers(
+    page = width * progress, drawer = (progress - 1f) * width * DrawerDrift, shadow = progress,
+    drawerScale = DrawerRestScale + (1f - DrawerRestScale) * progress, drawerDim = DrawerRestDim * (1f - progress),
+)
 
 // Wide enough that a swipe can start inside the app, past the system back gesture inset.
 internal val DrawerSwipeEdge = 96.dp

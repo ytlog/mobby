@@ -55,29 +55,26 @@ class DrawerSwipeTest {
         commits.clear()
     }
 
-    @Test fun `the page slides over a drawer that lies beneath it and keeps its size at rest`() {
+    @Test fun `the page slides at full size over a drawer that rises and brightens beneath it`() {
         val closed = drawerLayers(0f, 300f)
+        val quarter = drawerLayers(0.25f, 300f)
         val half = drawerLayers(0.5f, 300f)
         val open = drawerLayers(1f, 300f)
         assertEquals(0f, closed.page, 0.001f)
         assertEquals(150f, half.page, 0.001f)
         assertEquals(300f, open.page, 0.001f)
-        assertEquals(0f, open.drawer, 0.001f)
-        // The drawer only drifts a little, so the page uncovers it rather than both sliding in together.
-        assertTrue("drawer should move less than the page: ${half.drawer}", half.drawer > -150f * 0.5f && half.drawer < 0f)
         assertEquals(0f, closed.shadow, 0.001f)
         assertEquals(1f, open.shadow, 0.001f)
-        // The page keeps its full size at rest, open or closed, and only recedes into a rounded card
-        // while it travels, as the drawer rises to meet it.
-        assertEquals(1f, closed.pageScale, 0.001f)
-        assertEquals(1f, open.pageScale, 0.001f)
-        assertTrue("travelling page should shrink: ${half.pageScale}", half.pageScale in 0.85f..0.95f)
-        assertEquals(0f, closed.corner, 0.001f)
-        assertEquals(0f, open.corner, 0.001f)
-        assertEquals(1f, half.corner, 0.001f)
-        assertTrue(drawerLayers(0.25f, 300f).pageScale in half.pageScale..1f)
+        // The drawer only drifts a little, so the page uncovers it rather than both sliding in together.
+        assertEquals(0f, open.drawer, 0.001f)
+        assertTrue("drawer should move less than the page: ${half.drawer}", half.drawer > -150f * 0.5f && half.drawer < 0f)
+        // Beneath, the drawer rises from a smaller, dimmer layer to full size and brightness, one way only.
         assertTrue("closed drawer should sit smaller: ${closed.drawerScale}", closed.drawerScale < 1f)
+        assertTrue(closed.drawerScale < quarter.drawerScale && quarter.drawerScale < half.drawerScale && half.drawerScale < open.drawerScale)
         assertEquals(1f, open.drawerScale, 0.001f)
+        assertTrue("covered drawer should be dimmed: ${closed.drawerDim}", closed.drawerDim in 0.1f..0.5f)
+        assertTrue(closed.drawerDim > quarter.drawerDim && quarter.drawerDim > half.drawerDim && half.drawerDim > open.drawerDim)
+        assertEquals(0f, open.drawerDim, 0.001f)
     }
 
     @Test fun `swiping right from the left edge opens the drawer`() {
