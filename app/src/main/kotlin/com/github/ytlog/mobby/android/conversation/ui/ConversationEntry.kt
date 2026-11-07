@@ -192,7 +192,8 @@ class ConversationHostActions(
         if (activity != null) WindowInfoTracker.getOrCreate(activity).windowLayoutInfo(activity).collect { value = it }
     }
     var viewportOrigin by remember { mutableStateOf(Offset.Zero) }
-    LaunchedEffect(vm) { for (message in vm.feedback) snackbar.showSnackbar(message) }
+    val paths = rememberRuntimePaths()
+    LaunchedEffect(vm, paths) { for (message in vm.feedback) snackbar.showSnackbar(paths.format(message)) }
     fun navigate(next: AppPage) { keyboard?.hide(); focus.clearFocus(); drawer = false; navigation = navigation.open(next) }
     fun navigateProjects(from: AppPage) { keyboard?.hide(); focus.clearFocus(); drawer = false; navigation = navigation.openProjects(from) }
     fun showAddSheet() { keyboard?.hide(); focus.clearFocus(); drawer = false; navigation = navigation.openAddSheet() }
@@ -423,14 +424,15 @@ class ConversationHostActions(
                 reading?.let { (title, text) ->
                     val ink = readerInk()
                     val muted = readerMuted()
+                    val displayText = displayRuntimePaths(text)
                     AppSheet(onDismissRequest = { reading = null }, placement = sheetPlacement) {
                         Column(Modifier.fillMaxWidth().heightIn(max = (availableHeight - 48.dp).coerceAtLeast(120.dp))) {
-                            Text(title, Modifier.fillMaxWidth().padding(horizontal = 16.dp), color = if (dark) muted else Color.Unspecified, style = MaterialTheme.typography.titleMedium)
+                            Text(displayRuntimePaths(title), Modifier.fillMaxWidth().padding(horizontal = 16.dp), color = if (dark) muted else Color.Unspecified, style = MaterialTheme.typography.titleMedium)
                             val clipboard = LocalClipboardManager.current
                             TextButton(onClick = { clipboard.setText(AnnotatedString(text)) }, colors = if (dark) textButtonColors(muted) else textButtonColors()) { Text(AppStrings.copyOriginalText) }
                             androidx.compose.foundation.text.selection.SelectionContainer {
                                 Text(
-                                    if (dark) readerBody(text, ink, muted) else AnnotatedString(text),
+                                    if (dark) readerBody(displayText, ink, muted) else AnnotatedString(displayText),
                                     Modifier.heightIn(max = (availableHeight - 180.dp).coerceAtLeast(100.dp)).verticalScroll(rememberScrollState()).padding(16.dp),
                                     style = MaterialTheme.typography.bodyMedium,
                                 )
@@ -501,7 +503,7 @@ class ConversationHostActions(
                     modifier = Modifier.fillMaxWidth(),
                     onMenu = onMenu, onNew = onNew, onMore = onMore, onAnchor = onAnchor, showMenu = showMenu, menuLabel = menuLabel)
                 if (!system.connected || !system.ready) Text(
-                    system.message,
+                    displayRuntimePaths(system.message),
                     Modifier.padding(horizontal = 20.dp, vertical = 4.dp).align(Alignment.CenterHorizontally),
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -510,7 +512,7 @@ class ConversationHostActions(
                 CompositionLocalProvider(LocalContentColor provides conversationInk()) {
                     Box(Modifier.align(Alignment.Center).widthIn(max = 760.dp).fillMaxSize()) {
                         when {
-                            state.error != null -> Text(state.error!!, Modifier.align(Alignment.Center).padding(24.dp), color = MaterialTheme.colorScheme.error)
+                            state.error != null -> Text(displayRuntimePaths(state.error!!), Modifier.align(Alignment.Center).padding(24.dp), color = MaterialTheme.colorScheme.error)
                             state.loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
                             state.selected == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -622,7 +624,7 @@ class ConversationHostActions(
                 AppIcon(mark, null, Modifier.size(16.dp))
                 Spacer(Modifier.width(8.dp))
             }
-            Text(title, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, color = LocalContentColor.current)
+            Text(displayRuntimePaths(title), Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, color = LocalContentColor.current)
         }
     }
     if (glass) GlassSurface(Modifier.fillMaxWidth().padding(vertical = 2.dp), shape = RoundedCornerShape(14.dp)) { row() }
@@ -876,13 +878,13 @@ internal fun LazyListScope.programSection(shortcuts: List<ProgramShortcut>, quer
         Column(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(horizontal = 12.dp)) {
                 if (unavailable) Text(AppStrings.thisConversationIsArchivedOrDeletedRestoreItIn, style = MaterialTheme.typography.bodySmall)
-                if (state.occupied != null && active == null) Text(AppStrings.isRunningYouCanKeepEditingThisDraft(state.occupied!!.conversation.title), style = MaterialTheme.typography.bodySmall)
+                if (state.occupied != null && active == null) Text(AppStrings.isRunningYouCanKeepEditingThisDraft(displayRuntimePaths(state.occupied!!.conversation.title)), style = MaterialTheme.typography.bodySmall)
                 if (system.diagnosticBusy) Text(AppStrings.shellDiagnosticsIsUsingTheRuntime, style = MaterialTheme.typography.bodySmall)
                 Column(Modifier.heightIn(max = 160.dp).verticalScroll(rememberScrollState())) {
                     AttachmentList(detail.conversation.draft.attachments, detail.conversation.config.workspace, vm) { ref -> vm.enqueue { vm.actions.removeAttachment(detail.conversation.id, ref) } }
                 }
                 detail.conversation.draft.pendingAttachment?.let { pending ->
-                    Text(pending.error ?: AppStrings.importingAttachmentsYouCanSendWhenFinished, style = MaterialTheme.typography.bodySmall)
+                    Text(displayRuntimePaths(pending.error ?: AppStrings.importingAttachmentsYouCanSendWhenFinished), style = MaterialTheme.typography.bodySmall)
                     if (pending.error != null) Row {
                         TextButton(onClick = { vm.importAttachment(detail.conversation.id, pending.workspace, pending.location) }) { Text(AppStrings.retry) }
                         TextButton(onClick = { vm.enqueue { vm.actions.discardAttachment(detail.conversation.id, pending.id) } }) { Text(AppStrings.removePendingAttachment) }
@@ -996,7 +998,7 @@ internal fun Turn.showsSeparateActivity(): Boolean = occupied || pending
         )
         // Top-aligned so that a long message keeps the chevron beside its first line.
         Row(open.heightIn(min = ProcessRowHeight).padding(vertical = 7.dp)) {
-            Text(status, Modifier.weight(1f, fill = false), style = processTextStyle(), color = ink)
+            Text(displayRuntimePaths(status), Modifier.weight(1f, fill = false), style = processTextStyle(), color = ink)
             if (diagnostics != null) {
                 Spacer(Modifier.width(2.dp))
                 AppIcon(AppIcons.ChevronRight, null, Modifier.padding(top = 3.dp).size(12.dp), tint = ink)
@@ -1123,7 +1125,7 @@ internal fun timelineGap(previous: TimelineBlock?, next: TimelineBlock): Dp = wh
             detail.turns.forEach { turn ->
                 val turnEntries = entries.getValue(turn.id)
                 val lastReply = turnEntries.filterIsInstance<TimelineEntry.Reply>().lastOrNull()?.message
-                block("user:${turn.id.value}", TimelineBlock.USER) { Row(Modifier.fillMaxWidth().padding(start = 48.dp), horizontalArrangement = Arrangement.End) { UserMessageBubble { androidx.compose.foundation.text.selection.SelectionContainer { Text(turn.userText) }; AttachmentList(turn.attachments, turn.workspace, vm) } } }
+                block("user:${turn.id.value}", TimelineBlock.USER) { Row(Modifier.fillMaxWidth().padding(start = 48.dp), horizontalArrangement = Arrangement.End) { UserMessageBubble { androidx.compose.foundation.text.selection.SelectionContainer { Text(displayRuntimePaths(turn.userText)) }; AttachmentList(turn.attachments, turn.workspace, vm) } } }
                 turnEntries.forEach { entry ->
                     when (entry) {
                         is TimelineEntry.Device -> block(entry.itemKey(turn), TimelineBlock.PROCESS) {

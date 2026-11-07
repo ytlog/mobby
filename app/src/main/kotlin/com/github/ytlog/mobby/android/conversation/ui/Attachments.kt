@@ -34,7 +34,7 @@ internal val LocalAttachmentPreviewHost = staticCompositionLocalOf<((String) -> 
         when (val value = result) {
             is DataResult.Loaded -> AttachmentItem(value.value, { expanded -> vm.actions.previewAttachment(workspace, ref, expanded) }, remove?.let { { it(ref) } })
             else -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(if (value is DataResult.Failed) value.message else AppStrings.readingAttachmentDetails, Modifier.weight(1f).padding(vertical = 8.dp), style = MaterialTheme.typography.bodySmall)
+                Text(displayRuntimePaths(if (value is DataResult.Failed) value.message else AppStrings.readingAttachmentDetails), Modifier.weight(1f).padding(vertical = 8.dp), style = MaterialTheme.typography.bodySmall)
                 if (remove != null) TextButton(onClick = { remove(ref) }) { Text(AppStrings.remove) }
             }
         }
@@ -96,7 +96,7 @@ internal val LocalAttachmentPreviewHost = staticCompositionLocalOf<((String) -> 
         if (error == null) Text(AppStrings.loadingImage, style = MaterialTheme.typography.bodySmall)
         else {
             Text(AppStrings.previewFailed, style = MaterialTheme.typography.bodySmall)
-            if (expanded) Text(error!!, style = MaterialTheme.typography.bodySmall)
+            if (expanded) Text(displayRuntimePaths(error!!), style = MaterialTheme.typography.bodySmall)
             TextButton(onClick = { retry++ }) { Text(AppStrings.retryPreview) }
         }
     }

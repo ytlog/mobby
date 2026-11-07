@@ -112,8 +112,8 @@ internal fun detailTarget(id: String, loaded: Set<String>?) = when {
 
 @Composable private fun Line(title: String, detail: String? = null, error: Boolean = false) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
-        Text(title, style = MaterialTheme.typography.bodyLarge)
-        if (detail != null) Text(detail, style = MaterialTheme.typography.bodySmall,
+        Text(displayRuntimePaths(title), style = MaterialTheme.typography.bodyLarge)
+        if (detail != null) Text(displayRuntimePaths(detail), style = MaterialTheme.typography.bodySmall,
             color = if (error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
@@ -186,7 +186,7 @@ private fun shortTime(millis: Long): String {
         }
         Column(Modifier.weight(1f)) {
             Text(name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(status.text, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis,
+            Text(displayRuntimePaths(status.text), style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis,
                 color = if (status.problem) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
         }
         trailing()

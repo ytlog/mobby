@@ -402,6 +402,18 @@ class ExecutionFlowTest {
         compose.onNodeWithText("""{"command":"ls"}""").assertDoesNotExist()
     }
 
+    @Test fun `tool headline and terminal output use short paths while the reader gets original text`() {
+        val path = "/data/data/com.github.ytlog.mobby.android/files/libtermux/home/workspace/result.png"
+        val tool = step.copy(command = "ls $path", result = path)
+        val turn = empty.copy(steps = listOf(tool), expandedSteps = setOf("tools:s1", "s1"))
+        var original = ""
+        compose.setContent { MaterialTheme { ExecutionFlow(turn, vm()) { _, text -> original = text } } }
+        compose.onAllNodesWithText("运行 ls ~/workspace/result.png").assertCountEquals(2)
+        compose.onNodeWithText("结果\n~/workspace/result.png", substring = true).assertExists()
+        compose.onNodeWithContentDescription(UiStrings.expandCode).performClick()
+        assertTrue(original.contains(path))
+    }
+
     @Test fun `only the failed turn status offers diagnostics`() {
         val log = listOf(Message("d", "cli stderr"))
         val thinking = Step.Thinking("think", "", null)

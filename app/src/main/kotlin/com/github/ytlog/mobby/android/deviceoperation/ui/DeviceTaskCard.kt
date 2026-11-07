@@ -18,6 +18,7 @@ import com.github.ytlog.mobby.android.conversation.ui.AppIcon
 import com.github.ytlog.mobby.android.conversation.ui.AppIcons
 import com.github.ytlog.mobby.android.conversation.ui.ProcessRow
 import com.github.ytlog.mobby.android.conversation.ui.conversationCardColor
+import com.github.ytlog.mobby.android.conversation.ui.displayRuntimePaths
 import com.github.ytlog.mobby.android.conversation.ui.statusAccentColor
 import com.github.ytlog.mobby.android.conversation.ui.toolCallInk
 import com.github.ytlog.mobby.android.runtime.api.device.*
@@ -136,7 +137,7 @@ internal fun DeviceOperation.showsFoldedPreview(): Boolean = status.terminal && 
 private val knownDisplays = setOf("basic", "screen_control", "message_list", "message_send", "media_grid", "batch_change", "file_list", "file_transfer", "capture", "record_change", "measurement", "connection", "system_handoff")
 private fun JsonObject.text(key: String) = (get(key) as? JsonPrimitive)?.contentOrNull.orEmpty()
 private fun JsonObject.objects(key: String) = (get(key) as? JsonArray)?.mapNotNull { it as? JsonObject }.orEmpty()
-@Composable private fun Caption(text: String) { if (text.isNotBlank()) Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+@Composable private fun Caption(text: String) { if (text.isNotBlank()) Text(displayRuntimePaths(text), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
 @Composable private fun Input(operation: DeviceOperation) {
     operation.input.forEach { (name, value) -> if (value is JsonPrimitive && value.contentOrNull?.isNotBlank() == true)
         Caption("${DeviceLabels.field(name)}：${value.content}") }
@@ -152,7 +153,7 @@ private fun JsonObject.objects(key: String) = (get(key) as? JsonArray)?.mapNotNu
     if (input.text("recipientLabel").isNotBlank()) Caption(input.text("recipientLabel"))
     if (input.text("recipientMasked").isNotBlank()) Caption(DeviceLabels.text("号码尾号 ", "Number ending ") + input.text("recipientMasked"))
     if (input.text("body").isNotBlank()) Surface(shape = RoundedCornerShape(10.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
-        Text(input.text("body"), Modifier.padding(12.dp), style = MaterialTheme.typography.bodyMedium)
+        Text(displayRuntimePaths(input.text("body")), Modifier.padding(12.dp), style = MaterialTheme.typography.bodyMedium)
     }
     val result = operation.result?.takeIf { it.kind == "message_receipt" }?.data ?: return
     Caption(when (result.text("sent")) {
@@ -207,7 +208,9 @@ private fun JsonObject.objects(key: String) = (get(key) as? JsonArray)?.mapNotNu
         else -> {
             val after = result.data["after"] as? JsonObject
             after?.forEach { (key, value) -> Caption("${DeviceLabels.field(key)}：${(value as? JsonPrimitive)?.contentOrNull.orEmpty()}") }
-            if (expanded) result.data.text("previewText").takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+            if (expanded) result.data.text("previewText").takeIf { it.isNotBlank() }?.let {
+                Text(displayRuntimePaths(it), style = MaterialTheme.typography.bodySmall)
+            }
         }
     }
     ResourceButtons(operation, actions)
@@ -252,7 +255,7 @@ private fun JsonObject.objects(key: String) = (get(key) as? JsonArray)?.mapNotNu
             else Caption(DeviceLabels.text("屏幕截图已保存", "Screen screenshot saved"))
         } else Caption(DeviceLabels.text("未获取到屏幕截图：", "Screen screenshot unavailable: ") + screenScreenshotReason(result.data.text("screenshotStatus")))
         // The screen dump relies on indentation and long lines, so it reads as code and scrolls inside the card.
-        if (expanded) Text(result.data.text("text"), softWrap = false,
+        if (expanded) Text(displayRuntimePaths(result.data.text("text")), softWrap = false,
             style = MaterialTheme.typography.labelSmall.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, lineHeight = 16.sp, fontWeight = FontWeight.Normal),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.fillMaxWidth().heightIn(max = 200.dp).verticalScroll(rememberScrollState()).horizontalScroll(rememberScrollState()))
@@ -273,13 +276,13 @@ private fun screenScreenshotReason(status: String): String = when (status) {
     Input(operation)
     if (operation.result?.kind == "text") {
         val text = operation.result!!.data.text("text")
-        Text(text, style = MaterialTheme.typography.bodySmall, maxLines = if (expanded) Int.MAX_VALUE else 4)
+        Text(displayRuntimePaths(text), style = MaterialTheme.typography.bodySmall, maxLines = if (expanded) Int.MAX_VALUE else 4)
     } else if (operation.result?.kind == "program_report") {
         val lines = programReportLines(operation.result!!.data)
-        (if (expanded) lines else lines.take(6)).forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+        (if (expanded) lines else lines.take(6)).forEach { Text(displayRuntimePaths(it), style = MaterialTheme.typography.bodySmall) }
     } else if (operation.result?.kind == "app_function") {
         val value = operation.result!!.data["value"]?.toString().orEmpty()
-        Text(value, style = MaterialTheme.typography.bodySmall, maxLines = if (expanded) Int.MAX_VALUE else 6)
+        Text(displayRuntimePaths(value), style = MaterialTheme.typography.bodySmall, maxLines = if (expanded) Int.MAX_VALUE else 6)
     } else if (operation.result != null) Caption(DeviceLabels.text("此结果类型尚不支持展示，可展开查看记录。", "This result type is not supported; expand its record."))
 }
 

@@ -39,7 +39,7 @@ internal class TaskResultNotifier(private val context: Context, private val open
         val open = open(result.conversation)
         val id = result.conversation.value.hashCode()
         val notification = Notification.Builder(context, CHANNEL).setSmallIcon(android.R.drawable.stat_notify_chat)
-            .setContentTitle(result.title).setContentText(petStatus(result.phase)).setAutoCancel(true)
+            .setContentTitle(runtimePaths(context).format(result.title)).setContentText(petStatus(result.phase)).setAutoCancel(true)
             .setContentIntent(PendingIntent.getActivity(context, id, open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
             .build()
         manager.notify(TAG, id, notification)

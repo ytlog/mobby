@@ -33,6 +33,22 @@ class ReplyImageTest {
         assertEquals(listOf("out/photo.png" to true), requests)
     }
 
+    @Test fun `reply shortens visible absolute paths without changing the image destination`() {
+        val path = "/data/user/0/com.github.ytlog.mobby.android/files/libtermux/home/workspace/out/photo.png"
+        val requests = mutableListOf<String>()
+        compose.setContent { MaterialTheme {
+            ReplyContent("已保存到 `$path`\n\n![$path](file://$path)", images = { source, _ ->
+                requests += source
+                DataResult.Loaded(AttachmentPreview(bytes))
+            }) { _, _ -> }
+        } }
+        waitFor(hasText("已保存到 ~/workspace/out/photo.png"))
+        waitFor(hasContentDescription("~/workspace/out/photo.png预览"))
+        compose.onNodeWithContentDescription("~/workspace/out/photo.png预览").performClick()
+        compose.onNodeWithText("~/workspace/out/photo.png").assertIsDisplayed()
+        assertEquals(listOf("file://$path"), requests)
+    }
+
     @Test fun `tapping a reply image opens a zoomable preview without reloading`() {
         var loads = 0
         compose.setContent { MaterialTheme { ReplyContent("![结果](a.png)", images = { _, _ ->

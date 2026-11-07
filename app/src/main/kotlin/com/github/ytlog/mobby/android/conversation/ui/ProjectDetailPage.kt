@@ -53,7 +53,7 @@ import kotlinx.coroutines.launch
                 if (conversations.isEmpty()) item { EmptyPlaceholder(AppStrings.noProjectConversations) }
                 items(conversations, key = { it.conversation.id.value }) { summary ->
                     Column(Modifier.fillMaxWidth().clickable { openConversation(summary.conversation) }.padding(horizontal = 8.dp, vertical = 14.dp)) {
-                        Text(summary.conversation.title, style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                        Text(displayRuntimePaths(summary.conversation.title), style = MaterialTheme.typography.titleMedium, maxLines = 1)
                         Text(summary.conversation.config.agent.label() + " · " + summary.conversation.config.model,
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                     }

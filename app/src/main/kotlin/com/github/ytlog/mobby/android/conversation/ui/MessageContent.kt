@@ -175,7 +175,7 @@ internal val ProcessTextSize = 13.sp
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(title, Modifier.weight(1f, fill = false), maxLines = 1, overflow = TextOverflow.Ellipsis, style = style, color = titleColor)
+        Text(displayRuntimePaths(title), Modifier.weight(1f, fill = false), maxLines = 1, overflow = TextOverflow.Ellipsis, style = style, color = titleColor)
         if (status != null) {
             Spacer(Modifier.width(8.dp))
             Text(status, maxLines = 1, overflow = TextOverflow.Ellipsis, style = style, color = if (statusColor == Color.Unspecified) ink else statusColor)
@@ -195,7 +195,7 @@ internal val ProcessTextSize = 13.sp
     Surface(shape = RoundedCornerShape(12.dp), color = container, contentColor = content, modifier = Modifier.fillMaxWidth()) {
         Column {
             Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(title.take(30), Modifier.weight(1f), style = MaterialTheme.typography.labelMedium, color = titleInk)
+                Text(displayRuntimePaths(title).take(30), Modifier.weight(1f), style = MaterialTheme.typography.labelMedium, color = titleInk)
                 val actionTint = if (darkChrome()) content else Color.Unspecified
                 val actionScale = LocalToolCodeActionScale.current
                 ActionIcon(AppStrings.copyOriginalCode, { clipboard.setText(AnnotatedString(text)) }, AppIcons.Copy, tint = actionTint, buttonSize = ToolbarControl * actionScale, glyphSize = 22.dp * actionScale)
@@ -204,7 +204,7 @@ internal val ProcessTextSize = 13.sp
             }
             SelectionContainer {
                 // Markdown code literals end in a newline; copying keeps it, the block does not draw an empty last line.
-                Text(text.trimEnd('\n'), modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp).verticalScroll(rememberScrollState())
+                Text(displayRuntimePaths(text).trimEnd('\n'), modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp).verticalScroll(rememberScrollState())
                     .then(if (wrap) Modifier else Modifier.horizontalScroll(rememberScrollState())).padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
                     fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall, softWrap = wrap)
             }
@@ -243,7 +243,7 @@ internal val ProcessTextSize = 13.sp
                     view.terminal -> CodeContent(view.title, body.ifBlank { AppStrings.noOutput }, read, toolCallSurface(), ink)
                     ToolPresentation.looksLikeMarkdown(body) -> ReplyContent(body, streaming = false, read = read)
                     else -> SelectionContainer {
-                        Text(body.ifBlank { AppStrings.noOutput }, style = detailStyle, color = ink,
+                        Text(displayRuntimePaths(body).ifBlank { AppStrings.noOutput }, style = detailStyle, color = ink,
                             modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp).verticalScroll(rememberScrollState()))
                     }
                 }
@@ -297,9 +297,9 @@ internal val ProcessTextSize = 13.sp
     Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), color = conversationCardColor()) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(AppStrings.yourPermissionIsRequired, style = MaterialTheme.typography.titleMedium)
-            Text(view.title, style = MaterialTheme.typography.titleSmall)
+            Text(displayRuntimePaths(view.title), style = MaterialTheme.typography.titleSmall)
             SelectionContainer {
-                Text(view.detail, style = MaterialTheme.typography.bodySmall,
+                Text(displayRuntimePaths(view.detail), style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp).verticalScroll(rememberScrollState()))
             }
             if (submitted) Text(AppStrings.decisionAcceptedAwaitingExecutionResult)

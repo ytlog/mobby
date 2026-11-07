@@ -492,7 +492,7 @@ internal fun modelMenuLabel(id: String, names: Map<String, String>): String {
             Surface(Modifier.weight(1f).fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = cardColor()) {
                 LazyColumn(Modifier.fillMaxSize().padding(16.dp)) {
                     if (state.lines.isEmpty()) item { EmptyPlaceholder(AppStrings.noOutputYet, AppStrings.enterACommandAndTapRun) }
-                    items(state.lines.size) { index -> androidx.compose.foundation.text.selection.SelectionContainer { Text(state.lines[index], fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodySmall) } }
+                    items(state.lines.size) { index -> androidx.compose.foundation.text.selection.SelectionContainer { Text(displayRuntimePaths(state.lines[index]), fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodySmall) } }
                 }
             }
             SettingsGroup { SettingsField(command, { command = it }, AppStrings.enterAShellCommand, singleLine = false, maxLines = 5) }
@@ -517,7 +517,7 @@ internal fun modelMenuLabel(id: String, names: Map<String, String>): String {
                         Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                             AppIcon(row.conversation.config.agent.glyph(), null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurface)
                             Spacer(Modifier.width(12.dp))
-                            Text(row.conversation.title, Modifier.weight(1f), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodyLarge)
+                            Text(displayRuntimePaths(row.conversation.title), Modifier.weight(1f), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodyLarge)
                             TextButton(onClick = { vm.enqueue { vm.report(if (row.conversation.deleted) vm.actions.delete(row.conversation.id, false) else vm.actions.archive(row.conversation.id, false)) } },
                                 colors = textButtonColors(onButtonColor())) { Text(AppStrings.restore, style = MaterialTheme.typography.bodyLarge) }
                         }
@@ -654,7 +654,7 @@ private fun pluginCatalogTabs(tablet: Boolean) = listOf(if (tablet) AppStrings.t
                     TextButton(onClick = { onSelect(hit) }) {
                         Column(Modifier.fillMaxWidth()) {
                             Text(if (hit.messageId == null) AppStrings.you else detail.conversation.config.agent.label(), style = MaterialTheme.typography.labelSmall)
-                            Text(hit.text, maxLines = 4, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                            Text(displayRuntimePaths(hit.text), maxLines = 4, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                         }
                     }
                 }
@@ -669,7 +669,7 @@ private fun pluginCatalogTabs(tablet: Boolean) = listOf(if (tablet) AppStrings.t
         LazyColumn(Modifier.heightIn(max = 420.dp)) {
             item { Text(AppStrings.runtimeLogsAndConfigurationAreExcludedByDefault, style = MaterialTheme.typography.bodySmall) }
             items(messages, key = { it.first }) { (id, text) ->
-                ChoiceRow(text.take(200), id in selected, { selected = if (id in selected) selected - id else selected + id })
+                ChoiceRow(displayRuntimePaths(text).take(200), id in selected, { selected = if (id in selected) selected - id else selected + id })
             }
         }
     }, confirmButton = { TextButton(enabled = selected.isNotEmpty(), onClick = { share(messages.filter { it.first in selected }.joinToString("\n\n") { it.second }); onDismiss() }) { Text(AppStrings.shareViaSystem) } }, dismissButton = { TextButton(onClick = onDismiss) { Text(AppStrings.cancel) } })

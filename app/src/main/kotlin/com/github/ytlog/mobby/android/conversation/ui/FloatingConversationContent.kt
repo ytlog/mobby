@@ -86,13 +86,13 @@ internal const val FloatingConversationHeight = 680
                             Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Box(Modifier.size(5.dp).background(if (active != null) colors.primary else colors.onSurfaceVariant.copy(alpha = 0.5f), CircleShape))
-                                Text(detail.conversation.title ?: FloatingStrings.quickChat, Modifier.weight(1f), maxLines = 1,
+                                Text(displayRuntimePaths(detail.conversation.title ?: FloatingStrings.quickChat), Modifier.weight(1f), maxLines = 1,
                                     overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelMedium, color = colors.onSurfaceVariant)
                                 active?.let { Text(petStatus(it.phase), style = MaterialTheme.typography.labelSmall, color = colors.primary) }
                             }
                         }
                         if (!system.ready || !system.connected) {
-                            Text(system.message, Modifier.padding(horizontal = 18.dp, vertical = 8.dp),
+                            Text(displayRuntimePaths(system.message), Modifier.padding(horizontal = 18.dp, vertical = 8.dp),
                                 color = colors.error, style = MaterialTheme.typography.bodySmall)
                         }
                         if (detail != null && !state.loading) {
@@ -156,7 +156,7 @@ internal const val FloatingConversationHeight = 680
                             }
                         } else {
                             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                                Text(state.error ?: if (state.loading) UiStrings.connecting else UiStrings.noConversationsYet,
+                                Text(displayRuntimePaths(state.error ?: if (state.loading) UiStrings.connecting else UiStrings.noConversationsYet),
                                     Modifier.padding(24.dp), style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
                             }
                         }

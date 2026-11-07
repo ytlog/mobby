@@ -141,10 +141,10 @@ private data class ParsedReply(val source: String, val document: Node)
 
 @Composable private fun ReplyImage(image: Image, images: ReplyImageLoader) {
     val source = image.destination.trim()
-    val name = remember(image) { buildString {
+    val name = displayRuntimePaths(remember(image) { buildString {
         fun visit(node: Node) { if (node is org.commonmark.node.Text) append(node.literal) else ReplyMarkdown.children(node).forEach(::visit) }
         visit(image)
-    }.trim().ifEmpty { AppStrings.replyImage } }
+    }.trim() }).ifEmpty { AppStrings.replyImage }
     val remote = ReplyMarkdown.imageSource(source) == ReplyMarkdown.ImageSource.REMOTE
     var requested by remember(source) { mutableStateOf(!remote) }
     var expanded by remember(source) { mutableStateOf(false) }
@@ -252,13 +252,14 @@ private data class InlineImage(val offset: Int, val node: Image)
 ) {
     val linkColor = MaterialTheme.colorScheme.primary
     val codeBackground = MaterialTheme.colorScheme.surfaceContainer
-    val (value, replyImages) = remember(node, linkColor, codeBackground, images != null) {
+    val paths = rememberRuntimePaths()
+    val (value, replyImages) = remember(node, linkColor, codeBackground, paths, images != null) {
         val found = mutableListOf<InlineImage>()
         val text = buildAnnotatedString {
             fun visit(current: Node) {
                 when (current) {
-                    is org.commonmark.node.Text -> append(current.literal)
-                    is Code -> withStyle(SpanStyle(fontFamily = FontFamily.Monospace, fontSize = 0.85.em, background = codeBackground)) { append(current.literal) }
+                    is org.commonmark.node.Text -> append(paths.format(current.literal))
+                    is Code -> withStyle(SpanStyle(fontFamily = FontFamily.Monospace, fontSize = 0.85.em, background = codeBackground)) { append(paths.format(current.literal)) }
                     is SoftLineBreak, is HardLineBreak -> append('\n')
                     is Emphasis -> withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { ReplyMarkdown.children(current).forEach(::visit) }
                     is StrongEmphasis -> withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { ReplyMarkdown.children(current).forEach(::visit) }
@@ -282,7 +283,7 @@ private data class InlineImage(val offset: Int, val node: Image)
                         if (ReplyMarkdown.safeLink(current.destination)) pop()
                         append(']')
                     }
-                    is HtmlInline -> append(current.literal)
+                    is HtmlInline -> append(paths.format(current.literal))
                     is TaskListItemMarker -> append(if (current.isChecked) "☑ " else "☐ ")
                     else -> ReplyMarkdown.children(current).forEach(::visit)
                 }
