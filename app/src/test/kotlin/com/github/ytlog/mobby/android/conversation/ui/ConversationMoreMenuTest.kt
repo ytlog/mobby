@@ -38,8 +38,8 @@ class ConversationMoreMenuTest {
             }
         } as T
 
-    @Test fun `more conversation actions open as the same dimmed card as the new conversation popup`() {
-        val conversation = Conversation(ConversationId("more"), NextTurnConfig(AgentId.PI, "model", null, "default", "fixture-gateway"))
+    @Test fun `more conversation actions open as the same dimmed card as the new conversation popup without a title`() {
+        val conversation = Conversation(ConversationId("more"), NextTurnConfig(AgentId.PI, "model", null, "default", "fixture-gateway"), title = "示例对话标题")
         val system = stub<SystemPort> { name -> when (name) {
             "getStatus" -> flowOf(SystemStatus(true, true))
             "getDiagnostic" -> flowOf(DiagnosticOutput(null, emptyList()))
@@ -65,8 +65,11 @@ class ConversationMoreMenuTest {
         compose.waitForIdle()
         assertTrue("no popup should dim the page before the menu opens", dimmedWindows().isEmpty())
 
+        val titlesBefore = compose.onAllNodesWithText("示例对话标题").fetchSemanticsNodes().size
         compose.onNodeWithContentDescription("更多会话操作").performClick()
         compose.waitForIdle()
+        assertEquals("the menu should list its actions without a title above them", titlesBefore,
+            compose.onAllNodesWithText("示例对话标题").fetchSemanticsNodes().size)
 
         val share = compose.onNodeWithText("分享").assertIsDisplayed().getUnclippedBoundsInRoot()
         assertEquals("menu should be as narrow as the new conversation popup", 304f, (share.right - share.left).value, 0.5f)

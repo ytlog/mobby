@@ -751,8 +751,7 @@ internal fun LazyListScope.programSection(shortcuts: List<ProgramShortcut>, quer
                     }
                 }
                 if (c != null) DimmedMenu(more, { more = false }, actions) {
-                    Column(Modifier.padding(bottom = 12.dp)) {
-                        MenuCaption(c.title)
+                    Column(Modifier.padding(vertical = 12.dp)) {
                         listOf(
                             Triple("share", AppStrings.share, AppIcons.Share),
                             Triple("pin", if (c.pinned) AppStrings.unpin else AppStrings.pin, AppIcons.Pin),

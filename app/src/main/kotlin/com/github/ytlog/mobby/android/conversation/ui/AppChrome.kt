@@ -305,10 +305,6 @@ internal fun Modifier.lightInputShadow(corner: Dp): Modifier = drawBehind {
     }
 }
 
-@Composable internal fun MenuCaption(text: String) {
-    Text(text, Modifier.padding(horizontal = 20.dp, vertical = 6.dp), style = MaterialTheme.typography.bodySmall, color = menuMuted())
-}
-
 @Composable internal fun MenuAction(text: String, enabled: Boolean = true, danger: Boolean = false, icon: AppGlyph? = null, onClick: () -> Unit) {
     val color = if (danger) MaterialTheme.colorScheme.error else menuInk().copy(alpha = if (enabled) 1f else 0.38f)
     Row(
