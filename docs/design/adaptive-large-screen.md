@@ -15,7 +15,7 @@
 | [`ConversationEntry.kt`](../../app/src/main/kotlin/com/github/ytlog/mobby/android/conversation/ui/ConversationEntry.kt) | 单一入口管理字符串 `route`、抽屉、弹窗及页面内容；`ConversationViewport` 读取 `BoxWithConstraints` 的宽高。抽屉宽度最多 360dp，打开时平移整张页面；会话时间线和输入区占满剩余窗口。没有宽窗或折叠特征分支。 |
 | [`ConversationViewModel.kt`](../../app/src/main/kotlin/com/github/ytlog/mobby/android/conversation/ui/ConversationViewModel.kt) 与 [`ConversationState.kt`](../../conversation/domain/src/main/kotlin/com/github/ytlog/mobby/android/conversation/domain/ConversationState.kt) | 仓库状态已有会话列表、唯一 `selected` 会话和执行状态；UI 通过 `ConversationUseCases.select(id)` 选择会话。可复用为单栏和双栏的同一数据来源。 |
 | [`MainActivity.kt`](../../app/src/main/java/com/github/ytlog/mobby/android/MainActivity.kt) 与 [`AndroidManifest.xml`](../../app/src/main/AndroidManifest.xml) | 单 Activity + Compose；Manifest 没有固定方向或禁止调整窗口大小的声明，`adjustResize` 已设置。此事实不等于各窗口尺寸已经验收。 |
-| [`Theme.kt`](../../app/src/main/kotlin/com/github/ytlog/mobby/android/conversation/ui/Theme.kt) | `FrostedMenu` 按根视图宽度生成接近全窗宽的菜单。宽窗下需要按锚点及所在 pane 限宽和定位。 |
+| [`Theme.kt`](../../app/src/main/kotlin/com/github/ytlog/mobby/android/conversation/ui/Theme.kt) | `DimmedMenu` 统一为 304dp 宽、带压暗蒙层的实色卡片，按锚点定位并保持 16dp 窗口边距。宽窗下仍需按所在 pane 定位。 |
 | [`FloatingConversationWindow.kt`](../../app/src/main/kotlin/com/github/ytlog/mobby/android/conversation/ui/FloatingConversationWindow.kt)、[`DesktopPet.kt`](../../app/src/main/kotlin/com/github/ytlog/mobby/android/conversation/ui/DesktopPet.kt) | 悬浮窗口通过 `displayMetrics` 计算尺寸和位置；折叠、分屏及显示区域变化需要单独验收。 |
 | [`ConversationDrawerPageTest.kt`](../../app/src/test/kotlin/com/github/ytlog/mobby/android/conversation/ui/ConversationDrawerPageTest.kt) | 抽屉端到端 Compose 测试固定在 360×640dp；另有短横屏局部控件测试，尚未覆盖主界面的双栏或动态折叠。 |
 
@@ -63,7 +63,7 @@ flowchart TB
 - `AdaptiveAppShell`：负责安放列表、详情与全屏子页。将现有抽屉位移、边缘滑动、预测返回封装进 `CompactConversationShell`；宽窗的 `WideConversationShell` 固定展示列表，不挂载抽屉滑动处理。
 - `ConversationListPane`：从现有 `ConversationDrawer` 抽出列表、搜索、置顶、项目入口和页脚；窄窗外层保留抽屉背景及开关行为，宽窗外层提供固定 pane 和选中态。不会出现两份同时订阅并写入的列表。
 - `ConversationPane`：复用 `Timeline`、`Composer` 和工具栏逻辑。列表点击只更换当前会话；单栏时收起抽屉，双栏时原位更新详情。详情内部给消息和输入区设置可阅读的最大宽度，并在 pane 中居中。
-- `OverlayHost`：按源 pane 的可用矩形安放新建会话、更多菜单、阅读器、附件面板等。窗口窄时保留当前 sheet/dialog 交互；宽窗时限制宽度并确保关闭入口、IME 避让和铰链避让。先修正 `FrostedMenu` 的全窗宽假设。
+- `OverlayHost`：按源 pane 的可用矩形安放新建会话、更多菜单、阅读器、附件面板等。窗口窄时保留当前 sheet/dialog 交互；宽窗时限制宽度并确保关闭入口、IME 避让和铰链避让。`DimmedMenu` 已不再按全窗宽生成。
 
 采用 Material 3 Adaptive 的窗口/折叠信息；列表详情 scaffold 是否用于实际排版，在第一阶段做小范围验证。选择标准是：能否复用现有唯一 `selected`、保持手机抽屉预测返回和深链语义、避免双重导航栈。若不能，使用上述本地 shell 与纯布局策略；不同时保留两套职责重叠的导航实现。
 

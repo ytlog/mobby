@@ -93,7 +93,7 @@ class GlassTransmissionDeviceTest {
                                     }
                                 }
                             }
-                            FrostedMenu(popupVisible.value, { popupVisible.value = false }) {
+                            DimmedMenu(popupVisible.value, { popupVisible.value = false }) {
                                 Column(Modifier.onGloballyPositioned {
                                     val origin = it.positionOnScreen()
                                     popupBounds.set(Rect(origin.x.roundToInt(), origin.y.roundToInt(),

@@ -83,7 +83,7 @@ import kotlinx.coroutines.*
     }
     val changed = config != null && config != c.config
     val showMain = { page = AgentMenuPage.MAIN }
-    FrostedMenu(true, dismiss, anchor, maxWidth = 304.dp, dimBehind = true) {
+    DimmedMenu(true, dismiss, anchor) {
         val ink = menuInk()
         val secondaryInk = ink.copy(alpha = 0.68f)
         when (page) {
@@ -377,7 +377,7 @@ internal fun newConversationDialog(connectionsRead: Boolean, connections: List<G
     val agents by vm.agents.collectAsStateWithLifecycle()
     val connected = AgentId.entries.filter { value -> profiles.any { it.agent == value } }
     var choosingProject by remember { mutableStateOf(false) }
-    FrostedMenu(true, onDismiss, anchor, maxWidth = 304.dp, dimBehind = true) {
+    DimmedMenu(true, onDismiss, anchor) {
         if (choosingProject) AgentMenuSubpage(AppStrings.selectProject, { choosingProject = false }) {
             AgentMenuChoice(AppStrings.noProject, project == null) { project = null; choosingProject = false }
             state.projects.forEach { item ->

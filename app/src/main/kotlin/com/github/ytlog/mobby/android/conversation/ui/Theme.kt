@@ -1,16 +1,9 @@
 package com.github.ytlog.mobby.android.conversation.ui
 
-import android.app.Activity
-import android.graphics.Bitmap
-import android.graphics.Canvas
 import android.graphics.drawable.ColorDrawable
-import android.os.Handler
-import android.os.Looper
-import android.view.PixelCopy
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
@@ -24,19 +17,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionOnScreen
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextAlign
@@ -45,13 +30,9 @@ import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlin.coroutines.resume
-import kotlin.math.roundToInt
 
 @Composable internal fun floatingElevation() = if (darkChrome()) 8.dp else 12.dp
 
@@ -62,48 +43,41 @@ import kotlin.math.roundToInt
     }
 }
 
-@Composable internal fun FrostedMenu(
+/** Width of a menu card; the agent menu and the new conversation and conversation action popups all share it. */
+private val MenuWidth = 304.dp
+
+/**
+ * A menu card that opens below [anchor] over a dimmed window: an opaque card with a hairline border,
+ * kept within the window's 16dp margins. Glass is turned off inside it.
+ */
+@Composable internal fun DimmedMenu(
     expanded: Boolean,
     onDismissRequest: () -> Unit,
     anchor: IntRect = IntRect.Zero,
-    maxWidth: Dp = 420.dp,
-    dimBehind: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     if (!expanded) return
     val host = LocalView.current
-    val snapshot = if (dimBehind) null else {
-        var captured by remember(host) { mutableStateOf(snapshotView(host)) }
-        LaunchedEffect(host) { captureWindow(host)?.let { captured = it } }
-        captured
-    }
     val density = LocalDensity.current
     val margin = with(density) { 16.dp.roundToPx() }
     val gap = with(density) { 8.dp.roundToPx() }
     val windowWidth = host.rootView.width.takeIf { it > 0 } ?: host.resources.displayMetrics.widthPixels
-    val popupWidth = minOf((windowWidth - margin * 2).coerceAtLeast(1), with(density) { maxWidth.roundToPx() })
+    val popupWidth = minOf((windowWidth - margin * 2).coerceAtLeast(1), with(density) { MenuWidth.roundToPx() })
     val popupLeft = (if (anchor.width > 0) anchor.left else margin)
         .coerceIn(margin, (windowWidth - popupWidth - margin).coerceAtLeast(margin))
-    val predictedHeight = with(density) { 560.dp.roundToPx() }
-    val frostTop = if (anchor.bottom > 0) anchor.bottom + gap else margin + with(density) { 56.dp.roundToPx() }
-    var cardHeight by remember { mutableStateOf(predictedHeight) }
-    val hostOrigin = remember(host) { IntArray(2).also { host.rootView.getLocationOnScreen(it) } }
-    var actualOrigin by remember { mutableStateOf(IntOffset(popupLeft, frostTop)) }
-    val frost = remember(snapshot, actualOrigin, popupWidth, cardHeight) {
-        snapshot?.let { frostRegion(it, actualOrigin.x, actualOrigin.y, popupWidth, cardHeight).asImageBitmap() }
-    }
+    val fallbackTop = margin + with(density) { 56.dp.roundToPx() }
     val shape = RoundedCornerShape(22.dp)
-    val panelColor = if (dimBehind) cardColor() else menuScrim()
+    val panelColor = cardColor()
     val dimAmount = if (darkChrome()) 0.26f else 0.18f
     val stroke = menuStroke()
-    val position = remember(margin, gap, frostTop, anchor, popupLeft) {
+    val position = remember(margin, gap, fallbackTop, anchor, popupLeft) {
         object : PopupPositionProvider {
             override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize): IntOffset {
                 val x = popupLeft.coerceAtMost((windowSize.width - popupContentSize.width).coerceAtLeast(0))
                 val rawY = when {
                     anchor.bottom > 0 -> anchor.bottom + gap
                     anchorBounds.bottom > 0 -> anchorBounds.bottom + gap
-                    else -> frostTop
+                    else -> fallbackTop
                 }
                 val y = rawY.coerceAtMost((windowSize.height - popupContentSize.height - margin).coerceAtLeast(0)).coerceAtLeast(0)
                 return IntOffset(x, y)
@@ -114,25 +88,15 @@ import kotlin.math.roundToInt
         val popupView = LocalView.current
         SideEffect {
             clearPopupChrome(popupView)
-            if (dimBehind) dimPopupBackdrop(popupView, dimAmount)
+            dimPopupBackdrop(popupView, dimAmount)
         }
         Box(
             Modifier
                 .width(with(density) { popupWidth.toDp() })
                 .clip(shape)
                 .border(0.5.dp, stroke, shape)
-                .onGloballyPositioned { coordinates ->
-                    if (coordinates.size.height > 0 && coordinates.size.height != cardHeight) cardHeight = coordinates.size.height
-                    val origin = coordinates.positionOnScreen()
-                    actualOrigin = IntOffset(origin.x.roundToInt() - hostOrigin[0], origin.y.roundToInt() - hostOrigin[1])
-                },
+                .background(panelColor),
         ) {
-            Box(Modifier.matchParentSize()) {
-                frost?.let { image ->
-                    Image(image, contentDescription = null, modifier = Modifier.matchParentSize(), contentScale = ContentScale.Crop)
-                }
-                Box(Modifier.matchParentSize().background(panelColor))
-            }
             CompositionLocalProvider(LocalGlassEnabled provides false, LocalGlassControls provides false, LocalConversationBackdrop provides null) {
                 MaterialTheme(
                     colorScheme = MaterialTheme.colorScheme.copy(
@@ -157,91 +121,6 @@ private fun dimPopupBackdrop(view: View, amount: Float) {
         params.flags = flags
         params.dimAmount = amount
         window.context.getSystemService(WindowManager::class.java).updateViewLayout(window, params)
-    }
-}
-
-internal fun frostRegion(source: Bitmap, left: Int, top: Int, width: Int, height: Int): Bitmap {
-    val pad = 64
-    val l = (left - pad).coerceAtLeast(0)
-    val t = (top - pad).coerceAtLeast(0)
-    val r = (left + width + pad).coerceAtMost(source.width)
-    val b = (top + height + pad).coerceAtMost(source.height)
-    val cropped = Bitmap.createBitmap(source, l, t, (r - l).coerceAtLeast(1), (b - t).coerceAtLeast(1))
-    val small = Bitmap.createScaledBitmap(cropped, (cropped.width / 8).coerceAtLeast(1), (cropped.height / 8).coerceAtLeast(1), true)
-    repeat(3) { boxBlur(small, 3) }
-    val up = Bitmap.createScaledBitmap(small, cropped.width, cropped.height, true)
-    val ox = (left - l).coerceIn(0, (up.width - 1).coerceAtLeast(0))
-    val oy = (top - t).coerceIn(0, (up.height - 1).coerceAtLeast(0))
-    return Bitmap.createBitmap(
-        up,
-        ox,
-        oy,
-        width.coerceAtMost(up.width - ox).coerceAtLeast(1),
-        height.coerceAtMost(up.height - oy).coerceAtLeast(1),
-    )
-}
-
-private fun boxBlur(bitmap: Bitmap, radius: Int) {
-    if (radius < 1) return
-    val w = bitmap.width
-    val h = bitmap.height
-    val src = IntArray(w * h)
-    val tmp = IntArray(w * h)
-    bitmap.getPixels(src, 0, w, 0, 0, w, h)
-    blurAxis(src, tmp, w, h, radius, true)
-    blurAxis(tmp, src, w, h, radius, false)
-    bitmap.setPixels(src, 0, w, 0, 0, w, h)
-}
-
-private fun blurAxis(src: IntArray, dst: IntArray, w: Int, h: Int, radius: Int, horizontal: Boolean) {
-    val span = radius * 2 + 1
-    if (horizontal) {
-        for (y in 0 until h) {
-            val row = y * w
-            var a = 0; var r = 0; var g = 0; var b = 0
-            fun px(x: Int): Int = src[row + x.coerceIn(0, w - 1)]
-            fun acc(p: Int, sign: Int) { a += sign * (p ushr 24); r += sign * ((p shr 16) and 255); g += sign * ((p shr 8) and 255); b += sign * (p and 255) }
-            for (i in -radius..radius) acc(px(i), 1)
-            for (x in 0 until w) {
-                dst[row + x] = (a / span shl 24) or (r / span shl 16) or (g / span shl 8) or (b / span)
-                acc(px(x + radius + 1), 1)
-                acc(px(x - radius), -1)
-            }
-        }
-    } else {
-        for (x in 0 until w) {
-            var a = 0; var r = 0; var g = 0; var b = 0
-            fun px(y: Int): Int = src[y.coerceIn(0, h - 1) * w + x]
-            fun acc(p: Int, sign: Int) { a += sign * (p ushr 24); r += sign * ((p shr 16) and 255); g += sign * ((p shr 8) and 255); b += sign * (p and 255) }
-            for (i in -radius..radius) acc(px(i), 1)
-            for (y in 0 until h) {
-                dst[y * w + x] = (a / span shl 24) or (r / span shl 16) or (g / span shl 8) or (b / span)
-                acc(px(y + radius + 1), 1)
-                acc(px(y - radius), -1)
-            }
-        }
-    }
-}
-
-private fun snapshotView(view: View): Bitmap? {
-    val root = view.rootView
-    if (root.width <= 0 || root.height <= 0) return null
-    return runCatching {
-        val bitmap = Bitmap.createBitmap(root.width, root.height, Bitmap.Config.ARGB_8888)
-        root.draw(Canvas(bitmap))
-        bitmap
-    }.getOrNull()
-}
-
-private suspend fun captureWindow(view: View): Bitmap? {
-    val window = (view.context as? Activity)?.window ?: return snapshotView(view)
-    val root = window.decorView
-    if (root.width <= 0 || root.height <= 0) return snapshotView(view)
-    return suspendCancellableCoroutine { cont ->
-        val bitmap = Bitmap.createBitmap(root.width, root.height, Bitmap.Config.ARGB_8888)
-        PixelCopy.request(window, bitmap, { result ->
-            cont.resume(if (result == PixelCopy.SUCCESS) bitmap else snapshotView(view))
-        }, Handler(Looper.getMainLooper()))
     }
 }
 

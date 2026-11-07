@@ -750,7 +750,7 @@ internal fun LazyListScope.programSection(shortcuts: List<ProgramShortcut>, quer
                         ActionIcon(AppStrings.moreConversationActions, { more = true }, AppIcons.More, c != null)
                     }
                 }
-                if (c != null) FrostedMenu(more, { more = false }, actions) {
+                if (c != null) DimmedMenu(more, { more = false }, actions) {
                     Column(Modifier.padding(bottom = 12.dp)) {
                         MenuCaption(c.title)
                         listOf(

@@ -69,7 +69,7 @@ class GlassSurfaceStyleTest {
         compose.setContent {
             MaterialTheme(colorScheme = MobbyLightScheme) {
                 androidx.compose.runtime.CompositionLocalProvider(LocalGlassEnabled provides true) {
-                    FrostedMenu(true, {}) {
+                    DimmedMenu(true, {}) {
                         enabled = LocalGlassEnabled.current
                         buttons = LocalGlassControls.current
                     }

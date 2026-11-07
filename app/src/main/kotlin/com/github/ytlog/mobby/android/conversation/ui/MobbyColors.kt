@@ -33,7 +33,6 @@ internal object MobbyColors {
         val outline = Color(0xFF2E2E30)
         val menuInk = Color(0xFFF2F2F4)
         val menuAccent = Color(0xFF0A84FF)
-        val menuScrim = Color(0x99141416)
         val menuStroke = Color.White.copy(alpha = 0.14f)
         val drawer = Color(0xFF1F1F1F)
         val button = Color(0xFF292929)
@@ -79,7 +78,6 @@ internal object MobbyColors {
         val outline = Color(0xFFE8E3D9)
         val menuInk = Color(0xFF2C2A26)
         val menuAccent = Color(0xFFB4552F)
-        val menuScrim = Color(0xCCF6F4EF)
         val menuStroke = Color.Black.copy(alpha = 0.06f)
         val drawer = Color(0xFFF4F1EA)
         val drawerControl = Color(0xFFFFFDF9)
@@ -206,7 +204,6 @@ internal val MobbyLightScheme: ColorScheme = lightColorScheme(
 
 @Composable internal fun menuTick(): Color = if (darkChrome()) MobbyColors.onAccent else MobbyColors.Light.menuAccent
 
-@Composable internal fun menuScrim(): Color = if (darkChrome()) MobbyColors.Dark.menuScrim else MobbyColors.Light.menuScrim
 
 @Composable internal fun menuStroke(): Color = if (darkChrome()) MobbyColors.Dark.menuStroke else MobbyColors.Light.menuStroke
 
