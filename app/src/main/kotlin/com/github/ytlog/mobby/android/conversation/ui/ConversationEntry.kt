@@ -915,6 +915,7 @@ internal fun Turn.showsSeparateActivity(): Boolean = occupied || pending
 /**
  * The turn's outcome, placed after its content. A stop the user asked for or a queued message stays compact.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable internal fun TurnStatus(
     turn: Turn,
     onCancelQueued: () -> Unit,
@@ -937,21 +938,24 @@ internal fun Turn.showsSeparateActivity(): Boolean = occupied || pending
         shape = RoundedCornerShape(12.dp),
         modifier = Modifier.fillMaxWidth().testTag("turn-status"),
     ) {
-        Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            AppIcon(AppIcons.Error, null, Modifier.padding(top = 3.dp).size(16.dp), tint = accent)
-            Column(Modifier.weight(1f)) {
-                Text(status, Modifier.padding(top = 2.dp, bottom = 2.dp), style = MaterialTheme.typography.bodyMedium)
-                if (action != null) {
-                    HorizontalDivider(Modifier.padding(top = 6.dp), color = toolCallInk().copy(alpha = 0.20f))
-                    TextButton(
-                        onClick = action.second,
-                        contentPadding = PaddingValues(end = 8.dp, top = 4.dp, bottom = 4.dp),
-                        colors = textButtonColors(),
-                    ) {
-                        Text(action.first, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
-                    }
-                }
+        FlowRow(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            itemVerticalAlignment = Alignment.CenterVertically,
+        ) {
+            Row(
+                Modifier.padding(vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                AppIcon(AppIcons.Error, null, Modifier.padding(top = 2.dp).size(16.dp), tint = accent)
+                Text(status, style = MaterialTheme.typography.bodyMedium)
             }
+            if (action != null) TextButton(
+                onClick = action.second,
+                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
+                colors = textButtonColors(),
+            ) { Text(action.first, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium) }
         }
     } else {
         val calm = turn.queued || turn.phase == ExecutionPhase.CANCELLED

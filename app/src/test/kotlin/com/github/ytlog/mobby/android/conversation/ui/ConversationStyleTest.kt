@@ -1,8 +1,11 @@
 package com.github.ytlog.mobby.android.conversation.ui
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.test.getBoundsInRoot
@@ -143,32 +146,52 @@ class ConversationStyleTest {
         compose.runOnIdle { assertEquals(1, restored) }
     }
 
-    @Test fun `an unconfirmed queued submission puts the check action under its status`() {
-        val message = "无法确认请求是否已提交，请稍后查询。"
+    @Test fun `an unconfirmed queued submission wraps the check action in a narrow card`() {
+        val message = "无法确认请求是否已提交，请稍后查询。\n" +
+            "Request result could not be confirmed. ".repeat(6).trimEnd()
         var checked = 0
         var restored = 0
         compose.setContent {
             MaterialTheme {
-                TurnStatus(
-                    turn.copy(phase = null, failure = message, pending = true, occupied = true, queued = true),
-                    onCancelQueued = {},
-                    onRestore = { restored++ },
-                    onCheckPending = { checked++ },
-                )
+                Box(Modifier.width(180.dp)) {
+                    TurnStatus(
+                        turn.copy(phase = null, failure = message, pending = true, occupied = true, queued = true),
+                        onCancelQueued = {},
+                        onRestore = { restored++ },
+                        onCheckPending = { checked++ },
+                    )
+                }
             }
         }
         val failure = compose.onNodeWithText(message).getBoundsInRoot()
-        val action = compose.onNodeWithText("查询待确认请求")
+        val action = compose.onNodeWithText("查询待确认请求", useUnmergedTree = true)
         val actionBounds = action.getBoundsInRoot()
-        assertTrue(failure.bottom <= actionBounds.top)
-        assertEquals(failure.left.value, actionBounds.left.value, 1f)
+        assertTrue("Status: $failure, action: $actionBounds", failure.bottom <= actionBounds.top)
         compose.onNodeWithText("恢复到输入框").assertDoesNotExist()
         compose.onNodeWithText(UiStrings.cancelQueuedMessage).assertDoesNotExist()
-        action.performClick()
+        compose.onNodeWithText("查询待确认请求").performClick()
         compose.runOnIdle {
             assertEquals(1, checked)
             assertEquals(0, restored)
         }
+    }
+
+    @Test fun `a short interrupted status and restore action share a row`() {
+        var restored = 0
+        val message = UiStrings.executionInterruptedResultUnconfirmed
+        compose.setContent {
+            MaterialTheme {
+                Box(Modifier.width(320.dp)) {
+                    TurnStatus(turn.copy(phase = ExecutionPhase.INTERRUPTED, failure = message), onCancelQueued = {}, onRestore = { restored++ })
+                }
+            }
+        }
+        val status = compose.onNodeWithText(message).getBoundsInRoot()
+        val action = compose.onNodeWithText(UiStrings.restoreToInput, useUnmergedTree = true).getBoundsInRoot()
+        assertTrue(status.top < action.bottom && action.top < status.bottom)
+        assertTrue(status.right < action.left)
+        compose.onNodeWithText(UiStrings.restoreToInput).performClick()
+        compose.runOnIdle { assertEquals(1, restored) }
     }
 
     @Test fun `a queued turn offers cancel and not restore`() {
