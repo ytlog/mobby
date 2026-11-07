@@ -5,6 +5,8 @@ import com.github.ytlog.mobby.android.conversation.domain.gateway.*
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.*
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -399,10 +401,14 @@ class ExecutionFlowTest {
         assertFalse(running.diagnosticsActionVisible())
         val finished = running.copy(occupied = false, phase = ExecutionPhase.SUCCEEDED, steps = listOf(thinking.copy(outcome = "SUCCEEDED")), expandedSteps = setOf("tools:think"))
         assertFalse(finished.diagnosticsActionVisible())
-        val failed = finished.copy(phase = ExecutionPhase.FAILED, failure = "执行失败")
+        val failure = "执行失败"
+        val failed = finished.copy(phase = ExecutionPhase.FAILED, failure = failure)
         assertTrue(failed.diagnosticsActionVisible())
         assertTrue(failed.copy(failure = null).reportsOutcome())
         val diagnostics = UiStrings.viewDiagnostics(1)
+        val diagnosticsClick = SemanticsMatcher("click label is $diagnostics") {
+            it.config.getOrNull(SemanticsActions.OnClick)?.label == diagnostics
+        }
         val shown = mutableStateOf(running)
         val showStatus = mutableStateOf(false)
         var diagnosticsOpened = 0
@@ -425,22 +431,21 @@ class ExecutionFlowTest {
         compose.runOnIdle { shown.value = failed }
         compose.onNodeWithText("查看诊断", substring = true).assertDoesNotExist()
         compose.onNodeWithContentDescription(diagnostics).assertDoesNotExist()
+        compose.onNode(diagnosticsClick).assertDoesNotExist()
 
         compose.runOnIdle { showStatus.value = true }
         compose.onNodeWithText("查看诊断", substring = true).assertDoesNotExist()
-        val diagnosticsAction = compose.onNodeWithContentDescription(diagnostics).assertIsDisplayed()
-        val icon = diagnosticsAction.getBoundsInRoot()
+        compose.onNodeWithContentDescription(diagnostics).assertDoesNotExist()
+        val status = compose.onNodeWithText(failure, useUnmergedTree = true).getBoundsInRoot()
         val restore = compose.onNodeWithText(UiStrings.restoreToInput, useUnmergedTree = true).getBoundsInRoot()
-        val card = compose.onNodeWithTag("turn-status").getBoundsInRoot()
-        assertTrue("Diagnostics and Restore should share a row", restore.top < icon.bottom && icon.top < restore.bottom)
-        assertTrue("Diagnostics should follow Restore", restore.right <= icon.left)
-        assertTrue("Diagnostics should sit at the card's trailing inset", card.right - icon.right in 8.dp..20.dp)
-        diagnosticsAction.performClick()
+        assertTrue("Failed status and Restore should share a row", status.top < restore.bottom && restore.top < status.bottom)
+        compose.onNode(hasText(failure) and diagnosticsClick).assertIsDisplayed().performClick()
         compose.runOnIdle {
             assertEquals(1, diagnosticsOpened)
             shown.value = finished
         }
-        compose.onNodeWithContentDescription(diagnostics).assertDoesNotExist()
+        compose.onNodeWithText(UiStrings.done).assertHasNoClickAction()
+        compose.onNode(diagnosticsClick).assertDoesNotExist()
     }
 
     @Test fun `thinking stays collapsed while streaming and opens only on request`() {
