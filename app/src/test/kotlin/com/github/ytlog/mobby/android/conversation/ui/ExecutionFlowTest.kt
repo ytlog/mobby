@@ -428,7 +428,14 @@ class ExecutionFlowTest {
 
         compose.runOnIdle { showStatus.value = true }
         compose.onNodeWithText("查看诊断", substring = true).assertDoesNotExist()
-        compose.onNodeWithContentDescription(diagnostics).assertIsDisplayed().performClick()
+        val diagnosticsAction = compose.onNodeWithContentDescription(diagnostics).assertIsDisplayed()
+        val icon = diagnosticsAction.getBoundsInRoot()
+        val restore = compose.onNodeWithText(UiStrings.restoreToInput, useUnmergedTree = true).getBoundsInRoot()
+        val card = compose.onNodeWithTag("turn-status").getBoundsInRoot()
+        assertTrue("Diagnostics and Restore should share a row", restore.top < icon.bottom && icon.top < restore.bottom)
+        assertTrue("Diagnostics should follow Restore", restore.right <= icon.left)
+        assertTrue("Diagnostics should sit at the card's trailing inset", card.right - icon.right in 8.dp..20.dp)
+        diagnosticsAction.performClick()
         compose.runOnIdle {
             assertEquals(1, diagnosticsOpened)
             shown.value = finished

@@ -46,6 +46,7 @@ import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.input.pointer.util.addPointerInputChange
 import com.kyant.backdrop.backdrops.rememberCanvasBackdrop
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.*
@@ -915,7 +916,6 @@ internal fun Turn.showsSeparateActivity(): Boolean = occupied || pending
 /**
  * The turn's outcome, placed after its content. A stop the user asked for or a queued message stays compact.
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable internal fun TurnStatus(
     turn: Turn,
     onCancelQueued: () -> Unit,
@@ -941,11 +941,7 @@ internal fun Turn.showsSeparateActivity(): Boolean = occupied || pending
         shape = RoundedCornerShape(12.dp),
         modifier = Modifier.fillMaxWidth().testTag("turn-status"),
     ) {
-        FlowRow(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            itemVerticalAlignment = Alignment.CenterVertically,
-        ) {
+        TurnStatusLayout(alignActionsToEnd = diagnostics != null) {
             Row(
                 Modifier.padding(vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -962,13 +958,14 @@ internal fun Turn.showsSeparateActivity(): Boolean = occupied || pending
                         contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
                         colors = textButtonColors(),
                     ) { Text(action.first, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium) }
-                    if (diagnostics != null) ActionIcon(
-                        AppStrings.viewDiagnostics(turn.diagnostics.size),
-                        diagnostics,
-                        AppIcons.Terminal,
-                        tint = toolCallInk(),
-                        glyphSize = 18.dp,
-                    )
+                    if (diagnostics != null) IconButton(onClick = diagnostics, modifier = Modifier.size(ToolbarControl)) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.CenterEnd) {
+                            AppIcon(
+                                AppIcons.Terminal, AppStrings.viewDiagnostics(turn.diagnostics.size),
+                                Modifier.size(18.dp), tint = toolCallInk(),
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -981,6 +978,34 @@ internal fun Turn.showsSeparateActivity(): Boolean = occupied || pending
                 onClick = action.second, contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
                 colors = textButtonColors(),
             ) { Text(action.first, style = processTextStyle()) }
+        }
+    }
+}
+
+@Composable
+private fun TurnStatusLayout(alignActionsToEnd: Boolean, content: @Composable () -> Unit) {
+    Layout(content, Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) { children, constraints ->
+        // Measure both at full available width so the action group wraps as a unit.
+        val childConstraints = constraints.copy(minWidth = 0, minHeight = 0)
+        val status = children.first().measure(childConstraints)
+        val actions = children.getOrNull(1)?.measure(childConstraints)
+        val gap = 8.dp.roundToPx()
+        val inlineWidth = status.width + (actions?.let { gap + it.width } ?: 0)
+        val inline = inlineWidth <= constraints.maxWidth
+        val width = if (constraints.hasBoundedWidth) constraints.maxWidth else maxOf(inlineWidth, constraints.minWidth)
+        val actionHeight = actions?.height ?: 0
+        val contentHeight = if (inline) maxOf(status.height, actionHeight) else status.height + actionHeight
+        val height = contentHeight.coerceIn(constraints.minHeight, constraints.maxHeight)
+        layout(width, height) {
+            status.placeRelative(0, if (inline) (contentHeight - status.height) / 2 else 0)
+            if (actions != null) {
+                val x = when {
+                    alignActionsToEnd -> width - actions.width
+                    inline -> status.width + gap
+                    else -> 0
+                }
+                actions.placeRelative(x, if (inline) (contentHeight - actionHeight) / 2 else status.height)
+            }
         }
     }
 }
