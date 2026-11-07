@@ -143,6 +143,34 @@ class ConversationStyleTest {
         compose.runOnIdle { assertEquals(1, restored) }
     }
 
+    @Test fun `an unconfirmed queued submission puts the check action under its status`() {
+        val message = "无法确认请求是否已提交，请稍后查询。"
+        var checked = 0
+        var restored = 0
+        compose.setContent {
+            MaterialTheme {
+                TurnStatus(
+                    turn.copy(phase = null, failure = message, pending = true, occupied = true, queued = true),
+                    onCancelQueued = {},
+                    onRestore = { restored++ },
+                    onCheckPending = { checked++ },
+                )
+            }
+        }
+        val failure = compose.onNodeWithText(message).getBoundsInRoot()
+        val action = compose.onNodeWithText("查询待确认请求")
+        val actionBounds = action.getBoundsInRoot()
+        assertTrue(failure.bottom <= actionBounds.top)
+        assertEquals(failure.left.value, actionBounds.left.value, 1f)
+        compose.onNodeWithText("恢复到输入框").assertDoesNotExist()
+        compose.onNodeWithText(UiStrings.cancelQueuedMessage).assertDoesNotExist()
+        action.performClick()
+        compose.runOnIdle {
+            assertEquals(1, checked)
+            assertEquals(0, restored)
+        }
+    }
+
     @Test fun `a queued turn offers cancel and not restore`() {
         var cancelled = 0
         compose.setContent { MaterialTheme { TurnStatus(turn.copy(queued = true, phase = null), onCancelQueued = { cancelled++ }, onRestore = {}) } }

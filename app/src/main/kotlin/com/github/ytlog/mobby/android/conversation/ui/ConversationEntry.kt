@@ -881,7 +881,12 @@ internal fun LazyListScope.programSection(shortcuts: List<ProgramShortcut>, quer
                     )
                 },
             )
-            if (active?.pending == true) TextButton(onClick = { vm.enqueue { vm.actions.reconcile(detail.conversation.id) } }, modifier = Modifier.padding(horizontal = 12.dp)) { Text(AppStrings.checkPendingRequest) }
+            if (active?.pending == true && !active.reportsOutcome()) {
+                TextButton(
+                    onClick = { vm.enqueue { vm.actions.reconcile(detail.conversation.id) } },
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                ) { Text(AppStrings.checkPendingRequest) }
+            }
         }
         if (selectedCapabilities.isNotEmpty()) ComposerContextBubbles(maxWidth = maxWidth, visible = contextBubblesVisible) {
             selectedCapabilities.forEach { ref -> InputChip(selected = true,
@@ -908,37 +913,55 @@ internal fun Turn.showsSeparateActivity(): Boolean = occupied || pending
 }
 
 /**
- * The turn's outcome, placed after its content. A stop the user asked for or a queued message is a plain line;
- * only a failure with a message to read gets a card.
+ * The turn's outcome, placed after its content. A stop the user asked for or a queued message stays compact.
  */
-@Composable internal fun TurnStatus(turn: Turn, onCancelQueued: () -> Unit, onRestore: () -> Unit) {
+@Composable internal fun TurnStatus(
+    turn: Turn,
+    onCancelQueued: () -> Unit,
+    onRestore: () -> Unit,
+    onCheckPending: (() -> Unit)? = null,
+) {
     val failure = turn.failure
     val accent = statusAccentColor()
-    val action: @Composable () -> Unit = {
-        val compact = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
-        val label = processTextStyle()
-        if (turn.queued) TextButton(onClick = onCancelQueued, contentPadding = compact, colors = textButtonColors()) { Text(AppStrings.cancelQueuedMessage, style = label) }
-        else if (!turn.occupied) TextButton(onClick = onRestore, contentPadding = compact, colors = textButtonColors()) { Text(AppStrings.restoreToInput, style = label) }
+    val status = failure ?: if (turn.queued && !turn.pending) AppStrings.queuedMessageWaiting else turn.phase.label()
+    val action = when {
+        turn.pending && turn.occupied && onCheckPending != null -> AppStrings.checkPendingRequest to onCheckPending
+        turn.queued && !turn.pending -> AppStrings.cancelQueuedMessage to onCancelQueued
+        !turn.occupied -> AppStrings.restoreToInput to onRestore
+        else -> null
     }
-    if (failure != null) Surface(
-        color = if (darkChrome()) MobbyColors.Dark.statusCard else MobbyColors.Light.statusCard,
+    val showCard = failure != null || turn.phase == ExecutionPhase.INTERRUPTED || turn.phase == ExecutionPhase.OUTCOME_UNKNOWN
+    if (showCard) Surface(
+        color = conversationCardColor(),
         contentColor = MaterialTheme.colorScheme.onSurface,
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(12.dp),
         modifier = Modifier.fillMaxWidth().testTag("turn-status"),
     ) {
-        Column(Modifier.padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 4.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
-                AppIcon(AppIcons.Error, null, Modifier.padding(top = 2.dp).size(16.dp), tint = accent)
-                Text(failure, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            AppIcon(AppIcons.Error, null, Modifier.padding(top = 3.dp).size(16.dp), tint = accent)
+            Column(Modifier.weight(1f)) {
+                Text(status, Modifier.padding(top = 2.dp, bottom = 2.dp), style = MaterialTheme.typography.bodyMedium)
+                if (action != null) {
+                    HorizontalDivider(Modifier.padding(top = 6.dp), color = toolCallInk().copy(alpha = 0.20f))
+                    TextButton(
+                        onClick = action.second,
+                        contentPadding = PaddingValues(end = 8.dp, top = 4.dp, bottom = 4.dp),
+                        colors = textButtonColors(),
+                    ) {
+                        Text(action.first, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+                    }
+                }
             }
-            Box(Modifier.align(Alignment.End)) { action() }
         }
     } else {
         val calm = turn.queued || turn.phase == ExecutionPhase.CANCELLED
         val ink = if (calm) toolCallInk() else accent
         Row(Modifier.fillMaxWidth().testTag("turn-status"), verticalAlignment = Alignment.CenterVertically) {
-            Text(if (turn.queued) AppStrings.queuedMessageWaiting else turn.phase.label(), Modifier.weight(1f), style = processTextStyle(), color = ink)
-            action()
+            Text(status, Modifier.weight(1f), style = processTextStyle(), color = ink)
+            if (action != null) TextButton(
+                onClick = action.second, contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                colors = textButtonColors(),
+            ) { Text(action.first, style = processTextStyle()) }
         }
     }
 }
@@ -1085,9 +1108,13 @@ internal fun timelineGap(previous: TimelineBlock?, next: TimelineBlock): Dp = wh
                     Text(AppStrings.noSkillDraftToSaveThisTurnContinueDescribing, style = MaterialTheme.typography.bodySmall)
                 }
                 if (turn.reportsOutcome()) block("status:${turn.id.value}", TimelineBlock.CARD) {
+                    val checkPending: (() -> Unit)? = if (turn.id == activityTurn?.id && turn.occupied && turn.pending) {
+                        { vm.enqueue { vm.actions.reconcile(detail.conversation.id) } }
+                    } else null
                     TurnStatus(turn,
                         onCancelQueued = { vm.enqueue { vm.actions.cancelQueued(turn.id) } },
-                        onRestore = { vm.enqueue { vm.actions.restoreDraft(detail.conversation.id, turn) } })
+                        onRestore = { vm.enqueue { vm.actions.restoreDraft(detail.conversation.id, turn) } },
+                        onCheckPending = checkPending)
                 }
                 if (lastReply != null && turn.replyActionsVisible()) block("reply-actions:${turn.id.value}", TimelineBlock.ACTIONS) {
                     // Pulled left by the button's own inset so the glyph lines up with the text. The buttons are small
