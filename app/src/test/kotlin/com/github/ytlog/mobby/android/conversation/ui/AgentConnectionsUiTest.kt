@@ -58,7 +58,7 @@ class AgentConnectionsUiTest {
         compose.onNodeWithText("Claude Code").assertDoesNotExist()
         compose.onNodeWithText("OpenCode").assertDoesNotExist()
         compose.onNodeWithText("创建").assertIsEnabled()
-        compose.onNodeWithText("管理登录与 API").assertExists()
+        compose.onNodeWithText("管理登录与 API").assertDoesNotExist()
     }
     @Test fun `signed out status and sign in action share a single clickable row`() {
         val vm = vm(accounts = emptyList())

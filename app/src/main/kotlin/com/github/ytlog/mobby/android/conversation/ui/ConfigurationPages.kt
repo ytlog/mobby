@@ -348,7 +348,7 @@ private fun Modifier.fadeScrolledEdges(scroll: ScrollState): Modifier =
 internal fun newConversationDialog(connectionsRead: Boolean, connections: List<GatewayProfile>): String =
     if (connectionsRead && connections.isEmpty()) "gateway-intro" else "new"
 
-@Composable internal fun ConfigDialog(vm: ConversationViewModel, c: Conversation?, onDismiss: () -> Unit, onApply: (NextTurnConfig, String?) -> Unit, anchor: IntRect = IntRect.Zero, manageConnections: () -> Unit = {}) {
+@Composable internal fun ConfigDialog(vm: ConversationViewModel, c: Conversation?, onDismiss: () -> Unit, onApply: (NextTurnConfig, String?) -> Unit, anchor: IntRect = IntRect.Zero) {
     val state by vm.state.collectAsStateWithLifecycle()
     var project by rememberSaveable { mutableStateOf(c?.project) }
     val profiles by vm.connections.collectAsStateWithLifecycle()
@@ -373,7 +373,7 @@ internal fun newConversationDialog(connectionsRead: Boolean, connections: List<G
     val agents by vm.agents.collectAsStateWithLifecycle()
     val connected = AgentId.entries.filter { value -> profiles.any { it.agent == value } }
     var choosingProject by remember { mutableStateOf(false) }
-    FrostedMenu(true, onDismiss, anchor, maxWidth = 304.dp) {
+    FrostedMenu(true, onDismiss, anchor, maxWidth = 304.dp, dimBehind = true) {
         if (choosingProject) AgentMenuSubpage(AppStrings.selectProject, { choosingProject = false }) {
             AgentMenuChoice(AppStrings.noProject, project == null) { project = null; choosingProject = false }
             state.projects.forEach { item ->
@@ -394,8 +394,6 @@ internal fun newConversationDialog(connectionsRead: Boolean, connections: List<G
                 }
                 AgentMenuDivider()
                 AgentValueRow(AppStrings.project, project ?: AppStrings.noProject, onClick = { choosingProject = true })
-                AgentMenuDivider()
-                AgentManageRow { onDismiss(); manageConnections() }
             }
             Button(
                 onClick = {
