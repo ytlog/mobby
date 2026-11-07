@@ -574,9 +574,8 @@ open class StringCatalog(private val fixedLanguage: AppLanguage? = null) {
         else -> level
     }
     val selectModel get() = text("选择模型", "Select model")
+    val selectProject get() = text("选择项目", "Select project")
     val applyToNextTurn get() = text("应用到下一轮", "Apply to next turn")
-    val previousAgentOptions get() = text("查看前面的 Agent", "Show previous Agents")
-    val nextAgentOptions get() = text("查看后面的 Agent", "Show more Agents")
     val thisModelDoesNotOfferAdjustment get() = text("当前模型未开放调整", "This model does not offer adjustment")
     val default get() = text("默认", "Default")
     val thisConversationHasTaskHistorySoItsExecutionWorkspace get() = text("已有任务记录，执行工作区保持不变。", "This conversation has task history, so its execution workspace stays the same.")

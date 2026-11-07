@@ -2,9 +2,13 @@ package com.github.ytlog.mobby.android.conversation.ui
 
 import com.github.ytlog.mobby.android.conversation.domain.gateway.*
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.*
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.lifecycle.ViewModelStore
@@ -331,6 +335,33 @@ class WorkspacePickerTest {
     @Test fun `agent tiles give every name its own width and scroll when they cannot fit`() {
         Assert.assertEquals(listOf(40, 70, 110), agentTileWidths(listOf(10, 40, 80), 220, 12))
         Assert.assertEquals(listOf(22, 52, 92), agentTileWidths(listOf(10, 40, 80), 100, 12))
+    }
+    @Test fun `agent tiles scroll sideways instead of offering arrow buttons`() {
+        compose.setContent { MaterialTheme { Box(Modifier.width(48.dp)) { AgentTiles(AgentId.entries, AgentId.PI) {} } } }
+        compose.onNodeWithContentDescription("查看后面的 Agent").assertDoesNotExist()
+        compose.onNodeWithText("OpenCode").assertIsNotDisplayed()
+        repeat(6) { compose.onNode(hasScrollAction()).performTouchInput { swipeLeft() } }
+        compose.onNodeWithText("OpenCode").assertIsDisplayed()
+    }
+    @Test fun `new conversation shows agents as tiles and picks a project in place`() {
+        gatewayDefault = AgentId.PI
+        val vm = vm()
+        compose.waitForIdle()
+        var submitted: Pair<NextTurnConfig, String?>? = null
+        compose.setContent { MaterialTheme { ConfigDialog(vm, null, {}, { config, project -> submitted = config to project }) } }
+        compose.onNodeWithText("Pi").assertIsSelected()
+        compose.onNodeWithText("Claude Code").assertIsNotSelected().performClick().assertIsSelected()
+        compose.onNodeWithText("默认工作区（无项目）").assertExists()
+        compose.onNodeWithText("Project A").assertDoesNotExist()
+        compose.onNodeWithText("项目").performClick()
+        compose.onNodeWithText("选择项目").assertExists()
+        compose.onNodeWithText("Pi").assertDoesNotExist()
+        compose.onNodeWithText("Project A").performClick()
+        compose.onNodeWithText("选择项目").assertDoesNotExist()
+        compose.onNodeWithText("Project A").assertExists()
+        compose.onNodeWithText("创建").performClick()
+        Assert.assertEquals(AgentId.CLAUDE_CODE, submitted?.first?.agent)
+        Assert.assertEquals("Project A", submitted?.second)
     }
     @Test fun `reasoning levels share the row equally`() {
         val vm = vm()

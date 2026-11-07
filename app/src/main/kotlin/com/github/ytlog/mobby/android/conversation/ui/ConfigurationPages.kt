@@ -23,6 +23,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -126,14 +134,7 @@ import kotlinx.coroutines.*
                         }
                         AgentMenuDivider()
                     }
-                    Row(
-                        Modifier.fillMaxWidth().clickable(role = Role.Button) { dismiss(); manageConnections() }
-                            .heightIn(min = 44.dp).padding(horizontal = 14.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        AppIcon(AppIcons.Settings, null, Modifier.size(16.dp), tint = secondaryInk)
-                        Text(AppStrings.manageAgentConnections, style = MaterialTheme.typography.bodyMedium, color = ink)
-                    }
+                    AgentManageRow { dismiss(); manageConnections() }
                 }
                 if (changed) Button(
                     onClick = {
@@ -198,6 +199,18 @@ private fun AgentValueRow(title: String, value: String, onClick: (() -> Unit)?) 
         Text(value, Modifier.weight(1f), maxLines = if (onClick == null) 2 else 1, overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.End, style = MaterialTheme.typography.bodyMedium, color = if (onClick == null) secondary else ink)
         if (onClick != null) AppIcon(AppIcons.ChevronRight, null, Modifier.size(14.dp), tint = secondary)
+    }
+}
+
+@Composable
+private fun AgentManageRow(onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onClick)
+            .heightIn(min = 44.dp).padding(horizontal = 14.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        AppIcon(AppIcons.Settings, null, Modifier.size(16.dp), tint = menuInk().copy(alpha = 0.68f))
+        Text(AppStrings.manageAgentConnections, style = MaterialTheme.typography.bodyMedium, color = menuInk())
     }
 }
 
@@ -278,9 +291,8 @@ internal fun agentTileWidths(labelWidths: List<Int>, available: Int, minPadding:
 }
 
 @Composable
-private fun AgentTiles(agents: List<AgentId>, selected: AgentId, select: (AgentId) -> Unit) {
+internal fun AgentTiles(agents: List<AgentId>, selected: AgentId, select: (AgentId) -> Unit) {
     val scroll = rememberScrollState()
-    val scope = rememberCoroutineScope()
     val shape = RoundedCornerShape(12.dp)
     val ink = menuInk()
     val accent = menuAccent()
@@ -291,42 +303,48 @@ private fun AgentTiles(agents: List<AgentId>, selected: AgentId, select: (AgentI
         val widths = with(density) {
             agentTileWidths(agents.map { measurer.measure(it.label(), style, maxLines = 1).size.width }, maxWidth.roundToPx(), 12.dp.roundToPx())
         }
-        val overflows = with(density) { widths.sum() > maxWidth.roundToPx() }
-        val showArrows = overflows && maxWidth >= 144.dp
         LaunchedEffect(agents, selected, widths, scroll.viewportSize) {
             val index = agents.indexOf(selected)
-            if (overflows && index >= 0 && scroll.viewportSize >= widths[index]) {
+            if (index >= 0 && scroll.maxValue > 0 && scroll.viewportSize >= widths[index]) {
                 val start = widths.take(index).sum()
                 val target = scroll.value.coerceIn((start + widths[index] - scroll.viewportSize).coerceAtLeast(0), start)
                 if (scroll.value != target) scroll.scrollTo(target)
             }
         }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            if (showArrows) ActionIcon(AppStrings.previousAgentOptions,
-                { scope.launch { scroll.animateScrollTo((scroll.value - scroll.viewportSize).coerceAtLeast(0)) } },
-                AppIcons.Back, enabled = scroll.canScrollBackward, tint = ink)
-            Row(Modifier.weight(1f).horizontalScroll(scroll).selectableGroup()) {
-                agents.forEachIndexed { index, agent ->
-                    val active = agent == selected
-                    val tint = if (active) accent else ink
-                    val fill = if (active) Modifier.background(accent.copy(alpha = 0.12f)) else Modifier
-                    Column(
-                        Modifier.width(with(density) { widths[index].toDp() }).clip(shape).then(fill)
-                            .selectable(selected = active, role = Role.RadioButton) { select(agent) }
-                            .padding(vertical = 8.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        AppIcon(agent.glyph(), null, Modifier.size(18.dp), tint = tint)
-                        Text(agent.label(), maxLines = 1, softWrap = false, style = style, color = tint)
-                    }
+        Row(Modifier.fillMaxWidth().fadeScrolledEdges(scroll).horizontalScroll(scroll).selectableGroup()) {
+            agents.forEachIndexed { index, agent ->
+                val active = agent == selected
+                val tint = if (active) accent else ink
+                val fill = if (active) Modifier.background(accent.copy(alpha = 0.12f)) else Modifier
+                Column(
+                    Modifier.width(with(density) { widths[index].toDp() }).clip(shape).then(fill)
+                        .selectable(selected = active, role = Role.RadioButton) { select(agent) }
+                        .padding(vertical = 8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    AppIcon(agent.glyph(), null, Modifier.size(18.dp), tint = tint)
+                    Text(agent.label(), maxLines = 1, softWrap = false, style = style, color = tint)
                 }
             }
-            if (showArrows) ActionIcon(AppStrings.nextAgentOptions,
-                { scope.launch { scroll.animateScrollTo((scroll.value + scroll.viewportSize).coerceAtMost(scroll.maxValue)) } },
-                AppIcons.ChevronRight, enabled = scroll.canScrollForward, tint = ink)
         }
     }
 }
+
+/** Fades whichever edge still has tiles beyond it, so a row that does not fit reads as one to swipe. */
+private fun Modifier.fadeScrolledEdges(scroll: ScrollState): Modifier =
+    graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen).drawWithContent {
+        drawContent()
+        val fade = 28.dp.toPx().coerceAtMost(size.width / 2)
+        if (scroll.canScrollBackward) drawRect(
+            Brush.horizontalGradient(listOf(Color.Transparent, Color.Black), startX = 0f, endX = fade),
+            size = Size(fade, size.height), blendMode = BlendMode.DstIn,
+        )
+        if (scroll.canScrollForward) drawRect(
+            Brush.horizontalGradient(listOf(Color.Black, Color.Transparent), startX = size.width - fade, endX = size.width),
+            topLeft = Offset(size.width - fade, 0f), size = Size(fade, size.height), blendMode = BlendMode.DstIn,
+        )
+    }
+
 @Composable internal fun ConfigDialog(vm: ConversationViewModel, c: Conversation?, onDismiss: () -> Unit, onApply: (NextTurnConfig, String?) -> Unit, anchor: IntRect = IntRect.Zero, manageConnections: () -> Unit = {}) {
     val state by vm.state.collectAsStateWithLifecycle()
     var project by rememberSaveable { mutableStateOf(c?.project) }
@@ -347,35 +365,39 @@ private fun AgentTiles(agents: List<AgentId>, selected: AgentId, select: (AgentI
             agent = defaultGateway?.agent?.takeIf { candidate -> profiles.any { it.agent == candidate } } ?: profiles.first().agent
         }
     }
-    FrostedMenu(true, onDismiss, anchor) {
-        Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()).padding(bottom = 12.dp)) {
-            Text(AppStrings.newConversation2, Modifier.padding(start = 20.dp, top = 18.dp, end = 20.dp, bottom = 4.dp), style = MaterialTheme.typography.titleMedium, color = menuInk(), fontWeight = FontWeight.Medium)
-            MenuSection(AppStrings.project) {
-                MenuOption(AppStrings.noProject, project == null) { project = null }
-                state.projects.forEach { item -> MenuOption(item.name, project == item.name) { project = item.name } }
-                if (state.projects.isEmpty()) MenuCaption(AppStrings.createProjectsInProjectManagementInTheConversationDrawer)
+    val connected = AgentId.entries.filter { value -> profiles.any { it.agent == value } }
+    var choosingProject by remember { mutableStateOf(false) }
+    FrostedMenu(true, onDismiss, anchor, maxWidth = 304.dp) {
+        if (choosingProject) AgentMenuSubpage(AppStrings.selectProject, { choosingProject = false }) {
+            AgentMenuChoice(AppStrings.noProject, project == null) { project = null; choosingProject = false }
+            state.projects.forEach { item ->
+                AgentMenuChoice(item.name, project == item.name) { project = item.name; choosingProject = false }
             }
-            MenuSection(AppStrings.agentLabel) {
-                AgentId.values().filter { value -> profiles.any { it.agent == value } }.forEach { value ->
-                    MenuOption(value.label(), agent == value, icon = value.glyph()) { agent = value; agentChosen = true }
-                }
-                if (profiles.none { it.agent == agent }) MenuCaption(AppStrings.connectAgentFirst)
-                MenuOption(AppStrings.manageAgentConnections, false) { onDismiss(); manageConnections() }
+            if (state.projects.isEmpty()) AgentMenuNote(AppStrings.createProjectsInProjectManagementInTheConversationDrawer)
+        } else {
+            Column(Modifier.weight(1f, fill = false).heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                Text(AppStrings.newConversation2, Modifier.padding(start = 14.dp, end = 14.dp, top = 14.dp, bottom = 8.dp),
+                    style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, color = menuInk())
+                if (connected.isNotEmpty()) AgentTiles(connected, agent) { agent = it; agentChosen = true }
+                if (connected.none { it == agent }) AgentMenuNote(AppStrings.connectAgentFirst)
+                AgentMenuDivider()
+                AgentValueRow(AppStrings.project, project ?: AppStrings.noProject, onClick = { choosingProject = true })
+                AgentMenuDivider()
+                AgentManageRow { onDismiss(); manageConnections() }
             }
+            Button(
+                onClick = {
+                    val config = remembered ?: return@Button
+                    vm.enqueue { vm.rememberAgentSelection(config) }
+                    onApply(config, project)
+                },
+                enabled = canCreate,
+                modifier = Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 4.dp, bottom = 14.dp).heightIn(min = 44.dp),
+                shape = RoundedCornerShape(22.dp),
+                colors = filledButtonColors(if (darkChrome()) MobbyColors.Dark.button else menuAccent(), if (darkChrome()) MobbyColors.Dark.onButton else MobbyColors.onAccent),
+                elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp, pressedElevation = 0.dp, focusedElevation = 0.dp, hoveredElevation = 0.dp),
+            ) { Text(AppStrings.create, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold) }
         }
-        Button(
-            onClick = {
-                val config = remembered ?: return@Button
-                vm.enqueue { vm.rememberAgentSelection(config) }
-                onApply(config, project)
-            },
-            enabled = canCreate,
-            modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 20.dp).heightIn(min = 48.dp),
-            shape = RoundedCornerShape(22.dp),
-            colors = filledButtonColors(if (darkChrome()) MobbyColors.Dark.button else menuAccent(), if (darkChrome()) MobbyColors.Dark.onButton else MobbyColors.onAccent),
-            elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp, pressedElevation = 0.dp, focusedElevation = 0.dp, hoveredElevation = 0.dp),
-        ) { Text(AppStrings.create, fontWeight = FontWeight.SemiBold) }
-    
     }
 }
 @Composable internal fun PageHeader(title: String, back: () -> Unit, trailing: @Composable () -> Unit = {}) {
