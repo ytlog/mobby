@@ -568,6 +568,12 @@ open class StringCatalog(private val fixedLanguage: AppLanguage? = null) {
     val noModelsConfiguredOpenGatewaySettings get() = text("尚未配置模型，请前往 AI 服务设置。", "No models configured. Open AI service settings.")
     val currentModelIsNotInTheSavedListSelect get() = text("当前模型不在已保存列表中，请重新选择。", "Current model is not in the saved list. Select another model.")
     val reasoningEffort get() = text("思考程度", "Reasoning effort")
+    fun reasoningLevelLabel(level: String) = when (level) {
+        "low" -> text("低", "Low")
+        "medium" -> text("中", "Medium")
+        "high" -> text("高", "High")
+        else -> level
+    }
     val modelAndReasoning get() = text("模型与思考程度", "Model and reasoning")
     val nextTurn get() = text("下一轮", "Next turn")
     val pendingApply get() = text("下一轮 · 待应用", "Next turn · Pending changes")
@@ -577,7 +583,7 @@ open class StringCatalog(private val fixedLanguage: AppLanguage? = null) {
     val default get() = text("默认", "Default")
     val thisConversationHasTaskHistorySoItsExecutionWorkspace get() = text("已有任务记录，执行工作区保持不变。", "This conversation has task history, so its execution workspace stays the same.")
     val removeDraftAttachmentsBeforeSwitchingWorkspaces get() = text("请先移除草稿附件，再切换工作区。", "Remove draft attachments before switching workspaces.")
-    val continueInThisConversationCodexClaudeCodeAndOpencode get() = text("仍在当前对话中继续。Pi、Codex、Claude Code 与 OpenCode 的会话不能互相沿用：各自第一次运行时创建，之后在本对话里复用。回到原来的 Agent 会恢复它自己的会话。", "Continue in this conversation. Pi, Codex, Claude Code and OpenCode each use their own session: created on first use and reused here. Switching back to an Agent restores its own session.")
+    val continueInThisConversationCodexClaudeCodeAndOpencode get() = text("仍在当前对话中继续。切回原 Agent 时会恢复它的会话。", "Continue in this conversation. Switching back restores that Agent’s session.")
     val selectedSkillsBelongToTheAgentSelectThemAgain get() = text("所选技能与 Agent 绑定，切换后请重新选择。插件选择会保留。", "Selected skills belong to the Agent. Select them again after switching. Plugin selections are preserved.")
     val apply get() = text("应用", "Apply")
     val newConversation2 get() = text("新建对话", "New conversation")

@@ -32,6 +32,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.dp
@@ -65,6 +66,7 @@ import kotlinx.coroutines.*
         NextTurnConfig(agent, it.model, null, c.config.workspace, it.id, it.version)
     }
     val profile = connections.firstOrNull { it.id == draft?.gatewayProfile }
+    val canChangeConnection = connections.isNotEmpty() && (connections.size > 1 || profile == null)
     val model = draft?.model.orEmpty()
     val levels = profile?.nativeReasoning?.get(model).orEmpty()
     val reasoning = draft?.reasoning?.takeIf { it in levels }
@@ -76,52 +78,41 @@ import kotlinx.coroutines.*
     }
     val changed = config != null && config != c.config
     val openConnections = { dismiss(); manageConnections() }
-    FrostedMenu(true, dismiss, anchor, maxWidth = 328.dp) {
+    FrostedMenu(true, dismiss, anchor, maxWidth = 304.dp) {
         val ink = menuInk()
         val secondaryInk = ink.copy(alpha = 0.68f)
         val accent = menuAccent()
         Column(Modifier.weight(1f, fill = false).heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
             Row(
-                Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 8.dp),
+                Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text(agent.label(), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, color = ink)
-                Text(if (changed) AppStrings.pendingApply else AppStrings.nextTurn,
-                    style = MaterialTheme.typography.labelSmall, color = secondaryInk)
+                Text(agent.label(), Modifier.weight(1f).alignByBaseline(), style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium, color = ink)
+                Text(if (changed) AppStrings.pendingApply else AppStrings.nextTurn, Modifier.alignByBaseline(),
+                    style = MaterialTheme.typography.bodySmall, color = secondaryInk)
             }
             if (availableAgents.isNotEmpty()) AgentIconRail(availableAgents, agent) { selectedAgent = it }
-            val settingsState = if (showSettings) AppStrings.expanded else AppStrings.collapsed
-            Row(
-                Modifier.fillMaxWidth()
-                    .clickable(role = Role.Button) { showSettings = !showSettings }
-                    .semantics { stateDescription = settingsState }
-                    .heightIn(min = 48.dp)
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(AppStrings.modelAndReasoning, style = MaterialTheme.typography.labelSmall, color = secondaryInk)
-                    Text(modelLabel, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.bodyMedium, color = ink)
-                }
-                if (levels.isNotEmpty()) Text(
-                    reasoning ?: AppStrings.default,
-                    Modifier.background(ink.copy(alpha = 0.06f), RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 3.dp),
-                    style = MaterialTheme.typography.labelSmall, color = secondaryInk,
-                )
-                AppIcon(if (showSettings) AppIcons.ChevronUp else AppIcons.ChevronDown, null, Modifier.size(16.dp), tint = secondaryInk)
-            }
+            if (connections.isEmpty()) AgentMenuNote(AppStrings.connectAgentFirst)
+            if (agent != c.config.agent && c.hasTurns)
+                AgentMenuNote(AppStrings.continueInThisConversationCodexClaudeCodeAndOpencode)
+            if (agent != c.config.agent && c.draft.capabilities.any { !it.startsWith("plugin:") })
+                AgentMenuNote(AppStrings.selectedSkillsBelongToTheAgentSelectThemAgain)
             if (showSettings) {
-                AgentSettingRow(
-                    AppStrings.connectionSource, profile?.let(::connectionLabel) ?: AppStrings.noAvailableConnection,
-                    expanded = field == AgentSetting.CONNECTION,
-                    expandable = connections.isNotEmpty() && (connections.size > 1 || profile == null),
-                ) { field = AgentSetting.CONNECTION.takeUnless { field == it } }
+                HorizontalDivider(Modifier.padding(horizontal = 14.dp), color = ink.copy(alpha = 0.10f))
+                AgentSettingsToggle(expanded = true, model = modelLabel, effort = null,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+                ) { showSettings = false }
+                if (canChangeConnection || profile == null) {
+                    AgentSettingRow(
+                        AppStrings.connectionSource, profile?.let(::connectionLabel) ?: AppStrings.noAvailableConnection,
+                        expanded = field == AgentSetting.CONNECTION, expandable = canChangeConnection,
+                    ) { field = AgentSetting.CONNECTION.takeUnless { field == it } }
+                }
                 if (field == AgentSetting.CONNECTION) {
                     connections.forEach { route ->
-                        MenuOption(connectionLabel(route), profile?.id == route.id) {
+                        AgentSettingChoice(connectionLabel(route), profile?.id == route.id) {
                             if (profile?.id != route.id) drafts[agent] =
                                 NextTurnConfig(agent, route.model, null, c.config.workspace, route.id, route.version)
                             field = null
@@ -129,90 +120,201 @@ import kotlinx.coroutines.*
                     }
                 }
                 if (profile != null && draft != null) {
-                    AgentSettingRow(AppStrings.model, modelLabel,
+                    AgentModelPicker(modelLabel, source = if (canChangeConnection) null else connectionLabel(profile),
                         expanded = field == AgentSetting.MODEL, expandable = profile.models.isNotEmpty(),
                     ) { field = AgentSetting.MODEL.takeUnless { field == it } }
                     when {
-                        profile.models.isEmpty() -> MenuCaption(
+                        profile.models.isEmpty() -> AgentMenuNote(
                             if (profile.source == ConnectionSource.NATIVE) AppStrings.noNativeModels
                             else AppStrings.noModelsConfiguredOpenGatewaySettings
                         )
                         field == AgentSetting.MODEL -> profile.models.forEach { item ->
-                            MenuOption(modelMenuLabel(item.id, names), model == item.id) {
+                            AgentSettingChoice(modelMenuLabel(item.id, names), model == item.id) {
                                 if (model != item.id) drafts[agent] = draft.copy(model = item.id, reasoning = null)
                                 field = null
                             }
                         }
                     }
                     if (names.isNotEmpty() && model.isNotBlank() && model !in names)
-                        MenuCaption(AppStrings.currentModelIsNotInTheSavedListSelect)
-                    AgentSettingRow(
-                        AppStrings.reasoningEffort,
-                        if (levels.isEmpty()) AppStrings.thisModelDoesNotOfferAdjustment else reasoning ?: AppStrings.default,
-                        expanded = field == AgentSetting.REASONING, expandable = levels.isNotEmpty(),
-                    ) { field = AgentSetting.REASONING.takeUnless { field == it } }
-                    if (field == AgentSetting.REASONING) {
-                        MenuOption(AppStrings.default, reasoning == null) {
-                            drafts[agent] = draft.copy(reasoning = null)
-                            field = null
-                        }
-                        levels.forEach { level ->
-                            MenuOption(level, reasoning == level) {
-                                drafts[agent] = draft.copy(reasoning = level)
-                                field = null
-                            }
-                        }
+                        AgentMenuNote(AppStrings.currentModelIsNotInTheSavedListSelect)
+                    if (levels.isEmpty()) {
+                        AgentSettingRow(AppStrings.reasoningEffort, AppStrings.thisModelDoesNotOfferAdjustment,
+                            expanded = false, expandable = false, onClick = {})
+                    } else {
+                        AgentReasoningChoices(levels, reasoning) { drafts[agent] = draft.copy(reasoning = it) }
                     }
                 }
             }
-            if (connections.isEmpty()) MenuCaption(AppStrings.connectAgentFirst)
-            if (showSettings || connections.isEmpty()) MenuAction(AppStrings.manageAgentConnections, icon = AppIcons.Settings, onClick = openConnections)
-            if (agent != c.config.agent && c.hasTurns)
-                MenuCaption(AppStrings.continueInThisConversationCodexClaudeCodeAndOpencode)
-            if (agent != c.config.agent && c.draft.capabilities.any { !it.startsWith("plugin:") })
-                MenuCaption(AppStrings.selectedSkillsBelongToTheAgentSelectThemAgain)
-        }
-        HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = ink.copy(alpha = 0.10f))
-        Button(
-            onClick = {
-                val applied = config ?: return@Button
-                vm.enqueue {
-                    vm.actions.configure(c.id, applied)
-                    vm.rememberAgentSelection(applied)
+            if (showSettings || connections.isEmpty()) {
+                Row(
+                    Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = openConnections)
+                        .heightIn(min = 44.dp).padding(horizontal = 14.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    AppIcon(AppIcons.Settings, null, Modifier.size(16.dp), tint = secondaryInk)
+                    Text(AppStrings.manageAgentConnections, style = MaterialTheme.typography.bodySmall, color = ink)
                 }
-                dismiss()
-            },
-            enabled = changed,
-            modifier = Modifier.align(Alignment.End).padding(horizontal = 16.dp, vertical = 8.dp).sizeIn(minWidth = 80.dp, minHeight = 44.dp),
-            shape = RoundedCornerShape(12.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = accent,
-                contentColor = MobbyColors.onAccent,
-                disabledContainerColor = ink.copy(alpha = 0.06f),
-                disabledContentColor = ink.copy(alpha = 0.48f),
-            ),
-        ) { Text(AppStrings.apply, fontWeight = FontWeight.SemiBold) }
+            }
+        }
+        HorizontalDivider(Modifier.padding(horizontal = 14.dp), color = ink.copy(alpha = 0.10f))
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (!showSettings) AgentSettingsToggle(
+                expanded = false, model = modelLabel,
+                effort = if (levels.isEmpty()) null else reasoning?.let(AppStrings::reasoningLevelLabel) ?: AppStrings.default,
+                modifier = Modifier.weight(1f),
+            ) { showSettings = true }
+            Button(
+                onClick = {
+                    val applied = config ?: return@Button
+                    vm.enqueue {
+                        vm.actions.configure(c.id, applied)
+                        vm.rememberAgentSelection(applied)
+                    }
+                    dismiss()
+                },
+                enabled = changed,
+                modifier = Modifier.widthIn(min = 56.dp).heightIn(min = 44.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                shape = RoundedCornerShape(8.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = accent, contentColor = MobbyColors.onAccent,
+                    disabledContainerColor = ink.copy(alpha = 0.06f), disabledContentColor = secondaryInk,
+                ),
+            ) { Text(AppStrings.apply, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium) }
+        }
     }
 }
 
-private enum class AgentSetting { CONNECTION, MODEL, REASONING }
+private enum class AgentSetting { CONNECTION, MODEL }
+
+@Composable
+private fun AgentSettingsToggle(expanded: Boolean, model: String, effort: String?, modifier: Modifier, onClick: () -> Unit) {
+    val ink = menuInk()
+    val secondary = ink.copy(alpha = 0.68f)
+    val state = if (expanded) AppStrings.expanded else AppStrings.collapsed
+    Row(
+        modifier.clickable(role = Role.Button, onClick = onClick).semantics { stateDescription = state }
+            .heightIn(min = 44.dp).padding(vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(AppStrings.modelAndReasoning,
+                style = if (expanded) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodySmall,
+                color = if (expanded) ink else secondary)
+            if (!expanded) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(model, Modifier.weight(1f, fill = false), maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodyMedium, color = ink)
+                if (effort != null) Text(effort, style = MaterialTheme.typography.bodySmall, color = secondary)
+            }
+        }
+        AppIcon(if (expanded) AppIcons.ChevronUp else AppIcons.ChevronDown, null, Modifier.size(14.dp), tint = secondary)
+    }
+}
+
+@Composable
+private fun AgentMenuNote(text: String) {
+    Text(text, Modifier.padding(horizontal = 14.dp, vertical = 4.dp),
+        style = MaterialTheme.typography.bodySmall, color = menuInk().copy(alpha = 0.68f))
+}
 
 @Composable
 private fun AgentSettingRow(title: String, value: String, expanded: Boolean, expandable: Boolean, onClick: () -> Unit) {
+    val ink = menuInk()
+    val secondary = ink.copy(alpha = 0.68f)
     val state = if (expanded) AppStrings.expanded else AppStrings.collapsed
     val action = if (!expandable) Modifier else Modifier
         .clickable(role = Role.Button, onClick = onClick)
         .semantics { stateDescription = state }
     Row(
-        Modifier.fillMaxWidth().then(action).heightIn(min = 48.dp).padding(horizontal = 20.dp, vertical = 8.dp),
+        Modifier.fillMaxWidth().then(action).heightIn(min = if (expandable) 44.dp else 32.dp)
+            .padding(horizontal = 14.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(title, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = menuInk())
-        Text(value, Modifier.weight(1f, fill = false), maxLines = 2, overflow = TextOverflow.Ellipsis,
-            style = MaterialTheme.typography.bodySmall, color = menuMuted())
+        Text(title, Modifier.alignByBaseline(), style = MaterialTheme.typography.bodySmall, color = secondary)
+        Text(value, Modifier.weight(1f).alignByBaseline(), maxLines = 2, overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.End, style = MaterialTheme.typography.bodySmall, color = ink)
         if (expandable)
-            AppIcon(if (expanded) AppIcons.ChevronUp else AppIcons.ChevronDown, null, Modifier.size(16.dp), tint = menuMuted())
+            AppIcon(if (expanded) AppIcons.ChevronUp else AppIcons.ChevronDown, null, Modifier.size(14.dp), tint = secondary)
+    }
+}
+
+@Composable
+private fun AgentModelPicker(value: String, source: String?, expanded: Boolean, expandable: Boolean, onClick: () -> Unit) {
+    val ink = menuInk()
+    val secondary = ink.copy(alpha = 0.68f)
+    val state = if (expanded) AppStrings.expanded else AppStrings.collapsed
+    val action = if (!expandable) Modifier else Modifier
+        .clickable(role = Role.Button, onClick = onClick).semantics { stateDescription = state }
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp).then(action),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(AppStrings.model, Modifier.alignByBaseline(), style = MaterialTheme.typography.bodySmall, color = secondary)
+            if (source != null) Text(source, Modifier.weight(1f).alignByBaseline(),
+                maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.End,
+                style = MaterialTheme.typography.bodySmall, color = secondary)
+        }
+        Row(
+            Modifier.fillMaxWidth().border(1.dp, ink.copy(alpha = 0.14f), RoundedCornerShape(8.dp))
+                .heightIn(min = 44.dp).padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(value, Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodyMedium, color = ink)
+            if (expandable) AppIcon(if (expanded) AppIcons.ChevronUp else AppIcons.ChevronDown,
+                null, Modifier.size(14.dp), tint = secondary)
+        }
+    }
+}
+
+@Composable
+private fun AgentSettingChoice(label: String, selected: Boolean, onClick: () -> Unit) {
+    val color = if (selected) menuAccent() else menuInk()
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 14.dp).clip(RoundedCornerShape(8.dp))
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
+            .heightIn(min = 44.dp).padding(horizontal = 10.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(label, Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.bodyMedium, color = color)
+        if (selected) AppIcon(AppIcons.Check, null, Modifier.size(16.dp), tint = color)
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun AgentReasoningChoices(levels: Set<String>, selected: String?, select: (String?) -> Unit) {
+    val ink = menuInk()
+    val accent = menuAccent()
+    val shape = RoundedCornerShape(8.dp)
+    Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp)) {
+        Text(AppStrings.reasoningEffort, style = MaterialTheme.typography.bodySmall, color = ink.copy(alpha = 0.68f))
+        FlowRow(
+            Modifier.fillMaxWidth().selectableGroup(),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            (listOf(null) + levels).forEach { level ->
+                val active = level == selected
+                Box(
+                    Modifier.widthIn(min = 44.dp).heightIn(min = 44.dp).clip(shape)
+                        .selectable(selected = active, role = Role.RadioButton) { select(level) }
+                        .padding(horizontal = 3.dp, vertical = 4.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    val background = if (active) Modifier.background(accent.copy(alpha = 0.12f), shape) else Modifier
+                    Text(level?.let(AppStrings::reasoningLevelLabel) ?: AppStrings.default,
+                        background.padding(horizontal = 7.dp, vertical = 5.dp),
+                        style = MaterialTheme.typography.bodySmall, color = if (active) accent else ink)
+                }
+            }
+        }
     }
 }
 
@@ -224,8 +326,7 @@ private fun AgentIconRail(agents: List<AgentId>, selected: AgentId, select: (Age
     val ink = menuInk()
     val accent = menuAccent()
     BoxWithConstraints(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp).clip(shape)
-            .background(ink.copy(alpha = 0.045f)).padding(2.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 14.dp).clip(shape),
     ) {
         val overflows = maxWidth < 48.dp * agents.size
         val showArrows = overflows && maxWidth >= 144.dp
@@ -247,18 +348,16 @@ private fun AgentIconRail(agents: List<AgentId>, selected: AgentId, select: (Age
                 agents.forEach { agent ->
                     val active = agent == selected
                     Box(
-                        Modifier.width(slot).height(48.dp).clip(shape)
+                        Modifier.width(slot).height(44.dp).clip(shape)
                             .selectable(selected = active, role = Role.RadioButton) { select(agent) }
                             .semantics { contentDescription = agent.label() },
                         contentAlignment = Alignment.Center,
                     ) {
-                        Box(
-                            if (active) Modifier.size(40.dp, 36.dp).background(accent.copy(alpha = 0.14f), RoundedCornerShape(10.dp))
-                            else Modifier.size(40.dp, 36.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            AppIcon(agent.glyph(), null, Modifier.size(22.dp), tint = if (active) accent else ink)
-                        }
+                        AppIcon(agent.glyph(), null, Modifier.size(18.dp), tint = if (active) accent else ink)
+                        if (active) Box(
+                            Modifier.align(Alignment.BottomCenter).padding(bottom = 4.dp)
+                                .size(10.dp, 2.dp).background(accent, RoundedCornerShape(1.dp)),
+                        )
                     }
                 }
             }
