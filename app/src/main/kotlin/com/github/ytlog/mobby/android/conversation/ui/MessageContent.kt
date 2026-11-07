@@ -146,7 +146,7 @@ internal fun Turn.executionHeadline(steps: List<Step> = this.steps, count: Int =
         else -> AppStrings.steps(phase.label(), count)
     }
 }
-internal val ProcessRowHeight = 36.dp
+internal val ProcessRowHeight = 32.dp
 internal val ProcessTextSize = 13.sp
 
 /** Secondary lines of a run: small enough to sit clearly below the reply text they accompany. */
@@ -167,9 +167,9 @@ internal val ProcessTextSize = 13.sp
     titleColor: Color = toolCallInk(),
     status: String? = null,
     statusColor: Color = Color.Unspecified,
-    style: TextStyle = processTextStyle(),
 ) {
     val ink = toolCallInk()
+    val style = processTextStyle()
     Row(
         modifier.fillMaxWidth().heightIn(min = ProcessRowHeight).clip(RoundedCornerShape(8.dp))
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
@@ -229,7 +229,6 @@ internal val ProcessTextSize = 13.sp
                 if (next) vm.actions.expansion(turn.id, true)
             }
         },
-        style = MaterialTheme.typography.bodySmall,
     )
     if (open) {
         val body = view.detail

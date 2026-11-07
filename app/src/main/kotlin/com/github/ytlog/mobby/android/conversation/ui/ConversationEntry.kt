@@ -59,7 +59,6 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -915,7 +914,8 @@ internal fun Turn.showsSeparateActivity(): Boolean = occupied || pending
 }
 
 /**
- * The turn's outcome, placed after its content. A stop the user asked for or a queued message stays compact.
+ * The turn's outcome, closing its content as one more line of the run: no card, starting at the text edge. Color says
+ * how much it needs a look, and an action waits at the far edge until the message needs that room.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable internal fun TurnStatus(
@@ -925,9 +925,7 @@ internal fun Turn.showsSeparateActivity(): Boolean = occupied || pending
     onCheckPending: (() -> Unit)? = null,
     onDiagnostics: (() -> Unit)? = null,
 ) {
-    val failure = turn.failure
-    val accent = statusAccentColor()
-    val status = failure ?: if (turn.queued && !turn.pending) AppStrings.queuedMessageWaiting else turn.phase.label()
+    val status = turn.failure ?: if (turn.queued && !turn.pending) AppStrings.queuedMessageWaiting else turn.phase.label()
     val action = when {
         turn.pending && turn.occupied && onCheckPending != null -> AppStrings.checkPendingRequest to onCheckPending
         turn.queued && !turn.pending -> AppStrings.cancelQueuedMessage to onCancelQueued
@@ -935,65 +933,53 @@ internal fun Turn.showsSeparateActivity(): Boolean = occupied || pending
         else -> null
     }
     val diagnostics = onDiagnostics?.takeIf { turn.diagnosticsActionVisible() }
-    val showCard = failure != null || diagnostics != null ||
-        turn.phase == ExecutionPhase.INTERRUPTED || turn.phase == ExecutionPhase.OUTCOME_UNKNOWN
-    if (showCard) Surface(
-        color = conversationCardColor(),
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        shape = RoundedCornerShape(12.dp),
-        modifier = Modifier.fillMaxWidth().testTag("turn-status"),
+    val ink = when {
+        turn.phase == ExecutionPhase.FAILED -> MaterialTheme.colorScheme.error
+        turn.failure == null && (turn.queued || turn.phase == ExecutionPhase.CANCELLED) -> toolCallInk()
+        else -> statusAccentColor()
+    }
+    FlowRow(
+        Modifier.fillMaxWidth().testTag("turn-status"),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        itemVerticalAlignment = Alignment.CenterVertically,
     ) {
-        FlowRow(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            itemVerticalAlignment = Alignment.CenterVertically,
-        ) {
-            val statusAction = if (diagnostics == null) Modifier else Modifier.clickable(
-                onClickLabel = AppStrings.viewDiagnostics(turn.diagnostics.size),
-                role = Role.Button,
-                onClick = diagnostics,
-            ).heightIn(min = ToolbarControl)
-            Row(
-                statusAction.padding(vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                AppIcon(AppIcons.Error, null, Modifier.size(16.dp), tint = accent)
-                Text(
-                    status,
-                    style = MaterialTheme.typography.bodyMedium,
-                    textDecoration = if (diagnostics != null) TextDecoration.Underline else null,
-                )
+        val open = if (diagnostics == null) Modifier else Modifier.clip(RoundedCornerShape(8.dp)).clickable(
+            onClickLabel = AppStrings.viewDiagnostics(turn.diagnostics.size),
+            role = Role.Button,
+            onClick = diagnostics,
+        )
+        // Top-aligned so that a long message keeps the chevron beside its first line.
+        Row(open.heightIn(min = ProcessRowHeight).padding(vertical = 7.dp)) {
+            Text(status, Modifier.weight(1f, fill = false), style = processTextStyle(), color = ink)
+            if (diagnostics != null) {
+                Spacer(Modifier.width(2.dp))
+                AppIcon(AppIcons.ChevronRight, null, Modifier.padding(top = 3.dp).size(12.dp), tint = ink)
             }
-            if (action != null) TextButton(
-                onClick = action.second,
-                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
-                colors = textButtonColors(),
-            ) { Text(action.first, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium) }
         }
-    } else {
-        val calm = turn.queued || turn.phase == ExecutionPhase.CANCELLED
-        val ink = if (calm) toolCallInk() else accent
-        Row(Modifier.fillMaxWidth().testTag("turn-status"), verticalAlignment = Alignment.CenterVertically) {
-            Text(status, Modifier.weight(1f), style = processTextStyle(), color = ink)
-            if (action != null) TextButton(
-                onClick = action.second, contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                colors = textButtonColors(),
-            ) { Text(action.first, style = processTextStyle()) }
-        }
+        if (action != null) Box(
+            Modifier.padding(start = 12.dp).clip(CircleShape).background(userBubbleColor())
+                .clickable(role = Role.Button, onClick = action.second)
+                .padding(horizontal = 12.dp, vertical = 5.dp),
+        ) { Text(action.first, style = processTextStyle(), color = userBubbleInk(), maxLines = 1) }
     }
 }
 
 /** What an item is for the reader; it decides the air around the item. */
 internal enum class TimelineBlock { USER, PROSE, PROCESS, CARD, ACTIONS }
 
-/** Process rows sit together as one unit, replies get reading room around them, and each new turn starts clearly. */
+/**
+ * Steps stay with the sentence that announced them and the next reply opens a new group, so a long run reads as groups
+ * rather than as evenly spaced lines. Process rows carry their own air, which these gaps add to.
+ */
 internal fun timelineGap(previous: TimelineBlock?, next: TimelineBlock): Dp = when {
     previous == null || next == TimelineBlock.ACTIONS -> 0.dp
     // The action row already separates the turns, so it replaces most of the usual gap.
     previous == TimelineBlock.ACTIONS && next == TimelineBlock.USER -> 14.dp
     next == TimelineBlock.USER -> 28.dp
     previous == TimelineBlock.PROCESS && next == TimelineBlock.PROCESS -> 0.dp
+    previous == TimelineBlock.PROSE && next == TimelineBlock.PROCESS -> 2.dp
+    previous == TimelineBlock.PROCESS && next == TimelineBlock.PROSE -> 12.dp
+    previous == TimelineBlock.USER && next == TimelineBlock.PROCESS -> 8.dp
     previous == TimelineBlock.PROCESS || next == TimelineBlock.PROCESS -> 4.dp
     previous == TimelineBlock.USER -> 16.dp
     else -> 12.dp
@@ -1124,7 +1110,7 @@ internal fun timelineGap(previous: TimelineBlock?, next: TimelineBlock): Dp = wh
                 if (turn.creatingSkill && !turn.occupied && turn.skillProposals.isEmpty() && !turn.proposalsLoading) block("creator:${turn.id.value}", TimelineBlock.CARD) {
                     Text(AppStrings.noSkillDraftToSaveThisTurnContinueDescribing, style = MaterialTheme.typography.bodySmall)
                 }
-                if (turn.reportsOutcome()) block("status:${turn.id.value}", TimelineBlock.CARD) {
+                if (turn.reportsOutcome()) block("status:${turn.id.value}", TimelineBlock.PROCESS) {
                     val checkPending: (() -> Unit)? = if (turn.id == activityTurn?.id && turn.occupied && turn.pending) {
                         { vm.enqueue { vm.actions.reconcile(detail.conversation.id) } }
                     } else null

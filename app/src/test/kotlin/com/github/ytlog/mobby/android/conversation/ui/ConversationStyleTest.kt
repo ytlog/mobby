@@ -123,6 +123,8 @@ class ConversationStyleTest {
         assertEquals(0.dp, process)
         assertTrue(process < around)
         assertTrue(around < newTurn)
+        // Steps stay with the sentence that announced them; the next reply opens a new group.
+        assertTrue(around < timelineGap(TimelineBlock.PROCESS, TimelineBlock.PROSE))
         assertEquals(0.dp, timelineGap(null, TimelineBlock.USER))
         assertEquals(0.dp, timelineGap(TimelineBlock.PROSE, TimelineBlock.ACTIONS))
     }
@@ -192,6 +194,38 @@ class ConversationStyleTest {
         assertTrue(status.right < action.left)
         compose.onNodeWithText(UiStrings.restoreToInput).performClick()
         compose.runOnIdle { assertEquals(1, restored) }
+    }
+
+    @Test fun `an outcome lies flat on the conversation with its action at the far edge`() {
+        val message = UiStrings.executionInterruptedResultUnconfirmed
+        compose.setContent {
+            MaterialTheme {
+                Box(Modifier.width(320.dp)) {
+                    TurnStatus(turn.copy(phase = ExecutionPhase.INTERRUPTED, failure = message), onCancelQueued = {}, onRestore = {})
+                }
+            }
+        }
+        val row = compose.onNodeWithTag("turn-status").getBoundsInRoot()
+        val status = compose.onNodeWithText(message, useUnmergedTree = true).getBoundsInRoot()
+        val action = compose.onNodeWithText(UiStrings.restoreToInput).getBoundsInRoot()
+        assertEquals("the message starts where replies start", row.left, status.left)
+        assertEquals("the action ends where replies end", row.right, action.right)
+    }
+
+    @Test fun `diagnostics are offered without styling the message as a link`() {
+        val message = UiStrings.executionInterruptedResultUnconfirmed
+        var opened = 0
+        val interrupted = turn.copy(phase = ExecutionPhase.INTERRUPTED, failure = message,
+            diagnostics = listOf(Message("d", "log")))
+        compose.setContent {
+            MaterialTheme { TurnStatus(interrupted, onCancelQueued = {}, onRestore = {}, onDiagnostics = { opened++ }) }
+        }
+        val results = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+        compose.onNodeWithText(message, useUnmergedTree = true).fetchSemanticsNode()
+            .config[androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult].action!!(results)
+        assertEquals(null, results.single().layoutInput.style.textDecoration)
+        compose.onNodeWithText(message).performClick()
+        compose.runOnIdle { assertEquals(1, opened) }
     }
 
     @Test fun `a queued turn offers cancel and not restore`() {

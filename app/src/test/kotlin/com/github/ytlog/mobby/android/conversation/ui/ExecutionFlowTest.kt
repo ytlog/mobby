@@ -173,11 +173,19 @@ class ExecutionFlowTest {
             ExecutionFlow(stopped, model, listOf(done)) { _, _ -> }
             com.github.ytlog.mobby.android.deviceoperation.ui.DeviceTaskCard(operation, com.github.ytlog.mobby.android.deviceoperation.ui.DeviceCardActions())
             TurnStatus(stopped, onCancelQueued = {}, onRestore = {})
+            TurnStatus(stopped.copy(phase = ExecutionPhase.INTERRUPTED, failure = "执行中断"), onCancelQueued = {}, onRestore = {})
         } } }
-        val lefts = listOf("失败 · 1 个步骤", "已完成 1 个步骤", "屏幕", "已停止").map { text ->
+        val lefts = listOf("失败 · 1 个步骤", "已完成 1 个步骤", "屏幕", "已停止", "执行中断").map { text ->
             compose.onNode(hasText(text, substring = true), useUnmergedTree = true).getBoundsInRoot().left
         }
         assertEquals(lefts.toString(), 1, lefts.distinct().size)
+    }
+
+    @Test fun `a group and the steps inside it use one text size`() {
+        val open = empty.copy(phase = ExecutionPhase.RUNNING, occupied = true, steps = listOf(step.copy(outcome = null)))
+        compose.setContent { MaterialTheme { ExecutionFlow(open, vm()) { _, _ -> } } }
+        assertEquals(ProcessTextSize, textStyleOf("执行中").fontSize)
+        assertEquals(ProcessTextSize, textStyleOf(ToolPresentation.present(open.steps.single()).title).fontSize)
     }
 
     private fun textStyleOf(text: String): androidx.compose.ui.text.TextStyle {
