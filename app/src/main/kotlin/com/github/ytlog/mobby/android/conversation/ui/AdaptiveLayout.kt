@@ -52,3 +52,22 @@ internal fun conversationLayout(width: Dp, height: Dp, fold: FoldRegion?): Conve
     }
     return ConversationLayout.Single(0.dp, 0.dp, w, h)
 }
+
+/** Where the page and the compact drawer sit in the viewport, shared by the drawer layer and the page card above it. */
+internal data class ViewportGeometry(
+    val layout: ConversationLayout, val wide: Boolean,
+    val contentLeft: Dp, val contentTop: Dp, val contentWidth: Dp, val height: Dp,
+) {
+    val drawerWidth: Dp get() = minOf(360.dp, (contentWidth - 56.dp).coerceAtLeast(0.dp))
+}
+
+internal fun viewportGeometry(width: Dp, height: Dp, fold: FoldRegion?, sidebarExpanded: Boolean): ViewportGeometry {
+    val layout = conversationLayout(width, height, fold)
+    val wide = layout is ConversationLayout.Dual
+    val fullDetail = wide && !sidebarExpanded && fold == null
+    return when (layout) {
+        is ConversationLayout.Single -> ViewportGeometry(layout, wide, layout.left, layout.top, layout.width, layout.height)
+        is ConversationLayout.Dual -> ViewportGeometry(layout, wide, if (fullDetail) 0.dp else layout.detailLeft, layout.top,
+            if (fullDetail) width else layout.detailWidth, layout.height)
+    }
+}

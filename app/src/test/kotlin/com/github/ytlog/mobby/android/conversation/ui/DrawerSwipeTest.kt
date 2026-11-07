@@ -55,7 +55,7 @@ class DrawerSwipeTest {
         commits.clear()
     }
 
-    @Test fun `the page slides over a drawer that lies beneath it`() {
+    @Test fun `the page slides over a drawer that lies beneath it and keeps its size at rest`() {
         val closed = drawerLayers(0f, 300f)
         val half = drawerLayers(0.5f, 300f)
         val open = drawerLayers(1f, 300f)
@@ -67,10 +67,15 @@ class DrawerSwipeTest {
         assertTrue("drawer should move less than the page: ${half.drawer}", half.drawer > -150f * 0.5f && half.drawer < 0f)
         assertEquals(0f, closed.shadow, 0.001f)
         assertEquals(1f, open.shadow, 0.001f)
-        // The page recedes into a card as it opens while the drawer rises to meet it.
+        // The page keeps its full size at rest, open or closed, and only recedes into a rounded card
+        // while it travels, as the drawer rises to meet it.
         assertEquals(1f, closed.pageScale, 0.001f)
-        assertTrue("open page should shrink: ${open.pageScale}", open.pageScale in 0.8f..0.95f)
-        assertTrue(half.pageScale > open.pageScale && half.pageScale < 1f)
+        assertEquals(1f, open.pageScale, 0.001f)
+        assertTrue("travelling page should shrink: ${half.pageScale}", half.pageScale in 0.85f..0.95f)
+        assertEquals(0f, closed.corner, 0.001f)
+        assertEquals(0f, open.corner, 0.001f)
+        assertEquals(1f, half.corner, 0.001f)
+        assertTrue(drawerLayers(0.25f, 300f).pageScale in half.pageScale..1f)
         assertTrue("closed drawer should sit smaller: ${closed.drawerScale}", closed.drawerScale < 1f)
         assertEquals(1f, open.drawerScale, 0.001f)
     }
