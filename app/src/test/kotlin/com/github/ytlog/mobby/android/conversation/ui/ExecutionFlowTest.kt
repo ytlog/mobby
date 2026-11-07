@@ -392,7 +392,7 @@ class ExecutionFlowTest {
         compose.onNodeWithText("""{"command":"ls"}""").assertDoesNotExist()
     }
 
-    @Test fun `thinking hides routine diagnostics and a failed turn still offers them`() {
+    @Test fun `only the failed turn status offers diagnostics`() {
         val log = listOf(Message("d", "cli stderr"))
         val thinking = Step.Thinking("think", "", null)
         val running = empty.copy(phase = ExecutionPhase.RUNNING, occupied = true, steps = listOf(thinking), diagnostics = log)
@@ -401,12 +401,39 @@ class ExecutionFlowTest {
         assertFalse(finished.diagnosticsActionVisible())
         val failed = finished.copy(phase = ExecutionPhase.FAILED, failure = "执行失败")
         assertTrue(failed.diagnosticsActionVisible())
+        assertTrue(failed.copy(failure = null).reportsOutcome())
+        val diagnostics = UiStrings.viewDiagnostics(1)
         val shown = mutableStateOf(running)
-        compose.setContent { MaterialTheme { ExecutionFlow(shown.value, vm()) { _, _ -> } } }
+        val showStatus = mutableStateOf(false)
+        var diagnosticsOpened = 0
+        compose.setContent {
+            MaterialTheme {
+                if (showStatus.value) {
+                    TurnStatus(
+                        shown.value,
+                        onCancelQueued = {},
+                        onRestore = {},
+                        onDiagnostics = { diagnosticsOpened++ },
+                    )
+                } else {
+                    ExecutionFlow(shown.value, vm()) { _, _ -> }
+                }
+            }
+        }
         compose.onNodeWithText("思考").assertExists()
         compose.onNodeWithText("查看诊断", substring = true).assertDoesNotExist()
         compose.runOnIdle { shown.value = failed }
-        compose.onNodeWithText("查看诊断（1）").assertExists()
+        compose.onNodeWithText("查看诊断", substring = true).assertDoesNotExist()
+        compose.onNodeWithContentDescription(diagnostics).assertDoesNotExist()
+
+        compose.runOnIdle { showStatus.value = true }
+        compose.onNodeWithText("查看诊断", substring = true).assertDoesNotExist()
+        compose.onNodeWithContentDescription(diagnostics).assertIsDisplayed().performClick()
+        compose.runOnIdle {
+            assertEquals(1, diagnosticsOpened)
+            shown.value = finished
+        }
+        compose.onNodeWithContentDescription(diagnostics).assertDoesNotExist()
     }
 
     @Test fun `thinking stays collapsed while streaming and opens only on request`() {

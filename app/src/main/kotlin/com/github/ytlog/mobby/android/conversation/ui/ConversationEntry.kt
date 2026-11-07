@@ -921,6 +921,7 @@ internal fun Turn.showsSeparateActivity(): Boolean = occupied || pending
     onCancelQueued: () -> Unit,
     onRestore: () -> Unit,
     onCheckPending: (() -> Unit)? = null,
+    onDiagnostics: (() -> Unit)? = null,
 ) {
     val failure = turn.failure
     val accent = statusAccentColor()
@@ -931,7 +932,9 @@ internal fun Turn.showsSeparateActivity(): Boolean = occupied || pending
         !turn.occupied -> AppStrings.restoreToInput to onRestore
         else -> null
     }
-    val showCard = failure != null || turn.phase == ExecutionPhase.INTERRUPTED || turn.phase == ExecutionPhase.OUTCOME_UNKNOWN
+    val diagnostics = onDiagnostics?.takeIf { turn.diagnosticsActionVisible() }
+    val showCard = failure != null || diagnostics != null ||
+        turn.phase == ExecutionPhase.INTERRUPTED || turn.phase == ExecutionPhase.OUTCOME_UNKNOWN
     if (showCard) Surface(
         color = conversationCardColor(),
         contentColor = MaterialTheme.colorScheme.onSurface,
@@ -951,11 +954,23 @@ internal fun Turn.showsSeparateActivity(): Boolean = occupied || pending
                 AppIcon(AppIcons.Error, null, Modifier.padding(top = 2.dp).size(16.dp), tint = accent)
                 Text(status, style = MaterialTheme.typography.bodyMedium)
             }
-            if (action != null) TextButton(
-                onClick = action.second,
-                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
-                colors = textButtonColors(),
-            ) { Text(action.first, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium) }
+            if (action != null || diagnostics != null) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (action != null) TextButton(
+                        onClick = action.second,
+                        modifier = if (diagnostics != null) Modifier.weight(1f, fill = false) else Modifier,
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
+                        colors = textButtonColors(),
+                    ) { Text(action.first, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium) }
+                    if (diagnostics != null) ActionIcon(
+                        AppStrings.viewDiagnostics(turn.diagnostics.size),
+                        diagnostics,
+                        AppIcons.Terminal,
+                        tint = toolCallInk(),
+                        glyphSize = 18.dp,
+                    )
+                }
+            }
         }
     } else {
         val calm = turn.queued || turn.phase == ExecutionPhase.CANCELLED
@@ -1077,7 +1092,6 @@ internal fun timelineGap(previous: TimelineBlock?, next: TimelineBlock): Dp = wh
             detail.turns.forEach { turn ->
                 val turnEntries = entries.getValue(turn.id)
                 val lastReply = turnEntries.filterIsInstance<TimelineEntry.Reply>().lastOrNull()?.message
-                val lastTools = turnEntries.filterIsInstance<TimelineEntry.Process>().lastOrNull { it.steps.isNotEmpty() }
                 block("user:${turn.id.value}", TimelineBlock.USER) { Row(Modifier.fillMaxWidth().padding(start = 48.dp), horizontalArrangement = Arrangement.End) { UserMessageBubble { androidx.compose.foundation.text.selection.SelectionContainer { Text(turn.userText) }; AttachmentList(turn.attachments, turn.workspace, vm) } } }
                 turnEntries.forEach { entry ->
                     when (entry) {
@@ -1085,7 +1099,7 @@ internal fun timelineGap(previous: TimelineBlock?, next: TimelineBlock): Dp = wh
                             com.github.ytlog.mobby.android.deviceoperation.ConversationDeviceCard(entry.record.operation, turn, detail.conversation, vm)
                         }
                         is TimelineEntry.Process -> block(entry.itemKey(turn), TimelineBlock.PROCESS) {
-                            ExecutionFlow(turn, vm, entry.steps, showExtras = entry === lastTools, devices = entry.devices,
+                            ExecutionFlow(turn, vm, entry.steps, devices = entry.devices,
                                 deviceRow = { com.github.ytlog.mobby.android.deviceoperation.ConversationDeviceCard(it.operation, turn, detail.conversation, vm) }, read = read)
                         }
                         is TimelineEntry.Reply -> block(entry.itemKey(turn), TimelineBlock.PROSE) {
@@ -1118,7 +1132,8 @@ internal fun timelineGap(previous: TimelineBlock?, next: TimelineBlock): Dp = wh
                     TurnStatus(turn,
                         onCancelQueued = { vm.enqueue { vm.actions.cancelQueued(turn.id) } },
                         onRestore = { vm.enqueue { vm.actions.restoreDraft(detail.conversation.id, turn) } },
-                        onCheckPending = checkPending)
+                        onCheckPending = checkPending,
+                        onDiagnostics = { read(AppStrings.runtimeDiagnostics, turn.diagnostics.joinToString("\n\n") { it.text }) })
                 }
                 if (lastReply != null && turn.replyActionsVisible()) block("reply-actions:${turn.id.value}", TimelineBlock.ACTIONS) {
                     // Pulled left by the button's own inset so the glyph lines up with the text. The buttons are small

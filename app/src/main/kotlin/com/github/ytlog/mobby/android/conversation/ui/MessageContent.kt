@@ -112,7 +112,7 @@ internal fun Turn.timelineKeyAliases(): Map<String, String> = timelineEntries().
 }.toMap()
 
 /** The turn draws its own status row, so a step group need not repeat how the run ended. */
-internal fun Turn.reportsOutcome(): Boolean = queued || failure != null || phase in setOf(
+internal fun Turn.reportsOutcome(): Boolean = queued || failure != null || (phase == ExecutionPhase.FAILED && diagnostics.isNotEmpty()) || phase in setOf(
     ExecutionPhase.CANCELLED, ExecutionPhase.TIMED_OUT, ExecutionPhase.INTERRUPTED, ExecutionPhase.OUTCOME_UNKNOWN, ExecutionPhase.AWAITING_APPROVAL,
 )
 
@@ -138,7 +138,7 @@ internal fun Turn.executionHeadline(steps: List<Step> = this.steps, count: Int =
         failedSteps == count -> AppStrings.steps(ExecutionPhase.FAILED.label(), count)
         failedSteps > 0 -> AppStrings.stepsPartlyFailed(count, failedSteps)
         // A failed run with no message has no status row, so its last group has to say so.
-        ended && phase == ExecutionPhase.FAILED && failure == null -> AppStrings.steps(phase.label(), count)
+        ended && phase == ExecutionPhase.FAILED && !reportsOutcome() -> AppStrings.steps(phase.label(), count)
         steps.all { it.outcome == "SUCCEEDED" } -> done
         // Unresolved steps claim nothing here; the status row says how the run ended.
         reportsOutcome() -> AppStrings.stepCount(count)
@@ -254,7 +254,7 @@ internal val ProcessTextSize = 13.sp
 }
 
 /** One line summing up finished work; opening it lists the steps and operations in the order they happened. */
-@Composable internal fun ExecutionFlow(turn: Turn, vm: ConversationViewModel, steps: List<Step> = turn.steps, showExtras: Boolean = true,
+@Composable internal fun ExecutionFlow(turn: Turn, vm: ConversationViewModel, steps: List<Step> = turn.steps,
     devices: List<DeviceRecord> = emptyList(), deviceRow: @Composable (DeviceRecord) -> Unit = {}, read: (String, String) -> Unit) {
     if (steps.isEmpty() && devices.isEmpty()) return
     val groupKey = if (steps.isNotEmpty()) toolGroupKey(steps) else "tools:${devices.first().operation.operationId}"
@@ -276,7 +276,6 @@ internal val ProcessTextSize = 13.sp
                     steps.map { step -> step.order to @Composable { key(step.id) { StepRow(step, turn, steps, vm, read) } } } +
                     devices.map { record -> record.order to @Composable { key(record.operation.operationId) { deviceRow(record) } } }
                 rows.sortedBy { it.first }.forEach { (_, row) -> row() }
-                if (showExtras && turn.diagnosticsActionVisible()) TextButton(onClick = { read(AppStrings.runtimeDiagnostics, turn.diagnostics.joinToString("\n\n") { it.text }) }) { Text(AppStrings.viewDiagnostics(turn.diagnostics.size)) }
             }
         }
     }
