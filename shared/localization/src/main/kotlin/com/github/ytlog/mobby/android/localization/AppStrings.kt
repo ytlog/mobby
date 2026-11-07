@@ -109,7 +109,6 @@ open class StringCatalog(private val fixedLanguage: AppLanguage? = null) {
     val connectAgentsBody get() = text("登录已有账号，或配置 API 网关开始使用", "Sign in to an existing account or configure an API gateway")
     val configureApiGateway get() = text("配置 API 网关", "Configure API gateway")
     val connectAgentFirst get() = text("这个 Agent 暂无可用连接，请登录或配置匹配的 API 网关。", "This agent has no available connection. Sign in or configure a compatible API gateway.")
-    val connectionSource get() = text("连接来源", "Connection source")
     val nativeSignIn get() = text("原生登录", "Native sign-in")
     val signInAgent get() = text("登录", "Sign in")
     val signOutAgent get() = text("退出登录", "Sign out")
@@ -574,9 +573,8 @@ open class StringCatalog(private val fixedLanguage: AppLanguage? = null) {
         "high" -> text("高", "High")
         else -> level
     }
-    val modelAndReasoning get() = text("模型与思考程度", "Model and reasoning")
-    val nextTurn get() = text("下一轮", "Next turn")
-    val pendingApply get() = text("下一轮 · 待应用", "Next turn · Pending changes")
+    val selectModel get() = text("选择模型", "Select model")
+    val applyToNextTurn get() = text("应用到下一轮", "Apply to next turn")
     val previousAgentOptions get() = text("查看前面的 Agent", "Show previous Agents")
     val nextAgentOptions get() = text("查看后面的 Agent", "Show more Agents")
     val thisModelDoesNotOfferAdjustment get() = text("当前模型未开放调整", "This model does not offer adjustment")
@@ -585,7 +583,6 @@ open class StringCatalog(private val fixedLanguage: AppLanguage? = null) {
     val removeDraftAttachmentsBeforeSwitchingWorkspaces get() = text("请先移除草稿附件，再切换工作区。", "Remove draft attachments before switching workspaces.")
     val continueInThisConversationCodexClaudeCodeAndOpencode get() = text("仍在当前对话中继续。切回原 Agent 时会恢复它的会话。", "Continue in this conversation. Switching back restores that Agent’s session.")
     val selectedSkillsBelongToTheAgentSelectThemAgain get() = text("所选技能与 Agent 绑定，切换后请重新选择。插件选择会保留。", "Selected skills belong to the Agent. Select them again after switching. Plugin selections are preserved.")
-    val apply get() = text("应用", "Apply")
     val newConversation2 get() = text("新建对话", "New conversation")
     val project get() = text("项目", "Project")
     val noProject get() = text("默认工作区（无项目）", "Default workspace (no project)")

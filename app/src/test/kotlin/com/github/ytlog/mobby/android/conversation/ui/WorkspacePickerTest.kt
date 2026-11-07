@@ -148,8 +148,8 @@ class WorkspacePickerTest {
             if (menuOpen.value) AgentConfigMenu(true, { menuOpen.value = false }, current, vm)
             if (showDialog.value) ConfigDialog(dialogVm, current, {}, { config, _ -> submitted = config })
         } }
-        compose.onNodeWithContentDescription("Claude Code").performClick()
-        compose.onNodeWithText("应用").performClick()
+        compose.onNodeWithText("Claude Code").performClick()
+        compose.onNodeWithText("应用到下一轮").performClick()
         compose.waitForIdle()
         Assert.assertEquals(AgentId.CLAUDE_CODE, gatewayDefault)
         compose.runOnIdle { dialogVm = vm(); showDialog.value = true }
@@ -240,21 +240,133 @@ class WorkspacePickerTest {
         val conversation = Conversation(ConversationId("c"), NextTurnConfig(AgentId.CODEX, "model", null, "default", "CODEX"), hasTurns = true, session = "codex-session")
         compose.setContent { MaterialTheme { AgentConfigMenu(true, {}, conversation, vm) } }
         compose.onNodeWithText("新建并使用此配置").assertDoesNotExist()
-        compose.onNodeWithText("应用").assertExists()
         compose.onNodeWithText("Codex").assertExists()
-        compose.onNodeWithContentDescription("Claude Code").performClick()
+        compose.onNodeWithText("Claude Code").performClick()
         compose.onNodeWithText("仍在当前对话中继续", substring = true).assertExists()
-        compose.onNodeWithText("应用").assertExists()
+        compose.onNodeWithText("应用到下一轮").assertExists()
     }
-    @Test fun `agent menu shows a model summary and expands gateway settings on demand`() {
+    @Test fun `agent menu shows model and reasoning directly and opens models in place`() {
         val vm = vm()
         val conversation = Conversation(ConversationId("c"), NextTurnConfig(AgentId.CODEX, "model", null, "default", "CODEX"))
         compose.setContent { MaterialTheme { AgentConfigMenu(true, {}, conversation, vm) } }
+        compose.onNodeWithText("模型与思考程度").assertDoesNotExist()
+        compose.onNodeWithText("连接来源").assertDoesNotExist()
         compose.onNodeWithText("model").assertExists()
+        compose.onNodeWithText("当前模型未开放调整").assertExists()
+        compose.onNodeWithText("管理登录与 API").assertExists()
         compose.onNodeWithText("API · example.test").assertDoesNotExist()
-        compose.onNodeWithText("模型与思考程度").performClick()
+        compose.onNodeWithText("模型").performClick()
+        compose.onNodeWithText("选择模型").assertExists()
         compose.onNodeWithText("API · example.test").assertExists()
-        compose.onNodeWithText("example.test · model · 1 个模型").assertDoesNotExist()
+        compose.onNodeWithText("Codex").assertDoesNotExist()
+        compose.onNodeWithContentDescription("返回").performClick()
+        compose.onNodeWithText("Codex").assertExists()
+        compose.onNodeWithText("选择模型").assertDoesNotExist()
+    }
+    @Test fun `apply appears only while the selection differs from the conversation`() {
+        val vm = vm()
+        val conversation = Conversation(ConversationId("c"), NextTurnConfig(AgentId.CODEX, "model", null, "default", "CODEX", 1))
+        compose.setContent { MaterialTheme { AgentConfigMenu(true, {}, conversation, vm) } }
+        compose.onNodeWithText("应用到下一轮").assertDoesNotExist()
+        compose.onNodeWithText("Claude Code").performClick()
+        compose.onNodeWithText("应用到下一轮").assertExists()
+        compose.onNodeWithText("Codex").performClick()
+        compose.onNodeWithText("应用到下一轮").assertDoesNotExist()
+    }
+    @Test fun `models are grouped by connection and picking one also picks its connection`() {
+        val vm = vm()
+        compose.waitForIdle()
+        val second = GatewayProfile(AgentId.CODEX, "SECOND", 2, "https://second.test/v1", "second-default", "RESPONSES", true,
+            listOf(GatewayModel("second-default", "Second default"), GatewayModel("second-other", "Second other")))
+        compose.runOnIdle { vm.connections.value = vm.connections.value + second }
+        val conversation = Conversation(ConversationId("c"), NextTurnConfig(AgentId.CODEX, "model", null, "default", "CODEX", 1))
+        compose.setContent { MaterialTheme { AgentConfigMenu(true, {}, conversation, vm) } }
+        compose.onNodeWithText("模型").performClick()
+        compose.onNodeWithText("API · example.test").assertExists()
+        compose.onNodeWithText("API · second.test").assertExists()
+        compose.onNodeWithText("model").assertIsSelected()
+        compose.onNodeWithText("Second other").assertIsNotSelected().performClick()
+        compose.onNodeWithText("选择模型").assertDoesNotExist()
+        compose.onNodeWithText("Second other").assertExists()
+        compose.onNodeWithText("应用到下一轮").performClick()
+        compose.waitForIdle()
+        Assert.assertEquals(listOf(NextTurnConfig(AgentId.CODEX, "second-other", null, "default", "SECOND", 2)), appliedConfigs)
+    }
+    @Test fun `a connection with an empty catalog can still use its default model`() {
+        val vm = vm()
+        compose.waitForIdle()
+        val uncatalogued = GatewayProfile(AgentId.CODEX, "BARE", 5, "https://bare.test/v1", "bare-default", "RESPONSES", true)
+        compose.runOnIdle { vm.connections.value = vm.connections.value + uncatalogued }
+        val conversation = Conversation(ConversationId("c"), NextTurnConfig(AgentId.CODEX, "model", null, "default", "CODEX", 1))
+        compose.setContent { MaterialTheme { AgentConfigMenu(true, {}, conversation, vm) } }
+        compose.onNodeWithText("模型").performClick()
+        compose.onNodeWithText("bare-default").performClick()
+        compose.onNodeWithText("应用到下一轮").performClick()
+        compose.waitForIdle()
+        Assert.assertEquals(listOf(NextTurnConfig(AgentId.CODEX, "bare-default", null, "default", "BARE", 5)), appliedConfigs)
+    }
+    @Test fun `an agent without a connection offers only the way to connect`() {
+        val vm = vm()
+        compose.waitForIdle()
+        compose.runOnIdle { vm.connections.value = vm.connections.value.filterNot { it.agent == AgentId.CODEX } }
+        val conversation = Conversation(ConversationId("c"), NextTurnConfig(AgentId.CODEX, "model", null, "default", "CODEX", 1))
+        compose.setContent { MaterialTheme { AgentConfigMenu(true, {}, conversation, vm) } }
+        compose.onNodeWithText("这个 Agent 暂无可用连接", substring = true).assertExists()
+        compose.onNodeWithText("管理登录与 API").assertExists()
+        compose.onNodeWithText("模型").assertDoesNotExist()
+        compose.onNodeWithText("思考程度").assertDoesNotExist()
+    }
+    @Test fun `a conversation whose connection is gone can pick a model from the remaining ones`() {
+        val vm = vm()
+        val conversation = Conversation(ConversationId("c"), NextTurnConfig(AgentId.CODEX, "old", null, "default", "REMOVED", 1))
+        compose.setContent { MaterialTheme { AgentConfigMenu(true, {}, conversation, vm) } }
+        compose.onNodeWithText("暂无可用连接").assertExists()
+        compose.onNodeWithText("应用到下一轮").assertDoesNotExist()
+        compose.onNodeWithText("模型").performClick()
+        compose.onNodeWithText("model").performClick()
+        compose.onNodeWithText("应用到下一轮").performClick()
+        compose.waitForIdle()
+        Assert.assertEquals(listOf(NextTurnConfig(AgentId.CODEX, "model", null, "default", "CODEX", 1)), appliedConfigs)
+    }
+    @Test fun `agent tiles give every name its own width and scroll when they cannot fit`() {
+        Assert.assertEquals(listOf(40, 70, 110), agentTileWidths(listOf(10, 40, 80), 220, 12))
+        Assert.assertEquals(listOf(22, 52, 92), agentTileWidths(listOf(10, 40, 80), 100, 12))
+    }
+    @Test fun `reasoning levels share the row equally`() {
+        val vm = vm()
+        compose.waitForIdle()
+        val route = AgentLogin(AgentId.CODEX, "fixture", "Account", 3, listOf(GatewayModel("native", "Native")),
+            reasoningByModel = mapOf("native" to setOf("low", "medium", "high"))).route()
+        compose.runOnIdle { vm.connections.value = vm.connections.value.filterNot { it.agent == route.agent } + route }
+        val conversation = Conversation(ConversationId("c"), NextTurnConfig(AgentId.CODEX, "native", null, "default", route.id, 3))
+        compose.setContent { MaterialTheme { AgentConfigMenu(true, {}, conversation, vm) } }
+        compose.onNodeWithText("默认").assertIsSelected()
+        val widths = listOf("默认", "低", "中", "高").map { label ->
+            compose.onNodeWithText(label).fetchSemanticsNode().size.width
+        }
+        Assert.assertEquals(setOf(widths.first()), widths.toSet())
+        compose.onNodeWithText("高").performClick().assertIsSelected()
+        compose.onNodeWithText("应用到下一轮").performClick()
+        compose.waitForIdle()
+        Assert.assertEquals(listOf(NextTurnConfig(AgentId.CODEX, "native", "high", "default", route.id, 3)), appliedConfigs)
+    }
+    @Test fun `reasoning levels too long for the row open as a list`() {
+        val long = "a-reasoning-level-whose-raw-name-is-far-too-long-to-share-one-row-with-the-others"
+        val vm = vm()
+        compose.waitForIdle()
+        val route = AgentLogin(AgentId.CODEX, "fixture", "Account", 3, listOf(GatewayModel("native", "Native")),
+            reasoningByModel = mapOf("native" to setOf("low", long))).route()
+        compose.runOnIdle { vm.connections.value = vm.connections.value.filterNot { it.agent == route.agent } + route }
+        val conversation = Conversation(ConversationId("c"), NextTurnConfig(AgentId.CODEX, "native", null, "default", route.id, 3))
+        compose.setContent { MaterialTheme { AgentConfigMenu(true, {}, conversation, vm) } }
+        compose.onNodeWithText(long).assertDoesNotExist()
+        compose.onNodeWithText("思考程度").performClick()
+        compose.onNodeWithText(long).performClick()
+        compose.onNodeWithText(long).assertExists()
+        compose.onNodeWithText("Codex").assertExists()
+        compose.onNodeWithText("应用到下一轮").performClick()
+        compose.waitForIdle()
+        Assert.assertEquals(listOf(NextTurnConfig(AgentId.CODEX, "native", long, "default", route.id, 3)), appliedConfigs)
     }
 
     @Test fun `icon selection and account model edits are saved only on apply`() {
@@ -270,28 +382,20 @@ class WorkspacePickerTest {
         val conversation = Conversation(ConversationId("c"), NextTurnConfig(AgentId.CODEX, "model", null, "second", "CODEX", 1))
         compose.setContent { MaterialTheme { AgentConfigMenu(menuOpen.value, { menuOpen.value = false }, conversation, vm) } }
 
-        compose.onNodeWithText("应用").assertIsNotEnabled()
-        compose.onNodeWithContentDescription("Claude Code").performClick().assertIsSelected()
+        compose.onNodeWithText("Claude Code").performClick().assertIsSelected()
         compose.onNodeWithText("First").assertExists()
         compose.runOnIdle { Assert.assertTrue(appliedConfigs.isEmpty()) }
         compose.runOnIdle { menuOpen.value = false }
-        compose.onNodeWithText("应用").assertDoesNotExist()
+        compose.onNodeWithText("应用到下一轮").assertDoesNotExist()
         compose.runOnIdle { menuOpen.value = true }
-        compose.onNodeWithContentDescription("Codex").assertIsSelected()
-        compose.onNodeWithContentDescription("Claude Code").performClick()
-        compose.onNodeWithText("模型与思考程度").performClick()
-        compose.onNodeWithText("模型").performScrollTo().performClick()
+        compose.onNodeWithText("Codex").assertIsSelected()
+        compose.onNodeWithText("Claude Code").performClick()
+        compose.onNodeWithText("模型").performClick()
         compose.onNodeWithText("claude-fixture").assertDoesNotExist()
-        compose.onNodeWithText("Other").performScrollTo().performClick()
-        compose.onNodeWithText("高").performScrollTo().performClick().assertIsSelected()
-        compose.onNodeWithText("模型与思考程度").performClick()
-        compose.onNodeWithText("思考程度").assertDoesNotExist()
-        compose.onNodeWithText("Other").assertExists()
-        compose.onNodeWithText("高").assertExists()
-        compose.onNodeWithText("模型与思考程度").performClick()
-        compose.onNodeWithText("高").assertIsSelected()
+        compose.onNodeWithText("Other").performClick()
+        compose.onNodeWithText("高").performClick().assertIsSelected()
         compose.runOnIdle { Assert.assertTrue(appliedConfigs.isEmpty()) }
-        compose.onNodeWithText("应用").performClick()
+        compose.onNodeWithText("应用到下一轮").performClick()
         compose.waitForIdle()
         Assert.assertEquals(listOf(NextTurnConfig(AgentId.CLAUDE_CODE, "native-other", "high", "second", route.id, 3)), appliedConfigs)
     }

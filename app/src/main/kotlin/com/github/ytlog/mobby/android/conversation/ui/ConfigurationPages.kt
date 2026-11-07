@@ -29,8 +29,8 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -40,8 +40,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.github.ytlog.mobby.android.conversation.domain.*
-import com.github.ytlog.mobby.android.conversation.domain.gateway.ConnectionSource
-import com.github.ytlog.mobby.android.conversation.domain.gateway.ConversationGatewayResolver
+import com.github.ytlog.mobby.android.conversation.domain.gateway.*
 import kotlinx.coroutines.*
 
 @Composable internal fun TextEditDialog(title: String, initial: String, dismiss: () -> Unit, save: (String) -> Unit) {
@@ -55,9 +54,8 @@ import kotlinx.coroutines.*
     val profiles by vm.connections.collectAsStateWithLifecycle()
     var selectedAgent by remember(c.id) { mutableStateOf<AgentId?>(null) }
     val drafts = remember(c.id) { mutableStateMapOf<AgentId, NextTurnConfig>() }
-    var showSettings by remember(c.id) { mutableStateOf(false) }
+    var page by remember(c.id) { mutableStateOf(AgentMenuPage.MAIN) }
     val agent = selectedAgent ?: c.config.agent
-    var field by remember(c.id, agent, showSettings) { mutableStateOf<AgentSetting?>(null) }
     val availableAgents = AgentId.entries.filter { value ->
         profiles.any { it.agent == value } && agents.none { it.agent == value && it.unavailable != null }
     }
@@ -66,153 +64,111 @@ import kotlinx.coroutines.*
         NextTurnConfig(agent, it.model, null, c.config.workspace, it.id, it.version)
     }
     val profile = connections.firstOrNull { it.id == draft?.gatewayProfile }
-    val canChangeConnection = connections.isNotEmpty() && (connections.size > 1 || profile == null)
     val model = draft?.model.orEmpty()
     val levels = profile?.nativeReasoning?.get(model).orEmpty()
     val reasoning = draft?.reasoning?.takeIf { it in levels }
-    val names = profile?.models.orEmpty().associate { it.id to it.name }
+    val names = profile?.modelNames().orEmpty()
     val modelLabel = modelMenuLabel(model, names).ifBlank { AppStrings.unavailable }
     val config = profile?.let { route ->
         draft?.takeIf { route.offers(model) && agent in availableAgents }
             ?.copy(reasoning = reasoning, workspace = c.config.workspace, gatewayVersion = route.version)
     }
     val changed = config != null && config != c.config
-    val openConnections = { dismiss(); manageConnections() }
+    val showMain = { page = AgentMenuPage.MAIN }
     FrostedMenu(true, dismiss, anchor, maxWidth = 304.dp, dimBehind = true) {
         val ink = menuInk()
         val secondaryInk = ink.copy(alpha = 0.68f)
-        val accent = menuAccent()
-        Column(Modifier.weight(1f, fill = false).heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
-            Row(
-                Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text(agent.label(), Modifier.weight(1f).alignByBaseline(), style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Medium, color = ink)
-                Text(if (changed) AppStrings.pendingApply else AppStrings.nextTurn, Modifier.alignByBaseline(),
-                    style = MaterialTheme.typography.bodySmall, color = secondaryInk)
-            }
-            if (availableAgents.isNotEmpty()) AgentIconRail(availableAgents, agent) { selectedAgent = it }
-            if (connections.isEmpty()) AgentMenuNote(AppStrings.connectAgentFirst)
-            if (agent != c.config.agent && c.hasTurns)
-                AgentMenuNote(AppStrings.continueInThisConversationCodexClaudeCodeAndOpencode)
-            if (agent != c.config.agent && c.draft.capabilities.any { !it.startsWith("plugin:") })
-                AgentMenuNote(AppStrings.selectedSkillsBelongToTheAgentSelectThemAgain)
-            if (showSettings) {
-                HorizontalDivider(Modifier.padding(horizontal = 14.dp), color = ink.copy(alpha = 0.10f))
-                AgentSettingsToggle(expanded = true, model = modelLabel, effort = null,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp),
-                ) { showSettings = false }
-                if (canChangeConnection || profile == null) {
-                    AgentSettingRow(
-                        AppStrings.connectionSource, profile?.let(::connectionLabel) ?: AppStrings.noAvailableConnection,
-                        expanded = field == AgentSetting.CONNECTION, expandable = canChangeConnection,
-                    ) { field = AgentSetting.CONNECTION.takeUnless { field == it } }
-                }
-                if (field == AgentSetting.CONNECTION) {
-                    connections.forEach { route ->
-                        AgentSettingChoice(connectionLabel(route), profile?.id == route.id) {
-                            if (profile?.id != route.id) drafts[agent] =
-                                NextTurnConfig(agent, route.model, null, c.config.workspace, route.id, route.version)
-                            field = null
+        when (page) {
+            AgentMenuPage.MODELS -> AgentMenuSubpage(AppStrings.selectModel, showMain) {
+                connections.forEach { route ->
+                    AgentMenuGroupLabel(connectionLabel(route))
+                    val routeNames = route.modelNames()
+                    route.modelChoices().forEach { id ->
+                        AgentMenuChoice(modelMenuLabel(id, routeNames), route.id == profile?.id && id == model) {
+                            if (route.id != profile?.id || id != model) drafts[agent] =
+                                NextTurnConfig(agent, id, null, c.config.workspace, route.id, route.version)
+                            showMain()
                         }
                     }
+                    if (route.models.isEmpty()) AgentMenuNote(emptyCatalogNote(route))
                 }
-                if (profile != null && draft != null) {
-                    AgentModelPicker(modelLabel, source = if (canChangeConnection) null else connectionLabel(profile),
-                        expanded = field == AgentSetting.MODEL, expandable = profile.models.isNotEmpty(),
-                    ) { field = AgentSetting.MODEL.takeUnless { field == it } }
-                    when {
-                        profile.models.isEmpty() -> AgentMenuNote(
-                            if (profile.source == ConnectionSource.NATIVE) AppStrings.noNativeModels
-                            else AppStrings.noModelsConfiguredOpenGatewaySettings
-                        )
-                        field == AgentSetting.MODEL -> profile.models.forEach { item ->
-                            AgentSettingChoice(modelMenuLabel(item.id, names), model == item.id) {
-                                if (model != item.id) drafts[agent] = draft.copy(model = item.id, reasoning = null)
-                                field = null
+            }
+            AgentMenuPage.REASONING -> AgentMenuSubpage(AppStrings.reasoningEffort, showMain) {
+                (listOf(null) + levels).forEach { level ->
+                    AgentMenuChoice(reasoningOptionLabel(level), level == reasoning) {
+                        draft?.let { drafts[agent] = it.copy(reasoning = level) }
+                        showMain()
+                    }
+                }
+            }
+            AgentMenuPage.MAIN -> {
+                Column(Modifier.weight(1f, fill = false).heightIn(max = 420.dp).verticalScroll(rememberScrollState()).padding(top = 10.dp)) {
+                    if (availableAgents.isNotEmpty()) AgentTiles(availableAgents, agent) { selectedAgent = it }
+                    if (connections.isEmpty()) AgentMenuNote(AppStrings.connectAgentFirst)
+                    if (agent != c.config.agent && c.hasTurns)
+                        AgentMenuNote(AppStrings.continueInThisConversationCodexClaudeCodeAndOpencode)
+                    if (agent != c.config.agent && c.draft.capabilities.any { !it.startsWith("plugin:") })
+                        AgentMenuNote(AppStrings.selectedSkillsBelongToTheAgentSelectThemAgain)
+                    AgentMenuDivider()
+                    if (connections.isNotEmpty()) {
+                        val canPick = connections.any { it.modelChoices().isNotEmpty() }
+                        AgentValueRow(AppStrings.model, if (profile == null) AppStrings.noAvailableConnection else modelLabel,
+                            onClick = if (canPick) ({ page = AgentMenuPage.MODELS }) else null)
+                        if (profile != null) {
+                            when {
+                                profile.models.isEmpty() -> AgentMenuNote(emptyCatalogNote(profile))
+                                model.isNotBlank() && model !in names -> AgentMenuNote(AppStrings.currentModelIsNotInTheSavedListSelect)
                             }
+                            if (levels.isEmpty()) AgentValueRow(AppStrings.reasoningEffort, AppStrings.thisModelDoesNotOfferAdjustment, onClick = null)
+                            else AgentReasoningControl(levels, reasoning,
+                                select = { level -> draft?.let { drafts[agent] = it.copy(reasoning = level) } },
+                                openList = { page = AgentMenuPage.REASONING })
                         }
+                        AgentMenuDivider()
                     }
-                    if (names.isNotEmpty() && model.isNotBlank() && model !in names)
-                        AgentMenuNote(AppStrings.currentModelIsNotInTheSavedListSelect)
-                    if (levels.isEmpty()) {
-                        AgentSettingRow(AppStrings.reasoningEffort, AppStrings.thisModelDoesNotOfferAdjustment,
-                            expanded = false, expandable = false, onClick = {})
-                    } else {
-                        AgentReasoningChoices(levels, reasoning) { drafts[agent] = draft.copy(reasoning = it) }
+                    Row(
+                        Modifier.fillMaxWidth().clickable(role = Role.Button) { dismiss(); manageConnections() }
+                            .heightIn(min = 44.dp).padding(horizontal = 14.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        AppIcon(AppIcons.Settings, null, Modifier.size(16.dp), tint = secondaryInk)
+                        Text(AppStrings.manageAgentConnections, style = MaterialTheme.typography.bodyMedium, color = ink)
                     }
                 }
+                if (changed) Button(
+                    onClick = {
+                        val applied = config ?: return@Button
+                        vm.enqueue {
+                            vm.actions.configure(c.id, applied)
+                            vm.rememberAgentSelection(applied)
+                        }
+                        dismiss()
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 4.dp, bottom = 14.dp).heightIn(min = 44.dp),
+                    shape = RoundedCornerShape(22.dp),
+                    colors = filledButtonColors(if (darkChrome()) MobbyColors.Dark.button else menuAccent(), if (darkChrome()) MobbyColors.Dark.onButton else MobbyColors.onAccent),
+                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp, pressedElevation = 0.dp, focusedElevation = 0.dp, hoveredElevation = 0.dp),
+                ) { Text(AppStrings.applyToNextTurn, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium) }
             }
-            if (showSettings || connections.isEmpty()) {
-                Row(
-                    Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = openConnections)
-                        .heightIn(min = 44.dp).padding(horizontal = 14.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    AppIcon(AppIcons.Settings, null, Modifier.size(16.dp), tint = secondaryInk)
-                    Text(AppStrings.manageAgentConnections, style = MaterialTheme.typography.bodySmall, color = ink)
-                }
-            }
-        }
-        HorizontalDivider(color = ink.copy(alpha = 0.10f))
-        Row(
-            Modifier.fillMaxWidth().background(ink.copy(alpha = 0.035f)).padding(horizontal = 14.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (!showSettings) AgentSettingsToggle(
-                expanded = false, model = modelLabel,
-                effort = if (levels.isEmpty()) null else reasoning?.let(AppStrings::reasoningLevelLabel) ?: AppStrings.default,
-                modifier = Modifier.weight(1f),
-            ) { showSettings = true }
-            Button(
-                onClick = {
-                    val applied = config ?: return@Button
-                    vm.enqueue {
-                        vm.actions.configure(c.id, applied)
-                        vm.rememberAgentSelection(applied)
-                    }
-                    dismiss()
-                },
-                enabled = changed,
-                modifier = Modifier.widthIn(min = 56.dp).heightIn(min = 44.dp),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                shape = RoundedCornerShape(8.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = accent, contentColor = MobbyColors.onAccent,
-                    disabledContainerColor = ink.copy(alpha = 0.06f), disabledContentColor = secondaryInk,
-                ),
-            ) { Text(AppStrings.apply, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium) }
         }
     }
 }
 
-private enum class AgentSetting { CONNECTION, MODEL }
+private enum class AgentMenuPage { MAIN, MODELS, REASONING }
+
+private fun GatewayProfile.modelNames(): Map<String, String> = models.associate { it.id to it.name }
+
+/** A connection's default model is usable even when its catalog does not list it, so it stays selectable. */
+private fun GatewayProfile.modelChoices(): List<String> = (models.map { it.id } + model).filter(String::isNotBlank).distinct()
+
+private fun emptyCatalogNote(route: GatewayProfile): String =
+    if (route.source == ConnectionSource.NATIVE) AppStrings.noNativeModels else AppStrings.noModelsConfiguredOpenGatewaySettings
+
+private fun reasoningOptionLabel(level: String?): String = level?.let(AppStrings::reasoningLevelLabel) ?: AppStrings.default
 
 @Composable
-private fun AgentSettingsToggle(expanded: Boolean, model: String, effort: String?, modifier: Modifier, onClick: () -> Unit) {
-    val ink = menuInk()
-    val secondary = ink.copy(alpha = 0.68f)
-    val state = if (expanded) AppStrings.expanded else AppStrings.collapsed
-    Row(
-        modifier.clickable(role = Role.Button, onClick = onClick).semantics { stateDescription = state }
-            .heightIn(min = 44.dp).padding(vertical = 5.dp),
-        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(AppStrings.modelAndReasoning,
-                style = if (expanded) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodySmall,
-                color = if (expanded) ink else secondary)
-            if (!expanded) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(model, Modifier.weight(1f, fill = false), maxLines = 2, overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.bodyMedium, color = ink)
-                if (effort != null) Text(effort, style = MaterialTheme.typography.bodySmall, color = secondary)
-            }
-        }
-        AppIcon(if (expanded) AppIcons.ChevronUp else AppIcons.ChevronDown, null, Modifier.size(14.dp), tint = secondary)
-    }
+private fun AgentMenuDivider() {
+    HorizontalDivider(Modifier.padding(vertical = 4.dp), color = menuInk().copy(alpha = 0.10f))
 }
 
 @Composable
@@ -222,64 +178,35 @@ private fun AgentMenuNote(text: String) {
 }
 
 @Composable
-private fun AgentSettingRow(title: String, value: String, expanded: Boolean, expandable: Boolean, onClick: () -> Unit) {
+private fun AgentMenuGroupLabel(text: String) {
+    Text(text, Modifier.padding(start = 14.dp, end = 14.dp, top = 10.dp, bottom = 2.dp), maxLines = 1, overflow = TextOverflow.Ellipsis,
+        style = MaterialTheme.typography.bodySmall, color = menuInk().copy(alpha = 0.68f))
+}
+
+/** One line of the menu: a name on the left and its current value on the right, opening its choices when it has any. */
+@Composable
+private fun AgentValueRow(title: String, value: String, onClick: (() -> Unit)?) {
     val ink = menuInk()
     val secondary = ink.copy(alpha = 0.68f)
-    val state = if (expanded) AppStrings.expanded else AppStrings.collapsed
-    val action = if (!expandable) Modifier else Modifier
-        .clickable(role = Role.Button, onClick = onClick)
-        .semantics { stateDescription = state }
+    val action = if (onClick == null) Modifier.semantics(mergeDescendants = true) {} else Modifier.clickable(role = Role.Button, onClick = onClick)
     Row(
-        Modifier.fillMaxWidth().then(action).heightIn(min = if (expandable) 44.dp else 32.dp)
-            .padding(horizontal = 14.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        Modifier.fillMaxWidth().then(action).heightIn(min = 44.dp)
+            .padding(start = 14.dp, end = if (onClick == null) 14.dp else 10.dp, top = 6.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(title, Modifier.alignByBaseline(), style = MaterialTheme.typography.bodySmall, color = secondary)
-        Text(value, Modifier.weight(1f).alignByBaseline(), maxLines = 2, overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.End, style = MaterialTheme.typography.bodySmall, color = ink)
-        if (expandable)
-            AppIcon(if (expanded) AppIcons.ChevronUp else AppIcons.ChevronDown, null, Modifier.size(14.dp), tint = secondary)
+        Text(title, style = MaterialTheme.typography.bodyMedium, color = secondary)
+        Text(value, Modifier.weight(1f), maxLines = if (onClick == null) 2 else 1, overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.End, style = MaterialTheme.typography.bodyMedium, color = if (onClick == null) secondary else ink)
+        if (onClick != null) AppIcon(AppIcons.ChevronRight, null, Modifier.size(14.dp), tint = secondary)
     }
 }
 
 @Composable
-private fun AgentModelPicker(value: String, source: String?, expanded: Boolean, expandable: Boolean, onClick: () -> Unit) {
-    val ink = menuInk()
-    val secondary = ink.copy(alpha = 0.68f)
-    val state = if (expanded) AppStrings.expanded else AppStrings.collapsed
-    val action = if (!expandable) Modifier else Modifier
-        .clickable(role = Role.Button, onClick = onClick).semantics { stateDescription = state }
-    Column(
-        Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp).then(action),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(AppStrings.model, Modifier.alignByBaseline(), style = MaterialTheme.typography.bodySmall, color = secondary)
-            if (source != null) Text(source, Modifier.weight(1f).alignByBaseline(),
-                maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.End,
-                style = MaterialTheme.typography.bodySmall, color = secondary)
-        }
-        Row(
-            Modifier.fillMaxWidth().border(1.dp, ink.copy(alpha = 0.14f), RoundedCornerShape(8.dp))
-                .heightIn(min = 44.dp).padding(horizontal = 10.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text(value, Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodyMedium, color = ink)
-            if (expandable) AppIcon(if (expanded) AppIcons.ChevronUp else AppIcons.ChevronDown,
-                null, Modifier.size(14.dp), tint = secondary)
-        }
-    }
-}
-
-@Composable
-private fun AgentSettingChoice(label: String, selected: Boolean, onClick: () -> Unit) {
+private fun AgentMenuChoice(label: String, selected: Boolean, onClick: () -> Unit) {
     val color = if (selected) menuAccent() else menuInk()
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 14.dp).clip(RoundedCornerShape(8.dp))
-            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
-            .heightIn(min = 44.dp).padding(horizontal = 10.dp, vertical = 6.dp),
+        Modifier.fillMaxWidth().selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
+            .heightIn(min = 44.dp).padding(horizontal = 14.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(label, Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis,
@@ -288,55 +215,89 @@ private fun AgentSettingChoice(label: String, selected: Boolean, onClick: () -> 
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+/** A choice list that takes over the menu in place, so picking never nests inside the page it came from. */
 @Composable
-private fun AgentReasoningChoices(levels: Set<String>, selected: String?, select: (String?) -> Unit) {
+private fun ColumnScope.AgentMenuSubpage(title: String, back: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+    val ink = menuInk()
+    Row(Modifier.fillMaxWidth().padding(start = 2.dp, end = 14.dp, top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+        ActionIcon(AppStrings.back, back, AppIcons.Back, tint = ink, glyphSize = 18.dp)
+        Text(title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, color = ink)
+    }
+    HorizontalDivider(color = ink.copy(alpha = 0.10f))
+    Column(
+        Modifier.weight(1f, fill = false).heightIn(max = 420.dp).verticalScroll(rememberScrollState())
+            .selectableGroup().padding(vertical = 4.dp),
+        content = content,
+    )
+}
+
+/** Equal-width segments while every level name fits; raw level names that do not fit open as a list instead. */
+@Composable
+private fun AgentReasoningControl(levels: Set<String>, selected: String?, select: (String?) -> Unit, openList: () -> Unit) {
     val ink = menuInk()
     val accent = menuAccent()
-    val shape = RoundedCornerShape(8.dp)
-    Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp)) {
-        Text(AppStrings.reasoningEffort, style = MaterialTheme.typography.bodySmall, color = ink.copy(alpha = 0.68f))
-        FlowRow(
-            Modifier.fillMaxWidth().selectableGroup(),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            (listOf(null) + levels).forEach { level ->
-                val active = level == selected
-                Box(
-                    Modifier.widthIn(min = 44.dp).heightIn(min = 44.dp).clip(shape)
-                        .selectable(selected = active, role = Role.RadioButton) { select(level) }
-                        .padding(horizontal = 3.dp, vertical = 4.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    val background = if (active) Modifier.background(accent.copy(alpha = 0.12f), shape) else Modifier
-                    Text(level?.let(AppStrings::reasoningLevelLabel) ?: AppStrings.default,
-                        background.padding(horizontal = 7.dp, vertical = 5.dp),
-                        style = MaterialTheme.typography.bodySmall, color = if (active) accent else ink)
+    val style = MaterialTheme.typography.bodySmall
+    val options = listOf(null) + levels
+    val measurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val slot = with(density) { ((maxWidth - 32.dp) / options.size - 8.dp).roundToPx() }
+        val fits = options.all { measurer.measure(reasoningOptionLabel(it), style, maxLines = 1).size.width <= slot }
+        if (!fits) AgentValueRow(AppStrings.reasoningEffort, reasoningOptionLabel(selected), openList)
+        else Column(Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 6.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(AppStrings.reasoningEffort, style = MaterialTheme.typography.bodyMedium, color = ink.copy(alpha = 0.68f))
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(ink.copy(alpha = 0.05f))
+                    .padding(2.dp).selectableGroup(),
+            ) {
+                options.forEach { level ->
+                    val active = level == selected
+                    val fill = if (active) Modifier.background(accent.copy(alpha = 0.14f)) else Modifier
+                    Box(
+                        Modifier.weight(1f).heightIn(min = 40.dp).clip(RoundedCornerShape(8.dp)).then(fill)
+                            .selectable(selected = active, role = Role.RadioButton) { select(level) },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(reasoningOptionLabel(level), maxLines = 1, style = style, color = if (active) accent else ink,
+                            fontWeight = if (active) FontWeight.Medium else null)
+                    }
                 }
             }
         }
     }
 }
 
+/**
+ * Agent names differ widely in length, so each tile keeps its name on one line and the spare width
+ * is shared evenly. When the names cannot all fit, tiles keep their minimum padding and the row scrolls.
+ */
+internal fun agentTileWidths(labelWidths: List<Int>, available: Int, minPadding: Int): List<Int> {
+    if (labelWidths.isEmpty()) return emptyList()
+    val spare = (available - labelWidths.sum()) / labelWidths.size
+    return labelWidths.map { it + maxOf(spare, minPadding) }
+}
+
 @Composable
-private fun AgentIconRail(agents: List<AgentId>, selected: AgentId, select: (AgentId) -> Unit) {
+private fun AgentTiles(agents: List<AgentId>, selected: AgentId, select: (AgentId) -> Unit) {
     val scroll = rememberScrollState()
     val scope = rememberCoroutineScope()
     val shape = RoundedCornerShape(12.dp)
     val ink = menuInk()
     val accent = menuAccent()
-    BoxWithConstraints(
-        Modifier.fillMaxWidth().padding(horizontal = 14.dp).clip(shape),
-    ) {
-        val overflows = maxWidth < 48.dp * agents.size
+    val style = MaterialTheme.typography.bodySmall
+    val measurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+        val widths = with(density) {
+            agentTileWidths(agents.map { measurer.measure(it.label(), style, maxLines = 1).size.width }, maxWidth.roundToPx(), 12.dp.roundToPx())
+        }
+        val overflows = with(density) { widths.sum() > maxWidth.roundToPx() }
         val showArrows = overflows && maxWidth >= 144.dp
-        val slot = if (overflows) 48.dp else maxWidth / agents.size
-        val slotPixels = with(LocalDensity.current) { slot.roundToPx() }
-        LaunchedEffect(agents, selected, slotPixels, scroll.viewportSize) {
+        LaunchedEffect(agents, selected, widths, scroll.viewportSize) {
             val index = agents.indexOf(selected)
-            if (overflows && index >= 0 && scroll.viewportSize >= slotPixels) {
-                val start = index * slotPixels
-                val target = scroll.value.coerceIn((start + slotPixels - scroll.viewportSize).coerceAtLeast(0), start)
+            if (overflows && index >= 0 && scroll.viewportSize >= widths[index]) {
+                val start = widths.take(index).sum()
+                val target = scroll.value.coerceIn((start + widths[index] - scroll.viewportSize).coerceAtLeast(0), start)
                 if (scroll.value != target) scroll.scrollTo(target)
             }
         }
@@ -345,19 +306,18 @@ private fun AgentIconRail(agents: List<AgentId>, selected: AgentId, select: (Age
                 { scope.launch { scroll.animateScrollTo((scroll.value - scroll.viewportSize).coerceAtLeast(0)) } },
                 AppIcons.Back, enabled = scroll.canScrollBackward, tint = ink)
             Row(Modifier.weight(1f).horizontalScroll(scroll).selectableGroup()) {
-                agents.forEach { agent ->
+                agents.forEachIndexed { index, agent ->
                     val active = agent == selected
-                    Box(
-                        Modifier.width(slot).height(44.dp).clip(shape)
+                    val tint = if (active) accent else ink
+                    val fill = if (active) Modifier.background(accent.copy(alpha = 0.12f)) else Modifier
+                    Column(
+                        Modifier.width(with(density) { widths[index].toDp() }).clip(shape).then(fill)
                             .selectable(selected = active, role = Role.RadioButton) { select(agent) }
-                            .semantics { contentDescription = agent.label() },
-                        contentAlignment = Alignment.Center,
+                            .padding(vertical = 8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        AppIcon(agent.glyph(), null, Modifier.size(18.dp), tint = if (active) accent else ink)
-                        if (active) Box(
-                            Modifier.align(Alignment.BottomCenter).padding(bottom = 4.dp)
-                                .size(10.dp, 2.dp).background(accent, RoundedCornerShape(1.dp)),
-                        )
+                        AppIcon(agent.glyph(), null, Modifier.size(18.dp), tint = tint)
+                        Text(agent.label(), maxLines = 1, softWrap = false, style = style, color = tint)
                     }
                 }
             }
