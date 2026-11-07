@@ -23,7 +23,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -77,15 +76,19 @@ import kotlinx.coroutines.*
     }
     val changed = config != null && config != c.config
     val openConnections = { dismiss(); manageConnections() }
-    FrostedMenu(true, dismiss, anchor) {
+    FrostedMenu(true, dismiss, anchor, maxWidth = 328.dp) {
+        val ink = menuInk()
+        val secondaryInk = ink.copy(alpha = 0.68f)
+        val accent = menuAccent()
         Column(Modifier.weight(1f, fill = false).heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
             Row(
-                Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 8.dp),
+                Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text(agent.label(), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, color = menuInk())
-                Text(if (changed) AppStrings.pendingApply else AppStrings.nextTurn, style = MaterialTheme.typography.labelMedium, color = menuMuted())
+                Text(agent.label(), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, color = ink)
+                Text(if (changed) AppStrings.pendingApply else AppStrings.nextTurn,
+                    style = MaterialTheme.typography.labelSmall, color = secondaryInk)
             }
             if (availableAgents.isNotEmpty()) AgentIconRail(availableAgents, agent) { selectedAgent = it }
             val settingsState = if (showSettings) AppStrings.expanded else AppStrings.collapsed
@@ -94,15 +97,21 @@ import kotlinx.coroutines.*
                     .clickable(role = Role.Button) { showSettings = !showSettings }
                     .semantics { stateDescription = settingsState }
                     .heightIn(min = 48.dp)
-                    .padding(horizontal = 20.dp, vertical = 8.dp),
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text(AppStrings.modelAndReasoning, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = menuInk())
-                Text(modelLabel, Modifier.weight(1f, fill = false),
-                    maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = menuMuted())
-                if (levels.isNotEmpty()) Text(reasoning ?: AppStrings.default, style = MaterialTheme.typography.labelSmall, color = menuInk())
-                AppIcon(if (showSettings) AppIcons.ChevronUp else AppIcons.ChevronDown, null, Modifier.size(16.dp), tint = menuMuted())
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(AppStrings.modelAndReasoning, style = MaterialTheme.typography.labelSmall, color = secondaryInk)
+                    Text(modelLabel, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.bodyMedium, color = ink)
+                }
+                if (levels.isNotEmpty()) Text(
+                    reasoning ?: AppStrings.default,
+                    Modifier.background(ink.copy(alpha = 0.06f), RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 3.dp),
+                    style = MaterialTheme.typography.labelSmall, color = secondaryInk,
+                )
+                AppIcon(if (showSettings) AppIcons.ChevronUp else AppIcons.ChevronDown, null, Modifier.size(16.dp), tint = secondaryInk)
             }
             if (showSettings) {
                 AgentSettingRow(
@@ -163,6 +172,7 @@ import kotlinx.coroutines.*
             if (agent != c.config.agent && c.draft.capabilities.any { !it.startsWith("plugin:") })
                 MenuCaption(AppStrings.selectedSkillsBelongToTheAgentSelectThemAgain)
         }
+        HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = ink.copy(alpha = 0.10f))
         Button(
             onClick = {
                 val applied = config ?: return@Button
@@ -173,10 +183,14 @@ import kotlinx.coroutines.*
                 dismiss()
             },
             enabled = changed,
-            modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 20.dp).heightIn(min = 48.dp),
-            shape = RoundedCornerShape(22.dp),
-            colors = filledButtonColors(if (darkChrome()) MobbyColors.Dark.button else menuAccent(), if (darkChrome()) MobbyColors.Dark.onButton else MobbyColors.onAccent),
-            elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp, pressedElevation = 0.dp, focusedElevation = 0.dp, hoveredElevation = 0.dp),
+            modifier = Modifier.align(Alignment.End).padding(horizontal = 16.dp, vertical = 8.dp).sizeIn(minWidth = 80.dp, minHeight = 44.dp),
+            shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = accent,
+                contentColor = MobbyColors.onAccent,
+                disabledContainerColor = ink.copy(alpha = 0.06f),
+                disabledContentColor = ink.copy(alpha = 0.48f),
+            ),
         ) { Text(AppStrings.apply, fontWeight = FontWeight.SemiBold) }
     }
 }
@@ -208,9 +222,10 @@ private fun AgentIconRail(agents: List<AgentId>, selected: AgentId, select: (Age
     val scope = rememberCoroutineScope()
     val shape = RoundedCornerShape(12.dp)
     val ink = menuInk()
+    val accent = menuAccent()
     BoxWithConstraints(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp).clip(shape)
-            .background(ink.copy(alpha = 0.07f)).padding(2.dp),
+            .background(ink.copy(alpha = 0.045f)).padding(2.dp),
     ) {
         val overflows = maxWidth < 48.dp * agents.size
         val showArrows = overflows && maxWidth >= 144.dp
@@ -233,12 +248,17 @@ private fun AgentIconRail(agents: List<AgentId>, selected: AgentId, select: (Age
                     val active = agent == selected
                     Box(
                         Modifier.width(slot).height(48.dp).clip(shape)
-                            .background(if (active) menuAccent() else Color.Transparent)
                             .selectable(selected = active, role = Role.RadioButton) { select(agent) }
                             .semantics { contentDescription = agent.label() },
                         contentAlignment = Alignment.Center,
                     ) {
-                        AppIcon(agent.glyph(), null, Modifier.size(22.dp), tint = if (active) MobbyColors.onAccent else ink)
+                        Box(
+                            if (active) Modifier.size(40.dp, 36.dp).background(accent.copy(alpha = 0.14f), RoundedCornerShape(10.dp))
+                            else Modifier.size(40.dp, 36.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            AppIcon(agent.glyph(), null, Modifier.size(22.dp), tint = if (active) accent else ink)
+                        }
                     }
                 }
             }

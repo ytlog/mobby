@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
@@ -60,7 +61,13 @@ import kotlin.math.roundToInt
     }
 }
 
-@Composable internal fun FrostedMenu(expanded: Boolean, onDismissRequest: () -> Unit, anchor: IntRect = IntRect.Zero, content: @Composable ColumnScope.() -> Unit) {
+@Composable internal fun FrostedMenu(
+    expanded: Boolean,
+    onDismissRequest: () -> Unit,
+    anchor: IntRect = IntRect.Zero,
+    maxWidth: Dp = 420.dp,
+    content: @Composable ColumnScope.() -> Unit,
+) {
     if (!expanded) return
     val host = LocalView.current
     var snapshot by remember { mutableStateOf(snapshotView(host)) }
@@ -69,7 +76,7 @@ import kotlin.math.roundToInt
     val margin = with(density) { 16.dp.roundToPx() }
     val gap = with(density) { 8.dp.roundToPx() }
     val windowWidth = host.rootView.width.takeIf { it > 0 } ?: host.resources.displayMetrics.widthPixels
-    val popupWidth = minOf((windowWidth - margin * 2).coerceAtLeast(1), with(density) { 420.dp.roundToPx() })
+    val popupWidth = minOf((windowWidth - margin * 2).coerceAtLeast(1), with(density) { maxWidth.roundToPx() })
     val popupLeft = (if (anchor.width > 0) anchor.left else margin)
         .coerceIn(margin, (windowWidth - popupWidth - margin).coerceAtLeast(margin))
     val predictedHeight = with(density) { 560.dp.roundToPx() }
