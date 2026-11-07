@@ -16,6 +16,7 @@ import androidx.compose.ui.semantics.Role
 import com.github.ytlog.mobby.android.conversation.domain.AttachmentPreview
 import com.github.ytlog.mobby.android.conversation.domain.DataResult
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
@@ -45,6 +46,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.withContext
 
+internal data class ReplyFileLink(val source: String, val name: String, val image: Boolean)
+
 internal object ReplyMarkdown {
     private fun parser() = Parser.builder().extensions(listOf(TablesExtension.create(), StrikethroughExtension.create(), AutolinkExtension.create(), TaskListItemsExtension.create())).build()
     fun parse(text: String): Node = parser().parse(text)
@@ -56,6 +59,37 @@ internal object ReplyMarkdown {
     }.getOrDefault(false)
     /** Images the runtime can show: workspace paths and inline data load at once, https waits for the user. Others stay text. */
     enum class ImageSource { LOCAL, REMOTE }
+    fun workspacePath(destination: String): String? {
+        if (destination.isBlank() || destination.startsWith("//") || destination.startsWith("#")) return null
+        val uri = runCatching { URI(destination) }.getOrNull()
+        return when {
+            uri == null && ':' !in destination -> destination
+            uri?.scheme == null && uri != null -> uri.path?.takeIf { it.isNotBlank() }
+            uri?.scheme.equals("file", true) && uri?.rawAuthority == null -> uri?.path?.takeIf { it.startsWith("/") }
+            else -> null
+        }
+    }
+
+    fun resultFiles(replies: List<String>): List<ReplyFileLink> {
+        val files = linkedMapOf<String, ReplyFileLink>()
+        fun visit(node: Node) {
+            val source = when (node) {
+                is Image -> node.destination
+                is Link -> node.destination
+                else -> null
+            }?.trim()
+            val path = source?.let(::workspacePath)?.removePrefix("./")
+            val name = path?.substringAfterLast('/')
+            if (source != null && path != null && !name.isNullOrBlank() && name !in setOf(".", "..")) {
+                val image = node is Image || name.substringAfterLast('.').lowercase() in setOf("png", "jpg", "jpeg", "webp", "gif")
+                if (files[path]?.image != true) files[path] = ReplyFileLink(source, name, image)
+            }
+            children(node).forEach(::visit)
+        }
+        replies.forEach { visit(parse(it)) }
+        return files.values.toList()
+    }
+
     fun imageSource(destination: String): ImageSource? {
         val value = destination.trim()
         if (value.isEmpty()) return null
@@ -76,7 +110,7 @@ internal val LocalReplyDetailStyle = staticCompositionLocalOf<TextStyle?> { null
 
 internal val LocalReplyParser = staticCompositionLocalOf<(String) -> Node> { ReplyMarkdown::parse }
 @OptIn(ExperimentalCoroutinesApi::class)
-private val replyParsingDispatcher = Dispatchers.Default.limitedParallelism(1)
+internal val replyParsingDispatcher = Dispatchers.Default.limitedParallelism(1)
 private data class ParsedReply(val source: String, val document: Node)
 
 @Composable internal fun ReplyContent(text: String, streaming: Boolean = false, images: ReplyImageLoader? = null, read: (String, String) -> Unit) {
@@ -147,7 +181,7 @@ private data class ParsedReply(val source: String, val document: Node)
     }.trim() }).ifEmpty { AppStrings.replyImage }
     val remote = ReplyMarkdown.imageSource(source) == ReplyMarkdown.ImageSource.REMOTE
     var requested by remember(source) { mutableStateOf(!remote) }
-    var expanded by remember(source) { mutableStateOf(false) }
+    var expanded by rememberSaveable(source) { mutableStateOf(false) }
     // The inline and full views share one load, so a web image is downloaded once.
     var loaded by remember(source) { mutableStateOf<AttachmentPreview?>(null) }
     val load: suspend (Boolean) -> DataResult<AttachmentPreview> = { _ ->
@@ -166,7 +200,12 @@ private data class ParsedReply(val source: String, val document: Node)
         }
         AttachmentImage(source, name, true, load, preview)
     }
-    if (expanded) ReplyImageViewer(source, name, load) { expanded = false }
+    if (expanded) {
+        val access = LocalResultFileAccess.current.takeIf { ReplyMarkdown.workspacePath(source) != null }
+        ReplyImageViewer(source, name, load, close = { expanded = false }, actions = {
+            if (access != null) ResultFileButtons(source, access, image = true) { expanded = false }
+        })
+    }
 }
 
 /**

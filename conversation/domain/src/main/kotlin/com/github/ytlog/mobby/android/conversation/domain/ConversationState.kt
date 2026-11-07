@@ -101,6 +101,7 @@ sealed interface DataResult<out T> {
     data class Failed(val message: String) : DataResult<Nothing>
 }
 data class Attachment(val ref: String, val name: String, val sizeBytes: Int, val mediaType: String = "text/plain")
+data class ResultFile(val name: String, val mediaType: String, val bytes: ByteArray)
 class AttachmentPreview(val bytes: ByteArray)
 data class EventHistoryLimits(val days: Int = 30, val mib: Int = 32, val outputDays: Int = 30, val outputMiB: Int = 256, val attachmentMiB: Int = 512, val resourceCacheMiB: Int = 128)
 data class WorkspaceOption(val ref: String, val name: String)
@@ -133,6 +134,7 @@ interface SystemPort {
     suspend fun attachment(workspace: String, ref: String): DataResult<Attachment>
     /** [source] is an image destination written in a reply of a turn that ran in [workspace]. */
     suspend fun previewReplyImage(workspace: String, source: String, expanded: Boolean): DataResult<AttachmentPreview> = DataResult.Failed(AppStrings.couldNotReadImagePreview)
+    suspend fun readReplyFile(workspace: String, source: String): DataResult<ResultFile> = DataResult.Failed(AppStrings.resultFileUnavailable)
     suspend fun skills(agent: AgentId): DataResult<List<Skill>>
     suspend fun plugins(): DataResult<List<Plugin>> = DataResult.Loaded(emptyList())
     suspend fun appFunctions(): DataResult<AppFunctionDirectory> = DataResult.Loaded(AppFunctionDirectory(AppFunctionAvailability.UNSUPPORTED_DEVICE))
@@ -377,6 +379,7 @@ class ConversationUseCases(
     suspend fun previewAttachment(workspace: String, ref: String, expanded: Boolean) = system.previewAttachment(workspace, ref, expanded)
     suspend fun attachment(workspace: String, ref: String) = system.attachment(workspace, ref)
     suspend fun previewReplyImage(workspace: String, source: String, expanded: Boolean) = system.previewReplyImage(workspace, source, expanded)
+    suspend fun readReplyFile(workspace: String, source: String) = system.readReplyFile(workspace, source)
     suspend fun restoreDraft(id: ConversationId, turn: Turn) = repository.restoreDraft(id, turn.userText, turn.attachments)
     suspend fun removeAttachment(id: ConversationId, ref: String) = repository.setAttachment(id, ref, false)
     suspend fun refreshNativeModels(agent: AgentId) = system.refreshNativeModels(agent)

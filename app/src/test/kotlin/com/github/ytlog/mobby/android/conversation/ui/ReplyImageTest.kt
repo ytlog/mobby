@@ -1,6 +1,7 @@
 package com.github.ytlog.mobby.android.conversation.ui
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -86,6 +87,36 @@ class ReplyImageTest {
         compose.onNodeWithText("修改前").assertExists()
         compose.onNodeWithText("修改后").assertExists()
         assertEquals(setOf("before.png", "after.png"), requests.toSet())
+    }
+
+    @Test fun `result list gathers only explicit local file references`() {
+        val files = ReplyMarkdown.resultFiles(listOf(
+            "[![Photo](./out/a%20b.png)](out/a%20b.png) [report](docs/report.pdf)",
+            "[archive](file:///workspace/out/code.zip) [remote](https://example.com/a.png) [jump](#heading)\n\n`![example](fake.png)`",
+        ))
+        assertEquals(listOf("a b.png", "report.pdf", "code.zip"), files.map { it.name })
+        assertEquals(listOf(true, false, false), files.map { it.image })
+    }
+
+    @Test fun `continue editing hands the original file reference to the draft action`() {
+        val path = "out/crop.png"
+        var added: String? = null
+        val access = ResultFileAccess(read = { error("Edit should use the draft import path") }, edit = { source ->
+            added = source
+            DataResult.Loaded(Attachment("test-ref", "crop.png", bytes.size, "image/png"))
+        })
+        compose.setContent { MaterialTheme {
+            CompositionLocalProvider(LocalResultFileAccess provides access) {
+                ReplyContent("![结果]($path)", images = { _, _ -> DataResult.Loaded(AttachmentPreview(bytes)) }) { _, _ -> }
+            }
+        } }
+        waitFor(hasContentDescription("结果预览"))
+        compose.onNodeWithContentDescription("结果预览").performClick()
+        compose.onNodeWithText(UiStrings.saveResultImage).assertExists()
+        compose.onNodeWithText(UiStrings.shareResultFile).assertExists()
+        compose.onNodeWithText(UiStrings.editResultImage).performClick()
+        compose.onNodeWithText(UiStrings.closePreview).assertDoesNotExist()
+        assertEquals(path, added)
     }
 
     @Test fun `network images wait for the user before downloading`() {

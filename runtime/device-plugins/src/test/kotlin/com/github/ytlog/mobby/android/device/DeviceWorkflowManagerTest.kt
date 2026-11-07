@@ -77,6 +77,41 @@ class DeviceWorkflowManagerTest {
             status = DeviceStatus.SUCCEEDED, result = DeviceResult("screen_observation", EffectState.CONFIRMED, JsonObject(emptyMap()))))
     }
 
+    @Test fun `ADB recovery resumes only the undispatched suffix on the verified page`() {
+        var revokeAfterFirst = true
+        var revoked = false
+        var observations = 0
+        var visibleLabel = "search-page"
+        val manager = DeviceWorkflowManager(context) { query, expected ->
+            if (revoked) deviceFailure(DeviceErrorCode.ADB_AUTHORIZATION_REQUIRED)
+            val evidence = ScreenEvidence("com.example.store", page, if (query == null) 0 else 1, 1, true,
+                expected != null && input == expected, scene = visibleLabel)
+            if (revokeAfterFirst && actions == 1 && page == "search" && ++observations == 2) revoked = true
+            evidence
+        }.also(actors::add)
+        val stopped = invoke(manager, "run", """{"steps":[{"action":"click","query":"搜索"},{"action":"type","text":"fixture"}]}""")
+        assertEquals(DeviceErrorCode.ADB_AUTHORIZATION_REQUIRED, stopped.error?.code)
+        val data = stopped.result!!.data
+        assertEquals(1, data.getValue("completed").jsonPrimitive.int)
+        val args = """{"resumeId":"${data.getValue("resumeId").jsonPrimitive.content}"}"""
+        assertEquals(1, actions)
+        revokeAfterFirst = false
+        revoked = false
+        page = "other"
+        assertEquals(DeviceStatus.PARTIAL, invoke(manager, "resume", args).status)
+        assertEquals(1, actions)
+        page = "search"
+        visibleLabel = "another-page-with-same-layout"
+        assertEquals(DeviceStatus.PARTIAL, invoke(manager, "resume", args).status)
+        assertEquals(1, actions)
+        visibleLabel = "search-page"
+        assertEquals(DeviceStatus.SUCCEEDED, invoke(manager, "resume", args).status)
+        assertEquals(2, actions)
+        assertEquals("fixture", input)
+        assertFalse(invoke(manager, "resume", args).accepted)
+        assertEquals(2, actions)
+    }
+
     @Test fun `predicted steps are checked and stored as directly replayable actions without old input`() {
         val manager = manager()
         val result = invoke(manager, "run", """{"steps":[{"action":"click","query":"搜索"},{"action":"type","text":"旧关键词"}]}""")

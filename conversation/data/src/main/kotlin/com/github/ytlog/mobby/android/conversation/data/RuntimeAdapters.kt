@@ -141,9 +141,37 @@ internal class RuntimeSystemAdapter(private val context: android.content.Context
         is AdminResult.Success -> DataResult.Loaded(Attachment(result.value.ref.value, result.value.name, result.value.sizeBytes, result.value.mediaType))
         is AdminResult.Failed -> DataResult.Failed(result.error.message())
     }
+    override suspend fun readReplyFile(workspace: String, source: String): DataResult<ResultFile> =
+        when (val result = admin.readReplyFile(WorkspaceRef(workspace), source)) {
+            is AdminResult.Success -> DataResult.Loaded(ResultFile(result.value.name, result.value.mediaType, result.value.bytes))
+            is AdminResult.Failed -> DataResult.Failed(when (result.error.code) {
+                ErrorCode.PERMISSION_DENIED -> AppStrings.replyImageOutsideWorkspace
+                ErrorCode.INVALID_CONFIG -> AppStrings.resultFileTooLarge
+                else -> AppStrings.resultFileUnavailable
+            })
+        }
+
+    private suspend fun importResource(workspace: String, name: String, bytes: ByteArray): DataResult<Attachment> =
+        when (val result = admin.importResource(ImportResourceRequest(WorkspaceRef(workspace), name, bytes))) {
+            is AdminResult.Success -> DataResult.Loaded(Attachment(result.value.ref.value, result.value.name, result.value.sizeBytes, result.value.mediaType))
+            is AdminResult.Failed -> DataResult.Failed(if (result.error.code in setOf(ErrorCode.INVALID_CONFIG, ErrorCode.UNSUPPORTED_CAPABILITY)) AppStrings.supportsUtfTextUpToKibOrPngJpeg else result.error.message())
+        }
+
     override suspend fun importAttachment(workspace: String, location: String): DataResult<Attachment> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         try {
             val uri = android.net.Uri.parse(location)
+            if (uri.scheme == "workspace-result") {
+                val source = uri.getQueryParameter("source") ?: return@withContext DataResult.Failed(AppStrings.resultFileUnavailable)
+                return@withContext when (val result = readReplyFile(workspace, source)) {
+                    is DataResult.Failed -> result
+                    is DataResult.Loaded -> {
+                        val file = result.value
+                        if (file.mediaType !in setOf("image/png", "image/jpeg") || file.bytes.size > 2 * 1024 * 1024)
+                            DataResult.Failed(AppStrings.supportsUtfTextUpToKibOrPngJpeg)
+                        else importResource(workspace, file.name, file.bytes)
+                    }
+                }
+            }
             require(uri.scheme == "content")
             if (uri.authority == "${context.packageName}.captures") camera.importing(location)
             val resolver = context.contentResolver
@@ -163,10 +191,7 @@ internal class RuntimeSystemAdapter(private val context: android.content.Context
                 val buffer = ByteArray(8192)
                 while (true) { val n = input.read(buffer); if (n < 0) break; bytes.write(buffer, 0, n); require(bytes.size() <= 2 * 1024 * 1024) }
             } ?: return@withContext DataResult.Failed(AppStrings.cannotReadTheSelectedFile)
-            when (val result = admin.importResource(ImportResourceRequest(WorkspaceRef(workspace), name, bytes.toByteArray()))) {
-                is AdminResult.Success -> DataResult.Loaded(Attachment(result.value.ref.value, result.value.name, result.value.sizeBytes, result.value.mediaType))
-                is AdminResult.Failed -> DataResult.Failed(if (result.error.code in setOf(ErrorCode.INVALID_CONFIG, ErrorCode.UNSUPPORTED_CAPABILITY)) AppStrings.supportsUtfTextUpToKibOrPngJpeg else result.error.message())
-            }
+            importResource(workspace, name, bytes.toByteArray())
         } catch (e: CancellationException) { throw e }
         catch (_: SecurityException) { DataResult.Failed(AppStrings.filePermissionExpiredSelectTheFileAgain) }
         catch (_: Exception) { DataResult.Failed(AppStrings.fileCouldNotBeReadOrExceedsMibRetry) }

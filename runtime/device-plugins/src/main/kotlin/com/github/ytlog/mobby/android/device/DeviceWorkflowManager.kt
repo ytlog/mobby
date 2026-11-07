@@ -15,12 +15,20 @@ import java.util.UUID
 internal class DeviceWorkflowManager(
     context: Context,
     private val canUseScreen: () -> Boolean = { true },
+    private val onPause: (ScreenWorkflowPause?) -> Unit = {},
+    private val prepareResume: () -> Unit = {},
     private val inspect: (String?, String?) -> ScreenEvidence,
 ) : AutoCloseable {
     private val store = WorkflowStore(context)
     private var currentId = UUID.randomUUID().toString()
     private var historyError = false
-    override fun close() = store.close()
+    private var paused: PausedWorkflow? = null
+        set(value) {
+            if (field == null && value == null) return
+            field = value
+            onPause(value?.let { ScreenWorkflowPause(it.completed, it.steps.size, it.steps[it.completed].action) })
+        }
+    override fun close() { paused = null; store.close() }
 
     fun handle(line: String, token: String, allow: Map<String, Set<String>>, execute: (String) -> String): String {
         val raw = try { DeviceJson.parseToJsonElement(line) as? JsonObject } catch (_: Exception) { null }
@@ -62,7 +70,7 @@ internal class DeviceWorkflowManager(
         if (request.parentOperationId != null) return failure(DeviceErrorCode.INVALID_ARGUMENT)
         if ("snapshot" !in allow["screen"].orEmpty() || !canUseScreen()) return failure(DeviceErrorCode.UNAUTHORIZED)
         if (request.args.size > 3) return failure(DeviceErrorCode.INVALID_ARGUMENT)
-        val mutating = request.action in setOf("start", "finish", "run", "replay")
+        val mutating = request.action in setOf("start", "finish", "run", "replay", "resume")
         if (mutating) {
             when (val claim = try { store.claim(request.requestId, request.action) } catch (_: Exception) { return failure(DeviceErrorCode.STORAGE_FULL) }) {
                 is WorkflowClaim.Done -> return claim.response
@@ -79,6 +87,7 @@ internal class DeviceWorkflowManager(
                 "start" -> {
                     require(request.args.keys.all { it == "name" })
                     val name = string(request.args, "name", 80)
+                    paused = null
                     currentId = UUID.randomUUID().toString()
                     store.create(currentId, name)
                     historyError = false
@@ -86,6 +95,7 @@ internal class DeviceWorkflowManager(
                 }
                 "finish" -> {
                     require(request.args.isEmpty())
+                    paused = null
                     val id = currentId
                     val saved = !historyError && store.seal(id)
                     currentId = UUID.randomUUID().toString()
@@ -100,10 +110,8 @@ internal class DeviceWorkflowManager(
                     val plans = request.args["steps"] as? JsonArray ?: throw IllegalArgumentException("steps must be an array")
                     require(plans.size in 1..3)
                     val steps = plans.map { parsePlan(it) }
-                    val result = runSteps(steps, emptyMap(), token, allow, execute) { dispatched = true }
-                    val saved = result["verified"]?.jsonPrimitive?.boolean == true && !historyError && store.seal(currentId)
-                    currentId = UUID.randomUUID().toString()
-                    JsonObject(result + ("recordedWorkflowReplayable" to JsonPrimitive(saved)))
+                    paused = null
+                    finishRun(runSteps(steps, emptyMap(), token, allow, execute) { dispatched = true })
                 }
                 "replay" -> {
                     require(request.args.keys in setOf(setOf("workflowId"), setOf("workflowId", "values")))
@@ -119,17 +127,23 @@ internal class DeviceWorkflowManager(
                     }
                     val steps = store.steps(id)
                     require(store.sealed(id) && steps.isNotEmpty() && steps.size <= 12 && steps.all { it.replayable })
+                    paused = null
                     currentId = UUID.randomUUID().toString()
-                    val result = runSteps(steps, inputs, token, allow, execute) { dispatched = true }
-                    val saved = result["verified"]?.jsonPrimitive?.boolean == true && !historyError && store.seal(currentId)
-                    currentId = UUID.randomUUID().toString()
-                    JsonObject(result + ("recordedWorkflowReplayable" to JsonPrimitive(saved)))
+                    finishRun(runSteps(steps, inputs, token, allow, execute) { dispatched = true })
+                }
+                "resume" -> {
+                    require(request.args.keys == setOf("resumeId"))
+                    val id = string(request.args, "resumeId", 128)
+                    val checkpoint = paused?.takeIf { it.id == id } ?: deviceFailure(DeviceErrorCode.NOT_FOUND)
+                    prepareResume()
+                    finishRun(runSteps(checkpoint.steps, checkpoint.values, token, allow, execute, checkpoint) { dispatched = true })
                 }
                 else -> return failure(DeviceErrorCode.UNSUPPORTED_CAPABILITY)
             }
             val verified = data["verified"]?.jsonPrimitive?.booleanOrNull ?: true
             val dispatched = data["dispatched"]?.jsonPrimitive?.intOrNull ?: 0
-            val unknown = data["stoppedReason"]?.jsonPrimitive?.contentOrNull == "effect_unknown"
+            val reason = data["stoppedReason"]?.jsonPrimitive?.contentOrNull
+            val unknown = reason in setOf("effect_unknown", "adb_authorization_required_unknown_effect")
             val status = when {
                 verified -> DeviceStatus.SUCCEEDED
                 unknown -> DeviceStatus.UNCONFIRMED
@@ -143,8 +157,12 @@ internal class DeviceWorkflowManager(
             }
             DeviceJson.encodeToString(DeviceResponse(requestId = request.requestId, accepted = true,
                 status = status, result = DeviceResult("workflow", effect, data),
-                error = if (status in setOf(DeviceStatus.FAILED, DeviceStatus.UNCONFIRMED))
-                    DeviceError(DeviceErrorCode.RESULT_UNCONFIRMED, effectState = effect) else null))
+                error = when {
+                    reason in setOf("adb_authorization_required", "adb_authorization_required_unknown_effect") ->
+                        DeviceError(DeviceErrorCode.ADB_AUTHORIZATION_REQUIRED, effectState = effect)
+                    status in setOf(DeviceStatus.FAILED, DeviceStatus.UNCONFIRMED) -> DeviceError(DeviceErrorCode.RESULT_UNCONFIRMED, effectState = effect)
+                    else -> null
+                }))
         } catch (error: DeviceFailure) {
             if (dispatched) uncertain(error.error.code) else failure(error.error.code, error.error.message)
         } catch (error: IllegalArgumentException) {
@@ -157,6 +175,21 @@ internal class DeviceWorkflowManager(
         }
         return response
     }
+
+    private fun finishRun(result: JsonObject): JsonObject {
+        val saved = result["verified"]?.jsonPrimitive?.boolean == true && !historyError && store.seal(currentId)
+        if (paused == null) currentId = UUID.randomUUID().toString()
+        return JsonObject(result + ("recordedWorkflowReplayable" to JsonPrimitive(saved)))
+    }
+
+    private data class PausedWorkflow(
+        val id: String,
+        val steps: List<WorkflowStep>,
+        val values: Map<String, String>,
+        val completed: Int,
+        val page: ScreenEvidence,
+        val verifiedInput: String?,
+    )
 
     private fun parsePlan(value: JsonElement): WorkflowStep {
         val obj = value as? JsonObject ?: throw IllegalArgumentException("step must be an object")
@@ -177,16 +210,32 @@ internal class DeviceWorkflowManager(
     }
 
     private fun runSteps(steps: List<WorkflowStep>, values: Map<String, String>, token: String,
-        allow: Map<String, Set<String>>, execute: (String) -> String, onDispatch: () -> Unit): JsonObject {
-        var completed = 0
-        var dispatched = 0
+        allow: Map<String, Set<String>>, execute: (String) -> String, checkpoint: PausedWorkflow? = null, onDispatch: () -> Unit): JsonObject {
+        val start = checkpoint?.completed ?: 0
+        var completed = start
+        var dispatched = start
+        var lastVerifiedPage = checkpoint?.page
+        var lastVerifiedInput = checkpoint?.verifiedInput
         var reason = ""
-        for ((index, step) in steps.withIndex()) {
+        for (index in start until steps.size) {
+            val step = steps[index]
             if (step.action !in allow["screen"].orEmpty()) { reason = "action_not_authorized"; break }
             val input = if (step.action == "type") step.transientText ?: values["input_${index + 1}"] ?: step.slot?.let(values::get) else null
             if (step.action == "type" && input.isNullOrBlank()) { reason = "missing_input_${index + 1}"; break }
-            val before = observe(step.query, null, propagateAdbAuthorization = true)
+            val resumeHere = checkpoint?.takeIf { index == start }
+            val before = try { observe(step.query, resumeHere?.verifiedInput, propagateAdbAuthorization = true) }
+                catch (failure: DeviceFailure) {
+                    if (failure.error.code != DeviceErrorCode.ADB_AUTHORIZATION_REQUIRED) throw failure
+                    reason = "adb_authorization_required"
+                    lastVerifiedPage?.let { page ->
+                        paused = PausedWorkflow(checkpoint?.id ?: UUID.randomUUID().toString(), steps, values, completed, page, lastVerifiedInput)
+                    }
+                    break
+                }
             if (before == null || before.packageName.isBlank() ||
+                (resumeHere != null && (before.packageName != resumeHere.page.packageName ||
+                    before.shape != resumeHere.page.shape || before.scene != resumeHere.page.scene ||
+                    (resumeHere.verifiedInput != null && !before.inputMatches))) ||
                 (step.before != null && !step.before.matches(before)) ||
                 (step.action == "click" && before.matches != 1) ||
                 (step.action == "type" && (before.passwordInput || (!before.focusedEditable && before.editable != 1)))) {
@@ -202,20 +251,37 @@ internal class DeviceWorkflowManager(
                 put("token", token); put("protocolVersion", 1); put("requestId", UUID.randomUUID().toString())
                 put("plugin", "screen"); put("action", step.action); put("args", args)
             }
+            // Consume the checkpoint before dispatch. A lost reply must never make this action eligible again.
+            paused = null
             dispatched++
             onDispatch()
             val response = DeviceJson.decodeFromString<DeviceResponse>(handle(inner.toString(), token, allow, execute))
             if (historyError) { reason = "history_storage_unavailable"; break }
-            val after = observe(step.query, input)
+            if (response.error?.code == DeviceErrorCode.ADB_AUTHORIZATION_REQUIRED) {
+                reason = "adb_authorization_required_unknown_effect"
+                break
+            }
+            val after = try { observe(step.query, input, propagateAdbAuthorization = true) }
+                catch (failure: DeviceFailure) {
+                    if (failure.error.code != DeviceErrorCode.ADB_AUTHORIZATION_REQUIRED) throw failure
+                    reason = "adb_authorization_required_unknown_effect"
+                    break
+                }
             if (!stepVerified(step.action, before, after, response, step.after)) {
                 reason = if (response.status == DeviceStatus.UNCONFIRMED) "effect_unknown" else "postcondition_failed"
                 break
             }
             completed++
+            lastVerifiedPage = after
+            lastVerifiedInput = input
         }
         return buildJsonObject {
             put("completed", completed); put("dispatched", dispatched); put("total", steps.size); put("verified", completed == steps.size)
             if (reason.isNotEmpty()) put("stoppedReason", reason)
+            paused?.let {
+                put("resumeId", it.id)
+                put("nextAction", steps[it.completed].action)
+            }
             put("recordedWorkflowId", currentId)
         }
     }

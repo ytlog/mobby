@@ -5,6 +5,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.unit.dp
 import com.github.ytlog.mobby.android.runtime.api.device.*
@@ -12,12 +13,18 @@ import com.github.ytlog.mobby.android.deviceoperation.ui.*
 import com.github.ytlog.mobby.android.conversation.domain.*
 import com.github.ytlog.mobby.android.conversation.ui.ConversationViewModel
 import com.github.ytlog.mobby.android.conversation.ui.LocalAttachmentPreviewHost
+import com.github.ytlog.mobby.android.conversation.ui.ScreenUi
+import com.github.ytlog.mobby.android.conversation.ui.screenSetupIntent
 
 /** Composition root adapter: cards know neither ConversationViewModel nor the runtime client. */
 @Composable internal fun ConversationDeviceCard(operation: DeviceOperation, turn: Turn, conversation: Conversation, vm: ConversationViewModel) {
     var preview by remember { mutableStateOf<String?>(null) }
     val execution = turn.execution
     val previewHost = LocalAttachmentPreviewHost.current
+    val context = LocalContext.current
+    val screen = ScreenUi.controller?.state?.collectAsState()?.value
+    val reauthorize = operation.error?.code == DeviceErrorCode.ADB_AUTHORIZATION_REQUIRED &&
+        screen?.mode == ScreenMode.ADB && !screen.connected
     val respond: ((String) -> Unit)? = execution?.takeIf { turn.occupied }?.let { id ->
         { response ->
             val prompt = operation.requiresAttention
@@ -35,6 +42,7 @@ import com.github.ytlog.mobby.android.conversation.ui.LocalAttachmentPreviewHost
             if (previewHost != null) previewHost(ref) else preview = ref
         } },
         respond = permissionResponse,
+        reauthorizeAdb = if (reauthorize) ({ context.startActivity(screenSetupIntent(context)) }) else null,
     ), stopping = turn.phase == ExecutionPhase.CANCELLING, thumbnail = { ref ->
         val bytes by produceState<ByteArray?>(null, ref) {
             value = (vm.actions.previewAttachment(conversation.config.workspace, ref, false) as? DataResult.Loaded)?.value?.bytes

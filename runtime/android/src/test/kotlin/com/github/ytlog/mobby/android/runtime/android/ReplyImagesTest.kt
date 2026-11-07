@@ -52,6 +52,22 @@ class ReplyImagesTest {
         assertEquals(1024, edge(ReplyImages(home) { _, _ -> ByteArray(0) }.preview(workspace, "big.png", true)))
     }
 
+    @Test fun `deliveries return the original bytes and only read workspace files`() {
+        val original = png(2000, 1000)
+        val file = File(workspace, "result.png").apply { writeBytes(original) }
+        val report = File(workspace, "report.txt").apply { writeText("report") }
+        val outside = File(home, "secret.png").apply { writeBytes(original) }
+        Files.createSymbolicLink(File(workspace, "outside.png").toPath(), outside.toPath())
+        val images = ReplyImages(home) { _, _ -> error("Delivery must not download") }
+        val result = images.original(workspace, file.toURI().toString())
+        assertEquals("image/png", result.mediaType)
+        assertArrayEquals(original, result.bytes)
+        assertArrayEquals(report.readBytes(), images.original(workspace, "report.txt").bytes)
+        for (source in listOf("../secret.png", "outside.png", "https://example.com/result.png")) {
+            assertThrows(ReplyImages.Rejected::class.java) { images.original(workspace, source) }
+        }
+    }
+
     @Test fun `paths outside the workspace are refused even through links`() {
         val secret = File(home, "secret.png").apply { writeBytes(png(4, 4)) }
         Files.createSymbolicLink(File(workspace, "link.png").toPath(), secret.toPath())

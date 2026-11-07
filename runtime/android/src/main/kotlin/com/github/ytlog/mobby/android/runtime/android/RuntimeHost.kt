@@ -91,6 +91,7 @@ class RuntimeHost(context: Context, notification: () -> PendingIntent) {
         override suspend fun previewResource(ref: ResourceRef, workspace: WorkspaceRef, expanded: Boolean) = connected()?.previewResource(ref, workspace, expanded) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
         override suspend fun resource(ref: ResourceRef, workspace: WorkspaceRef) = connected()?.resource(ref, workspace) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
         override suspend fun previewReplyImage(workspace: WorkspaceRef, source: String, expanded: Boolean) = connected()?.previewReplyImage(workspace, source, expanded) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
+        override suspend fun readReplyFile(workspace: WorkspaceRef, source: String) = connected()?.readReplyFile(workspace, source) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
         override suspend fun importSkill(agent: AgentId, markdown: String) = connected()?.importSkill(agent, markdown) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
         override suspend fun saveManualSkill(request: ManualSkillRequest) = connected()?.saveManualSkill(request) ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))
         override suspend fun initialize() = connected()?.initialize() ?: AdminResult.Failed(RuntimeError(ErrorCode.DISCONNECTED, true))

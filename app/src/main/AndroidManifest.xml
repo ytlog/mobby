@@ -18,5 +18,8 @@
         <provider android:name=".UpdateFileProvider" android:authorities="${applicationId}.updates" android:exported="false" android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/update_file_paths" />
         </provider>
+        <provider android:name=".ResultFileProvider" android:authorities="${applicationId}.results" android:exported="false" android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/result_file_paths" />
+        </provider>
     </application>
 </manifest>

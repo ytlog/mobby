@@ -30,6 +30,7 @@ import kotlin.math.roundToInt
     name: String,
     load: suspend (Boolean) -> DataResult<AttachmentPreview>,
     close: () -> Unit,
+    actions: (@Composable () -> Unit)? = null,
 ) {
     Dialog(onDismissRequest = close, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.fillMaxSize()) {
@@ -43,6 +44,7 @@ import kotlin.math.roundToInt
                         ZoomableImage(bitmap, description, frame)
                     })
                 }
+                actions?.invoke()
             }
         }
     }

@@ -30,6 +30,7 @@ class DeviceCardActions(
     val openResource: ((String) -> Unit)? = null,
     val respond: ((String) -> Unit)? = null,
     val inspectEffect: (() -> Unit)? = null,
+    val reauthorizeAdb: (() -> Unit)? = null,
 )
 
 /** Fixed components only. Rendering/recomposition has no execution, retry or navigation effects. */
@@ -75,6 +76,12 @@ class DeviceCardActions(
         }
         if (collapsedPhoto && thumbnail != null) {
             result?.resourceRefs?.firstOrNull()?.let { thumbnail(it) }
+        }
+        if (actions.reauthorizeAdb != null) {
+            Caption(com.github.ytlog.mobby.android.conversation.ui.UiStrings.adbCheckBeforeContinuing)
+            TextButton(onClick = actions.reauthorizeAdb) {
+                Text(com.github.ytlog.mobby.android.conversation.ui.UiStrings.reauthorizeAdb)
+            }
         }
         if (detailsVisible) {
             if (operation.subject.label.isNotBlank()) Text(operation.subject.label, style = MaterialTheme.typography.bodyMedium)

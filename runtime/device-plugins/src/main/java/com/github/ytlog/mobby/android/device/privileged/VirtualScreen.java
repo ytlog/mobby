@@ -287,13 +287,23 @@ final class VirtualScreen implements AutoCloseable {
     }
     private JSONObject evidence(AccessibilityNodeInfo root, JSONObject args) throws Exception {
         StringBuilder shape = new StringBuilder();
+        MessageDigest scene = MessageDigest.getInstance("SHA-256");
         final int[] editable = {0};
         walk(root, 0, new int[]{0}, (node, depth) -> {
             shape.append(node.getClassName()).append(':').append(node.isClickable()).append(':').append(node.isEditable()).append(':').append(node.getChildCount()).append(';');
             if (node.isEditable()) editable[0]++;
+            if (node.isVisibleToUser()) {
+                String label = node.isPassword() || node.isEditable() ? "" : redactPrivateValues(
+                    String.valueOf(node.getText() != null ? node.getText() : node.getContentDescription()));
+                String fingerprint = depth + ":" + node.getViewIdResourceName() + ":" + node.isChecked() + ":" +
+                    label.substring(0, Math.min(label.length(), 256));
+                scene.update(fingerprint.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                scene.update((byte) 0);
+            }
         });
         byte[] digest = MessageDigest.getInstance("SHA-256").digest(shape.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
         StringBuilder hash = new StringBuilder(); for (byte b : digest) hash.append(String.format("%02x", b));
+        StringBuilder sceneHash = new StringBuilder(); for (byte b : scene.digest()) sceneHash.append(String.format("%02x", b));
         List<AccessibilityNodeInfo> found = args.has("query") ? matches(root, args.getString("query")) : new ArrayList<>();
         int count = found.size(); for (AccessibilityNodeInfo node : found) node.recycle();
         AccessibilityNodeInfo focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
@@ -303,6 +313,7 @@ final class VirtualScreen implements AutoCloseable {
             boolean input = focused != null && focused.isEditable();
             boolean password = input && (focused.isPassword() || !redactPrivateValues(String.valueOf(focused.getText())).equals(String.valueOf(focused.getText())));
             return metadata(new JSONObject().put("packageName", String.valueOf(root.getPackageName())).put("shape", hash.toString())
+                .put("scene", sceneHash.toString())
                 .put("matches", count).put("editable", editable[0]).put("focusedEditable", focusedEditable).put("passwordInput", password)
                 .put("inputMatches", input && !password && args.has("expectedInput") && args.getString("expectedInput").contentEquals(focused.getText() == null ? "" : focused.getText())));
         } finally { if (focused != null) focused.recycle(); }

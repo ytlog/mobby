@@ -45,6 +45,7 @@ object DeviceSkillPack {
                     append("When using separate screen commands instead of workflow-run, call `$node ${helper.absolutePath} workflow-finish` only after the whole task is verified. It marks the recorded steps replayable if every step passed.\n")
                     append("`$node ${helper.absolutePath} workflow-list` lists recorded workflows and input slots.\n")
                     append("`$node ${helper.absolutePath} workflow-replay '{\"workflowId\":\"saved-id\",\"values\":{\"input_2\":\"current keyword\"}}'` replays one verified workflow. Stop and inspect the phone if verified is false.\n\n")
+                    append("If a workflow reports adb_authorization_required with a resumeId, tell the user how many steps completed and ask them to reauthorize ADB in mobby. In the same run call `$node ${helper.absolutePath} workflow-resume '{\"resumeId\":\"returned-id\"}'`. It waits up to 90 seconds for reconnection, takes a fresh snapshot, checks the last verified page and only dispatches unfinished steps. If the page differs, inspect it and restore the expected app/page only when safe, then call resume again. Never replay earlier steps, and stop for user review if any action has an unknown effect.\n\n")
                 }
             }
             require(markdown.toByteArray().size <= 128 * 1024)

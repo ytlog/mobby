@@ -13,6 +13,7 @@ data class EventHistorySettings(val retentionDays: Int = 30, val budgetMiB: Int 
     init { require(retentionDays in 1..3650 && budgetMiB in 1..1024 && outputRetentionDays in 1..3650 && outputBudgetMiB in 1..4096 && attachmentBudgetMiB in 1..8192 && resourceCacheBudgetMiB in 1..8192) }
 }
 data class WorkspaceSummary(val ref: WorkspaceRef, val name: String)
+data class ReplyFile(val name: String, val mediaType: String, val bytes: ByteArray)
 interface RuntimeAdminClient {
     suspend fun refreshNativeModels(agent: AgentId): AdminResult<Unit> = AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
     suspend fun nativeAccounts(): AdminResult<List<NativeAccountSummary>> = AdminResult.Success(emptyList())
@@ -31,6 +32,8 @@ interface RuntimeAdminClient {
     suspend fun resource(ref: ResourceRef, workspace: WorkspaceRef): AdminResult<ResourceSummary>
     /** [source] is a reply Markdown image destination: a file inside [workspace], an https URL, or a data URI. */
     suspend fun previewReplyImage(workspace: WorkspaceRef, source: String, expanded: Boolean): AdminResult<ReplyImagePreview> = AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
+    suspend fun readReplyFile(workspace: WorkspaceRef, source: String): AdminResult<ReplyFile> =
+        AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
     val environment: StateFlow<EnvironmentSnapshot>
     suspend fun listSkills(agent: AgentId): AdminResult<List<SkillSummary>>
     suspend fun listPlugins(): AdminResult<List<PluginSummary>> = AdminResult.Failed(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))

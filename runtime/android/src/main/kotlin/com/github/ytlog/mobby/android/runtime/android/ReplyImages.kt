@@ -1,6 +1,8 @@
 package com.github.ytlog.mobby.android.runtime.android
 
 import android.graphics.BitmapFactory
+import android.webkit.MimeTypeMap
+import com.github.ytlog.mobby.android.runtime.api.ReplyFile
 import com.github.ytlog.mobby.android.runtime.api.ReplyImagePreview
 import com.github.ytlog.mobby.android.runtime.api.ReplyImageProblem
 import java.io.ByteArrayOutputStream
@@ -16,6 +18,21 @@ import java.util.Base64
  * remote images are https only and are fetched by the caller's explicit request.
  */
 internal class ReplyImages(private val home: File, private val download: (URI, Int) -> ByteArray = ::httpsDownload) {
+    fun original(workspace: File, source: String): ReplyFile {
+        val value = source.trim()
+        val file = resolveLocal(workspace, when (SCHEME.find(value)?.groupValues?.get(1)?.lowercase()) {
+            null -> decodedPath(value)
+            "file" -> filePath(value)
+            else -> throw Rejected(ReplyImageProblem.UNSUPPORTED_SOURCE)
+        })
+        val bytes = readLocal(file)
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        val mediaType = bounds.outMimeType ?: MimeTypeMap.getSingleton().getMimeTypeFromExtension(file.extension.lowercase())
+            ?.takeUnless { it.startsWith("image/") } ?: "application/octet-stream"
+        return ReplyFile(file.name, mediaType, bytes)
+    }
+
     fun preview(workspace: File, source: String, expanded: Boolean): ReplyImagePreview {
         val bytes = try { content(workspace, source.trim()) } catch (rejected: Rejected) { return ReplyImagePreview.Rejected(rejected.problem) }
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -32,8 +49,8 @@ internal class ReplyImages(private val home: File, private val download: (URI, I
         if (source.startsWith("data:", ignoreCase = true)) return inline(source)
         val scheme = SCHEME.find(source)?.groupValues?.get(1)?.lowercase()
         return when (scheme) {
-            null -> local(workspace, decodedPath(source))
-            "file" -> local(workspace, uri(source).path ?: throw Rejected(ReplyImageProblem.MISSING))
+            null -> readLocal(resolveLocal(workspace, decodedPath(source)))
+            "file" -> readLocal(resolveLocal(workspace, filePath(source)))
             "https" -> {
                 val uri = uri(source)
                 if (uri.host.isNullOrBlank()) throw Rejected(ReplyImageProblem.UNSUPPORTED_SOURCE)
@@ -52,7 +69,13 @@ internal class ReplyImages(private val home: File, private val download: (URI, I
         return try { Base64.getMimeDecoder().decode(encoded) } catch (_: IllegalArgumentException) { throw Rejected(ReplyImageProblem.NOT_IMAGE) }
     }
 
-    private fun local(workspace: File, path: String): ByteArray {
+    private fun filePath(source: String): String {
+        val uri = uri(source)
+        if (uri.rawAuthority != null) throw Rejected(ReplyImageProblem.UNSUPPORTED_SOURCE)
+        return uri.path ?: throw Rejected(ReplyImageProblem.MISSING)
+    }
+
+    private fun resolveLocal(workspace: File, path: String): File {
         val candidate = when {
             path == "~" -> home
             path.startsWith("~/") -> File(home, path.removePrefix("~/"))
@@ -63,11 +86,18 @@ internal class ReplyImages(private val home: File, private val download: (URI, I
         val file = candidate.canonicalFile
         if (file != root && !file.path.startsWith(root.path + File.separator)) throw Rejected(ReplyImageProblem.OUTSIDE_WORKSPACE)
         if (!file.isFile) throw Rejected(ReplyImageProblem.MISSING)
-        if (file.length() > MAX_BYTES) throw Rejected(ReplyImageProblem.TOO_LARGE)
-        return file.readBytes()
+        return file
     }
 
-    private class Rejected(val problem: ReplyImageProblem) : Exception(null, null, false, false)
+    private fun readLocal(file: File): ByteArray {
+        if (file.length() > MAX_BYTES) throw Rejected(ReplyImageProblem.TOO_LARGE)
+        return try {
+            java.nio.file.Files.newInputStream(file.toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS)
+                .use { readBounded(it, MAX_BYTES) }
+        } catch (_: TooLarge) { throw Rejected(ReplyImageProblem.TOO_LARGE) }
+    }
+
+    class Rejected(val problem: ReplyImageProblem) : Exception(null, null, false, false)
     class TooLarge : IOException("Reply image exceeds the download limit")
 
     companion object {
@@ -80,6 +110,18 @@ internal class ReplyImages(private val home: File, private val download: (URI, I
         /** Markdown destinations are URLs, so `%20` names a space; raw spaces are also kept as written. */
         private fun decodedPath(source: String) = try { URI(source).path ?: source } catch (_: URISyntaxException) { source }
 
+        private fun readBounded(input: java.io.InputStream, limit: Int): ByteArray {
+            val output = ByteArrayOutputStream()
+            val buffer = ByteArray(8192)
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                if (output.size() + count > limit) throw TooLarge()
+                output.write(buffer, 0, count)
+            }
+            return output.toByteArray()
+        }
+
         private fun httpsDownload(uri: URI, limit: Int): ByteArray {
             val connection = uri.toURL().openConnection() as HttpURLConnection
             try {
@@ -91,17 +133,7 @@ internal class ReplyImages(private val home: File, private val download: (URI, I
                 // Redirects never downgrade to http by default; check after following them.
                 if (connection.url.protocol != "https") throw IOException("Redirected away from https")
                 if (connection.contentLengthLong > limit) throw TooLarge()
-                return connection.inputStream.use { input ->
-                    val output = ByteArrayOutputStream()
-                    val buffer = ByteArray(8192)
-                    while (true) {
-                        val count = input.read(buffer)
-                        if (count < 0) break
-                        if (output.size() + count > limit) throw TooLarge()
-                        output.write(buffer, 0, count)
-                    }
-                    output.toByteArray()
-                }
+                return connection.inputStream.use { readBounded(it, limit) }
             } finally { connection.disconnect() }
         }
     }

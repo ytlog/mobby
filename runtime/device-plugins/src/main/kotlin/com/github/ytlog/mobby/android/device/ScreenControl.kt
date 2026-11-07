@@ -76,6 +76,10 @@ object ScreenControl {
     private fun canReconnectAdb() =
         state.value.mode == ScreenMode.ADB && channel?.alive != true
 
+    internal fun workflowPaused(pause: com.github.ytlog.mobby.android.runtime.api.device.ScreenWorkflowPause?) {
+        changes.update { it.copy(workflowPause = pause) }
+    }
+
     suspend fun connect(context: Context) = withContext(Dispatchers.IO) {
         val mode = synchronized(this@ScreenControl) {
             check((leases == 0 || canReconnectAdb()) && !connecting && !state.value.adbPairing) { AppStrings.screenModeBusy }
@@ -125,7 +129,7 @@ object ScreenControl {
         synchronized(this) {
             check(Build.VERSION.SDK_INT >= 33) { AppStrings.virtualScreenAndroidVersion }
             check((leases == 0 || canReconnectAdb()) && !connecting && state.value.mode == ScreenMode.ADB) { AppStrings.screenModeBusy }
-            disconnect(); connecting = true
+            clearConnection(); connecting = true
         }
         try {
             EmbeddedAdb.pair(context, port, code)
@@ -145,9 +149,9 @@ object ScreenControl {
 
     @Synchronized fun startAdbPairing(context: Context) {
         check(Build.VERSION.SDK_INT >= 33) { AppStrings.virtualScreenAndroidVersion }
-        check(state.value.mode == ScreenMode.ADB && leases == 0 && !connecting && !state.value.adbPairing) { AppStrings.screenModeBusy }
+        check(state.value.mode == ScreenMode.ADB && (leases == 0 || canReconnectAdb()) && !connecting && !state.value.adbPairing) { AppStrings.screenModeBusy }
         check(context.getSystemService(android.app.NotificationManager::class.java).areNotificationsEnabled()) { AppStrings.adbPairingNotifications }
-        disconnect()
+        clearConnection()
         changes.value = state.value.copy(adbPairing = true, error = null)
         try { context.startForegroundService(android.content.Intent(context, AdbPairingService::class.java)) }
         catch (failure: Exception) { pairingFinished(AppStrings.adbPairingFailed); throw failure }
@@ -166,7 +170,7 @@ object ScreenControl {
         channel?.close(); channel = null
         release?.invoke(); release = null
         changes.value = ScreenControlState(mode = state.value.mode, adbPaired = state.value.adbPaired, adbPairing = state.value.adbPairing,
-            adbPairingSuccess = state.value.adbPairingSuccess, modeConfigured = state.value.modeConfigured)
+            adbPairingSuccess = state.value.adbPairingSuccess, modeConfigured = state.value.modeConfigured, workflowPause = state.value.workflowPause)
     }
 
     @Synchronized internal fun open(context: Context): ScreenSession {
@@ -263,7 +267,8 @@ object ScreenControl {
                 val args = buildMap { query?.let { put("query", it) }; expectedInput?.let { put("expectedInput", it) } }
                 val result = onDisplay("inspect", args)
                 ScreenEvidence(result.getString("packageName"), result.getString("shape"), result.getInt("matches"),
-                    result.getInt("editable"), result.getBoolean("focusedEditable"), result.getBoolean("inputMatches"), result.getBoolean("passwordInput"))
+                    result.getInt("editable"), result.getBoolean("focusedEditable"), result.getBoolean("inputMatches"),
+                    result.getBoolean("passwordInput"), result.getString("scene"))
             }
             override fun close() {
                 synchronized(connected) {

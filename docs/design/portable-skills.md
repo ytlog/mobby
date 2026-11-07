@@ -12,6 +12,8 @@ App 的技能列表展示这些内置技能和 App 保存的共享技能，不�
 
 `reply-images` 告诉 Agent：App 会显示回复中指向工作区文件的 Markdown 图片，工作区外路径会被拒绝；用户附带的照片以本轮临时文件副本的路径写在提示词里，修改结果须存入工作区再引用。它还说明手机环境自带 Node.js 与 npm、没有 Python 和 ImageMagick，需要安装额外图片库时先征得用户同意。它不提供图像生成模型。
 
+已结束的回复中，明确引用的工作区图片与文件会汇集在「结果文件」。打开、保存和分享读取工作区文件的原始字节，每个文件上限 20 MiB。Android 10 及以上支持把结果图保存到系统相册，较早版本用系统文件选择器。图片预览中的「继续编辑」沿用当前会话的附件导入规则，把符合大小和尺寸限制的 PNG 或 JPEG 加入草稿。Agent 应为每次修改使用新的文件名，旧回复仍引用对应的文件。
+
 Image Gen 暂不放入列表。现有同名技能依赖 Codex 的 `image_gen` 工具，或要求 OpenAI API 密钥；当前 App 没有为四个 Agent 提供统一图像生成能力，直接展示会产生不可用入口。
 
 目录路径依据各产品的技能发现规则：[Codex 技能](https://learn.chatgpt.com/docs/build-skills)、[Claude Code 技能](https://code.claude.com/docs/en/skills)、[OpenCode 技能](https://opencode.ai/docs/skills)、[Pi 技能](https://github.com/earendil-works/pi-mono/blob/main/packages/coding-agent/docs/skills.md)。实际运行与安装行为需要在四个手机端 CLI 中验收。

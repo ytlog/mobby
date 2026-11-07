@@ -379,4 +379,5 @@ class ScreenAccessService : AccessibilityService() {
 }
 
 internal data class ScreenEvidence(val packageName: String, val shape: String, val matches: Int,
-    val editable: Int, val focusedEditable: Boolean, val inputMatches: Boolean, val passwordInput: Boolean = false)
+    val editable: Int, val focusedEditable: Boolean, val inputMatches: Boolean, val passwordInput: Boolean = false,
+    val scene: String = shape)

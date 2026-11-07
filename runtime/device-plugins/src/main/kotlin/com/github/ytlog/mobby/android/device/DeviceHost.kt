@@ -125,7 +125,17 @@ object DeviceHost {
             }
             fun mayReadScreen(): Boolean = authorization == null ||
                 runCatching { kotlinx.coroutines.runBlocking { authorization.permits("plugin:device:screen") } }.getOrDefault(false)
-            val workflow = DeviceWorkflowManager(context, ::mayReadScreen) { query, input ->
+            val workflow = DeviceWorkflowManager(context, ::mayReadScreen, ScreenControl::workflowPaused, prepareResume = {
+                val deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(90)
+                while (!ScreenControl.state.value.connected) {
+                    gate.checkActive()
+                    if (System.nanoTime() >= deadline) deviceFailure(DeviceErrorCode.TIMEOUT)
+                    Thread.sleep(200)
+                }
+                gate.checkActive()
+                if (!mayReadScreen() || ScreenControl.state.value.mode != ScreenMode.ADB) deviceFailure(DeviceErrorCode.UNAUTHORIZED)
+                (screen ?: deviceFailure(DeviceErrorCode.UNAVAILABLE)).operate("snapshot", emptyMap(), gate::checkActive)
+            }) { query, input ->
                 gate.checkActive()
                 if (!mayReadScreen()) deviceFailure(DeviceErrorCode.UNAUTHORIZED)
                 (screen ?: deviceFailure(DeviceErrorCode.UNAVAILABLE)).inspect(query, input)

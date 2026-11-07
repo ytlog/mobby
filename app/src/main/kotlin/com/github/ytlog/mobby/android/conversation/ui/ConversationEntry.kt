@@ -1045,6 +1045,23 @@ internal fun timelineGap(previous: TimelineBlock?, next: TimelineBlock): Dp = wh
 }
 
 @Composable internal fun Timeline(detail: ConversationDetail, vm: ConversationViewModel, modifier: Modifier, followPadding: PaddingValues? = null, read: (String, String) -> Unit, hostActions: ConversationHostActions, proposal: (SkillProposal) -> Unit, onSelectPlugin: (String) -> Unit, initialFollow: Boolean? = null, onFollowChanged: (Boolean) -> Unit = {}, programs: EmptyPagePrograms? = null, bottomContentClearance: Dp = 0.dp) {
+    val deliveryAvailable = androidx.activity.compose.LocalActivityResultRegistryOwner.current != null
+    val conversation = detail.conversation
+    val options by vm.agents.collectAsStateWithLifecycle()
+    val system by vm.status.collectAsStateWithLifecycle()
+    val screen = ScreenUi.controller?.state?.collectAsStateWithLifecycle()?.value
+    val context = LocalContext.current
+    fun resultAccess(workspace: String): ResultFileAccess {
+        val canEdit = workspace == conversation.config.workspace &&
+            attachmentAvailability(conversation, options, system.ready, cameraBusy = false).photos
+        return ResultFileAccess(read = { vm.actions.readReplyFile(workspace, it) }, edit = if (canEdit) { source ->
+            val location = android.net.Uri.Builder().scheme("workspace-result").authority("local")
+                .appendQueryParameter("source", source).build().toString()
+            vm.actions.importAttachment(conversation.id, workspace, location).also { result ->
+                if (result is DataResult.Loaded) vm.feedback.trySend(AppStrings.resultImageAdded)
+            }
+        } else null)
+    }
     val topFade = ConversationTopFade
     // Context chips float just above the input, so text passing behind them fades out instead of colliding.
     val bottomFade = if (bottomContentClearance > 0.dp) maxOf(ContextChipFade, bottomContentClearance) else if (darkChrome()) ConversationEdgeFade else LightConversationBottomFade
@@ -1136,12 +1153,14 @@ internal fun timelineGap(previous: TimelineBlock?, next: TimelineBlock): Dp = wh
                                 deviceRow = { com.github.ytlog.mobby.android.deviceoperation.ConversationDeviceCard(it.operation, turn, detail.conversation, vm) }, read = read)
                         }
                         is TimelineEntry.Reply -> block(entry.itemKey(turn), TimelineBlock.PROSE) {
-                            ReplyContent(
-                                entry.message.text,
-                                streaming = turn.occupied && turn.phase != ExecutionPhase.CANCELLING && entry.message.id == lastReply?.id,
-                                images = { source, expanded -> vm.actions.previewReplyImage(turn.workspace, source, expanded) },
-                                read = read,
-                            )
+                            CompositionLocalProvider(LocalResultFileAccess provides if (deliveryAvailable && turn.replyActionsVisible()) resultAccess(turn.workspace) else null) {
+                                ReplyContent(
+                                    entry.message.text,
+                                    streaming = turn.occupied && turn.phase != ExecutionPhase.CANCELLING && entry.message.id == lastReply?.id,
+                                    images = { source, expanded -> vm.actions.previewReplyImage(turn.workspace, source, expanded) },
+                                    read = read,
+                                )
+                            }
                         }
                     }
                 }
@@ -1171,16 +1190,30 @@ internal fun timelineGap(previous: TimelineBlock?, next: TimelineBlock): Dp = wh
                 if (lastReply != null && turn.replyActionsVisible()) block("reply-actions:${turn.id.value}", TimelineBlock.ACTIONS) {
                     // Pulled left by the button's own inset so the glyph lines up with the text. The buttons are small
                     // to keep turns close together; Compose still accepts touches within the minimum touch target.
-                    Row(Modifier.offset(x = (-6).dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        val clipboard = LocalClipboardManager.current
-                        ActionIcon(AppStrings.copyReply, { clipboard.setText(AnnotatedString(lastReply.text)) }, AppIcons.Copy, tint = replyActionColor(), buttonSize = 28.dp, glyphSize = 16.dp)
-                        ActionIcon(AppStrings.shareReply, { hostActions.share(lastReply.text) }, AppIcons.Share, tint = replyActionColor(), buttonSize = 28.dp, glyphSize = 16.dp)
+                    Column {
+                        if (deliveryAvailable) TurnResultFiles(turnEntries.filterIsInstance<TimelineEntry.Reply>().map { it.message.text }, resultAccess(turn.workspace))
+                        Row(Modifier.offset(x = (-6).dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            val clipboard = LocalClipboardManager.current
+                            ActionIcon(AppStrings.copyReply, { clipboard.setText(AnnotatedString(lastReply.text)) }, AppIcons.Copy, tint = replyActionColor(), buttonSize = 28.dp, glyphSize = 16.dp)
+                            ActionIcon(AppStrings.shareReply, { hostActions.share(lastReply.text) }, AppIcons.Share, tint = replyActionColor(), buttonSize = 28.dp, glyphSize = 16.dp)
+                        }
                     }
                 }
             }
             activityTurn?.let { turn ->
                 block("activity:${turn.id.value}", TimelineBlock.CARD) {
-                    Box(Modifier.testTag("turn-loading")) { ReplyActivity(turn.phase) }
+                    Column(Modifier.testTag("turn-loading")) {
+                        val pause = screen?.workflowPause
+                        if (pause != null) {
+                            Text(AppStrings.adbWorkflowPaused(pause.completed, pause.total), style = processTextStyle())
+                            Text(com.github.ytlog.mobby.android.deviceoperation.ui.DeviceLabels.title("screen", pause.nextAction),
+                                style = processDetailStyle())
+                            Text(AppStrings.adbCheckBeforeContinuing, style = processDetailStyle())
+                            if (!screen.connected) TextButton(onClick = { context.startActivity(screenSetupIntent(context)) }) {
+                                Text(AppStrings.reauthorizeAdb)
+                            }
+                        } else ReplyActivity(turn.phase)
+                    }
                 }
             }
         }
