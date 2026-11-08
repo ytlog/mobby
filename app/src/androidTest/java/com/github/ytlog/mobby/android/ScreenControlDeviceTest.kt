@@ -1,6 +1,7 @@
 package com.github.ytlog.mobby.android
 
 import android.content.Context
+import android.content.BroadcastReceiver
 import android.content.ContextWrapper
 import android.content.Intent
 import android.database.DatabaseErrorHandler
@@ -199,8 +200,18 @@ class ScreenControlDeviceTest {
                     waitFor("User must own the same display") { ScreenControl.state.value.manualControlId != null }
                     val owner = checkNotNull(ScreenControl.state.value.manualControlId)
                     assertEquals(display, ScreenControl.state.value.displayId)
-                    val manualCode = "mobby-manual-code-fixture"
+                    val manualCode = ScreenControlFixtureActivity.MANUAL_TEXT
+                    val field = Regex("Input center: (\\d+),(\\d+)").find(afterPrivateInput.getString("text"))!!
+                    val fieldX = field.groupValues[1].toFloat() / geometry.groupValues[3].toFloat()
+                    val fieldY = field.groupValues[2].toFloat() / geometry.groupValues[4].toFloat()
+                    ScreenControl.manualInput(context, owner, ManualScreenInput.Gesture(listOf(
+                        ScreenTouch(fieldX, fieldY, 0), ScreenTouch(fieldX, fieldY, 80))))
+                    assertTrue("The fixture must relinquish focus before local text is submitted",
+                        inputProbe(ScreenControlFixtureActivity.CLEAR_INPUT_FOCUS))
+                    assertEquals("Probe input", ScreenControl.prepareManualText(context, owner))
                     ScreenControl.manualInput(context, owner, ManualScreenInput.Text(manualCode))
+                    assertTrue("Manual text must reach the originally selected field",
+                        inputProbe(ScreenControlFixtureActivity.CHECK_MANUAL_INPUT))
                     ScreenControl.manualInput(context, owner, ManualScreenInput.Gesture(listOf(ScreenTouch(x, y, 0), ScreenTouch(x, y, 80))))
                     ScreenControl.manualInput(context, owner, ManualScreenInput.Gesture(listOf(
                         ScreenTouch(0.5f, 0.85f, 0), ScreenTouch(0.5f, 0.70f, 100),
@@ -259,6 +270,17 @@ class ScreenControlDeviceTest {
     private fun hasSystemPreview() = WindowInspector.getGlobalWindowViews().any {
         (it.layoutParams as? WindowManager.LayoutParams)?.type == WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY &&
             hasKeepScreen(it)
+    }
+
+    private fun inputProbe(action: String): Boolean {
+        val response = java.util.concurrent.CompletableFuture<Boolean>()
+        val context = instrumentation.context
+        context.sendOrderedBroadcast(Intent(action).setPackage(context.packageName), null, object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                response.complete(resultCode == android.app.Activity.RESULT_OK)
+            }
+        }, null, android.app.Activity.RESULT_CANCELED, null, null)
+        return response.get(5, java.util.concurrent.TimeUnit.SECONDS)
     }
 
     private fun hasKeepScreen(view: View): Boolean = view.keepScreenOn ||

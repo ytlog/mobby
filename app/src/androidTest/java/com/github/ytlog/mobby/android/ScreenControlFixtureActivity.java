@@ -1,6 +1,10 @@
 package com.github.ytlog.mobby.android;
 
 import android.app.Activity;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.os.Bundle;
 import android.util.DisplayMetrics;
 import android.widget.*;
@@ -8,7 +12,11 @@ import android.widget.*;
 /** Test APK only. No model calls, user files or account state. */
 @android.annotation.TargetApi(33)
 public final class ScreenControlFixtureActivity extends Activity {
+    static final String CLEAR_INPUT_FOCUS = "com.github.ytlog.mobby.android.test.CLEAR_INPUT_FOCUS";
+    static final String CHECK_MANUAL_INPUT = "com.github.ytlog.mobby.android.test.CHECK_MANUAL_INPUT";
+    static final String MANUAL_TEXT = "mobby-manual-code-fixture";
     private int count;
+    private BroadcastReceiver inputProbe;
     @Override public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         LinearLayout content = new LinearLayout(this); content.setOrientation(LinearLayout.VERTICAL);
@@ -34,9 +42,11 @@ public final class ScreenControlFixtureActivity extends Activity {
         TextView geometry = new TextView(this); content.addView(geometry);
         increment.post(() -> {
             int[] location = new int[2]; increment.getLocationOnScreen(location);
+            int[] field = new int[2]; input.getLocationOnScreen(field);
             DisplayMetrics metrics = new DisplayMetrics(); getDisplay().getRealMetrics(metrics);
             geometry.setText("Button center: " + (location[0] + increment.getWidth() / 2) + "," +
-                (location[1] + increment.getHeight() / 2) + "/" + metrics.widthPixels + "," + metrics.heightPixels);
+                (location[1] + increment.getHeight() / 2) + "/" + metrics.widthPixels + "," + metrics.heightPixels +
+                " Input center: " + (field[0] + input.getWidth() / 2) + "," + (field[1] + input.getHeight() / 2));
         });
         TextView scrollPosition = new TextView(this); scrollPosition.setText("Scroll position: 0"); content.addView(scrollPosition);
         ScrollView scroll = new ScrollView(this);
@@ -46,6 +56,25 @@ public final class ScreenControlFixtureActivity extends Activity {
         scroll.addView(rows); content.addView(scroll);
         setContentView(content);
         content.requestFocus();
+        inputProbe = new BroadcastReceiver() {
+            @Override public void onReceive(Context context, Intent intent) {
+                boolean passed = false;
+                if (CLEAR_INPUT_FOCUS.equals(intent.getAction())) {
+                    content.requestFocus();
+                    passed = !input.hasFocus();
+                } else if (CHECK_MANUAL_INPUT.equals(intent.getAction())) {
+                    passed = MANUAL_TEXT.contentEquals(input.getText());
+                }
+                setResultCode(passed ? RESULT_OK : RESULT_CANCELED);
+            }
+        };
+        IntentFilter filter = new IntentFilter(CLEAR_INPUT_FOCUS);
+        filter.addAction(CHECK_MANUAL_INPUT);
+        registerReceiver(inputProbe, filter, Context.RECEIVER_EXPORTED);
+    }
+    @Override protected void onDestroy() {
+        if (inputProbe != null) unregisterReceiver(inputProbe);
+        super.onDestroy();
     }
     public static final class Detail extends Activity {
         @Override public void onCreate(Bundle state) {

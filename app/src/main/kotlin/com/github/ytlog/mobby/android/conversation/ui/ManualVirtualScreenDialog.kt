@@ -33,7 +33,7 @@ internal fun ManualVirtualScreenDialog(controller: ScreenControlPort, id: String
     onMinimize: () -> Unit) {
     val scope = rememberCoroutineScope()
     var busy by remember(id) { mutableStateOf(false) }
-    var enteringText by remember(id) { mutableStateOf(false) }
+    var inputTarget by remember(id) { mutableStateOf<String?>(null) }
     var text by remember(id) { mutableStateOf("") }
     var error by remember(id) { mutableStateOf<String?>(null) }
     fun execute(action: suspend () -> Unit) {
@@ -69,31 +69,37 @@ internal fun ManualVirtualScreenDialog(controller: ScreenControlPort, id: String
                     } else {
                         val ratio = bitmap.width.toFloat() / bitmap.height
                         val width = minOf(maxWidth, maxHeight * ratio)
-                        val touch = if (!busy) Modifier.pointerInput(id) { recordScreenTouches { submitGesture(it) } } else Modifier
+                        val touch = if (!busy && inputTarget == null) Modifier.pointerInput(id) { recordScreenTouches { submitGesture(it) } } else Modifier
                         Image(bitmap, UiStrings.virtualScreenPreview, Modifier.width(width).aspectRatio(ratio).then(touch))
                     }
                 }
-                if (enteringText) {
+                inputTarget?.let { target ->
                     OutlinedTextField(text, { if (it.length <= 2000) text = it }, Modifier.fillMaxWidth(),
-                        label = { Text(UiStrings.virtualScreenManualInput) },
-                        supportingText = { Text(UiStrings.virtualScreenManualFieldHelp) },
+                        label = { Text(target.ifBlank { UiStrings.virtualScreenManualInput }) },
+                        supportingText = { Text(UiStrings.virtualScreenManualTargetHelp) },
                         singleLine = true, enabled = !busy, visualTransformation = PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
                     TextButton(onClick = {
                         val value = text
-                        text = ""
                         execute {
                             controller.manualInput(id, ManualScreenInput.Text(value))
-                            enteringText = false
+                            text = ""
+                            inputTarget = null
                         }
                     }, enabled = !busy && text.isNotEmpty()) { Text(UiStrings.virtualScreenManualFill) }
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    TextButton(onClick = { execute { controller.manualInput(id, ManualScreenInput.Back) } }, enabled = !busy) {
+                    TextButton(onClick = { execute { controller.manualInput(id, ManualScreenInput.Back) } }, enabled = !busy && inputTarget == null) {
                         Text(UiStrings.back)
                     }
-                    TextButton(onClick = { enteringText = !enteringText; text = "" }, enabled = !busy) {
-                        Text(if (enteringText) UiStrings.cancel else UiStrings.virtualScreenManualInput)
+                    TextButton(onClick = {
+                        if (inputTarget != null) {
+                            inputTarget = null
+                            text = ""
+                            error = null
+                        } else execute { inputTarget = controller.prepareManualText(id) }
+                    }, enabled = !busy) {
+                        Text(if (inputTarget != null) UiStrings.cancel else UiStrings.virtualScreenManualInput)
                     }
                     TextButton(onClick = { text = ""; execute { controller.handBack(id) } }, enabled = !busy) {
                         Text(UiStrings.virtualScreenHandBack)

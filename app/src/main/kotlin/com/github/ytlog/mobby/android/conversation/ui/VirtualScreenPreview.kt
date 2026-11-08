@@ -27,6 +27,8 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -169,7 +171,7 @@ internal class VirtualScreenPreview(
             }
         } else {
             VirtualScreenPreviewCard(bitmap, state.error ?: takeoverError, expanded, { expanded = !expanded }, modifier, hasObservedApp,
-                onTakeOver = if (inApp && !takeoverPending) ({
+                onTakeOver = if (inApp) ({
                     takeoverPending = true
                     takeoverError = null
                     scope.launch {
@@ -178,7 +180,7 @@ internal class VirtualScreenPreview(
                         catch (failure: Exception) { takeoverError = failure.message ?: UiStrings.virtualScreenOperationFailed }
                         finally { takeoverPending = false }
                     }
-                }) else null)
+                }) else null, takeoverEnabled = !takeoverPending)
         }
     }
 
@@ -200,6 +202,7 @@ internal fun VirtualScreenPreviewCard(
     modifier: Modifier = Modifier,
     hasObservedApp: Boolean = true,
     onTakeOver: (() -> Unit)? = null,
+    takeoverEnabled: Boolean = true,
 ) {
     val colors = MaterialTheme.colorScheme
     Surface(
@@ -214,17 +217,28 @@ internal fun VirtualScreenPreviewCard(
                 Modifier.fillMaxWidth().padding(start = 10.dp, end = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Surface(shape = RoundedCornerShape(10.dp), color = colors.primary.copy(alpha = 0.10f)) {
-                    AppIcon(AppIcons.Phone, null, Modifier.padding(7.dp).size(16.dp), tint = colors.primary)
-                }
+                AppIcon(AppIcons.Phone, null, Modifier.size(16.dp), tint = colors.primary)
                 Text(
-                    UiStrings.virtualScreenPreview,
-                    Modifier.weight(1f).padding(start = 8.dp),
+                    UiStrings.virtualScreenShortTitle,
+                    Modifier.weight(1f).padding(start = 4.dp),
                     style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold, letterSpacing = 0.sp),
                     color = colors.onSurface,
-                    maxLines = 2,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                onTakeOver?.let {
+                    val description = UiStrings.virtualScreenTakeOver
+                    TextButton(onClick = it, enabled = takeoverEnabled,
+                        modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = description },
+                        contentPadding = PaddingValues(horizontal = 2.dp)) {
+                        Row(Modifier.clip(RoundedCornerShape(10.dp)).background(colors.primary.copy(alpha = 0.10f))
+                            .padding(horizontal = 6.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                            AppIcon(AppIcons.Hand, null, Modifier.size(13.dp))
+                            Text(UiStrings.virtualScreenTakeOverShort, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                        }
+                    }
+                }
                 FloatingAction(
                     if (expanded) AppIcons.ChevronUp else AppIcons.ChevronDown,
                     if (expanded) UiStrings.hideVirtualScreen else UiStrings.showVirtualScreen,
@@ -232,12 +246,12 @@ internal fun VirtualScreenPreviewCard(
                     onClick = onToggle,
                 )
             }
+            error?.let {
+                Text(it, Modifier.padding(start = 10.dp, end = 10.dp, bottom = 6.dp),
+                    style = MaterialTheme.typography.bodySmall, color = colors.error,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
             if (expanded) {
-                error?.let {
-                    Text(it, Modifier.padding(start = 10.dp, end = 10.dp, bottom = 6.dp),
-                        style = MaterialTheme.typography.bodySmall, color = colors.error,
-                        maxLines = 2, overflow = TextOverflow.Ellipsis)
-                }
                 val image = bitmap.takeIf { hasObservedApp }
                 val ratio = image?.let { it.width.toFloat() / it.height } ?: 9f / 16f
                 BoxWithConstraints(
@@ -260,11 +274,6 @@ internal fun VirtualScreenPreviewCard(
                                 }
                             }
                         }
-                    }
-                }
-                onTakeOver?.let {
-                    TextButton(onClick = it, modifier = Modifier.align(Alignment.CenterHorizontally)) {
-                        Text(UiStrings.virtualScreenTakeOver)
                     }
                 }
             }

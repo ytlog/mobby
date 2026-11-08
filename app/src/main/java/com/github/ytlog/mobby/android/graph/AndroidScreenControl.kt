@@ -21,6 +21,7 @@ class AndroidScreenControl(context: Context) : ScreenControlPort {
     override fun cancelAdbPairing() = ScreenControl.cancelAdbPairing(context)
     override suspend fun refreshPreview() = ScreenControl.refreshPreview()
     override suspend fun takeOver() = withContext(Dispatchers.IO) { ScreenControl.takeOver(context) }
+    override suspend fun prepareManualText(id: String) = withContext(Dispatchers.IO) { ScreenControl.prepareManualText(context, id) }
     override suspend fun manualInput(id: String, input: ManualScreenInput) =
         withContext(Dispatchers.IO) { ScreenControl.manualInput(context, id, input) }
     override suspend fun handBack(id: String) = withContext(Dispatchers.IO) { ScreenControl.handBack(context, id) }

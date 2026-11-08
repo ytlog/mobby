@@ -79,6 +79,39 @@ class VirtualScreenPreviewCardTest {
         compose.onNodeWithContentDescription(UiStrings.hideVirtualScreen).assertIsDisplayed()
     }
 
+    @Test fun takeoverStaysInTheHeaderWhenThePreviewIsCollapsed() {
+        var tookOver = false
+        compose.setContent { MaterialTheme {
+            VirtualScreenPreviewCard(null, null, false, {}, Modifier.width(184.dp), onTakeOver = { tookOver = true })
+        } }
+        val takeover = compose.onNodeWithContentDescription(UiStrings.virtualScreenTakeOver).assertIsDisplayed()
+        val fold = compose.onNodeWithContentDescription(UiStrings.showVirtualScreen).assertIsDisplayed()
+        val label = compose.onNodeWithText(UiStrings.virtualScreenShortTitle).assertIsDisplayed().getBoundsInRoot()
+        val button = takeover.getBoundsInRoot()
+        assertTrue(button.left >= label.right)
+        assertTrue(button.top < fold.getBoundsInRoot().bottom && label.top < button.bottom)
+        takeover.performClick()
+        compose.runOnIdle { assertTrue(tookOver) }
+    }
+
+    @Test fun openingTheLocalEditorPreparesTheVirtualTargetBeforeTyping() {
+        val calls = mutableListOf<Pair<String, List<Any?>>>()
+        val controller = Proxy.newProxyInstance(ScreenControlPort::class.java.classLoader,
+            arrayOf(ScreenControlPort::class.java)) { _, method, arguments ->
+            calls += method.name to arguments.orEmpty().dropLast(1)
+            if (method.name == "prepareManualText") "Probe code" else Unit
+        } as ScreenControlPort
+        compose.setContent { MaterialTheme {
+            ManualVirtualScreenDialog(controller, "handoff-fixture", ImageBitmap(72, 128), null, onMinimize = {})
+        } }
+        compose.onNode(hasSetTextAction()).assertDoesNotExist()
+        compose.onNodeWithText(UiStrings.virtualScreenManualInput).performClick()
+        compose.runOnIdle { assertEquals(listOf("prepareManualText" to listOf("handoff-fixture")), calls) }
+        compose.onNode(hasSetTextAction()).performTextInput("123456")
+        compose.onNodeWithText(UiStrings.virtualScreenManualFill).performClick()
+        compose.runOnIdle { assertEquals("manualInput" to listOf("handoff-fixture", ManualScreenInput.Text("123456")), calls.last()) }
+    }
+
     @Test fun manualDialogSendsAStrokeToItsDisplayAndMinimizingDoesNotReturnControl() {
         val calls = mutableListOf<Pair<String, List<Any?>>>()
         val controller = Proxy.newProxyInstance(ScreenControlPort::class.java.classLoader,

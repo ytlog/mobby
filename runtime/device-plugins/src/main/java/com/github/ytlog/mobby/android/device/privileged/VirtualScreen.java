@@ -113,7 +113,7 @@ final class VirtualScreen implements AutoCloseable {
             if (display == null || displayId <= 0 || !display.getDisplay().isValid()) throw new IllegalStateException("invalid_display");
             if ("frame".equals(action)) return screenshot(metadata(new JSONObject()));
             if ("manual_begin".equals(action)) {
-                clearPrivateInputTarget();
+                rememberManualTextTarget();
                 manualControl = true;
                 return metadata(new JSONObject());
             }
@@ -130,10 +130,17 @@ final class VirtualScreen implements AutoCloseable {
             }
             if ("manual_gesture".equals(action)) {
                 if (!manualControl) throw new IllegalStateException("manual_control_inactive");
+                clearPrivateInputTarget();
                 manualGesture(new JSONArray(args.getString("points")));
                 return metadata(new JSONObject());
             }
-            if (manualControl && !Set.of("back", "prepare_private_input", "private_input", "cancel_private_input").contains(action))
+            if ("manual_prepare_text".equals(action)) {
+                if (!manualControl) throw new IllegalStateException("manual_control_inactive");
+                AccessibilityNodeInfo field = validatedManualTextTarget();
+                try { return metadata(new JSONObject().put("label", privateInputLabel(field))); }
+                finally { field.recycle(); }
+            }
+            if (manualControl && !Set.of("back", "private_input").contains(action))
                 throw new IllegalStateException("manual_control_active");
             if ("prepare_private_input".equals(action)) {
                 clearPrivateInputTarget();
@@ -154,7 +161,7 @@ final class VirtualScreen implements AutoCloseable {
             if ("private_input".equals(action)) {
                 try {
                     JSONArray values = new JSONArray(args.getString("values"));
-                    List<AccessibilityNodeInfo> fields = privateInputFields(privateInputFocusedOnly);
+                    List<AccessibilityNodeInfo> fields = manualControl ? List.of(validatedManualTextTarget()) : privateInputFields(privateInputFocusedOnly);
                     try {
                         if (!fields.equals(privateInputTargets) || values.length() != fields.size())
                             throw new IllegalStateException("private_input_fields_changed");
@@ -204,6 +211,7 @@ final class VirtualScreen implements AutoCloseable {
                 return observe("Input delivered to virtual display", true);
             }
             if ("back".equals(action)) {
+                if (manualControl) clearPrivateInputTarget();
                 int key = KeyEvent.KEYCODE_BACK;
                 long now = SystemClock.uptimeMillis();
                 KeyEvent down = new KeyEvent(now, now, KeyEvent.ACTION_DOWN, key, 0);
@@ -253,6 +261,68 @@ final class VirtualScreen implements AutoCloseable {
             });
             return fields;
         } finally { root.recycle(); }
+    }
+
+    private void rememberManualTextTarget() {
+        clearPrivateInputTarget();
+        AccessibilityNodeInfo root = optionalVirtualRoot();
+        if (root == null) return;
+        try {
+            AccessibilityNodeInfo focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
+            if (focused != null) {
+                if (editablePrivateField(focused)) privateInputTargets.add(focused);
+                else focused.recycle();
+            }
+        } finally { root.recycle(); }
+    }
+
+    private AccessibilityNodeInfo optionalVirtualRoot() {
+        try { return root(); }
+        catch (IllegalStateException failure) {
+            if (!"no_virtual_window".equals(failure.getMessage()) && !"no_virtual_app_window".equals(failure.getMessage())) throw failure;
+            return null;
+        }
+    }
+
+    private void rememberManualTextTargetAt(int x, int y) {
+        AccessibilityNodeInfo root = optionalVirtualRoot();
+        if (root == null) return;
+        int[] deepest = {-1};
+        Rect bounds = new Rect();
+        try {
+            walk(root, 0, new int[]{0}, (node, depth) -> {
+                if (depth < deepest[0] || !editablePrivateField(node)) return;
+                node.getBoundsInScreen(bounds);
+                if (!bounds.contains(x, y)) return;
+                if (depth > deepest[0]) {
+                    clearPrivateInputTarget();
+                    deepest[0] = depth;
+                }
+                privateInputTargets.add(AccessibilityNodeInfo.obtain(node));
+            });
+            if (privateInputTargets.size() != 1) clearPrivateInputTarget();
+        } finally { root.recycle(); }
+    }
+
+    private AccessibilityNodeInfo validatedManualTextTarget() {
+        if (privateInputTargets.size() != 1) throw new IllegalStateException("manual_input_target_missing");
+        if (privateValues.size() >= 20) throw new IllegalStateException("private_input_field_count");
+        AccessibilityNodeInfo selected = privateInputTargets.get(0);
+        AccessibilityNodeInfo currentRoot = root();
+        try {
+            if (currentRoot.getWindowId() != selected.getWindowId() || !Objects.equals(currentRoot.getPackageName(), selected.getPackageName()))
+                throw new IllegalStateException("private_input_fields_changed");
+        } finally { currentRoot.recycle(); }
+        AccessibilityNodeInfo field = AccessibilityNodeInfo.obtain(selected);
+        boolean valid = false;
+        try {
+            valid = field.refresh() && editablePrivateField(field) &&
+                Objects.equals(field.getClassName(), selected.getClassName()) &&
+                Objects.equals(field.getViewIdResourceName(), selected.getViewIdResourceName()) &&
+                privateInputLabel(field).equals(privateInputLabel(selected));
+            if (!valid) throw new IllegalStateException("private_input_fields_changed");
+            return field;
+        } finally { if (!valid) field.recycle(); }
     }
 
     private static boolean editablePrivateField(AccessibilityNodeInfo node) {
@@ -480,6 +550,7 @@ final class VirtualScreen implements AutoCloseable {
         if (count < 2 || count > 256) throw new IllegalArgumentException("invalid_manual_gesture");
         float[] xs = new float[count], ys = new float[count];
         long[] times = new long[count];
+        boolean tap = true;
         for (int i = 0; i < count; i++) {
             JSONArray point = points.getJSONArray(i);
             double x = point.getDouble(0), y = point.getDouble(1);
@@ -487,7 +558,10 @@ final class VirtualScreen implements AutoCloseable {
             if (!(x >= 0 && x <= 1 && y >= 0 && y <= 1) || time > 5000 ||
                 (i == 0 ? time != 0 : time < times[i - 1])) throw new IllegalArgumentException("invalid_manual_gesture");
             xs[i] = (float) x * (WIDTH - 1); ys[i] = (float) y * (HEIGHT - 1); times[i] = time;
+            if (Math.abs(xs[i] - xs[0]) > 12 || Math.abs(ys[i] - ys[0]) > 12 || time > 500) tap = false;
         }
+        // Hit-test the window shown to the user before the tap or the main display's keyboard can change focus.
+        if (tap) rememberManualTextTargetAt((int) xs[0], (int) ys[0]);
         long start = SystemClock.uptimeMillis();
         int last = 0;
         boolean down = false;
@@ -500,6 +574,9 @@ final class VirtualScreen implements AutoCloseable {
                 last = i;
             }
             down = false;
+        } catch (Exception failure) {
+            clearPrivateInputTarget();
+            throw failure;
         } finally {
             if (down) motion(start, SystemClock.uptimeMillis(), MotionEvent.ACTION_CANCEL, xs[last], ys[last]);
         }

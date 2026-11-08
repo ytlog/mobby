@@ -45,6 +45,7 @@ interface ScreenControlPort {
     fun cancelAdbPairing()
     suspend fun refreshPreview()
     suspend fun takeOver(): String
+    suspend fun prepareManualText(id: String): String
     suspend fun manualInput(id: String, input: ManualScreenInput)
     suspend fun handBack(id: String)
 }

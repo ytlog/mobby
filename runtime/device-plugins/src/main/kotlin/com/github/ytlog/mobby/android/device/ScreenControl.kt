@@ -395,10 +395,20 @@ object ScreenControl {
         id
     }
 
-    fun manualInput(context: Context, id: String, input: ManualScreenInput) = ScreenCoordinator.chatAction {
+    private fun manualDisplay(context: Context, id: String): Pair<ScreenChannel, Int> {
         val (connection, display) = activeDisplay()
         check(state.value.manualControlId == id) { AppStrings.virtualScreenDisconnected }
         requireUnlocked(context)
+        return connection to display
+    }
+
+    fun prepareManualText(context: Context, id: String): String = ScreenCoordinator.chatAction {
+        val (connection, display) = manualDisplay(context, id)
+        request(connection, "manual_prepare_text", expectedDisplay = display).getString("label")
+    }
+
+    fun manualInput(context: Context, id: String, input: ManualScreenInput) = ScreenCoordinator.chatAction {
+        val (connection, display) = manualDisplay(context, id)
         when (input) {
             is ManualScreenInput.Gesture -> {
                 require(input.points.size in 2..256 && input.points.first().elapsedMillis == 0L)
@@ -410,10 +420,7 @@ object ScreenControl {
             }
             is ManualScreenInput.Text -> {
                 require(input.value.isNotEmpty() && input.value.length <= 2000 && '\u0000' !in input.value)
-                request(connection, "prepare_private_input", mapOf("focusedOnly" to "true"), expectedDisplay = display)
-                try {
-                    request(connection, "private_input", mapOf("values" to JSONArray(listOf(input.value)).toString()), expectedDisplay = display)
-                } finally { clearPrivateInput(connection, display) }
+                request(connection, "private_input", mapOf("values" to JSONArray(listOf(input.value)).toString()), expectedDisplay = display)
             }
             ManualScreenInput.Back -> request(connection, "back", expectedDisplay = display)
         }
@@ -421,9 +428,7 @@ object ScreenControl {
     }
 
     fun handBack(context: Context, id: String) = ScreenCoordinator.chatAction {
-        val (connection, display) = activeDisplay()
-        check(state.value.manualControlId == id) { AppStrings.virtualScreenDisconnected }
-        requireUnlocked(context)
+        val (connection, display) = manualDisplay(context, id)
         request(connection, "manual_end", expectedDisplay = display)
         changes.update {
             if (it.manualControlId == id && channel === connection)
@@ -515,6 +520,8 @@ object ScreenControl {
                     "control_not_found" -> deviceFailure(DeviceErrorCode.NOT_FOUND, AppStrings.virtualScreenControlNotFound)
                     "control_not_unique" -> deviceFailure(DeviceErrorCode.INVALID_ARGUMENT, AppStrings.virtualScreenControlNotUnique)
                     "no_editable_field" -> deviceFailure(DeviceErrorCode.NOT_FOUND, AppStrings.virtualScreenNoEditableField)
+                    "manual_input_target_missing" -> deviceFailure(DeviceErrorCode.NOT_FOUND, AppStrings.virtualScreenManualSelectField)
+                    "private_input_fields_changed" -> deviceFailure(DeviceErrorCode.UNAVAILABLE, AppStrings.virtualScreenManualFieldChanged, EffectState.UNKNOWN)
                     "click_refused" -> deviceFailure(DeviceErrorCode.UNAVAILABLE, AppStrings.virtualScreenClickRefused, EffectState.UNKNOWN)
                     "app_already_on_other_display" ->
                         deviceFailure(DeviceErrorCode.UNSUPPORTED_CAPABILITY, AppStrings.virtualScreenAppOnOtherDisplay)
