@@ -408,10 +408,10 @@ object ScreenControl {
         id
     }
 
-    private fun manualDisplay(context: Context, id: String): Pair<ScreenChannel, Int> {
+    private fun manualDisplay(context: Context, id: String, requireInteractive: Boolean = true): Pair<ScreenChannel, Int> {
         val (connection, display) = activeDisplay()
         check(state.value.manualControlId == id) { AppStrings.virtualScreenDisconnected }
-        requireUnlocked(context)
+        if (requireInteractive) requireUnlocked(context)
         return connection to display
     }
 
@@ -421,16 +421,14 @@ object ScreenControl {
     }
 
     fun manualInput(context: Context, id: String, input: ManualScreenInput) = ScreenCoordinator.chatAction {
-        val (connection, display) = manualDisplay(context, id)
+        val (connection, display) = manualDisplay(context, id, requireInteractive = input != ManualScreenInput.CancelTouch)
         when (input) {
-            is ManualScreenInput.Gesture -> {
-                require(input.points.size in 2..256 && input.points.first().elapsedMillis == 0L)
-                require(input.points.all { it.x in 0f..1f && it.y in 0f..1f && it.elapsedMillis in 0..5_000 })
-                require(input.points.zipWithNext().all { (before, after) -> before.elapsedMillis <= after.elapsedMillis })
-                val points = JSONArray()
-                input.points.forEach { points.put(JSONArray().put(it.x.toDouble()).put(it.y.toDouble()).put(it.elapsedMillis)) }
-                request(connection, "manual_gesture", mapOf("points" to points.toString()), expectedDisplay = display)
+            is ManualScreenInput.Touch -> {
+                require(input.x in 0f..1f && input.y in 0f..1f)
+                request(connection, "manual_touch", mapOf("phase" to input.phase.name, "x" to input.x.toString(),
+                    "y" to input.y.toString()), expectedDisplay = display)
             }
+            ManualScreenInput.CancelTouch -> request(connection, "manual_cancel_touch", expectedDisplay = display)
             is ManualScreenInput.Text -> {
                 require(input.value.isNotEmpty() && input.value.length <= 2000 && '\u0000' !in input.value)
                 request(connection, "private_input", mapOf("values" to JSONArray(listOf(input.value)).toString()), expectedDisplay = display)
@@ -503,8 +501,10 @@ object ScreenControl {
         synchronized(connected) {
             if (!state.value.active) return@synchronized
             val id = state.value.displayId ?: return@synchronized
-            val result = request(connected, "frame", expectedDisplay = id)
+            val result = request(connected, "frame", mapOf("after" to connected.previewFrameAt.toString()), expectedDisplay = id)
+            if (result.optString("screenshotStatus") == "unchanged") return@synchronized
             val bytes = result.optString("jpeg").takeIf(String::isNotEmpty)?.let { Base64.decode(it, Base64.NO_WRAP) }
+            connected.previewFrameAt = result.optLong("frameAt")
             changes.update { current ->
                 if (current.active && current.displayId == id) current.copy(jpeg = bytes) else current
             }
@@ -611,6 +611,8 @@ internal class ScreenChannel(
     private val socket = Socket()
     private val input: DataInputStream
     private val output: DataOutputStream
+    // Accessed while holding the channel monitor during preview polling.
+    var previewFrameAt = 0L
     @Volatile var alive = true
         private set
     @Volatile var authorizationLost = false
@@ -623,7 +625,7 @@ internal class ScreenChannel(
     init {
         try {
             val port = endpoint.getInt("port"); require(port in 1..65535)
-            socket.connect(InetSocketAddress("127.0.0.1", port), 5_000); socket.soTimeout = 20_000
+            socket.connect(InetSocketAddress("127.0.0.1", port), 5_000); socket.soTimeout = 20_000; socket.tcpNoDelay = true
             input = DataInputStream(socket.getInputStream()); output = DataOutputStream(socket.getOutputStream())
             send(JSONObject().put("token", endpoint.getString("token")))
             val hello = receive()
@@ -666,6 +668,6 @@ internal class ScreenChannel(
     override fun close() { alive = false; socket.close() }
 
     private companion object {
-        val MAINTENANCE_ACTIONS = setOf("frame", "close", "cancel_private_input")
+        val MAINTENANCE_ACTIONS = setOf("frame", "close", "cancel_private_input", "manual_cancel_touch")
     }
 }

@@ -38,16 +38,22 @@ final class VirtualScreen implements AutoCloseable {
     private final HandlerThread operations = new HandlerThread("virtual-screen-operations");
     private final HandlerThread callbacks = new HandlerThread("virtual-screen-callbacks");
     private Handler handler;
+    private Handler frameHandler;
     private UiAutomation automation;
     private final List<AccessibilityNodeInfo> privateInputTargets = new ArrayList<>();
     private boolean privateInputFocusedOnly;
     private final List<String> privateValues = new ArrayList<>();
     private VirtualDisplay display;
     private ImageReader reader;
-    private volatile byte[] jpeg;
-    private volatile long frameAt;
+    private byte[] jpeg;
+    private long frameAt;
+    private long lastCaptureUptime;
+    private boolean capturePending;
     private final Object frameLock = new Object();
-    private boolean manualControl;
+    private volatile boolean manualControl;
+    private long touchDownAt = -1;
+    private float touchStartX, touchStartY, touchX, touchY;
+    private boolean touchIsTap;
     private volatile boolean closed;
     private int displayId = -1;
     private Context context;
@@ -81,7 +87,8 @@ final class VirtualScreen implements AutoCloseable {
             ctor.setAccessible(true);
             DisplayManager manager = ctor.newInstance(context);
             reader = ImageReader.newInstance(WIDTH, HEIGHT, PixelFormat.RGBA_8888, 3);
-            reader.setOnImageAvailableListener(this::onImage, new Handler(callbacks.getLooper()));
+            frameHandler = new Handler(callbacks.getLooper());
+            reader.setOnImageAvailableListener(this::onImage, frameHandler);
             int flags = DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC | DisplayManager.VIRTUAL_DISPLAY_FLAG_PRESENTATION
                 | DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY | (1 << 6) | (1 << 8);
             // Match platform capabilities by Android version; unsupported flags are never silently retried.
@@ -111,7 +118,7 @@ final class VirtualScreen implements AutoCloseable {
         JSONObject args = arguments == null ? new JSONObject() : arguments;
         return call(() -> {
             if (display == null || displayId <= 0 || !display.getDisplay().isValid()) throw new IllegalStateException("invalid_display");
-            if ("frame".equals(action)) return screenshot(metadata(new JSONObject()));
+            if ("frame".equals(action)) return screenshot(metadata(new JSONObject()), args.optLong("after"));
             if ("manual_begin".equals(action)) {
                 rememberManualTextTarget();
                 manualControl = true;
@@ -119,6 +126,7 @@ final class VirtualScreen implements AutoCloseable {
             }
             if ("manual_end".equals(action)) {
                 if (!manualControl) throw new IllegalStateException("manual_control_inactive");
+                cancelManualTouch();
                 clearPrivateInputTarget();
                 synchronized (frameLock) {
                     try (Image discarded = reader.acquireLatestImage()) { }
@@ -128,10 +136,13 @@ final class VirtualScreen implements AutoCloseable {
                 manualControl = false;
                 return metadata(new JSONObject());
             }
-            if ("manual_gesture".equals(action)) {
+            if ("manual_touch".equals(action)) {
                 if (!manualControl) throw new IllegalStateException("manual_control_inactive");
-                clearPrivateInputTarget();
-                manualGesture(new JSONArray(args.getString("points")));
+                manualTouch(args.getString("phase"), fraction(args, "x") * (WIDTH - 1), fraction(args, "y") * (HEIGHT - 1));
+                return metadata(new JSONObject());
+            }
+            if ("manual_cancel_touch".equals(action)) {
+                cancelManualTouch();
                 return metadata(new JSONObject());
             }
             if ("manual_prepare_text".equals(action)) {
@@ -545,41 +556,51 @@ final class VirtualScreen implements AutoCloseable {
         try { inject(event); } finally { event.recycle(); }
     }
 
-    private void manualGesture(JSONArray points) throws Exception {
-        int count = points.length();
-        if (count < 2 || count > 256) throw new IllegalArgumentException("invalid_manual_gesture");
-        float[] xs = new float[count], ys = new float[count];
-        long[] times = new long[count];
-        boolean tap = true;
-        for (int i = 0; i < count; i++) {
-            JSONArray point = points.getJSONArray(i);
-            double x = point.getDouble(0), y = point.getDouble(1);
-            long time = point.getLong(2);
-            if (!(x >= 0 && x <= 1 && y >= 0 && y <= 1) || time > 5000 ||
-                (i == 0 ? time != 0 : time < times[i - 1])) throw new IllegalArgumentException("invalid_manual_gesture");
-            xs[i] = (float) x * (WIDTH - 1); ys[i] = (float) y * (HEIGHT - 1); times[i] = time;
-            if (Math.abs(xs[i] - xs[0]) > 12 || Math.abs(ys[i] - ys[0]) > 12 || time > 500) tap = false;
-        }
-        // Hit-test the window shown to the user before the tap or the main display's keyboard can change focus.
-        if (tap) rememberManualTextTargetAt((int) xs[0], (int) ys[0]);
-        long start = SystemClock.uptimeMillis();
-        int last = 0;
-        boolean down = false;
+    private void manualTouch(String phase, float x, float y) throws Exception {
         try {
-            motion(start, start, MotionEvent.ACTION_DOWN, xs[0], ys[0]); down = true;
-            for (int i = 1; i < count; i++) {
-                long delay = start + times[i] - SystemClock.uptimeMillis();
-                if (delay > 0) Thread.sleep(delay);
-                motion(start, SystemClock.uptimeMillis(), i == count - 1 ? MotionEvent.ACTION_UP : MotionEvent.ACTION_MOVE, xs[i], ys[i]);
-                last = i;
+            if ("DOWN".equals(phase)) {
+                if (touchDownAt >= 0) throw new IllegalStateException("manual_touch_active");
+                clearPrivateInputTarget();
+                // Record the editable under the finger before input can change the window's focus.
+                rememberManualTextTargetAt((int) x, (int) y);
+                touchStartX = touchX = x;
+                touchStartY = touchY = y;
+                touchIsTap = true;
+                touchDownAt = SystemClock.uptimeMillis();
+                motion(touchDownAt, touchDownAt, MotionEvent.ACTION_DOWN, x, y);
+                return;
             }
-            down = false;
+            if (touchDownAt < 0) throw new IllegalStateException("manual_touch_inactive");
+            boolean release = "UP".equals(phase);
+            if (!release && !"MOVE".equals(phase)) throw new IllegalArgumentException("invalid_manual_touch_phase");
+            long now = SystemClock.uptimeMillis();
+            if (touchIsTap && (Math.abs(x - touchStartX) > 12 || Math.abs(y - touchStartY) > 12 || now - touchDownAt > 500)) {
+                touchIsTap = false;
+                clearPrivateInputTarget();
+            }
+            // UP can supersede a queued MOVE. Apply the exact endpoint before releasing a drag.
+            if (!release || (!touchIsTap && (x != touchX || y != touchY))) {
+                motion(touchDownAt, now, MotionEvent.ACTION_MOVE, x, y);
+                touchX = x;
+                touchY = y;
+            }
+            if (release) {
+                motion(touchDownAt, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, x, y);
+                touchDownAt = -1;
+            }
         } catch (Exception failure) {
-            clearPrivateInputTarget();
+            try { cancelManualTouch(); }
+            catch (Exception cleanup) { failure.addSuppressed(cleanup); }
             throw failure;
-        } finally {
-            if (down) motion(start, SystemClock.uptimeMillis(), MotionEvent.ACTION_CANCEL, xs[last], ys[last]);
         }
+    }
+
+    private void cancelManualTouch() throws Exception {
+        if (touchDownAt < 0) return;
+        long down = touchDownAt;
+        touchDownAt = -1;
+        clearPrivateInputTarget();
+        motion(down, SystemClock.uptimeMillis(), MotionEvent.ACTION_CANCEL, touchX, touchY);
     }
     private String apps() throws Exception {
         String output = command("/system/bin/cmd", "package", "query-activities", "--brief", "--components", "--user", "current",
@@ -618,22 +639,41 @@ final class VirtualScreen implements AutoCloseable {
     }
     private JSONObject agentScreenshot(JSONObject result) throws Exception {
         // Pixel output can reveal a value even when the app does not expose a text node.
-        return !manualControl && privateValues.isEmpty() ? screenshot(result) : result.put("screenshotStatus", "private_input");
+        return !manualControl && privateValues.isEmpty() ? screenshot(result, 0) : result.put("screenshotStatus", "private_input");
     }
-    private JSONObject screenshot(JSONObject result) throws Exception {
-        byte[] frame = jpeg;
-        result.put("screenshotStatus", frame == null ? "no_frame" : "captured");
-        if (frame != null) result.put("jpeg", Base64.encodeToString(frame, Base64.NO_WRAP)).put("frameAt", frameAt);
-        return result;
+    private JSONObject screenshot(JSONObject result, long after) throws Exception {
+        byte[] frame;
+        long capturedAt;
+        synchronized (frameLock) {
+            frame = jpeg;
+            capturedAt = frameAt;
+        }
+        if (frame == null) return result.put("screenshotStatus", "no_frame");
+        if (capturedAt == after) return result.put("screenshotStatus", "unchanged");
+        return result.put("screenshotStatus", "captured").put("jpeg", Base64.encodeToString(frame, Base64.NO_WRAP))
+            .put("frameAt", capturedAt);
     }
     private void onImage(ImageReader source) {
-        synchronized (frameLock) { captureFrame(source); }
+        synchronized (frameLock) {
+            if (closed || capturePending) return;
+            long delay = lastCaptureUptime + (manualControl ? 65 : 300) - SystemClock.uptimeMillis();
+            if (delay <= 0) {
+                captureFrame(source);
+            } else {
+                // Retain the newest frame through the throttle interval, including the final frame of a drag.
+                capturePending = true;
+                frameHandler.postDelayed(() -> {
+                    synchronized (frameLock) { capturePending = false; }
+                    onImage(source);
+                }, delay);
+            }
+        }
     }
 
     private void captureFrame(ImageReader source) {
         try (Image image = source.acquireLatestImage()) {
             if (image == null || closed) return;
-            if (System.currentTimeMillis() - frameAt < 300) return;
+            lastCaptureUptime = SystemClock.uptimeMillis();
             Image.Plane plane = image.getPlanes()[0];
             int padded = plane.getRowStride() / plane.getPixelStride();
             Bitmap bitmap = Bitmap.createBitmap(padded, HEIGHT, Bitmap.Config.ARGB_8888);
@@ -662,6 +702,8 @@ final class VirtualScreen implements AutoCloseable {
         // Cleanup follows any in-flight operation on the same looper, including a late createDisplay.
         handler.post(() -> {
             try {
+                try { cancelManualTouch(); }
+                catch (Exception failure) { cleanupFailure.compareAndSet(null, failure); }
                 clearPrivateInputTarget();
                 privateValues.clear();
                 try { if (display != null) display.release(); }
@@ -673,7 +715,7 @@ final class VirtualScreen implements AutoCloseable {
                 try { if (automation != null) UiAutomation.class.getMethod("disconnect").invoke(automation); }
                 catch (Exception failure) { cleanupFailure.compareAndSet(null, failure); }
                 finally { automation = null; }
-                jpeg = null;
+                synchronized (frameLock) { jpeg = null; }
             } finally { callbacks.quitSafely(); operations.quitSafely(); released.countDown(); }
         });
         try {

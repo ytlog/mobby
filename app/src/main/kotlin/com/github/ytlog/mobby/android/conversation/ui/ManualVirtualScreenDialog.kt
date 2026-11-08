@@ -13,6 +13,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
@@ -24,9 +25,12 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.SecureFlagPolicy
 import com.github.ytlog.mobby.android.runtime.api.device.ManualScreenInput
 import com.github.ytlog.mobby.android.runtime.api.device.ScreenControlPort
-import com.github.ytlog.mobby.android.runtime.api.device.ScreenTouch
+import com.github.ytlog.mobby.android.runtime.api.device.ScreenTouchPhase
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 internal fun ManualVirtualScreenDialog(controller: ScreenControlPort, id: String, bitmap: ImageBitmap?, screenError: String?,
@@ -47,8 +51,31 @@ internal fun ManualVirtualScreenDialog(controller: ScreenControlPort, id: String
             finally { busy = false }
         }
     }
-    val submitGesture by rememberUpdatedState<(List<ScreenTouch>) -> Unit>({ points ->
-        execute { controller.manualInput(id, ManualScreenInput.Gesture(points)) }
+    val startTouch by rememberUpdatedState<(ManualScreenInput.Touch) -> Channel<ManualScreenInput>?>({ down ->
+        if (busy || inputTarget != null) null else {
+            // Keep the latest position while the previous request is in flight.
+            // DOWN is sent separately, and UP carries the final position.
+            val updates = Channel<ManualScreenInput>(Channel.CONFLATED)
+            execute {
+                var finished = false
+                try {
+                    controller.manualInput(id, down)
+                    for (input in updates) {
+                        controller.manualInput(id, input)
+                        finished = input == ManualScreenInput.CancelTouch ||
+                            (input is ManualScreenInput.Touch && input.phase == ScreenTouchPhase.UP)
+                        if (finished) break
+                    }
+                } finally {
+                    updates.cancel()
+                    if (!finished) withContext(NonCancellable) {
+                        // Best effort if the display itself has already disconnected.
+                        runCatching { controller.manualInput(id, ManualScreenInput.CancelTouch) }
+                    }
+                }
+            }
+            updates
+        }
     })
     Dialog(onDismissRequest = { if (!busy) onMinimize() }, properties = DialogProperties(usePlatformDefaultWidth = false,
         dismissOnClickOutside = false, securePolicy = SecureFlagPolicy.SecureOn)) {
@@ -69,7 +96,7 @@ internal fun ManualVirtualScreenDialog(controller: ScreenControlPort, id: String
                     } else {
                         val ratio = bitmap.width.toFloat() / bitmap.height
                         val width = minOf(maxWidth, maxHeight * ratio)
-                        val touch = if (!busy && inputTarget == null) Modifier.pointerInput(id) { recordScreenTouches { submitGesture(it) } } else Modifier
+                        val touch = Modifier.pointerInput(id) { forwardScreenTouches { startTouch(it) } }
                         Image(bitmap, UiStrings.virtualScreenPreview, Modifier.width(width).aspectRatio(ratio).then(touch))
                     }
                 }
@@ -110,24 +137,33 @@ internal fun ManualVirtualScreenDialog(controller: ScreenControlPort, id: String
     }
 }
 
-private suspend fun PointerInputScope.recordScreenTouches(submit: (List<ScreenTouch>) -> Unit) = awaitEachGesture {
+private suspend fun PointerInputScope.forwardScreenTouches(
+    start: (ManualScreenInput.Touch) -> Channel<ManualScreenInput>?,
+) = awaitEachGesture {
     val down = awaitFirstDown(requireUnconsumed = true)
     if (size.width <= 0 || size.height <= 0) return@awaitEachGesture
-    fun sample(x: Float, y: Float, time: Long) = ScreenTouch((x / size.width).coerceIn(0f, 1f),
-        (y / size.height).coerceIn(0f, 1f), (time - down.uptimeMillis).coerceIn(0, 5_000))
-    val points = mutableListOf(sample(down.position.x, down.position.y, down.uptimeMillis))
+    fun touch(phase: ScreenTouchPhase, point: Offset) =
+        ManualScreenInput.Touch(phase, (point.x / size.width).coerceIn(0f, 1f), (point.y / size.height).coerceIn(0f, 1f))
+    val updates = start(touch(ScreenTouchPhase.DOWN, down.position)) ?: return@awaitEachGesture
     down.consume()
-    while (true) {
-        val event = awaitPointerEvent()
-        val pointer = event.changes.firstOrNull { it.id == down.id } ?: break
-        if (pointer.isConsumed || event.changes.any { it.id != down.id && it.pressed }) break
-        val point = sample(pointer.position.x, pointer.position.y, pointer.uptimeMillis)
-        pointer.consume()
-        if (!pointer.pressed) {
-            points += point
-            submit(points)
-            break
+    var released = false
+    try {
+        while (true) {
+            val event = awaitPointerEvent()
+            val pointer = event.changes.firstOrNull { it.id == down.id } ?: break
+            if (pointer.isConsumed || event.changes.any { it.id != down.id && it.pressed }) break
+            pointer.consume()
+            if (!pointer.pressed) {
+                updates.trySend(touch(ScreenTouchPhase.UP, pointer.position))
+                released = true
+                break
+            }
+            if (pointer.position != pointer.previousPosition) {
+                updates.trySend(touch(ScreenTouchPhase.MOVE, pointer.position))
+            }
         }
-        if (points.size < 255 && point.elapsedMillis - points.last().elapsedMillis >= 20) points += point
+    } finally {
+        if (!released) updates.trySend(ManualScreenInput.CancelTouch)
+        updates.close()
     }
 }

@@ -62,6 +62,7 @@ public final class ScreenServer implements AutoCloseable {
                 }
                 try (Socket socket = accepted) {
                     client = socket;
+                    socket.setTcpNoDelay(true);
                     DataInputStream input = new DataInputStream(socket.getInputStream());
                     DataOutputStream output = new DataOutputStream(socket.getOutputStream());
                     long authDeadline = System.nanoTime() + 5_000_000_000L;

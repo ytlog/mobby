@@ -11,10 +11,11 @@ enum class ScreenMode {
 
 data class ScreenWorkflowPause(val completed: Int, val total: Int, val nextAction: String)
 
-data class ScreenTouch(val x: Float, val y: Float, val elapsedMillis: Long)
+enum class ScreenTouchPhase { DOWN, MOVE, UP }
 
 sealed interface ManualScreenInput {
-    data class Gesture(val points: List<ScreenTouch>) : ManualScreenInput
+    data class Touch(val phase: ScreenTouchPhase, val x: Float, val y: Float) : ManualScreenInput
+    data object CancelTouch : ManualScreenInput
     data class Text(val value: String) : ManualScreenInput
     data object Back : ManualScreenInput
 }

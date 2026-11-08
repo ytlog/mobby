@@ -12,6 +12,7 @@ import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.dp
 import com.github.ytlog.mobby.android.runtime.api.device.ManualScreenInput
 import com.github.ytlog.mobby.android.runtime.api.device.ScreenControlPort
+import com.github.ytlog.mobby.android.runtime.api.device.ScreenTouchPhase
 import java.lang.reflect.Proxy
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -124,19 +125,31 @@ class VirtualScreenPreviewCardTest {
         compose.setContent { MaterialTheme {
             ManualVirtualScreenDialog(controller, "handoff-fixture", bitmap, null, onMinimize = { minimized = true })
         } }
-        compose.onNodeWithContentDescription(UiStrings.virtualScreenPreview).performTouchInput {
-            swipe(centerLeft, centerRight, durationMillis = 400)
-        }
+        val screen = compose.onNodeWithContentDescription(UiStrings.virtualScreenPreview)
+        screen.performTouchInput { down(centerLeft) }
         compose.runOnIdle {
-            val (method, args) = calls.single()
-            assertEquals("manualInput", method)
-            assertEquals("handoff-fixture", args[0])
-            val gesture = args[1] as ManualScreenInput.Gesture
-            assertTrue(gesture.points.size > 2)
-            assertTrue(gesture.points.first().x < gesture.points.last().x)
+            assertEquals(ScreenTouchPhase.DOWN, (calls.single().second[1] as ManualScreenInput.Touch).phase)
         }
+        screen.performTouchInput { moveTo(centerRight, delayMillis = 400) }
+        compose.runOnIdle {
+            assertEquals(ScreenTouchPhase.MOVE, (calls.last().second[1] as ManualScreenInput.Touch).phase)
+        }
+        screen.performTouchInput { up() }
+        compose.runOnIdle {
+            val touches = calls.map { (method, args) ->
+                assertEquals("manualInput", method)
+                assertEquals("handoff-fixture", args[0])
+                args[1] as ManualScreenInput.Touch
+            }
+            assertEquals(listOf(ScreenTouchPhase.DOWN, ScreenTouchPhase.MOVE, ScreenTouchPhase.UP), touches.map { it.phase })
+            assertTrue(touches.first().x < touches.last().x)
+            assertEquals(touches[1].x, touches.last().x)
+        }
+        screen.performTouchInput { down(center) }
+        screen.performTouchInput { cancel() }
+        compose.runOnIdle { assertEquals(ManualScreenInput.CancelTouch, calls.last().second[1]) }
         compose.onNodeWithText(UiStrings.virtualScreenMinimizeManual).performClick()
-        compose.runOnIdle { assertTrue(minimized); assertEquals(1, calls.size) }
+        compose.runOnIdle { assertTrue(minimized); assertEquals(5, calls.size) }
         compose.onNodeWithText(UiStrings.virtualScreenHandBack).performClick()
         compose.runOnIdle { assertEquals("handBack" to listOf("handoff-fixture"), calls.last()) }
     }

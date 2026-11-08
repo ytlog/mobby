@@ -152,14 +152,18 @@ internal class VirtualScreenPreview(
                     try { controller.refreshPreview() }
                     catch (cancelled: CancellationException) { throw cancelled }
                     catch (_: Exception) { break }
-                    delay(700)
+                    delay(if (manualId != null) 65 else 700)
                 }
             }
         }
         val hasObservedApp = state.packageName.isNotBlank()
         val jpeg = state.jpeg.takeIf { manualId != null && !manualMinimized || manualId == null && expanded && hasObservedApp }
-        val bitmap = remember(jpeg) {
-            jpeg?.let { BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() }
+        val bitmap by key(state.displayId, manualId, manualMinimized) {
+            produceState<ImageBitmap?>(null, jpeg) {
+                value = jpeg?.let { bytes ->
+                    withContext(Dispatchers.Default) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
+                }
+            }
         }
         if (manualId != null) {
             if (manualMinimized) {
@@ -167,10 +171,10 @@ internal class VirtualScreenPreview(
                     TextButton(onClick = { manualMinimized = false }) { Text(UiStrings.virtualScreenResumeManual) }
                 }
             } else if (lifecycleState.isAtLeast(Lifecycle.State.RESUMED)) {
-                ManualVirtualScreenDialog(controller, manualId, bitmap, state.error, onMinimize = { manualMinimized = true })
+                ManualVirtualScreenDialog(controller, manualId, bitmap.takeIf { jpeg != null }, state.error, onMinimize = { manualMinimized = true })
             }
         } else {
-            VirtualScreenPreviewCard(bitmap, state.error ?: takeoverError, expanded, { expanded = !expanded }, modifier, hasObservedApp,
+            VirtualScreenPreviewCard(bitmap.takeIf { jpeg != null }, state.error ?: takeoverError, expanded, { expanded = !expanded }, modifier, hasObservedApp,
                 onTakeOver = if (inApp) ({
                     takeoverPending = true
                     takeoverError = null

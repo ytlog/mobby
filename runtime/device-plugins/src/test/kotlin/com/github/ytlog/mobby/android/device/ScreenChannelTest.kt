@@ -95,6 +95,32 @@ class ScreenChannelTest {
         }
     }
 
+    @Test fun `revoked ADB pairing blocks a drag even after the first touch was accepted`() {
+        withServer { endpoint, server ->
+            val worker = server.submit {
+                read()
+                write(JSONObject().put("ok", true).put("uid", 2000))
+                assertEquals("DOWN", read().getJSONObject("args").getString("phase"))
+                write(JSONObject().put("ok", true).put("displayId", 7))
+                assertEquals(-1, input!!.read())
+            }
+            var paired = true
+            ScreenChannel(endpoint, root = false, verifyAdbAuthorization = {
+                if (!paired) throw java.io.IOException("fixture ADB rejection")
+            }).use { channel ->
+                channel.request("manual_touch", mapOf("phase" to "DOWN", "x" to "0.2", "y" to "0.3"))
+                paired = false
+                for (phase in listOf("MOVE", "UP")) {
+                    val denied = assertThrows(DeviceFailure::class.java) {
+                        channel.request("manual_touch", mapOf("phase" to phase, "x" to "0.8", "y" to "0.3"))
+                    }
+                    assertEquals(DeviceErrorCode.ADB_AUTHORIZATION_REQUIRED, denied.error.code)
+                }
+            }
+            worker.get(2, TimeUnit.SECONDS)
+        }
+    }
+
     @Test fun `missing control reports an undispatched click and the same display remains usable`() {
         withServer { endpoint, server ->
             val worker = server.submit {

@@ -220,19 +220,42 @@ class ScreenControlDeviceTest {
                     val field = Regex("Input center: (\\d+),(\\d+)").find(afterPrivateInput.getString("text"))!!
                     val fieldX = field.groupValues[1].toFloat() / geometry.groupValues[3].toFloat()
                     val fieldY = field.groupValues[2].toFloat() / geometry.groupValues[4].toFloat()
-                    ScreenControl.manualInput(context, owner, ManualScreenInput.Gesture(listOf(
-                        ScreenTouch(fieldX, fieldY, 0), ScreenTouch(fieldX, fieldY, 80))))
+                    fun touch(phase: ScreenTouchPhase, x: Float, y: Float) =
+                        ScreenControl.manualInput(context, owner, ManualScreenInput.Touch(phase, x, y))
+                    touch(ScreenTouchPhase.DOWN, fieldX, fieldY)
+                    touch(ScreenTouchPhase.UP, fieldX, fieldY)
                     assertTrue("The fixture must relinquish focus before local text is submitted",
                         inputProbe(ScreenControlFixtureActivity.CLEAR_INPUT_FOCUS))
                     assertEquals("Probe input", ScreenControl.prepareManualText(context, owner))
                     ScreenControl.manualInput(context, owner, ManualScreenInput.Text(manualCode))
                     assertTrue("Manual text must reach the originally selected field",
                         inputProbe(ScreenControlFixtureActivity.CHECK_MANUAL_INPUT))
-                    ScreenControl.manualInput(context, owner, ManualScreenInput.Gesture(listOf(ScreenTouch(x, y, 0), ScreenTouch(x, y, 80))))
-                    ScreenControl.manualInput(context, owner, ManualScreenInput.Gesture(listOf(
-                        ScreenTouch(0.5f, 0.85f, 0), ScreenTouch(0.5f, 0.70f, 100),
-                        ScreenTouch(0.5f, 0.55f, 200), ScreenTouch(0.5f, 0.40f, 300),
-                    )))
+                    touch(ScreenTouchPhase.DOWN, x, y)
+                    touch(ScreenTouchPhase.UP, x, y)
+                    val track = Regex("Slider track: (\\d+),(\\d+),(\\d+)").find(afterPrivateInput.getString("text"))!!
+                    val (trackX, trackY, trackWidth) = track.groupValues.drop(1).map(String::toFloat)
+                    val sliderY = trackY / geometry.groupValues[4].toFloat()
+                    fun sliderX(progress: Int) = (trackX + trackWidth * progress / 100) / geometry.groupValues[3].toFloat()
+                    ScreenControl.refreshPreview()
+                    val beforeSliderFrame = checkNotNull(ScreenControl.state.value.jpeg)
+                    touch(ScreenTouchPhase.DOWN, sliderX(20), sliderY)
+                    touch(ScreenTouchPhase.MOVE, sliderX(65), sliderY)
+                    assertTrue("Slider must follow the finger before release",
+                        inputProbe(ScreenControlFixtureActivity.CHECK_MANUAL_SLIDER, "progress", 65))
+                    waitFor("A new preview must arrive while the slider is still held") {
+                        runBlocking { ScreenControl.refreshPreview() }
+                        ScreenControl.state.value.jpeg?.let { !it.contentEquals(beforeSliderFrame) } == true
+                    }
+                    touch(ScreenTouchPhase.UP, sliderX(72), sliderY)
+                    assertTrue("Slider must land on the release coordinate",
+                        inputProbe(ScreenControlFixtureActivity.CHECK_MANUAL_SLIDER, "progress", 72))
+                    val previousY = scrollPosition(afterPrivateInput.getString("text"))
+                    touch(ScreenTouchPhase.DOWN, 0.5f, 0.85f)
+                    touch(ScreenTouchPhase.MOVE, 0.5f, 0.70f)
+                    touch(ScreenTouchPhase.MOVE, 0.5f, 0.55f)
+                    assertTrue("The virtual screen must scroll while the finger is still down",
+                        inputProbe(ScreenControlFixtureActivity.CHECK_MANUAL_SCROLL, "previousY", previousY))
+                    touch(ScreenTouchPhase.UP, 0.5f, 0.40f)
                     ScreenControl.handBack(context, owner)
                     val handoffResult = handoff.get(10, java.util.concurrent.TimeUnit.SECONDS)
                     assertEquals("succeeded", handoffResult.optString("status"))
@@ -250,8 +273,10 @@ class ScreenControlDeviceTest {
                 perform("back")
                 session.awaitIdle { }
             }
-            assertFalse(ScreenControl.state.value.active)
-            assertNull(ScreenControl.state.value.displayId)
+            waitFor("The bridge must release its display after the session closes") {
+                val screen = ScreenControl.state.value
+                !screen.active && screen.displayId == null
+            }
         } finally {
             DeviceHost.conversationSelection = originalSelection
             DeviceHost.authorizeSelection = originalAuthorize
@@ -290,10 +315,12 @@ class ScreenControlDeviceTest {
             hasKeepScreen(it)
     }
 
-    private fun inputProbe(action: String): Boolean {
+    private fun inputProbe(action: String, key: String = "", value: Int = 0): Boolean {
         val response = java.util.concurrent.CompletableFuture<Boolean>()
         val context = instrumentation.context
-        context.sendOrderedBroadcast(Intent(action).setPackage(context.packageName), null, object : BroadcastReceiver() {
+        val probe = Intent(action).setPackage(context.packageName)
+        if (key.isNotEmpty()) probe.putExtra(key, value)
+        context.sendOrderedBroadcast(probe, null, object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
                 response.complete(resultCode == android.app.Activity.RESULT_OK)
             }
