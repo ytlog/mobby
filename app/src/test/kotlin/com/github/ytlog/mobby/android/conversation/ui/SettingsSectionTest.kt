@@ -4,10 +4,14 @@ import com.github.ytlog.mobby.android.conversation.domain.gateway.*
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextInput
 import androidx.lifecycle.ViewModelStore
 import com.github.ytlog.mobby.android.conversation.domain.*
 import kotlinx.coroutines.CoroutineScope
@@ -47,6 +51,15 @@ class SettingsSectionTest {
         compose.onNodeWithText("AI 服务设置").assertDoesNotExist()
         compose.onNodeWithText("Agent 与 AI 服务").performClick()
         assertEquals("connections", destination)
+    }
+
+    @Test fun `recreating shell diagnostics keeps its unsubmitted command`() {
+        val vm = viewModel()
+        val restoration = StateRestorationTester(compose)
+        restoration.setContent { MaterialTheme { DiagnosticPage(vm) {} } }
+        compose.onNode(hasSetTextAction()).performTextInput("echo draft")
+        restoration.emulateSavedInstanceStateRestore()
+        compose.onNode(hasSetTextAction()).assertTextContains("echo draft")
     }
 
     @Test fun `screen control shell diagnostic and environment check share the runtime section`() {

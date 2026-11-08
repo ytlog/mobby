@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.ytlog.mobby.android.MobbyApplication
 import com.github.ytlog.mobby.android.conversation.domain.Appearance
 import com.github.ytlog.mobby.android.runtime.api.device.ScreenControlPort
@@ -70,27 +71,26 @@ class ScreenControlSettingsActivity : ComponentActivity() {
     val scope = rememberCoroutineScope()
     val focus = androidx.compose.ui.platform.LocalFocusManager.current
     val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
-    var history by androidx.compose.runtime.saveable.rememberSaveable {
-        mutableStateOf(arrayListOf(ScreenSetupStep.MODE.name).apply { if (controller.state.value.adbPairing) add(ScreenSetupStep.PAIR.name) })
-    }
-    val step = ScreenSetupStep.valueOf(history.last())
     val sdk = statusOverride?.sdk ?: Build.VERSION.SDK_INT
-    var selectedMode by androidx.compose.runtime.saveable.rememberSaveable {
-        mutableStateOf(if (ScreenAccessRouting.recommendsAdb(state, sdk, conversationGrant)) ScreenMode.ADB else state.mode)
-    }
-    var family by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(DeviceSettingsFamily.detect()) }
+    val setup = viewModel<ScreenSetupViewModel>()
+    val initialMode = if (ScreenAccessRouting.recommendsAdb(state, sdk, conversationGrant)) ScreenMode.ADB else state.mode
+    val draft = setup.draft(initialMode, state.adbPairing)
+    var history by draft::history
+    val step = ScreenSetupStep.valueOf(history.last())
+    var selectedMode by draft::selectedMode
+    var family by draft::family
     var busy by remember { mutableStateOf(false) }
     var operation by remember { mutableStateOf<Job?>(null) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var connectionPort by remember { mutableStateOf("") }
-    var pendingCheck by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<ScreenSetupStep?>(null) }
-    var manualAdbSetup by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
-    var developerConfirmed by remember { mutableStateOf(false) }
-    var wirelessConfirmed by remember { mutableStateOf(false) }
-    var openWirelessOnArrival by remember { mutableStateOf(false) }
-    var forcePair by remember { mutableStateOf(false) }
-    var connectAfterPairing by remember { mutableStateOf(false) }
-    var pairingSuccessAtStart by remember { mutableLongStateOf(0) }
+    var error by draft::error
+    var connectionPort by draft::connectionPort
+    var pendingCheck by draft::pendingCheck
+    var manualAdbSetup by draft::manualAdbSetup
+    var developerConfirmed by draft::developerConfirmed
+    var wirelessConfirmed by draft::wirelessConfirmed
+    var openWirelessOnArrival by draft::openWirelessOnArrival
+    var forcePair by draft::forcePair
+    var connectAfterPairing by draft::connectAfterPairing
+    var pairingSuccessAtStart by draft::pairingSuccessAtStart
     var permissionRefresh by remember { mutableIntStateOf(0) }
     val status = statusOverride ?: rememberScreenSetupStatus(permissionRefresh, pairing = state.mode == ScreenMode.ADB)
     fun freshStatus() = statusOverride ?: ScreenSetupStatus.read(context, pairing = controller.state.value.mode == ScreenMode.ADB)
@@ -121,6 +121,10 @@ class ScreenControlSettingsActivity : ComponentActivity() {
             finally { busy = false }
         }
     }
+    fun leave(action: () -> Unit) {
+        setup.clear()
+        action()
+    }
     fun previous() {
         focus.clearFocus()
         keyboard?.hide()
@@ -136,7 +140,7 @@ class ScreenControlSettingsActivity : ComponentActivity() {
             if (step == ScreenSetupStep.PAIR) forcePair = false
         }
         error = null
-        if (history.size > 1) history = ArrayList(history.dropLast(1)) else onBack()
+        if (history.size > 1) history = ArrayList(history.dropLast(1)) else leave(onBack)
     }
     androidx.activity.compose.BackHandler { previous() }
     fun open(target: ScreenSettingsTarget, assistNavigation: Boolean = false, openPairing: Boolean = false) {
@@ -203,8 +207,8 @@ class ScreenControlSettingsActivity : ComponentActivity() {
             go(target)
         }
     }
-    LaunchedEffect(step, openWirelessOnArrival) {
-        if (step == ScreenSetupStep.WIRELESS && openWirelessOnArrival) {
+    LaunchedEffect(step, openWirelessOnArrival, status.resumed) {
+        if (step == ScreenSetupStep.WIRELESS && openWirelessOnArrival && status.resumed) {
             openWirelessOnArrival = false
             open(ScreenSettingsTarget.WIRELESS, assistNavigation = true)
         }
@@ -290,7 +294,7 @@ class ScreenControlSettingsActivity : ComponentActivity() {
                 controller.disconnect()
                 history = arrayListOf(ScreenSetupStep.MODE.name, ScreenSetupStep.CONNECT.name)
             }
-            step == ScreenSetupStep.COMPLETE -> if (ready) onFinished() else go(next(ScreenSetupStep.MODE))
+            step == ScreenSetupStep.COMPLETE -> if (ready) leave(onFinished) else go(next(ScreenSetupStep.MODE))
             complete -> go(next(ScreenSetupStep.MODE))
             step == ScreenSetupStep.NOTIFICATIONS -> notifications()
             step == ScreenSetupStep.ACCESSIBILITY -> open(ScreenSettingsTarget.ACCESSIBILITY)
@@ -312,8 +316,8 @@ class ScreenControlSettingsActivity : ComponentActivity() {
     val path = screenSetupPath(if (step == ScreenSetupStep.MODE) selectedMode else state.mode)
     val parentStep = history.asReversed().map(ScreenSetupStep::valueOf).first { !it.auxiliary }
     val stepNumber = path.indexOf(parentStep).coerceAtLeast(0) + 1
-    var furthestStep by androidx.compose.runtime.saveable.rememberSaveable(state.mode) { mutableIntStateOf(0) }
-    SideEffect { furthestStep = maxOf(furthestStep, stepNumber - 1) }
+    val furthestStep = draft.furthestStep(state.mode)
+    SideEffect { draft.recordStep(state.mode, stepNumber - 1) }
     val stepLabels = (if (embedded) setupAgentStepLabels() else emptyList()) + path.map(::screenStepLabel)
     fun completed(index: Int): Boolean {
         if (index < stepOffset) return isPrefixComplete(index)
@@ -334,7 +338,7 @@ class ScreenControlSettingsActivity : ComponentActivity() {
             error = error ?: state.error ?: if (state.active) AppStrings.screenModeBusy else null, steps = stepLabels,
             isStepComplete = ::completed, canSelectStep = ::canReview, selectStep = { index ->
                 if (canReview(index)) {
-                    if (index < stepOffset) selectPrefix(index) else go(path[index - stepOffset])
+                    if (index < stepOffset) leave { selectPrefix(index) } else go(path[index - stepOffset])
                 }
             }) {
             when (step) {
@@ -356,7 +360,7 @@ class ScreenControlSettingsActivity : ComponentActivity() {
                     Text(when (selectedMode) { ScreenMode.CURRENT -> AppStrings.currentScreenModeHelp; ScreenMode.ADB -> AppStrings.virtualScreenModeHelp; ScreenMode.ROOT -> AppStrings.screenRootGuide },
                         style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (selectedMode != ScreenMode.CURRENT && status.sdk < 33) Text(AppStrings.virtualScreenAndroidVersion, color = MaterialTheme.colorScheme.error)
-                    if (embedded) TextButton(onClick = onFinished, enabled = !state.active && !state.adbPairing) { Text(AppStrings.wizardSkipScreen) }
+                    if (embedded) TextButton(onClick = { leave(onFinished) }, enabled = !state.active && !state.adbPairing) { Text(AppStrings.wizardSkipScreen) }
                 }
                 ScreenSetupStep.DEVELOPER -> {
                     SettingsGroup(family.label()) {

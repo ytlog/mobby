@@ -48,13 +48,18 @@ internal fun gatewayBaseAddress(value: String): String = value.trim().trimEnd('/
     if (editing == null) GatewayList(visibleProfiles, notice, defaultGateway, state.selected?.conversation?.config, agents, back,
         select = vm::chooseGateway, open = { editing = it ?: "new"; notice = "" })
     else key(editing) {
-        GatewayForm(visibleProfiles, vm::enqueue, vm.actions::saveGateway, vm.actions::fetchGatewayModels, vm::refresh, { editing = null }, vm.actions::checkGateway,
-            editingId = editing.takeUnless { it == "new" } ?: "", delete = vm.actions::deleteGateway,
-            signIn = signIn,
-            onSaved = { message ->
-            notice = message
+        val id = editing.takeUnless { it == "new" } ?: ""
+        val draft = remember(vm, id) { vm.gatewayDraft(id) }
+        fun closeEditor() {
+            vm.clearGatewayDraft()
             editing = null
-        })
+        }
+        LaunchedEffect(draft.savedMessage) {
+            draft.savedMessage?.let { message -> notice = message; closeEditor() }
+        }
+        GatewayForm(visibleProfiles, vm::enqueue, vm.actions::saveGateway, vm.actions::fetchGatewayModels, vm::refresh, ::closeEditor, vm.actions::checkGateway,
+            editingId = id, delete = vm.actions::deleteGateway, signIn = signIn,
+            onSaved = { draft.savedMessage = it }, retainedDraft = draft)
     }
 }
 
@@ -205,6 +210,30 @@ internal fun gatewayLabel(profile: GatewayProfile): String {
     }
 }
 
+internal class GatewayFormDraft {
+    var initialized = false
+    var savedMessage by mutableStateOf<String?>(null)
+    var providerId by mutableStateOf<String?>(null)
+    var providerSite by mutableStateOf(GatewaySite.SHARED)
+    var baseEndpoint by mutableStateOf("")
+    var model by mutableStateOf("")
+    var key by mutableStateOf("")
+    var keyEdited by mutableStateOf(false)
+    var catalog by mutableStateOf<List<GatewayModel>?>(null)
+    var catalogError by mutableStateOf<String?>(null)
+    var manualId by mutableStateOf("")
+    var manualOpen by mutableStateOf(false)
+    var picking by mutableStateOf(false)
+    var pickToConnect by mutableStateOf(false)
+    var advanced by mutableStateOf(false)
+    var notice by mutableStateOf("")
+    var noticeError by mutableStateOf(false)
+    var connectionError by mutableStateOf(false)
+    var connectionNotice by mutableStateOf("")
+    var busy by mutableStateOf(false)
+    var connecting by mutableStateOf(false)
+}
+
 @Composable internal fun GatewayForm(profiles: List<GatewayProfile>, submit: (suspend () -> Unit) -> Unit,
     save: suspend (GatewayEdit) -> GatewaySaveResult,
     fetchModels: suspend (GatewayEdit) -> DataResult<GatewayCatalogResult>,
@@ -215,36 +244,40 @@ internal fun gatewayLabel(profile: GatewayProfile): String {
     onSaved: ((String) -> Unit)? = null,
     signIn: suspend () -> GatewaySignInResult = { GatewaySignInResult.Failed(AppStrings.gatewaySignInUnavailable) },
     openLink: ((String) -> Unit)? = null,
+    retainedDraft: GatewayFormDraft? = null,
 ) {
     val group = profiles.filter { it.id == editingId }
     val saved = group.firstOrNull()
     val uriHandler = LocalUriHandler.current
     val clipboard = LocalClipboardManager.current
-    var providerId by remember { mutableStateOf<String?>(null) }
-    var providerSite by remember { mutableStateOf(GatewaySite.SHARED) }
-    var baseEndpoint by remember { mutableStateOf("") }
-    var model by remember { mutableStateOf("") }
-    var key by remember { mutableStateOf("") }
-    var keyEdited by remember { mutableStateOf(false) }
-    var catalog by remember { mutableStateOf<List<GatewayModel>?>(null) }
-    var catalogError by remember { mutableStateOf<String?>(null) }
-    var manualId by remember { mutableStateOf("") }
-    var manualOpen by remember { mutableStateOf(false) }
-    var picking by remember { mutableStateOf(false) }
-    var pickToConnect by remember { mutableStateOf(false) }
-    var advanced by remember { mutableStateOf(false) }
-    var notice by remember { mutableStateOf("") }
-    var noticeError by remember { mutableStateOf(false) }
-    var connectionError by remember { mutableStateOf(false) }
-    var connectionNotice by remember { mutableStateOf("") }
-    var busy by remember { mutableStateOf(false) }
-    var connecting by remember { mutableStateOf(false) }
+    val draft = retainedDraft ?: remember(editingId) { GatewayFormDraft() }
+    var providerId by draft::providerId
+    var providerSite by draft::providerSite
+    var baseEndpoint by draft::baseEndpoint
+    var model by draft::model
+    var key by draft::key
+    var keyEdited by draft::keyEdited
+    var catalog by draft::catalog
+    var catalogError by draft::catalogError
+    var manualId by draft::manualId
+    var manualOpen by draft::manualOpen
+    var picking by draft::picking
+    var pickToConnect by draft::pickToConnect
+    var advanced by draft::advanced
+    var notice by draft::notice
+    var noticeError by draft::noticeError
+    var connectionError by draft::connectionError
+    var connectionNotice by draft::connectionNotice
+    var busy by draft::busy
+    var connecting by draft::connecting
     var checking by remember { mutableStateOf(false) }
     var signingIn by remember { mutableStateOf(false) }
     var signInJob by remember { mutableStateOf<Job?>(null) }
     var checkJob by remember { mutableStateOf<Job?>(null) }
     val checkScope = rememberCoroutineScope()
-    LaunchedEffect(editingId) {
+    LaunchedEffect(draft) {
+        if (draft.initialized) return@LaunchedEffect
+        draft.initialized = true
         val first = group.firstOrNull()
         val provider = GatewayProviders.matchGroup(group)
         providerId = if (first == null) null else provider?.id ?: GatewayProviders.CUSTOM

@@ -16,6 +16,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.test.*
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import com.github.ytlog.mobby.android.device.ScreenControl
 import com.github.ytlog.mobby.android.runtime.api.device.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -177,6 +178,21 @@ class ScreenControlSettingsTest {
         compose.runOnIdle { assertEquals(listOf("port:12345"), controller.events) }
         button("连接").performClick()
         compose.runOnIdle { assertEquals("12345", controller.port); assertEquals(1, controller.events.count { it == "connect" }) }
+    }
+    @Test fun `recreating the port page keeps the unsubmitted port without connecting`() {
+        val controller = TestController(ScreenControlState(mode = ScreenMode.ADB, adbPaired = true))
+        val restoration = StateRestorationTester(compose)
+        restoration.setContent { MaterialTheme {
+            ScreenControlSettings(controller, {}, statusOverride = ready)
+        } }
+        next()
+        button("手动填写连接端口").performClick()
+        compose.onNode(hasSetTextAction()).performTextInput("32123")
+        restoration.emulateSavedInstanceStateRestore()
+        compose.onNode(hasSetTextAction()).assertTextContains("32123")
+        compose.runOnIdle { assertTrue(controller.events.isEmpty()) }
+        next()
+        compose.runOnIdle { assertEquals(listOf("port:32123"), controller.events) }
     }
     @Test fun `tabs review completed steps without executing or skipping an incomplete connection`() {
         val controller = TestController(ScreenControlState(mode = ScreenMode.ADB, adbPaired = true))

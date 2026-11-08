@@ -482,7 +482,7 @@ internal fun modelMenuLabel(id: String, names: Map<String, String>): String {
 
 @Composable internal fun DiagnosticPage(vm: ConversationViewModel, back: () -> Unit) {
     val state by vm.diagnostic.collectAsStateWithLifecycle()
-    var command by remember { mutableStateOf("") }
+    var command by vm.diagnosticCommand
     Column(Modifier.fillMaxSize()) {
         PageHeader(AppStrings.shellDiagnostics, back)
         Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp).weight(1f), verticalArrangement = Arrangement.spacedBy(16.dp)) {

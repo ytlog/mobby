@@ -138,6 +138,10 @@ class ConversationHostActions(
     var navigation by rememberSaveable(stateSaver = AppNavigationState.Saver) {
         mutableStateOf(AppNavigationState(page = if (setupStep == SetupStep.DONE) AppPage.CONVERSATION else AppPage.SETUP))
     }
+    LaunchedEffect(navigation.page) {
+        if (navigation.page != AppPage.GATEWAY) vm.clearGatewayDraft()
+        if (navigation.page != AppPage.DIAGNOSTIC) vm.diagnosticCommand.value = ""
+    }
     var drawer by rememberSaveable { mutableStateOf(false) }
     var sidebarExpanded by rememberSaveable { mutableStateOf(true) }
     var conversationQuery by rememberSaveable { mutableStateOf("") }
@@ -221,16 +225,22 @@ class ConversationHostActions(
         navigation = navigation.open(if (connectionFromSetup) AppPage.SETUP else if (gatewayFromIntro) AppPage.CONVERSATION else AppPage.SETTINGS)
     }
     fun gatewayBack() {
+        vm.clearGatewayDraft()
         if (gatewayFromConnections) navigation = navigation.open(AppPage.CONNECTIONS)
         else if (connectionFromSetup) {
             if (gateways.isNotEmpty()) showSetup(SetupStep.SCREEN) else navigation = navigation.open(AppPage.SETUP)
         } else navigation = navigation.open(if (gatewayFromIntro) AppPage.CONVERSATION else AppPage.SETTINGS)
+    }
+    fun diagnosticBack() {
+        vm.diagnosticCommand.value = ""
+        navigation = navigation.open(AppPage.SETTINGS)
     }
     BackHandler(navigation.page != AppPage.CONVERSATION || navigation.addSheetOpen) {
         when {
             navigation.page == AppPage.SETUP -> previousSetup()
             navigation.page == AppPage.GATEWAY -> gatewayBack()
             navigation.page == AppPage.CONNECTIONS -> connectionsBack()
+            navigation.page == AppPage.DIAGNOSTIC -> diagnosticBack()
             else -> navigation = navigation.back(gatewayFromIntro)
         }
     }
@@ -365,7 +375,7 @@ class ConversationHostActions(
                             loginDismissed = if (connectionFromSetup) ::connectionsBack else null)
                         AppPage.GATEWAY -> GatewayPage(vm, startAdding = gatewayStartAdding, signIn = hostActions.gatewaySignIn, back = ::gatewayBack)
                         AppPage.HISTORY_LIMITS -> EventHistoryPage(actions::eventHistoryLimits, actions::saveEventHistoryLimits) { navigation = navigation.open(AppPage.SETTINGS) }
-                        AppPage.DIAGNOSTIC -> DiagnosticPage(vm) { navigation = navigation.open(AppPage.SETTINGS) }
+                        AppPage.DIAGNOSTIC -> DiagnosticPage(vm, ::diagnosticBack)
                         AppPage.LICENSES -> LicensePage { navigation = navigation.open(AppPage.SETTINGS) }
                         AppPage.UPDATES -> updates?.let { AppUpdatePage(it) { navigation = navigation.open(AppPage.SETTINGS) } }
                         // A launcher request starts the program page afresh even when it is already showing.

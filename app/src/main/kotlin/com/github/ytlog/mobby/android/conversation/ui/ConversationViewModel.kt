@@ -6,9 +6,11 @@ import com.github.ytlog.mobby.android.conversation.domain.gateway.*
 
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.github.ytlog.mobby.android.conversation.domain.*
+import com.github.ytlog.mobby.android.conversation.ui.gateway.GatewayFormDraft
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
@@ -34,6 +36,13 @@ internal class ConversationViewModel(val actions: ConversationUseCases) : ViewMo
     internal val floatingTimelineFollow = mutableMapOf<ConversationId, Boolean>()
     val status = actions.status.stateIn(viewModelScope, SharingStarted.Eagerly, SystemStatus())
     val diagnostic = actions.diagnostic.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DiagnosticOutput(null, emptyList()))
+    val diagnosticCommand = mutableStateOf("")
+    private var gatewayForm: Pair<String, GatewayFormDraft>? = null
+    fun gatewayDraft(id: String): GatewayFormDraft =
+        gatewayForm?.takeIf { it.first == id }?.second ?: GatewayFormDraft().also { gatewayForm = id to it }
+
+    fun clearGatewayDraft() { gatewayForm = null }
+
     val composer = MutableStateFlow(ComposerState())
     val screenReading = MutableStateFlow(false)
     val agents = MutableStateFlow<List<AgentOption>>(emptyList())

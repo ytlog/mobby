@@ -7,6 +7,9 @@ import com.github.ytlog.mobby.android.conversation.ui.*
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.StateRestorationTester
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.text.AnnotatedString
 import androidx.lifecycle.ViewModelStore
 import com.github.ytlog.mobby.android.conversation.domain.*
 import kotlinx.coroutines.*
@@ -31,7 +34,8 @@ class GatewayListTest {
 
     private fun page(profiles: List<GatewayProfile>, current: Conversation? = null, modelOptions: List<AgentOption> = emptyList(),
         configured: (NextTurnConfig) -> Unit = {}, selectedDefault: (GatewayProfile) -> Unit = {}, startAdding: Boolean = false,
-        defaultChoice: GatewayDefault? = GatewayDefault(AgentId.CODEX, profile.id, profile.version)): ConversationViewModel {
+        defaultChoice: GatewayDefault? = GatewayDefault(AgentId.CODEX, profile.id, profile.version),
+        restoration: StateRestorationTester? = null): ConversationViewModel {
         val state = MutableStateFlow(ConversationState(loading = false, selected = current?.let { ConversationDetail(it, emptyList()) }))
         val repository = stub<ConversationStore> { name, args -> when {
             name == "getState" -> state
@@ -56,7 +60,10 @@ class GatewayListTest {
         val actions = ConversationUseCases(repository, stub<ExecutionPort> { name, _ -> error(name) }, system, { "id" }, scope,
             stub<PreferencePort> { name, _ -> error(name) })
         val vm = ConversationViewModel(actions).also { store.put("vm", it) }
-        compose.setContent { MaterialTheme { GatewayPage(vm, startAdding = startAdding) {} } }
+        val content: @androidx.compose.runtime.Composable () -> Unit = {
+            MaterialTheme { GatewayPage(vm, startAdding = startAdding) {} }
+        }
+        if (restoration != null) restoration.setContent(content) else compose.setContent(content)
         return vm
     }
 
@@ -68,6 +75,21 @@ class GatewayListTest {
         compose.onNodeWithText("添加 AI 服务").assertExists()
         compose.onNodeWithText("免费体验").assertDoesNotExist()
         compose.onNodeWithText("还没有配置 AI 服务").assertDoesNotExist()
+    }
+
+    @Test fun `recreated gateway editor retains its draft until the user leaves the form`() {
+        val restoration = StateRestorationTester(compose)
+        page(emptyList(), startAdding = true, restoration = restoration)
+        fun chooseCustom() = compose.onNodeWithText("其他服务（填写地址）").performScrollTo().performClick()
+        val address = compose.onNode(hasSetTextAction() and hasText("服务地址"))
+        chooseCustom()
+        address.performTextReplacement("https://draft.invalid/v1")
+        restoration.emulateSavedInstanceStateRestore()
+        address.assertTextContains("https://draft.invalid/v1")
+        compose.onNodeWithContentDescription("返回").performClick()
+        compose.onNodeWithText("添加 AI 服务").performScrollTo().performClick()
+        chooseCustom()
+        address.assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("")))
     }
 
     @Test fun `first configured remote gateway becomes default and repairs empty selected conversation`() {
