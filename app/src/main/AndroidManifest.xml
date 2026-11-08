@@ -9,15 +9,19 @@
         <intent><action android:name="android.settings.ACCESSIBILITY_SETTINGS" /></intent>
     </queries>
     <application android:usesCleartextTraffic="true" android:name=".MobbyApplication" android:label="mobby" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:allowBackup="false" android:fullBackupContent="false" android:dataExtractionRules="@xml/data_extraction_rules" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:supportsRtl="true">
-        <activity android:name=".MainActivity" android:enableOnBackInvokedCallback="true" tools:targetApi="33" android:exported="true" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize">
+        <activity android:name=".MainActivity" android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
+            android:enableOnBackInvokedCallback="true" tools:targetApi="33" android:exported="true" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity>
         <activity android:name=".programcenter.ProgramShortcutActivity" android:exported="false" android:taskAffinity="" android:excludeFromRecents="true" android:noHistory="true" android:theme="@android:style/Theme.Translucent.NoTitleBar" />
-        <activity android:name=".programcenter.ProgramShareActivity" android:enabled="false" android:exported="true" android:taskAffinity="" android:excludeFromRecents="true" android:theme="@android:style/Theme.Translucent.NoTitleBar">
+        <activity android:name=".programcenter.ProgramShareActivity" android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
+            android:enabled="false" android:exported="true" android:taskAffinity="" android:excludeFromRecents="true" android:theme="@android:style/Theme.Translucent.NoTitleBar">
             <intent-filter><action android:name="android.intent.action.SEND" /><category android:name="android.intent.category.DEFAULT" /><data android:mimeType="text/plain" /></intent-filter>
         </activity>
-        <activity android:name=".programcenter.ProgramUiActivity" android:exported="false" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:windowSoftInputMode="adjustResize" />
-        <activity android:name=".conversation.ui.ScreenControlSettingsActivity" android:exported="false" android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+        <activity android:name=".programcenter.ProgramUiActivity" android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
+            android:exported="false" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".conversation.ui.ScreenControlSettingsActivity" android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
+            android:exported="false" android:theme="@android:style/Theme.Material.Light.NoActionBar" />
         <provider android:name=".UpdateFileProvider" android:authorities="${applicationId}.updates" android:exported="false" android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/update_file_paths" />
         </provider>
