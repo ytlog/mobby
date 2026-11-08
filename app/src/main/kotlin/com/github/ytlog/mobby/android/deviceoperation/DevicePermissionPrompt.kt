@@ -43,6 +43,7 @@ import com.github.ytlog.mobby.android.device.PrivateScreenInput
 import com.github.ytlog.mobby.android.deviceoperation.ui.DeviceLabels
 import com.github.ytlog.mobby.android.runtime.api.device.DeviceOperation
 import com.github.ytlog.mobby.android.runtime.api.device.DeviceOperationResponse
+import com.github.ytlog.mobby.android.runtime.api.device.ScreenMode
 import java.util.UUID
 
 /** The OS grant and the conversation grant are separate. Only the runtime can record the latter. */
@@ -128,20 +129,27 @@ internal fun ConversationDevicePermissionDialog(detail: ConversationDetail, vm: 
         val screen = ScreenUi.controller?.state?.collectAsStateWithLifecycle()?.value
         val recommendAdb = ref == ScreenAccessRouting.REF &&
             ScreenAccessRouting.recommendsAdb(screen)
+        val selectedAdbNeedsSetup = ref == ScreenAccessRouting.REF && ref in detail.conversation.draft.capabilities &&
+            screen?.mode == ScreenMode.ADB && !screen.connected
+        val backendAction = if (selectedAdbNeedsSetup) {
+            if (screen?.adbPaired == true) UiStrings.reconnectAdbScreen else UiStrings.reauthorizeAdb
+        } else null
         AlertDialog(
             onDismissRequest = { respond("cancel") },
-            title = { Text(DeviceLabels.text("允许使用「$capability」？", "Allow $capability?")) },
+            title = { Text(backendAction ?: DeviceLabels.text("允许使用「$capability」？", "Allow $capability?")) },
             text = {
-                val request = DeviceLabels.text(
+                val request = if (backendAction != null) UiStrings.screenSelectionNeedsAdb else DeviceLabels.text(
                     "这条会话请求执行「$action」。授权后可继续使用，点输入框上方标签的 × 可撤销。",
                     "This conversation requests $action. Allow access to continue. Remove its chip above the composer to revoke access.",
                 )
                 Text(if (recommendAdb) "$request\n\n${UiStrings.adbScreenRecommendation}" else request)
             },
             confirmButton = { TextButton(onClick = { respond("confirm") }) {
-                Text(if (recommendAdb) UiStrings.setUpRecommendedScreen else DeviceLabels.text("授权并继续", "Allow and continue"))
+                Text(backendAction ?: if (recommendAdb) UiStrings.setUpRecommendedScreen else DeviceLabels.text("授权并继续", "Allow and continue"))
             } },
-            dismissButton = { TextButton(onClick = { respond("cancel") }) { Text(DeviceLabels.text("拒绝", "Deny")) } },
+            dismissButton = { TextButton(onClick = { respond("cancel") }) {
+                Text(if (backendAction != null) UiStrings.cancel else DeviceLabels.text("拒绝", "Deny"))
+            } },
         )
     }
 }

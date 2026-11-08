@@ -10,11 +10,18 @@ internal class DeviceAuthorization(
     private val granted: (String) -> Boolean,
     private val remember: suspend (String) -> Unit,
     private val checkActive: () -> Unit,
+    private val restoreSelected: suspend (String) -> Unit = {},
 ) {
     suspend fun permits(ref: String) = ref in selected() && granted(ref)
 
     suspend fun require(ref: String, execution: DeviceExecution) {
-        if (permits(ref)) return
+        if (ref in selected()) {
+            if (granted(ref)) return
+            checkActive()
+            restoreSelected(ref)
+            checkActive()
+            if (permits(ref)) return
+        }
         val responses = ArrayBlockingQueue<String>(1)
         val promptId = java.util.UUID.randomUUID().toString()
         pending[promptId] = Pending(execution.operationId, responses)
@@ -28,7 +35,7 @@ internal class DeviceAuthorization(
                     "confirm" -> {
                         checkActive()
                         if (!granted(ref)) deviceFailure(DeviceErrorCode.PERMISSION_REVOKED)
-                        remember(ref)
+                        if (ref !in selected()) remember(ref)
                         if (!permits(ref)) deviceFailure(DeviceErrorCode.PERMISSION_REVOKED)
                         return
                     }

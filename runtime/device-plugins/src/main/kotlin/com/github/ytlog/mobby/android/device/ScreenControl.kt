@@ -114,13 +114,26 @@ object ScreenControl {
 
     suspend fun connect(context: Context) = connect(context, null, null)
 
+    internal suspend fun restoreSavedAdb(context: Context) {
+        if (android.provider.Settings.Global.getInt(context.contentResolver, "adb_wifi_enabled", -1) == 0) return
+        try {
+            connect(context, null, null, restoreSavedPairing = true)
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (_: IllegalStateException) {
+            // connect publishes the failure. Authorization rechecks the backend and can open the setup wizard.
+        }
+    }
+
     internal suspend fun connectAfterPairing(context: Context, pairingSuccess: Long, connectionPort: Int?) =
         connect(context, pairingSuccess, connectionPort)
 
-    private suspend fun connect(context: Context, pairingSuccess: Long?, connectionPort: Int?) = withContext(Dispatchers.IO) {
+    private suspend fun connect(context: Context, pairingSuccess: Long?, connectionPort: Int?, restoreSavedPairing: Boolean = false) = withContext(Dispatchers.IO) {
         val mode = synchronized(this@ScreenControl) {
+            val current = state.value
+            if (restoreSavedPairing && (current.mode != ScreenMode.ADB || !current.adbPaired || current.connected ||
+                    current.adbPairing || leases > 0 || connecting || Build.VERSION.SDK_INT < 33)) return@withContext
             if (pairingSuccess != null) {
-                val current = state.value
                 check(current.mode == ScreenMode.ADB && current.adbPairing &&
                     current.adbPairingSuccess == pairingSuccess) { AppStrings.screenModeBusy }
             }

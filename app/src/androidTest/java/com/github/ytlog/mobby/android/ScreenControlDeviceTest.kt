@@ -55,6 +55,10 @@ class ScreenControlDeviceTest {
         assertFalse("Unlock phone before screen acceptance", target.getSystemService(android.app.KeyguardManager::class.java).isKeyguardLocked)
         val previous = ScreenControl.state.value.mode
         val wasConnected = ScreenControl.state.value.connected
+        val originalSelection = DeviceHost.conversationSelection
+        val originalAuthorize = DeviceHost.authorizeSelection
+        val screenRef = "plugin:device:screen"
+        val selectedTurn = UUID.randomUUID().toString().takeIf { mode == ScreenMode.ADB }
         check(!ScreenControl.state.value.active) { "A screen task is already active" }
         val root = File(target.cacheDir, "screen-acceptance-${UUID.randomUUID()}").apply { mkdirs() }
         val context = object : ContextWrapper(target) {
@@ -67,12 +71,19 @@ class ScreenControlDeviceTest {
         val main = foregroundMobby()
         try {
             ScreenControl.select(context, mode)
-            if (mode != ScreenMode.CURRENT) {
-                if (mode == ScreenMode.ADB) ScreenControl.setAdbPort(context, InstrumentationRegistry.getArguments().getString("adbPort").orEmpty())
-                ScreenControl.connect(context)
+            if (selectedTurn != null) {
+                ScreenControl.setAdbPort(context, InstrumentationRegistry.getArguments().getString("adbPort").orEmpty())
+                assertTrue("The device must already be paired", ScreenControl.state.value.adbPaired)
+                assertFalse("Start with a selected screen capability and a disconnected backend", ScreenControl.state.value.connected)
+                DeviceHost.conversationSelection = { turn -> if (turn == selectedTurn) setOf(screenRef) else originalSelection?.invoke(turn) }
+                DeviceHost.authorizeSelection = { turn, ref ->
+                    check(turn != selectedTurn) { "The already selected screen capability must not be authorized again" }
+                    originalAuthorize?.invoke(turn, ref)
+                }
+            } else {
+                waitFor("existing accessibility service") { ScreenAccessService.connected() }
+                assertTrue("Screen permission and task notifications must already be enabled", DeviceHost.granted(context, screenRef))
             }
-            else waitFor("existing accessibility service") { ScreenAccessService.connected() }
-            assertTrue("Screen permission and task notifications must already be enabled", DeviceHost.granted(context, "plugin:device:screen"))
             fun register(file: File, type: String): String {
                 assertEquals("image/jpeg", type)
                 val image = BitmapFactory.decodeFile(file.absolutePath)
@@ -83,7 +94,8 @@ class ScreenControlDeviceTest {
             val work = File(root, "workspace").apply { mkdirs() }
             val journal = TestJournal()
             DeviceHost.start(context, root, File(root, "inbox").apply { mkdirs() }, work,
-                "/system/bin/false", setOf("plugin:device:screen"), journal, ::register, ::register, { error("No resource export requested") }).use { session ->
+                "/system/bin/false", setOf(screenRef), journal, ::register, ::register, { error("No resource export requested") },
+                conversationTurn = selectedTurn).use { session ->
                 val script = File(session.skills.single().parentFile, "scripts/device.cjs").readText()
                 val port = Regex("const PORT=(\\d+);").find(script)!!.groupValues[1].toInt()
                 val token = Regex("const TOKEN=\"([^\"]+)\";").find(script)!!.groupValues[1]
@@ -103,6 +115,10 @@ class ScreenControlDeviceTest {
                     return response.getJSONObject("result").getJSONObject("data")
                 }
                 val apps = perform("apps")
+                if (selectedTurn != null) {
+                    assertTrue("The first action must restore the saved ADB connection", ScreenControl.state.value.connected)
+                    assertFalse("The selected screen must not prompt for conversation authorization", journal.sawAuthorizationPrompt)
+                }
                 assertEquals(mode.name.lowercase(), apps.getString("backend"))
                 val display = apps.getInt("displayId")
                 assertEquals(mode == ScreenMode.CURRENT, display == 0)
@@ -237,6 +253,8 @@ class ScreenControlDeviceTest {
             assertFalse(ScreenControl.state.value.active)
             assertNull(ScreenControl.state.value.displayId)
         } finally {
+            DeviceHost.conversationSelection = originalSelection
+            DeviceHost.authorizeSelection = originalAuthorize
             if (!ScreenControl.state.value.active) {
                 ScreenControl.disconnect(); ScreenControl.select(context, previous)
                 if (wasConnected && previous != ScreenMode.CURRENT) ScreenControl.connect(context)
@@ -309,6 +327,8 @@ class ScreenControlDeviceTest {
     }
     private class TestJournal : DeviceOperationPort {
         private val records = java.util.concurrent.ConcurrentHashMap<String, DeviceOperation>()
+        @Volatile var sawAuthorizationPrompt = false
+            private set
         fun privateInput() = attention("screen.private_input")
         fun attention(reason: String) = records.values.firstOrNull { it.requiresAttention?.reasonCode == reason }
         override suspend fun admit(request: DeviceAdmission): AdmittedDevice {
@@ -318,7 +338,11 @@ class ScreenControlDeviceTest {
             records[request.requestId] = operation
             return AdmittedDevice(operation, true)
         }
-        override suspend fun update(operation: DeviceOperation): DeviceOperation { records[operation.requestId] = operation; return operation }
+        override suspend fun update(operation: DeviceOperation): DeviceOperation {
+            if (operation.requiresAttention?.reasonCode == "device.authorize") sawAuthorizationPrompt = true
+            records[operation.requestId] = operation
+            return operation
+        }
         override suspend fun find(requestId: String) = records[requestId]
     }
 }

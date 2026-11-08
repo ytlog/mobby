@@ -112,7 +112,10 @@ object DeviceHost {
                 val selected = checkNotNull(conversationSelection)
                 val authorize = checkNotNull(authorizeSelection)
                 DeviceAuthorization({ selected(turn).orEmpty() }, { granted(context, it) },
-                    { ref -> authorize(turn, ref) }, gate::checkActive)
+                    { ref -> authorize(turn, ref) }, gate::checkActive, restoreSelected = { ref ->
+                        if (ref == DeviceCatalog.actionRef("screen", "snapshot") && screenNotificationsEnabled(context))
+                            ScreenControl.restoreSavedAdb(context)
+                    })
             }
             val actions = DeviceActions(context, inbox, workspace, gate, DeviceResourceRegistrar(registerResource),
                 DeviceResourceRegistrar(registerCachedResource), {

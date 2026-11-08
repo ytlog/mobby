@@ -6,6 +6,49 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class DeviceAuthorizationTest {
+    @Test fun selectedScreenReusesSystemConnectionWithoutAskingAgain() = runBlocking {
+        val screen = DeviceCatalog.actionRef("screen", "snapshot")
+        var connected = false
+        var reconnects = 0
+        val authorization = DeviceAuthorization({ setOf(screen) }, { connected }, { error("Already selected") }, {},
+            restoreSelected = {
+                assertEquals(screen, it)
+                reconnects++
+                connected = true
+            })
+        val operation = DeviceExecution("op") { _, _, _ -> error("A selected screen should reconnect before showing a prompt") }
+        authorization.require(screen, operation)
+        authorization.require(screen, operation)
+        assertEquals(1, reconnects)
+    }
+
+    @Test fun unselectedScreenStillNeedsConversationApproval() = runBlocking {
+        val screen = DeviceCatalog.actionRef("screen", "snapshot")
+        val chips = mutableSetOf<String>()
+        val authorization = DeviceAuthorization({ chips.toSet() }, { true }, { chips += it }, {},
+            restoreSelected = { error("No reconnect before the user grants this conversation access") })
+        val operation = DeviceExecution("op") { _, _, attention ->
+            assertTrue(DeviceAuthorization.respond(DeviceOperationResponse("response", "run", "op",
+                requireNotNull(attention).promptId, 2, "confirm")))
+        }
+        authorization.require(screen, operation)
+        assertEquals(setOf(screen), chips)
+    }
+
+    @Test fun removingTheScreenChipDuringReconnectStillBlocksTheAction() = runBlocking {
+        val screen = DeviceCatalog.actionRef("screen", "snapshot")
+        val chips = mutableSetOf(screen)
+        var connected = false
+        val authorization = DeviceAuthorization({ chips.toSet() }, { connected }, { error("No approval granted") }, {},
+            restoreSelected = { chips.clear(); connected = true })
+        val operation = DeviceExecution("op") { _, _, attention ->
+            assertTrue(DeviceAuthorization.respond(DeviceOperationResponse("response", "run", "op",
+                requireNotNull(attention).promptId, 2, "cancel")))
+        }
+        val denied = runCatching { authorization.require(screen, operation) }.exceptionOrNull() as DeviceFailure
+        assertEquals(DeviceErrorCode.UNAUTHORIZED, denied.error.code)
+    }
+
     @Test fun removingAChipRequiresNewApprovalAndReadDoesNotAuthorizeWrite() = runBlocking {
         val read = DeviceCatalog.actionRef("contacts", "list")
         val write = DeviceCatalog.actionRef("contacts", "delete")

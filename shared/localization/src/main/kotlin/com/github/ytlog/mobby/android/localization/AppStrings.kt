@@ -180,6 +180,8 @@ open class StringCatalog(private val fixedLanguage: AppLanguage? = null) {
     val connectScreenBackend get() = text("请在屏幕操作模式中连接所选权限后端。", "Connect the selected backend in Screen control mode.")
     val screenBackendConnectionFailed get() = text("屏幕权限连接失败，请检查授权与后端运行状态。", "Screen backend connection failed. Check authorization and backend status.")
     val adbScreenWaitingForReconnect get() = text("ADB 副屏已断开。请在屏幕操作模式中重新连接。", "The ADB secondary display disconnected. Reconnect in Screen control mode.")
+    val reconnectAdbScreen get() = text("连接 ADB 副屏", "Connect ADB display")
+    val screenSelectionNeedsAdb get() = text("此对话已启用屏幕。完成 ADB 副屏设置后即可继续。", "Screen access is enabled for this conversation. Complete ADB display setup to continue.")
     val adbScreenAuthorizationRequired get() = text(
         "无法验证 ADB 授权，副屏已关闭。请在「屏幕操作模式」中重新配对并连接。",
         "ADB authorization could not be verified. The virtual display was closed. Pair again and connect in Screen control mode.")
