@@ -28,7 +28,7 @@ import com.github.ytlog.mobby.android.conversation.ui.ScreenAccessRouting
     val respond: ((String) -> Unit)? = execution?.takeIf { turn.occupied }?.let { id ->
         { response ->
             val prompt = operation.requiresAttention
-            if (prompt?.reasonCode == "screen.private_input") {
+            if (prompt != null && prompt.reasonCode in setOf("screen.private_input", "screen.handoff")) {
                 if (response == "cancel")
                     com.github.ytlog.mobby.android.device.PrivateScreenInput.submit(operation.operationId, prompt.promptId, null)
             } else vm.respondToOperation(id, operation, response)

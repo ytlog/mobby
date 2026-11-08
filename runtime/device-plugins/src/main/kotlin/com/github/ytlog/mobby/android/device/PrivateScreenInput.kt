@@ -6,16 +6,20 @@ import java.util.UUID
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
-/** Values travel from the local form to the waiting worker in memory. */
+/** Screen prompts are answered locally. Field values only travel in memory. */
 object PrivateScreenInput {
-    private sealed interface Answer {
+    internal sealed interface Answer {
         data class Value(val fields: List<String>) : Answer
+        data object TakeOver : Answer
         data object Cancel : Answer
     }
 
     private class Prompt(val operationId: String, val labels: List<String>) {
         val answer = ArrayBlockingQueue<Answer>(1)
+        private val answered = AtomicBoolean()
+        fun respond(value: Answer): Boolean = answered.compareAndSet(false, true) && answer.offer(value)
     }
     private val pending = ConcurrentHashMap<String, Prompt>()
 
@@ -26,22 +30,25 @@ object PrivateScreenInput {
         val prompt = pending[promptId]?.takeIf { it.operationId == operationId } ?: return false
         if (values != null && (values.size != prompt.labels.size || values.all(String::isEmpty) ||
                 values.any { it.length > 2000 || '\u0000' in it })) return false
-        return prompt.answer.offer(if (values == null) Answer.Cancel else Answer.Value(values.toList()))
+        return prompt.respond(if (values == null) Answer.Cancel else Answer.Value(values.toList()))
     }
 
-    internal fun await(execution: DeviceExecution, labels: List<String>, checkActive: () -> Unit): List<String> {
+    fun chooseTakeOver(operationId: String, promptId: String): Boolean =
+        pending[promptId]?.takeIf { it.operationId == operationId }?.respond(Answer.TakeOver) == true
+
+    internal fun await(execution: DeviceExecution, labels: List<String>, checkActive: () -> Unit): Answer {
         val id = UUID.randomUUID().toString()
         val prompt = Prompt(execution.operationId, labels.toList())
         pending[id] = prompt
         try {
             val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(90)
-            execution.waiting("screen.private_input", id)
+            execution.waiting(if (labels.isEmpty()) "screen.handoff" else "screen.private_input", id)
             while (System.nanoTime() < deadline) {
                 checkActive()
                 when (val answer = prompt.answer.poll(100, TimeUnit.MILLISECONDS)) {
-                    is Answer.Value -> return answer.fields
                     Answer.Cancel -> deviceFailure(DeviceErrorCode.CANCELLED)
                     null -> Unit
+                    else -> return answer
                 }
             }
             deviceFailure(DeviceErrorCode.TIMEOUT)

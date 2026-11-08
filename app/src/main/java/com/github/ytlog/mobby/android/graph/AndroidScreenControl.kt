@@ -2,6 +2,7 @@ package com.github.ytlog.mobby.android.graph
 
 import android.content.Context
 import com.github.ytlog.mobby.android.device.ScreenControl
+import com.github.ytlog.mobby.android.runtime.api.device.ManualScreenInput
 import com.github.ytlog.mobby.android.runtime.api.device.ScreenControlPort
 import com.github.ytlog.mobby.android.runtime.api.device.ScreenMode
 import kotlinx.coroutines.Dispatchers
@@ -19,4 +20,8 @@ class AndroidScreenControl(context: Context) : ScreenControlPort {
     override fun startAdbPairing(returnToActivity: String?) = ScreenControl.startAdbPairing(context, returnToActivity)
     override fun cancelAdbPairing() = ScreenControl.cancelAdbPairing(context)
     override suspend fun refreshPreview() = ScreenControl.refreshPreview()
+    override suspend fun takeOver() = withContext(Dispatchers.IO) { ScreenControl.takeOver(context) }
+    override suspend fun manualInput(id: String, input: ManualScreenInput) =
+        withContext(Dispatchers.IO) { ScreenControl.manualInput(context, id, input) }
+    override suspend fun handBack(id: String) = withContext(Dispatchers.IO) { ScreenControl.handBack(context, id) }
 }

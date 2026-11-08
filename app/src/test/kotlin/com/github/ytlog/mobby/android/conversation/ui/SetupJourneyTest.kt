@@ -34,6 +34,9 @@ class SetupJourneyTest {
             override fun startAdbPairing(returnToActivity: String?) = Unit
             override fun cancelAdbPairing() = Unit
             override suspend fun refreshPreview() = Unit
+            override suspend fun takeOver(): String = error("No virtual display in the setup fixture")
+            override suspend fun manualInput(id: String, input: com.github.ytlog.mobby.android.runtime.api.device.ManualScreenInput) = Unit
+            override suspend fun handBack(id: String) = Unit
         }
     }
     @After fun close() { scope.cancel(); ScreenUi.controller = null }

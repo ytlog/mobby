@@ -10,6 +10,9 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.dp
+import com.github.ytlog.mobby.android.runtime.api.device.ManualScreenInput
+import com.github.ytlog.mobby.android.runtime.api.device.ScreenControlPort
+import java.lang.reflect.Proxy
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -74,6 +77,35 @@ class VirtualScreenPreviewCardTest {
         val frame = compose.onNodeWithContentDescription(UiStrings.virtualScreenPreview).assertIsDisplayed().getBoundsInRoot()
         assertEquals(72f / 128f, frame.ratio, 0.02f)
         compose.onNodeWithContentDescription(UiStrings.hideVirtualScreen).assertIsDisplayed()
+    }
+
+    @Test fun manualDialogSendsAStrokeToItsDisplayAndMinimizingDoesNotReturnControl() {
+        val calls = mutableListOf<Pair<String, List<Any?>>>()
+        val controller = Proxy.newProxyInstance(ScreenControlPort::class.java.classLoader,
+            arrayOf(ScreenControlPort::class.java)) { _, method, arguments ->
+            calls += method.name to arguments.orEmpty().dropLast(1)
+            Unit
+        } as ScreenControlPort
+        var minimized = false
+        val bitmap = ImageBitmap(72, 128)
+        compose.setContent { MaterialTheme {
+            ManualVirtualScreenDialog(controller, "handoff-fixture", bitmap, null, onMinimize = { minimized = true })
+        } }
+        compose.onNodeWithContentDescription(UiStrings.virtualScreenPreview).performTouchInput {
+            swipe(centerLeft, centerRight, durationMillis = 400)
+        }
+        compose.runOnIdle {
+            val (method, args) = calls.single()
+            assertEquals("manualInput", method)
+            assertEquals("handoff-fixture", args[0])
+            val gesture = args[1] as ManualScreenInput.Gesture
+            assertTrue(gesture.points.size > 2)
+            assertTrue(gesture.points.first().x < gesture.points.last().x)
+        }
+        compose.onNodeWithText(UiStrings.virtualScreenMinimizeManual).performClick()
+        compose.runOnIdle { assertTrue(minimized); assertEquals(1, calls.size) }
+        compose.onNodeWithText(UiStrings.virtualScreenHandBack).performClick()
+        compose.runOnIdle { assertEquals("handBack" to listOf("handoff-fixture"), calls.last()) }
     }
 
     private val DpRect.ratio get() = (right - left).value / (bottom - top).value

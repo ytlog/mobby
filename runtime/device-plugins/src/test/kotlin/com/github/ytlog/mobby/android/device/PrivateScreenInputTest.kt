@@ -7,6 +7,15 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class PrivateScreenInputTest {
+    @Test fun `the user can choose takeover instead of submitting the private form`() {
+        val execution = DeviceExecution("operation") { _, _, attention ->
+            val prompt = requireNotNull(attention).promptId
+            assertTrue(PrivateScreenInput.chooseTakeOver("operation", prompt))
+            assertFalse(PrivateScreenInput.submit("operation", prompt, listOf("fixture")))
+        }
+        assertEquals(PrivateScreenInput.Answer.TakeOver, PrivateScreenInput.await(execution, listOf("Code")) {})
+    }
+
     @Test fun `a local response only reaches its matching live field request`() {
         val fixture = listOf("test account", "test credential")
         var promptId = ""
@@ -20,7 +29,7 @@ class PrivateScreenInputTest {
             assertTrue(PrivateScreenInput.submit("operation", promptId, fixture))
             assertFalse(PrivateScreenInput.submit("operation", promptId, fixture))
         }
-        assertEquals(fixture, PrivateScreenInput.await(execution, listOf("Account", "Password")) {})
+        assertEquals(PrivateScreenInput.Answer.Value(fixture), PrivateScreenInput.await(execution, listOf("Account", "Password")) {})
         assertFalse(PrivateScreenInput.submit("operation", promptId, fixture))
     }
 

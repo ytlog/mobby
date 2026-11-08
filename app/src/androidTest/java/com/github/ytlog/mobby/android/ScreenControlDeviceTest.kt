@@ -190,6 +190,29 @@ class ScreenControlDeviceTest {
                     assertFalse(afterPrivateInput.toString().contains(fixture))
                     assertFalse(afterPrivateInput.toString().contains("probe-code-fixture"))
                     assertEquals("private_input", afterPrivateInput.optString("screenshotStatus"))
+
+                    val handoff = java.util.concurrent.CompletableFuture.supplyAsync { request("request_handoff") }
+                    waitFor("Manual control prompt must appear") { journal.attention("screen.handoff") != null || handoff.isDone }
+                    val handoffPrompt = checkNotNull(journal.attention("screen.handoff"))
+                    assertTrue(com.github.ytlog.mobby.android.device.PrivateScreenInput.chooseTakeOver(
+                        handoffPrompt.operationId, requireNotNull(handoffPrompt.requiresAttention).promptId))
+                    waitFor("User must own the same display") { ScreenControl.state.value.manualControlId != null }
+                    val owner = checkNotNull(ScreenControl.state.value.manualControlId)
+                    assertEquals(display, ScreenControl.state.value.displayId)
+                    val manualCode = "mobby-manual-code-fixture"
+                    ScreenControl.manualInput(context, owner, ManualScreenInput.Text(manualCode))
+                    ScreenControl.manualInput(context, owner, ManualScreenInput.Gesture(listOf(ScreenTouch(x, y, 0), ScreenTouch(x, y, 80))))
+                    ScreenControl.handBack(context, owner)
+                    val handoffResult = handoff.get(10, java.util.concurrent.TimeUnit.SECONDS)
+                    assertEquals("succeeded", handoffResult.optString("status"))
+                    assertFalse(handoffResult.toString().contains(manualCode))
+                    val staleTap = request("tap", mapOf("x" to x.toString(), "y" to y.toString()))
+                    assertEquals("failed", staleTap.optString("status"))
+                    assertEquals("UNAVAILABLE", staleTap.getJSONObject("error").optString("code"))
+                    val afterHandoff = perform("snapshot")
+                    assertTrue(afterHandoff.getString("text").contains("Count: 3"))
+                    assertFalse(afterHandoff.toString().contains(manualCode))
+                    assertEquals("private_input", afterHandoff.optString("screenshotStatus"))
                 }
                 perform("back")
                 session.awaitIdle { }
@@ -258,7 +281,8 @@ class ScreenControlDeviceTest {
     }
     private class TestJournal : DeviceOperationPort {
         private val records = java.util.concurrent.ConcurrentHashMap<String, DeviceOperation>()
-        fun privateInput() = records.values.firstOrNull { it.requiresAttention?.reasonCode == "screen.private_input" }
+        fun privateInput() = attention("screen.private_input")
+        fun attention(reason: String) = records.values.firstOrNull { it.requiresAttention?.reasonCode == reason }
         override suspend fun admit(request: DeviceAdmission): AdmittedDevice {
             records[request.requestId]?.let { return AdmittedDevice(it, false) }
             val operation = DeviceOperation("op-${request.requestId}", request.requestId, 1, request.plugin, request.action,

@@ -481,5 +481,8 @@ class ScreenControlSettingsTest {
         override fun startAdbPairing(returnToActivity: String?) { events += "start-pairing"; state.value = state.value.copy(adbPairing = true, error = null) }
         override fun cancelAdbPairing() { events += "cancel-pairing"; state.value = state.value.copy(adbPairing = false) }
         override suspend fun refreshPreview() = Unit
+        override suspend fun takeOver(): String = error("No virtual display in the settings fixture")
+        override suspend fun manualInput(id: String, input: ManualScreenInput) = Unit
+        override suspend fun handBack(id: String) = Unit
     }
 }

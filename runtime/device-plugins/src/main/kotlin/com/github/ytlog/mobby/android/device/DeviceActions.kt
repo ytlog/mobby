@@ -43,10 +43,11 @@ internal class DeviceActions(private val context: Context, private val inbox: Fi
         val ref = DeviceCatalog.actionRef(plugin, action)
         if (!DeviceHost.granted(context, ref)) deviceFailure(DeviceErrorCode.PERMISSION_REVOKED)
         return when (plugin) {
-            "screen" -> if (action == "request_input") {
+            "screen" -> if (action == "request_input" || action == "request_handoff") {
                 if (screenSession() == null) deviceFailure(DeviceErrorCode.UNSUPPORTED_CAPABILITY)
-                ScreenControl.privateInput(context, args["label"], execution, gate::checkActive)
-                deviceText("The user filled the requested fields.", EffectState.CONFIRMED)
+                val tookOver = ScreenControl.requestUserInput(context, args["label"], action == "request_handoff", execution, gate::checkActive)
+                if (tookOver) deviceText("The user returned control. Take a fresh snapshot before your next action.", EffectState.NONE)
+                else deviceText("The user filled the requested fields.", EffectState.CONFIRMED)
             } else screen(action, args)
             "sms" -> sms(action, args)
             "contacts" -> contacts(action, args)

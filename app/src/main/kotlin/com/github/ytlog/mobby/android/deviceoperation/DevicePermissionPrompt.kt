@@ -14,6 +14,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -110,7 +111,7 @@ internal fun ConversationViewModel.respondToOperation(execution: ExecutionId, op
 internal fun ConversationDevicePermissionDialog(detail: ConversationDetail, vm: ConversationViewModel) {
     val turn = detail.turns.lastOrNull { it.occupied } ?: return
     val privateInput = turn.deviceOperations.firstOrNull {
-        it.operation.requiresAttention?.reasonCode == "screen.private_input"
+        it.operation.requiresAttention?.reasonCode in setOf("screen.private_input", "screen.handoff")
     }?.operation
     if (privateInput != null) {
         key(privateInput.operationId) { PrivateScreenInputDialog(privateInput) }
@@ -152,6 +153,16 @@ private fun PrivateScreenInputDialog(operation: DeviceOperation) {
     val labels = remember(prompt.promptId) { PrivateScreenInput.labels(operation.operationId, prompt.promptId) } ?: return
     val values = remember(prompt.promptId) { mutableStateListOf<String>().apply { addAll(List(labels.size) { "" }) } }
     var submitted by remember(prompt.promptId) { mutableStateOf(false) }
+    var takingOver by rememberSaveable(prompt.promptId) { mutableStateOf(false) }
+    val screen = ScreenUi.controller?.state?.collectAsStateWithLifecycle()?.value
+    if (takingOver || screen?.manualControlId != null) return
+    val handoffOnly = labels.isEmpty()
+    fun takeOver() {
+        if (submitted || !PrivateScreenInput.chooseTakeOver(operation.operationId, prompt.promptId)) return
+        values.indices.forEach { values[it] = "" }
+        submitted = true
+        takingOver = true
+    }
     fun respond(text: List<String>?) {
         if (submitted) return
         submitted = PrivateScreenInput.submit(operation.operationId, prompt.promptId, text)
@@ -160,10 +171,11 @@ private fun PrivateScreenInputDialog(operation: DeviceOperation) {
     AlertDialog(
         onDismissRequest = { respond(null) },
         properties = DialogProperties(securePolicy = SecureFlagPolicy.SecureOn),
-        title = { Text(DeviceLabels.text("请填写副屏字段", "Fill the field on the secondary display")) },
+        title = { Text(if (handoffOnly) UiStrings.virtualScreenTakeOver else DeviceLabels.text("请填写副屏字段", "Fill the field on the secondary display")) },
         text = {
             Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (handoffOnly) Text(UiStrings.virtualScreenHandoffPrompt)
                 labels.forEachIndexed { index, label ->
                     OutlinedTextField(
                         value = values[index],
@@ -176,10 +188,15 @@ private fun PrivateScreenInputDialog(operation: DeviceOperation) {
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     )
                 }
+                if (!handoffOnly) OutlinedButton(onClick = ::takeOver, enabled = !submitted && screen?.active == true) {
+                    Text(UiStrings.virtualScreenTakeOver)
+                }
             }
         },
         confirmButton = {
-            TextButton(onClick = { respond(values.toList()) }, enabled = !submitted && values.any(String::isNotEmpty)) {
+            if (handoffOnly) TextButton(onClick = ::takeOver, enabled = !submitted && screen?.active == true) {
+                Text(UiStrings.virtualScreenTakeOver)
+            } else TextButton(onClick = { respond(values.toList()) }, enabled = !submitted && values.any(String::isNotEmpty)) {
                 Text(DeviceLabels.text("填入副屏", "Fill field"))
             }
         },

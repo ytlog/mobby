@@ -17,6 +17,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -49,7 +50,7 @@ private const val PreviewWidth = 184
 internal fun VirtualScreenPreviewLayer() {
     val preview = (LocalContext.current.applicationContext as? MobbyApplication)?.screenPreview ?: return
     Box(Modifier.fillMaxSize().safeDrawingPadding().padding(top = 56.dp, end = 12.dp)) {
-        preview.Preview(Modifier.align(Alignment.TopEnd).width(PreviewWidth.dp))
+        preview.Preview(Modifier.align(Alignment.TopEnd).width(PreviewWidth.dp), inApp = true)
     }
 }
 
@@ -71,7 +72,7 @@ internal class VirtualScreenPreview(
             AppOpsManager.OPSTR_SYSTEM_ALERT_WINDOW, app.packageName,
         ) { _, _ -> scope.launch { refreshWindow() } }
         scope.launch {
-            controller.state.map { it.active }.distinctUntilChanged().collect { active ->
+            controller.state.map { it.active to it.manualControlId }.distinctUntilChanged().collect { (active, _) ->
                 if (!active) expanded = true
                 refreshWindow()
             }
@@ -79,7 +80,8 @@ internal class VirtualScreenPreview(
     }
 
     fun refreshWindow() {
-        if (activities.isNotEmpty() || !controller.state.value.active || !Settings.canDrawOverlays(app)) {
+        val state = controller.state.value
+        if (activities.isNotEmpty() || !state.active || state.manualControlId != null || !Settings.canDrawOverlays(app)) {
             if (overlay != null) {
                 window.detach()
                 owner.registry.currentState = Lifecycle.State.CREATED
@@ -123,11 +125,18 @@ internal class VirtualScreenPreview(
     }
 
     @Composable
-    fun Preview(modifier: Modifier) {
+    fun Preview(modifier: Modifier, inApp: Boolean = false) {
         val state by controller.state.collectAsStateWithLifecycle()
         if (!state.active) return
+        val manualId = state.manualControlId
+        if (manualId != null && !inApp) return
+        val scope = rememberCoroutineScope()
+        var takeoverPending by remember { mutableStateOf(false) }
+        var takeoverError by remember(state.displayId) { mutableStateOf<String?>(null) }
+        var manualMinimized by rememberSaveable(manualId) { mutableStateOf(false) }
         val view = LocalView.current
         val lifecycle = LocalLifecycleOwner.current.lifecycle
+        val lifecycleState by lifecycle.currentStateFlow.collectAsState()
         LaunchedEffect(view, lifecycle) {
             lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 val previous = view.keepScreenOn
@@ -135,8 +144,8 @@ internal class VirtualScreenPreview(
                 try { awaitCancellation() } finally { view.keepScreenOn = previous }
             }
         }
-        LaunchedEffect(state.displayId, expanded, lifecycle) {
-            if (expanded) lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+        LaunchedEffect(state.displayId, expanded, manualId, manualMinimized, lifecycle) {
+            if (manualId != null && !manualMinimized || manualId == null && expanded) lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
                 while (isActive) {
                     try { controller.refreshPreview() }
                     catch (cancelled: CancellationException) { throw cancelled }
@@ -146,11 +155,31 @@ internal class VirtualScreenPreview(
             }
         }
         val hasObservedApp = state.packageName.isNotBlank()
-        val jpeg = state.jpeg.takeIf { expanded && hasObservedApp }
+        val jpeg = state.jpeg.takeIf { manualId != null && !manualMinimized || manualId == null && expanded && hasObservedApp }
         val bitmap = remember(jpeg) {
             jpeg?.let { BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() }
         }
-        VirtualScreenPreviewCard(bitmap, state.error, expanded, { expanded = !expanded }, modifier, hasObservedApp)
+        if (manualId != null) {
+            if (manualMinimized) {
+                Surface(modifier, shape = RoundedCornerShape(16.dp), color = conversationCanvas()) {
+                    TextButton(onClick = { manualMinimized = false }) { Text(UiStrings.virtualScreenResumeManual) }
+                }
+            } else if (lifecycleState.isAtLeast(Lifecycle.State.RESUMED)) {
+                ManualVirtualScreenDialog(controller, manualId, bitmap, state.error, onMinimize = { manualMinimized = true })
+            }
+        } else {
+            VirtualScreenPreviewCard(bitmap, state.error ?: takeoverError, expanded, { expanded = !expanded }, modifier, hasObservedApp,
+                onTakeOver = if (inApp && !takeoverPending) ({
+                    takeoverPending = true
+                    takeoverError = null
+                    scope.launch {
+                        try { controller.takeOver() }
+                        catch (cancelled: CancellationException) { throw cancelled }
+                        catch (failure: Exception) { takeoverError = failure.message ?: UiStrings.virtualScreenOperationFailed }
+                        finally { takeoverPending = false }
+                    }
+                }) else null)
+        }
     }
 
     override fun onActivityStarted(activity: Activity) { activities.add(activity); refreshWindow() }
@@ -170,6 +199,7 @@ internal fun VirtualScreenPreviewCard(
     onToggle: () -> Unit,
     modifier: Modifier = Modifier,
     hasObservedApp: Boolean = true,
+    onTakeOver: (() -> Unit)? = null,
 ) {
     val colors = MaterialTheme.colorScheme
     Surface(
@@ -230,6 +260,11 @@ internal fun VirtualScreenPreviewCard(
                                 }
                             }
                         }
+                    }
+                }
+                onTakeOver?.let {
+                    TextButton(onClick = it, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+                        Text(UiStrings.virtualScreenTakeOver)
                     }
                 }
             }

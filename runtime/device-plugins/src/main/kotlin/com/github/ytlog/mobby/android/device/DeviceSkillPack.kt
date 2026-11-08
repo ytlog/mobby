@@ -15,7 +15,8 @@ object DeviceSkillPack {
             helper.writeText(script(port, token, spec.id))
             val skill = File(dir, "SKILL.md")
             val commands = spec.commands.filter {
-                it.action in actions && (it.action != "request_input" || screenMode != ScreenMode.CURRENT)
+                it.action in actions && (it.action !in setOf("request_input", "request_handoff") ||
+                    screenMode != ScreenMode.CURRENT || needsAuthorization)
             }
             val markdown = buildString {
                 append("---\nname: ${spec.skillName}\ndescription: ${yaml(spec.description)}\n---\n\n")

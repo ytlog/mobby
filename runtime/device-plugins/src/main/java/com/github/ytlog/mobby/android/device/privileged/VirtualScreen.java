@@ -46,6 +46,8 @@ final class VirtualScreen implements AutoCloseable {
     private ImageReader reader;
     private volatile byte[] jpeg;
     private volatile long frameAt;
+    private final Object frameLock = new Object();
+    private boolean manualControl;
     private volatile boolean closed;
     private int displayId = -1;
     private Context context;
@@ -110,6 +112,29 @@ final class VirtualScreen implements AutoCloseable {
         return call(() -> {
             if (display == null || displayId <= 0 || !display.getDisplay().isValid()) throw new IllegalStateException("invalid_display");
             if ("frame".equals(action)) return screenshot(metadata(new JSONObject()));
+            if ("manual_begin".equals(action)) {
+                clearPrivateInputTarget();
+                manualControl = true;
+                return metadata(new JSONObject());
+            }
+            if ("manual_end".equals(action)) {
+                if (!manualControl) throw new IllegalStateException("manual_control_inactive");
+                clearPrivateInputTarget();
+                synchronized (frameLock) {
+                    try (Image discarded = reader.acquireLatestImage()) { }
+                    jpeg = null;
+                    frameAt = 0;
+                }
+                manualControl = false;
+                return metadata(new JSONObject());
+            }
+            if ("manual_gesture".equals(action)) {
+                if (!manualControl) throw new IllegalStateException("manual_control_inactive");
+                manualGesture(args.getJSONArray("points"));
+                return metadata(new JSONObject());
+            }
+            if (manualControl && !Set.of("back", "prepare_private_input", "private_input", "cancel_private_input").contains(action))
+                throw new IllegalStateException("manual_control_active");
             if ("prepare_private_input".equals(action)) {
                 clearPrivateInputTarget();
                 privateInputFocusedOnly = args.optBoolean("focusedOnly");
@@ -449,6 +474,36 @@ final class VirtualScreen implements AutoCloseable {
         event.setSource(InputDevice.SOURCE_TOUCHSCREEN);
         try { inject(event); } finally { event.recycle(); }
     }
+
+    private void manualGesture(JSONArray points) throws Exception {
+        int count = points.length();
+        if (count < 2 || count > 256) throw new IllegalArgumentException("invalid_manual_gesture");
+        float[] xs = new float[count], ys = new float[count];
+        long[] times = new long[count];
+        for (int i = 0; i < count; i++) {
+            JSONArray point = points.getJSONArray(i);
+            double x = point.getDouble(0), y = point.getDouble(1);
+            long time = point.getLong(2);
+            if (!(x >= 0 && x <= 1 && y >= 0 && y <= 1) || time > 5000 ||
+                (i == 0 ? time != 0 : time < times[i - 1])) throw new IllegalArgumentException("invalid_manual_gesture");
+            xs[i] = (float) x * (WIDTH - 1); ys[i] = (float) y * (HEIGHT - 1); times[i] = time;
+        }
+        long start = SystemClock.uptimeMillis();
+        int last = 0;
+        boolean down = false;
+        try {
+            motion(start, start, MotionEvent.ACTION_DOWN, xs[0], ys[0]); down = true;
+            for (int i = 1; i < count; i++) {
+                long delay = start + times[i] - SystemClock.uptimeMillis();
+                if (delay > 0) Thread.sleep(delay);
+                motion(start, SystemClock.uptimeMillis(), i == count - 1 ? MotionEvent.ACTION_UP : MotionEvent.ACTION_MOVE, xs[i], ys[i]);
+                last = i;
+            }
+            down = false;
+        } finally {
+            if (down) motion(start, SystemClock.uptimeMillis(), MotionEvent.ACTION_CANCEL, xs[last], ys[last]);
+        }
+    }
     private String apps() throws Exception {
         String output = command("/system/bin/cmd", "package", "query-activities", "--brief", "--components", "--user", "current",
             "-a", "android.intent.action.MAIN", "-c", "android.intent.category.LAUNCHER");
@@ -486,7 +541,7 @@ final class VirtualScreen implements AutoCloseable {
     }
     private JSONObject agentScreenshot(JSONObject result) throws Exception {
         // Pixel output can reveal a value even when the app does not expose a text node.
-        return privateValues.isEmpty() ? screenshot(result) : result.put("screenshotStatus", "private_input");
+        return !manualControl && privateValues.isEmpty() ? screenshot(result) : result.put("screenshotStatus", "private_input");
     }
     private JSONObject screenshot(JSONObject result) throws Exception {
         byte[] frame = jpeg;
@@ -495,6 +550,10 @@ final class VirtualScreen implements AutoCloseable {
         return result;
     }
     private void onImage(ImageReader source) {
+        synchronized (frameLock) { captureFrame(source); }
+    }
+
+    private void captureFrame(ImageReader source) {
         try (Image image = source.acquireLatestImage()) {
             if (image == null || closed) return;
             if (System.currentTimeMillis() - frameAt < 300) return;

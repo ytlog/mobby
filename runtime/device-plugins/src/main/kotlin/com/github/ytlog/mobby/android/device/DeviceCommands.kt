@@ -116,8 +116,8 @@ class DeviceExecution internal constructor(val operationId: String,
     internal suspend fun authorizing(promptId: String, deadline: Long) =
         update(DeviceStatus.AWAITING_USER, "device.authorize",
             DeviceAttention("device.authorize", promptId, listOf("confirm", "cancel"), deadline))
-    fun waiting(phase: String, promptId: String) = runBlocking {
-        update(DeviceStatus.AWAITING_USER, phase, DeviceAttention(phase, promptId, listOf("cancel")))
+    fun waiting(phase: String, promptId: String, allowCancel: Boolean = true) = runBlocking {
+        update(DeviceStatus.AWAITING_USER, phase, DeviceAttention(phase, promptId, if (allowCancel) listOf("cancel") else emptyList()))
     }
     fun running(phase: String) = runBlocking { update(DeviceStatus.RUNNING, phase, null) }
 }

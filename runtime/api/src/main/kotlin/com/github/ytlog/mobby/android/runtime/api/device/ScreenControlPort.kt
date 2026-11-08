@@ -11,6 +11,14 @@ enum class ScreenMode {
 
 data class ScreenWorkflowPause(val completed: Int, val total: Int, val nextAction: String)
 
+data class ScreenTouch(val x: Float, val y: Float, val elapsedMillis: Long)
+
+sealed interface ManualScreenInput {
+    data class Gesture(val points: List<ScreenTouch>) : ManualScreenInput
+    data class Text(val value: String) : ManualScreenInput
+    data object Back : ManualScreenInput
+}
+
 enum class AdbConnectionFailure { PAIRING_REQUIRED, ENDPOINT_NOT_FOUND }
 
 class AdbConnectionException(val reason: AdbConnectionFailure, message: String, cause: Throwable? = null) :
@@ -21,7 +29,8 @@ data class ScreenControlState(val mode: ScreenMode = ScreenMode.CURRENT, val con
     val packageName: String = "", val error: String? = null, val adbPaired: Boolean = false, val adbPairing: Boolean = false,
     /** Live successful pairing sequence; never inferred from a previously saved identity or persisted. */
     val adbPairingSuccess: Long = 0, val modeConfigured: Boolean = false,
-    val workflowPause: ScreenWorkflowPause? = null)
+    val workflowPause: ScreenWorkflowPause? = null,
+    val manualControlId: String? = null, val readRequiredAfterHandoff: Boolean = false)
 
 /** UI contract. Privilege acquisition and Android display APIs belong to the host implementation. */
 interface ScreenControlPort {
@@ -35,4 +44,7 @@ interface ScreenControlPort {
     fun startAdbPairing(returnToActivity: String? = null)
     fun cancelAdbPairing()
     suspend fun refreshPreview()
+    suspend fun takeOver(): String
+    suspend fun manualInput(id: String, input: ManualScreenInput)
+    suspend fun handBack(id: String)
 }

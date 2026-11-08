@@ -1,6 +1,9 @@
 package com.github.ytlog.mobby.android.device
 
 import com.github.ytlog.mobby.android.runtime.api.device.ScreenMode
+import com.github.ytlog.mobby.android.runtime.api.device.ScreenControlState
+import com.github.ytlog.mobby.android.runtime.api.device.DeviceFailure
+import com.github.ytlog.mobby.android.runtime.api.device.EffectState
 
 import android.content.ComponentName
 import android.provider.Settings
@@ -43,5 +46,18 @@ class ScreenControlTest {
                 put("package", kotlinx.serialization.json.JsonPrimitive("com.example; input tap 1 1"))
             })
         }
+    }
+
+    @Test fun `manual control rejects reads and writes and handback first requires a fresh snapshot`() {
+        val manual = ScreenControlState(mode = ScreenMode.ADB, active = true, displayId = 7, manualControlId = "fixture")
+        for (action in listOf("snapshot", "inspect", "tap", "request_input")) {
+            assertEquals(EffectState.NONE, assertThrows(DeviceFailure::class.java) {
+                manual.requireAgentScreenAccess(action)
+            }.error.effectState)
+        }
+        val returned = manual.copy(manualControlId = null, readRequiredAfterHandoff = true)
+        assertThrows(DeviceFailure::class.java) { returned.requireAgentScreenAccess("tap") }
+        returned.requireAgentScreenAccess("snapshot")
+        returned.copy(readRequiredAfterHandoff = false).requireAgentScreenAccess("tap")
     }
 }

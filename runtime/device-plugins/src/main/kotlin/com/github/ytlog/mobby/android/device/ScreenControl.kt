@@ -5,6 +5,7 @@ import com.github.ytlog.mobby.android.runtime.api.device.AdbConnectionFailure
 import com.github.ytlog.mobby.android.runtime.api.device.DeviceErrorCode
 import com.github.ytlog.mobby.android.runtime.api.device.DeviceFailure
 import com.github.ytlog.mobby.android.runtime.api.device.EffectState
+import com.github.ytlog.mobby.android.runtime.api.device.ManualScreenInput
 import com.github.ytlog.mobby.android.runtime.api.device.ScreenMode
 import com.github.ytlog.mobby.android.runtime.api.device.deviceFailure
 
@@ -27,6 +28,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import org.json.JSONArray
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.File
@@ -35,6 +37,7 @@ import java.net.InetSocketAddress
 import java.net.Socket
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
+import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 
 /** Settings choose a backend explicitly. A run holds its backend until close; failures never select another one. */
@@ -261,7 +264,8 @@ object ScreenControl {
         val opened = request(connected, "open")
         val id = opened.getInt("displayId")
         val navigation = VirtualScreenNavigation(context, id)
-        changes.value = state.value.copy(active = true, displayId = id, jpeg = null, packageName = "", error = null)
+        changes.value = state.value.copy(active = true, displayId = id, jpeg = null, packageName = "", error = null,
+            manualControlId = null, readRequiredAfterHandoff = false)
         return object : ScreenSession {
             private fun onDisplay(action: String, args: Map<String, String> = emptyMap()) =
                 request(connected, action, args, expectedDisplay = id)
@@ -282,7 +286,7 @@ object ScreenControl {
             }
 
             override fun operate(action: String, args: Map<String, String>, checkActive: () -> Unit): ScreenAccessService.Observation =
-                ScreenCoordinator.chatAction {
+                agentAction(id, action, checkActive) {
                     checkActive()
                     requireUnlocked(context)
                     var result = when {
@@ -311,6 +315,7 @@ object ScreenControl {
                         result.getLong("observedAtEpochMillis"), ScreenScreenshot(jpeg, result.optString("screenshotStatus", "not_requested")), mode.name.lowercase(), id)
                 }
             override fun inspect(query: String?, expectedInput: String?): ScreenEvidence = ScreenCoordinator.chatAction {
+                requireAgentAccess(id, "inspect")
                 requireUnlocked(context)
                 val args = buildMap { query?.let { put("query", it) }; expectedInput?.let { put("expectedInput", it) } }
                 val result = onDisplay("inspect", args)
@@ -324,7 +329,8 @@ object ScreenControl {
                     finally {
                         changes.update { current ->
                             if (current.displayId == id && channel === connected)
-                                current.copy(active = false, displayId = null, jpeg = null, packageName = "")
+                                current.copy(active = false, displayId = null, jpeg = null, packageName = "",
+                                    manualControlId = null, readRequiredAfterHandoff = false)
                             else current
                         }
                     }
@@ -333,32 +339,144 @@ object ScreenControl {
         }
     }
 
-    internal fun privateInput(context: Context, label: String?, execution: DeviceExecution, checkActive: () -> Unit) {
-        val (connection, display) = synchronized(this) {
-            val current = state.value
-            val display = current.displayId
-            val connection = channel
-            connection?.requireAuthorization()
-            if (!current.active || display == null || display <= 0 || connection?.alive != true)
-                com.github.ytlog.mobby.android.runtime.api.device.deviceFailure(
-                    com.github.ytlog.mobby.android.runtime.api.device.DeviceErrorCode.UNSUPPORTED_CAPABILITY)
-            connection to display
+    private fun requireAgentAccess(display: Int, action: String) {
+        val current = state.value
+        if (!current.active || current.displayId != display) {
+            channel?.requireAuthorization()
+            deviceFailure(DeviceErrorCode.UNAVAILABLE, AppStrings.virtualScreenDisconnected)
         }
-        requireUnlocked(context)
-        val prepared = request(connection, "prepare_private_input",
-            mapOf("focusedOnly" to (label != null).toString()), expectedDisplay = display)
-        try {
-            val fields = prepared.getJSONArray("labels")
-            val labels = if (label != null) listOf(label) else List(fields.length(), fields::getString)
-            val values = PrivateScreenInput.await(execution, labels, checkActive)
+        current.requireAgentScreenAccess(action)
+    }
+
+    private fun <T : Any> agentAction(display: Int, action: String, checkActive: () -> Unit, block: () -> T): T {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(120)
+        while (true) {
             checkActive()
-            requireUnlocked(context)
-            execution.running("screen.private_input")
-            request(connection, "private_input",
-                mapOf("values" to org.json.JSONArray(values).toString()), expectedDisplay = display)
-        } finally {
-            if (connection.alive) runCatching { request(connection, "cancel_private_input", expectedDisplay = display) }
+            val result = if (state.value.manualControlId != null) null else ScreenCoordinator.chatAction {
+                checkActive()
+                val current = state.value
+                if (current.displayId == display && current.manualControlId != null) return@chatAction null
+                requireAgentAccess(display, action)
+                block().also {
+                    if (action == "snapshot") changes.update { latest ->
+                        if (latest.displayId == display) latest.copy(readRequiredAfterHandoff = false) else latest
+                    }
+                }
+            }
+            if (result != null) return result
+            if (System.nanoTime() >= deadline) deviceFailure(DeviceErrorCode.TIMEOUT, AppStrings.virtualScreenInUserControl)
+            Thread.sleep(100)
         }
+    }
+
+    private fun activeDisplay(): Pair<ScreenChannel, Int> {
+        val current = state.value
+        val display = current.displayId
+        val connection = channel
+        connection?.requireAuthorization()
+        if (!current.active || display == null || display <= 0 || connection?.alive != true)
+            deviceFailure(DeviceErrorCode.UNAVAILABLE, AppStrings.virtualScreenDisconnected)
+        return connection to display
+    }
+
+    fun takeOver(context: Context): String = takeOver(context, null)
+
+    private fun takeOver(context: Context, expected: Pair<ScreenChannel, Int>?): String = ScreenCoordinator.chatAction {
+        val (connection, display) = activeDisplay()
+        if (expected != null && expected != (connection to display)) deviceFailure(DeviceErrorCode.UNAVAILABLE, AppStrings.virtualScreenDisconnected)
+        requireUnlocked(context)
+        state.value.manualControlId?.let { return@chatAction it }
+        request(connection, "manual_begin", expectedDisplay = display)
+        val id = UUID.randomUUID().toString()
+        changes.update {
+            if (it.active && it.displayId == display && channel === connection) it.copy(manualControlId = id, error = null) else it
+        }
+        check(state.value.manualControlId == id) { AppStrings.virtualScreenDisconnected }
+        id
+    }
+
+    fun manualInput(context: Context, id: String, input: ManualScreenInput) = ScreenCoordinator.chatAction {
+        val (connection, display) = activeDisplay()
+        check(state.value.manualControlId == id) { AppStrings.virtualScreenDisconnected }
+        requireUnlocked(context)
+        when (input) {
+            is ManualScreenInput.Gesture -> {
+                require(input.points.size in 2..256 && input.points.first().elapsedMillis == 0L)
+                require(input.points.all { it.x in 0f..1f && it.y in 0f..1f && it.elapsedMillis in 0..5_000 })
+                require(input.points.zipWithNext().all { (before, after) -> before.elapsedMillis <= after.elapsedMillis })
+                val points = JSONArray()
+                input.points.forEach { points.put(JSONArray().put(it.x.toDouble()).put(it.y.toDouble()).put(it.elapsedMillis)) }
+                request(connection, "manual_gesture", mapOf("points" to points.toString()), expectedDisplay = display)
+            }
+            is ManualScreenInput.Text -> {
+                require(input.value.isNotEmpty() && input.value.length <= 2000 && '\u0000' !in input.value)
+                request(connection, "prepare_private_input", mapOf("focusedOnly" to "true"), expectedDisplay = display)
+                try {
+                    request(connection, "private_input", mapOf("values" to JSONArray(listOf(input.value)).toString()), expectedDisplay = display)
+                } finally { clearPrivateInput(connection, display) }
+            }
+            ManualScreenInput.Back -> request(connection, "back", expectedDisplay = display)
+        }
+        Unit
+    }
+
+    fun handBack(context: Context, id: String) = ScreenCoordinator.chatAction {
+        val (connection, display) = activeDisplay()
+        check(state.value.manualControlId == id) { AppStrings.virtualScreenDisconnected }
+        requireUnlocked(context)
+        request(connection, "manual_end", expectedDisplay = display)
+        changes.update {
+            if (it.manualControlId == id && channel === connection)
+                it.copy(manualControlId = null, readRequiredAfterHandoff = true, jpeg = null, error = null)
+            else it
+        }
+    }
+
+    internal fun requestUserInput(context: Context, label: String?, handoffOnly: Boolean, execution: DeviceExecution,
+        checkActive: () -> Unit): Boolean {
+        val (connection, display) = activeDisplay()
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(125)
+        val labels = agentAction(display, if (handoffOnly) "request_handoff" else "request_input", checkActive) {
+            requireUnlocked(context)
+            if (handoffOnly) emptyList() else {
+                val fields = request(connection, "prepare_private_input",
+                    mapOf("focusedOnly" to (label != null).toString()), expectedDisplay = display).getJSONArray("labels")
+                if (label != null) listOf(label) else List(fields.length(), fields::getString)
+            }
+        }
+        try {
+            return when (val answer = PrivateScreenInput.await(execution, labels, checkActive)) {
+                PrivateScreenInput.Answer.TakeOver -> {
+                    checkActive()
+                    val id = takeOver(context, connection to display)
+                    execution.waiting("screen.user_control", id, allowCancel = false)
+                    while (state.value.manualControlId == id) {
+                        checkActive()
+                        if (System.nanoTime() >= deadline) deviceFailure(DeviceErrorCode.TIMEOUT, AppStrings.virtualScreenInUserControl)
+                        Thread.sleep(100)
+                    }
+                    checkActive()
+                    if (activeDisplay() != (connection to display)) deviceFailure(DeviceErrorCode.UNAVAILABLE, AppStrings.virtualScreenDisconnected)
+                    true
+                }
+                is PrivateScreenInput.Answer.Value -> agentAction(display, "request_input", checkActive) {
+                    requireUnlocked(context)
+                    execution.running("screen.private_input")
+                    request(connection, "private_input", mapOf("values" to JSONArray(answer.fields).toString()), expectedDisplay = display)
+                    false
+                }
+                PrivateScreenInput.Answer.Cancel -> deviceFailure(DeviceErrorCode.CANCELLED)
+            }
+        } finally {
+            if (!handoffOnly && state.value.manualControlId == null) ScreenCoordinator.chatAction {
+                if (state.value.manualControlId == null && state.value.displayId == display && channel === connection)
+                    clearPrivateInput(connection, display)
+            }
+        }
+    }
+
+    private fun clearPrivateInput(connection: ScreenChannel, display: Int) {
+        if (connection.alive) runCatching { request(connection, "cancel_private_input", expectedDisplay = display) }
     }
 
     /** Preview only reads the active virtual display; it never sends an input or changes the main display. */
@@ -420,7 +538,8 @@ object ScreenControl {
             if (failure is DeviceFailure && failure.error.code == DeviceErrorCode.ADB_AUTHORIZATION_REQUIRED) {
                 changes.update { current ->
                     if (channel !== connection) current else current.copy(connected = false, active = false,
-                        displayId = null, jpeg = null, packageName = "", adbPaired = false, error = AppStrings.adbScreenAuthorizationRequired)
+                        displayId = null, jpeg = null, packageName = "", adbPaired = false, manualControlId = null,
+                        readRequiredAfterHandoff = false, error = AppStrings.adbScreenAuthorizationRequired)
                 }
                 throw failure
             }
@@ -433,7 +552,8 @@ object ScreenControl {
                     connection.alive -> current.copy(error = (failure as? DeviceFailure)?.error?.message
                         ?.takeIf(String::isNotBlank) ?: AppStrings.virtualScreenOperationFailed)
                     else -> current.copy(connected = false, active = false, displayId = null, jpeg = null,
-                        packageName = "", error = if (current.mode == ScreenMode.ADB && leases > 0)
+                        packageName = "", manualControlId = null, readRequiredAfterHandoff = false,
+                        error = if (current.mode == ScreenMode.ADB && leases > 0)
                             AppStrings.adbScreenWaitingForReconnect else AppStrings.virtualScreenDisconnected)
                 }
             }
@@ -452,6 +572,12 @@ object ScreenControl {
             .get(30, TimeUnit.SECONDS) ?: error("root_start_failed")
         return ScreenChannel(JSONObject(endpoint), root = true)
     }
+}
+
+internal fun ScreenControlState.requireAgentScreenAccess(action: String) {
+    if (manualControlId != null) deviceFailure(DeviceErrorCode.UNAVAILABLE, AppStrings.virtualScreenInUserControl)
+    if (readRequiredAfterHandoff && action !in setOf("snapshot", "apps"))
+        deviceFailure(DeviceErrorCode.UNAVAILABLE, AppStrings.virtualScreenReadAfterHandoff)
 }
 
 internal fun screenShellQuote(value: String): String = "'" + value.replace("'", "'\\''") + "'"
