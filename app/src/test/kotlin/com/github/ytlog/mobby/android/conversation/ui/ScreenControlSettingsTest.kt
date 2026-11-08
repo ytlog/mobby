@@ -75,6 +75,7 @@ class ScreenControlSettingsTest {
         val status = mutableStateOf(ScreenSetupStatus(false, false, false, false, false))
         compose.setContent { MaterialTheme { ScreenControlSettings(controller, {}, statusOverride = status.value, settingsOverride = { opened += it }) } }
         next()
+        button("手动设置 ADB").performClick()
         button("允许通知").assertIsDisplayed().performClick()
         compose.onNodeWithText("开启开发者模式").assertDoesNotExist()
         compose.onNodeWithText("连接 Wi-Fi").assertDoesNotExist()
@@ -111,6 +112,22 @@ class ScreenControlSettingsTest {
         }
     }
 
+    @Test fun `ADB setup asks for accessibility before the rest of the setup when it is missing`() {
+        val controller = TestController(ScreenControlState(mode = ScreenMode.ADB))
+        val status = mutableStateOf(ready.copy(accessibilityEnabled = false, notificationsAllowed = false))
+        compose.setContent { MaterialTheme {
+            ScreenControlSettings(controller, {}, statusOverride = status.value, settingsOverride = { opened += it })
+        } }
+        next()
+        button("打开无障碍设置").performClick()
+        compose.runOnIdle {
+            assertEquals(listOf(ScreenSettingsTarget.ACCESSIBILITY), opened)
+            status.value = status.value.copy(accessibilityEnabled = true)
+        }
+        button("允许通知").assertIsDisplayed()
+        compose.runOnIdle { assertTrue(controller.events.isEmpty()) }
+    }
+
     @Test fun `current screen only asks for accessibility after completed notifications`() {
         val controller = TestController()
         val status = mutableStateOf(ready.copy(accessibilityEnabled = false))
@@ -128,7 +145,7 @@ class ScreenControlSettingsTest {
         var finished = false
         show(controller, finished = { finished = true })
         next()
-        compose.onNodeWithContentDescription("第 7 步：连接").assertIsSelected()
+        compose.onNodeWithContentDescription("第 8 步：连接").assertIsSelected()
         button("连接").assertIsDisplayed()
         compose.onNodeWithText("配对这台手机").assertDoesNotExist()
         compose.runOnIdle { assertTrue(controller.events.isEmpty()) }
@@ -144,9 +161,9 @@ class ScreenControlSettingsTest {
         compose.onNodeWithContentDescription("第 1 步：选择一个 Agent").assertExists()
         compose.onNodeWithContentDescription("第 3 步：选择屏幕操作方式").assertIsSelected()
         next()
-        compose.onNodeWithContentDescription("第 9 步：连接").assertIsSelected()
+        compose.onNodeWithContentDescription("第 10 步：连接").assertIsSelected()
         button("手动填写连接端口").performClick()
-        compose.onNodeWithContentDescription("第 9 步：连接").assertIsSelected()
+        compose.onNodeWithContentDescription("第 10 步：连接").assertIsSelected()
     }
     @Test fun `manual port has its own page and does not connect when saved`() {
         val controller = TestController(ScreenControlState(mode = ScreenMode.ADB, adbPaired = true))
@@ -166,12 +183,12 @@ class ScreenControlSettingsTest {
         show(controller)
         next()
         compose.onNodeWithContentDescription("第 1 步：选择屏幕操作方式").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "步骤完成"))
-        compose.onNodeWithContentDescription("第 7 步：连接").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "当前步骤"))
-        compose.onNodeWithContentDescription("第 8 步：完成").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "未完成"))
+        compose.onNodeWithContentDescription("第 8 步：连接").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "当前步骤"))
+        compose.onNodeWithContentDescription("第 9 步：完成").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "未完成"))
         compose.onNodeWithContentDescription("第 1 步：选择屏幕操作方式").performScrollTo().performClick()
         compose.onNodeWithText("虚拟屏幕（内置 ADB）").assertIsDisplayed()
-        compose.onNodeWithContentDescription("第 7 步：连接").assertIsNotEnabled()
-        compose.onNodeWithContentDescription("第 5 步：开启无线调试").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("第 8 步：连接").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("第 6 步：开启无线调试").performScrollTo().performClick()
         compose.onNodeWithText("开启无线调试").assertIsDisplayed()
         compose.runOnIdle { assertTrue(controller.events.isEmpty()) }
         next()
@@ -187,8 +204,8 @@ class ScreenControlSettingsTest {
         compose.onNodeWithContentDescription("第 1 步：选择屏幕操作方式").assertIsNotEnabled()
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "步骤完成"))
         compose.runOnIdle { controller.state.value = controller.state.value.copy(adbPairing = false); status.value = ready.copy(wirelessEnabled = false) }
-        compose.onNodeWithContentDescription("第 5 步：开启无线调试").assertIsNotEnabled()
-        compose.onNodeWithContentDescription("第 3 步：连接 Wi-Fi").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("第 6 步：开启无线调试").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("第 4 步：连接 Wi-Fi").performScrollTo().performClick()
         next()
         button("打开无线调试").assertIsDisplayed()
         compose.runOnIdle { assertTrue(controller.events.isEmpty()) }

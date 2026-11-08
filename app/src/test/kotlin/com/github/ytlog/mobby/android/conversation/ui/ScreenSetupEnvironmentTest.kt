@@ -6,12 +6,15 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
+import android.content.pm.ActivityInfo
+import android.content.pm.ResolveInfo
 import android.provider.Settings
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
@@ -55,6 +58,22 @@ class ScreenSetupEnvironmentTest {
         val access = ScreenAccessRouting.settingsIntents(context, ScreenSettingsTarget.ACCESSIBILITY)
         assertTrue(access.first().getStringExtra(Intent.EXTRA_COMPONENT_NAME)!!.endsWith(".ScreenAccessService"))
         assertEquals(Settings.ACTION_ACCESSIBILITY_SETTINGS, access[1].action)
+    }
+    @Test fun `MIUI accessibility opens the downloaded service list before the general settings fallback`() {
+        val accessibility = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+        shadowOf(context.packageManager).addResolveInfoForIntent(accessibility, ResolveInfo().apply {
+            isDefault = true
+            activityInfo = ActivityInfo().apply {
+                packageName = "com.android.settings"
+                name = "com.android.settings.accessibility.MiuiAccessibilitySettingsActivity"
+            }
+        })
+        val intents = ScreenAccessRouting.settingsIntents(context, ScreenSettingsTarget.ACCESSIBILITY)
+        val downloadedApps = intents.first()
+        assertEquals("com.android.settings.SubSettings", downloadedApps.component?.className)
+        assertEquals("com.android.settings.accessibility.InstalledAccessibilityService",
+            downloadedApps.getStringExtra(":settings:show_fragment"))
+        assertEquals(Settings.ACTION_ACCESSIBILITY_SETTINGS, intents[intents.lastIndex - 1].action)
     }
     @Test fun `current screen mode does not require an unrelated pairing notification channel`() {
         context.getSystemService(NotificationManager::class.java).createNotificationChannel(

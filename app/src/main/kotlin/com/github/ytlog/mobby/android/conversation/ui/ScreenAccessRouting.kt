@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.provider.Settings
+import com.github.ytlog.mobby.android.localization.AppStrings
 import com.github.ytlog.mobby.android.runtime.api.device.ScreenControlState
 import com.github.ytlog.mobby.android.runtime.api.device.ScreenMode
 
@@ -39,11 +40,7 @@ internal object ScreenAccessRouting {
         ScreenSettingsTarget.DEVELOPER -> listOf(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS))
         ScreenSettingsTarget.WIRELESS -> listOf(Intent("android.settings.WIRELESS_DEBUGGING_SETTINGS"), Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS))
         ScreenSettingsTarget.WIFI -> listOf(Intent(Settings.ACTION_WIFI_SETTINGS))
-        ScreenSettingsTarget.ACCESSIBILITY -> listOf(
-            Intent("android.settings.ACCESSIBILITY_DETAILS_SETTINGS")
-                .putExtra(Intent.EXTRA_COMPONENT_NAME, screenAccessibilityComponent(context).flattenToString()),
-            Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS),
-        )
+        ScreenSettingsTarget.ACCESSIBILITY -> accessibilityIntents(context)
         ScreenSettingsTarget.NOTIFICATIONS -> {
             val manager = context.getSystemService(NotificationManager::class.java)
             val channels = if (pairing) listOf("screen-adb-pairing", "runtime") else listOf("runtime")
@@ -53,6 +50,22 @@ internal object ScreenAccessRouting {
             else listOf(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName))
         }
     } + Intent(Settings.ACTION_SETTINGS)
+
+    private fun accessibilityIntents(context: Context): List<Intent> {
+        val accessibility = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+        val details = Intent("android.settings.ACCESSIBILITY_DETAILS_SETTINGS")
+            .putExtra(Intent.EXTRA_COMPONENT_NAME, screenAccessibilityComponent(context).flattenToString())
+        val settings = accessibility.resolveActivity(context.packageManager)
+        if (settings?.packageName == "com.android.settings" &&
+            settings.className == "com.android.settings.accessibility.MiuiAccessibilitySettingsActivity") {
+            // This is the list fragment MIUI opens from its Downloaded apps preference.
+            val downloadedApps = Intent().setClassName(settings.packageName, "com.android.settings.SubSettings")
+                .putExtra(":settings:show_fragment", "com.android.settings.accessibility.InstalledAccessibilityService")
+                .putExtra(":settings:show_fragment_title", AppStrings.wizardDownloadedAccessibilityApps)
+            return listOf(downloadedApps, details, accessibility)
+        }
+        return listOf(details, accessibility)
+    }
 
     fun openSettings(context: Context, target: ScreenSettingsTarget, pairing: Boolean = true,
         assistNavigation: Boolean = false, openPairing: Boolean = false): Boolean {

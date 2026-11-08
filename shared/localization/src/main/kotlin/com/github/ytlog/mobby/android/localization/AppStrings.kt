@@ -186,6 +186,12 @@ open class StringCatalog(private val fixedLanguage: AppLanguage? = null) {
     val screenBackendReady get() = text("权限后端已连接", "Screen backend connected")
     val screenBackendDisconnected get() = text("权限后端未连接", "Screen backend disconnected")
     val openAccessibilitySettings get() = text("打开无障碍设置", "Open accessibility settings")
+    val wizardDownloadedAccessibilityApps get() = text("已下载的应用", "Downloaded apps")
+    val wizardAdbAccessibilityHelp get() = text(
+        "启用「mobby 屏幕操作」后返回，mobby 会帮你找到无线调试并打开配对页面。若系统打开无障碍首页，请在「已下载的应用」或「已安装的服务」中找到它。",
+        "Enable mobby Screen Control and return. mobby can help you find Wireless debugging and open the pairing page. If Settings opens its accessibility home, look under Downloaded apps or Installed services.",
+    )
+    val wizardManualAdbSetup get() = text("手动设置 ADB", "Set up ADB manually")
     val openNotificationSettings get() = text("打开通知设置", "Open notification settings")
     val virtualScreenPreview get() = text("虚拟屏预览", "Virtual display")
     val virtualScreenWaiting get() = text("等待应用打开…", "Waiting for an app…")

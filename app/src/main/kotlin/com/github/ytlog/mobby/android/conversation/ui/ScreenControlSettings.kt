@@ -83,7 +83,8 @@ class ScreenControlSettingsActivity : ComponentActivity() {
     var operation by remember { mutableStateOf<Job?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var connectionPort by remember { mutableStateOf("") }
-    var pendingCheck by remember { mutableStateOf<ScreenSetupStep?>(null) }
+    var pendingCheck by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<ScreenSetupStep?>(null) }
+    var manualAdbSetup by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var developerConfirmed by remember { mutableStateOf(false) }
     var wirelessConfirmed by remember { mutableStateOf(false) }
     var openWirelessOnArrival by remember { mutableStateOf(false) }
@@ -101,9 +102,13 @@ class ScreenControlSettingsActivity : ComponentActivity() {
         if (target.name != history.last()) history = ArrayList(history + target.name)
     }
     fun next(after: ScreenSetupStep): ScreenSetupStep {
-        val path = screenSetupPath(controller.state.value.mode)
+        val current = controller.state.value
+        val path = screenSetupPath(current.mode)
+        val permissions = freshStatus()
         return path.drop(path.indexOf(after) + 1).firstOrNull {
-            !screenStepComplete(it, controller.state.value, freshStatus(), forcePair, developerConfirmed, wirelessConfirmed)
+            val skipAccessibility = it == ScreenSetupStep.ACCESSIBILITY && current.mode == ScreenMode.ADB &&
+                (manualAdbSetup || current.connected)
+            !skipAccessibility && !screenStepComplete(it, current, permissions, forcePair, developerConfirmed, wirelessConfirmed)
         } ?: ScreenSetupStep.COMPLETE
     }
     fun execute(block: suspend () -> Unit) {
@@ -240,7 +245,8 @@ class ScreenControlSettingsActivity : ComponentActivity() {
     val description = when (step) {
         ScreenSetupStep.MODE -> AppStrings.wizardChooseModeHelp
         ScreenSetupStep.NOTIFICATIONS -> AppStrings.wizardNotificationsHelp
-        ScreenSetupStep.ACCESSIBILITY -> AppStrings.currentScreenModeHelp
+        ScreenSetupStep.ACCESSIBILITY -> if (state.mode == ScreenMode.ADB) AppStrings.wizardAdbAccessibilityHelp
+            else AppStrings.currentScreenModeHelp
         ScreenSetupStep.WIFI -> AppStrings.wizardWifiHelp
         ScreenSetupStep.DEVELOPER -> AppStrings.wizardDeveloperHelp
         ScreenSetupStep.WIRELESS -> if (status.accessibilityEnabled) AppStrings.wizardWirelessAssist else AppStrings.wizardWirelessHelp
@@ -272,6 +278,7 @@ class ScreenControlSettingsActivity : ComponentActivity() {
                 if (selectedMode != state.mode || !state.modeConfigured) {
                     controller.select(selectedMode)
                     connectionPort = ""
+                    manualAdbSetup = false
                 }
                 val target = next(ScreenSetupStep.MODE)
                 openWirelessOnArrival = target == ScreenSetupStep.WIRELESS && status.accessibilityEnabled
@@ -331,6 +338,12 @@ class ScreenControlSettingsActivity : ComponentActivity() {
                 }
             }) {
             when (step) {
+                ScreenSetupStep.ACCESSIBILITY -> if (state.mode == ScreenMode.ADB && !complete) {
+                    SettingsAction(AppStrings.wizardManualAdbSetup, enabled = enabled && !busy) {
+                        manualAdbSetup = true
+                        go(next(step))
+                    }
+                }
                 ScreenSetupStep.MODE -> {
                     if (sdk >= 33) Text(AppStrings.adbScreenRecommendation, style = MaterialTheme.typography.bodyMedium)
                     val modes = if (sdk >= 33) listOf(ScreenMode.ADB, ScreenMode.CURRENT, ScreenMode.ROOT) else ScreenMode.entries

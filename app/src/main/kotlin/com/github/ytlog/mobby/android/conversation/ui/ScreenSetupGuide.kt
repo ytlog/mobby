@@ -27,7 +27,7 @@ internal enum class ScreenSetupStep {
 
 internal fun screenSetupPath(mode: ScreenMode): List<ScreenSetupStep> = when (mode) {
     ScreenMode.CURRENT -> listOf(ScreenSetupStep.MODE, ScreenSetupStep.NOTIFICATIONS, ScreenSetupStep.ACCESSIBILITY, ScreenSetupStep.COMPLETE)
-    ScreenMode.ADB -> listOf(ScreenSetupStep.MODE, ScreenSetupStep.NOTIFICATIONS, ScreenSetupStep.WIFI,
+    ScreenMode.ADB -> listOf(ScreenSetupStep.MODE, ScreenSetupStep.ACCESSIBILITY, ScreenSetupStep.NOTIFICATIONS, ScreenSetupStep.WIFI,
         ScreenSetupStep.DEVELOPER, ScreenSetupStep.WIRELESS, ScreenSetupStep.PAIR, ScreenSetupStep.CONNECT, ScreenSetupStep.COMPLETE)
     ScreenMode.ROOT -> listOf(ScreenSetupStep.MODE, ScreenSetupStep.NOTIFICATIONS, ScreenSetupStep.CONNECT, ScreenSetupStep.COMPLETE)
 }
