@@ -261,7 +261,7 @@ object ScreenControl {
         val opened = request(connected, "open")
         val id = opened.getInt("displayId")
         val navigation = VirtualScreenNavigation(context, id)
-        changes.value = state.value.copy(active = true, displayId = id, jpeg = null, error = null)
+        changes.value = state.value.copy(active = true, displayId = id, jpeg = null, packageName = "", error = null)
         return object : ScreenSession {
             private fun onDisplay(action: String, args: Map<String, String> = emptyMap()) =
                 request(connected, action, args, expectedDisplay = id)
@@ -301,12 +301,13 @@ object ScreenControl {
                     }
                     checkActive()
                     val jpeg = result.optString("jpeg").takeIf(String::isNotEmpty)?.let { Base64.decode(it, Base64.NO_WRAP) }
+                    val observedPackage = result.optString("packageName")
                     changes.update { current ->
                         if (current.active && current.displayId == id)
-                            current.copy(jpeg = jpeg ?: current.jpeg, packageName = result.optString("packageName"), error = null)
+                            current.copy(jpeg = jpeg ?: current.jpeg, packageName = observedPackage.ifBlank { current.packageName }, error = null)
                         else current
                     }
-                    ScreenAccessService.Observation(result.optString("text"), result.optString("packageName"),
+                    ScreenAccessService.Observation(result.optString("text"), observedPackage,
                         result.getLong("observedAtEpochMillis"), ScreenScreenshot(jpeg, result.optString("screenshotStatus", "not_requested")), mode.name.lowercase(), id)
                 }
             override fun inspect(query: String?, expectedInput: String?): ScreenEvidence = ScreenCoordinator.chatAction {

@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -35,6 +36,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.github.ytlog.mobby.android.MobbyApplication
+import com.github.ytlog.mobby.android.R
 import com.github.ytlog.mobby.android.conversation.domain.Appearance
 import com.github.ytlog.mobby.android.runtime.api.device.ScreenControlPort
 import kotlinx.coroutines.*
@@ -143,10 +145,12 @@ internal class VirtualScreenPreview(
                 }
             }
         }
-        val bitmap = remember(state.jpeg, expanded) {
-            state.jpeg?.takeIf { expanded }?.let { BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() }
+        val hasObservedApp = state.packageName.isNotBlank()
+        val jpeg = state.jpeg.takeIf { expanded && hasObservedApp }
+        val bitmap = remember(jpeg) {
+            jpeg?.let { BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() }
         }
-        VirtualScreenPreviewCard(bitmap, state.error, expanded, { expanded = !expanded }, modifier)
+        VirtualScreenPreviewCard(bitmap, state.error, expanded, { expanded = !expanded }, modifier, hasObservedApp)
     }
 
     override fun onActivityStarted(activity: Activity) { activities.add(activity); refreshWindow() }
@@ -165,6 +169,7 @@ internal fun VirtualScreenPreviewCard(
     expanded: Boolean,
     onToggle: () -> Unit,
     modifier: Modifier = Modifier,
+    hasObservedApp: Boolean = true,
 ) {
     val colors = MaterialTheme.colorScheme
     Surface(
@@ -203,7 +208,8 @@ internal fun VirtualScreenPreviewCard(
                         style = MaterialTheme.typography.bodySmall, color = colors.error,
                         maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
-                val ratio = bitmap?.let { it.width.toFloat() / it.height } ?: 9f / 16f
+                val image = bitmap.takeIf { hasObservedApp }
+                val ratio = image?.let { it.width.toFloat() / it.height } ?: 9f / 16f
                 BoxWithConstraints(
                     Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, bottom = 8.dp),
                     contentAlignment = Alignment.TopCenter,
@@ -211,12 +217,17 @@ internal fun VirtualScreenPreviewCard(
                     val width = if (constraints.hasBoundedHeight) minOf(maxWidth, maxHeight * ratio) else maxWidth
                     if (width > 0.dp) {
                         val frame = Modifier.width(width).aspectRatio(ratio).clip(RoundedCornerShape(16.dp))
-                        if (bitmap != null) {
-                            Image(bitmap, UiStrings.virtualScreenPreview, frame)
+                        if (image != null) {
+                            Image(image, UiStrings.virtualScreenPreview, frame)
                         } else {
                             Box(frame.background(colors.surfaceContainer).padding(12.dp), contentAlignment = Alignment.Center) {
-                                Text(UiStrings.virtualScreenWaiting, style = MaterialTheme.typography.bodySmall,
-                                    color = colors.onSurfaceVariant, textAlign = TextAlign.Center)
+                                Column(horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    Image(painterResource(R.drawable.ic_launcher), null, Modifier.size(44.dp))
+                                    Text(if (hasObservedApp) UiStrings.virtualScreenWaitingForFrame else UiStrings.virtualScreenWaiting,
+                                        style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant,
+                                        textAlign = TextAlign.Center)
+                                }
                             }
                         }
                     }

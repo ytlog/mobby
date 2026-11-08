@@ -25,6 +25,23 @@ import org.robolectric.annotation.GraphicsMode
 class VirtualScreenPreviewCardTest {
     @get:Rule val compose = createComposeRule()
 
+    @Test fun emptyDisplayKeepsItsPlaceholderUntilAnAppIsObserved() {
+        val blankFrame = ImageBitmap(72, 128)
+        val hasObservedApp = mutableStateOf(false)
+        compose.setContent {
+            MaterialTheme {
+                VirtualScreenPreviewCard(blankFrame, null, true, {}, Modifier.width(184.dp),
+                    hasObservedApp = hasObservedApp.value)
+            }
+        }
+        val preview = compose.onNodeWithContentDescription(UiStrings.virtualScreenPreview)
+        compose.onNodeWithText(UiStrings.virtualScreenWaiting).assertIsDisplayed()
+        preview.assertDoesNotExist()
+        compose.runOnIdle { hasObservedApp.value = true }
+        preview.assertIsDisplayed()
+        compose.onNodeWithText(UiStrings.virtualScreenWaiting).assertDoesNotExist()
+    }
+
     @Test fun frameKeepsItsRatioAsContentChangesAndCanBeCollapsed() {
         val frame = mutableStateOf(ImageBitmap(72, 128))
         val expanded = mutableStateOf(true)

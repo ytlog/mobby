@@ -219,6 +219,7 @@ open class StringCatalog(private val fixedLanguage: AppLanguage? = null) {
     val openNotificationSettings get() = text("打开通知设置", "Open notification settings")
     val virtualScreenPreview get() = text("虚拟屏预览", "Virtual display")
     val virtualScreenWaiting get() = text("等待应用打开…", "Waiting for an app…")
+    val virtualScreenWaitingForFrame get() = text("正在获取画面…", "Waiting for the display image…")
     val showVirtualScreen get() = text("展开预览", "Show preview")
     val hideVirtualScreen get() = text("收起预览", "Hide preview")
     val appName get() = "mobby"
