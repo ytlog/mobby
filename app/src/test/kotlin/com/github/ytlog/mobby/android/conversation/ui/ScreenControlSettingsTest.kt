@@ -170,6 +170,18 @@ class ScreenControlSettingsTest {
         compose.onNodeWithText("屏幕操作已就绪").assertIsDisplayed()
     }
 
+    @Test fun `accessibility is an optional ADB step only until a pairing exists or the user pairs again`() {
+        val adb = ScreenControlState(mode = ScreenMode.ADB)
+        assertFalse(screenStepSkipped(ScreenSetupStep.ACCESSIBILITY, adb, manualAdbSetup = false, forcePair = false))
+        assertTrue(screenStepSkipped(ScreenSetupStep.ACCESSIBILITY, adb, manualAdbSetup = true, forcePair = false))
+        assertTrue(screenStepSkipped(ScreenSetupStep.ACCESSIBILITY, adb.copy(adbPaired = true), manualAdbSetup = false, forcePair = false))
+        assertFalse(screenStepSkipped(ScreenSetupStep.ACCESSIBILITY, adb.copy(adbPaired = true), manualAdbSetup = false, forcePair = true))
+        assertTrue(screenStepSkipped(ScreenSetupStep.ACCESSIBILITY, adb.copy(connected = true), manualAdbSetup = false, forcePair = true))
+        // Current-screen mode runs on accessibility, so it is never optional there.
+        assertFalse(screenStepSkipped(ScreenSetupStep.ACCESSIBILITY, ScreenControlState(), manualAdbSetup = true, forcePair = false))
+        assertFalse(screenStepSkipped(ScreenSetupStep.NOTIFICATIONS, adb, manualAdbSetup = true, forcePair = false))
+    }
+
     @Test fun `Samsung accessibility help names the installed app list`() {
         ShadowBuild.setManufacturer("samsung")
         ShadowBuild.setBrand("samsung")

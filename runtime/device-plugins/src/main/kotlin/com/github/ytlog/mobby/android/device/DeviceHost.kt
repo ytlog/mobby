@@ -23,6 +23,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 
 object DeviceHost {
+    private const val SCREEN_REF = "plugin:device:screen"
     @Volatile var conversationSelection: (suspend (String) -> Set<String>?)? = null
     @Volatile var authorizeSelection: (suspend (String, String) -> Unit)? = null
 
@@ -113,8 +114,8 @@ object DeviceHost {
                 val authorize = checkNotNull(authorizeSelection)
                 DeviceAuthorization({ selected(turn).orEmpty() }, { granted(context, it) },
                     { ref -> authorize(turn, ref) }, gate::checkActive, restoreSelected = { ref ->
-                        if (ref == DeviceCatalog.actionRef("screen", "snapshot") && screenNotificationsEnabled(context))
-                            ScreenControl.restoreSavedAdb(context)
+                        // Every screen action shares one capability; a saved ADB pairing can reconnect it silently.
+                        if (ref == SCREEN_REF && screenNotificationsEnabled(context)) ScreenControl.restoreSavedAdb(context)
                     })
             }
             val actions = DeviceActions(context, inbox, workspace, gate, DeviceResourceRegistrar(registerResource),

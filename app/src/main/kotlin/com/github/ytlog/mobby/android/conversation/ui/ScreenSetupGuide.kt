@@ -32,6 +32,14 @@ internal fun screenSetupPath(mode: ScreenMode): List<ScreenSetupStep> = when (mo
     ScreenMode.ROOT -> listOf(ScreenSetupStep.MODE, ScreenSetupStep.NOTIFICATIONS, ScreenSetupStep.CONNECT, ScreenSetupStep.COMPLETE)
 }
 
+/**
+ * Accessibility only speeds up ADB setup: it navigates Settings and reads the pairing dialog. The ADB path drops it
+ * once the user chose manual setup or a pairing already exists, unless the user asked to pair again.
+ */
+internal fun screenStepSkipped(step: ScreenSetupStep, state: ScreenControlState, manualAdbSetup: Boolean, forcePair: Boolean): Boolean =
+    step == ScreenSetupStep.ACCESSIBILITY && state.mode == ScreenMode.ADB &&
+        (manualAdbSetup || state.connected || (state.adbPaired && !forcePair))
+
 internal fun screenStepComplete(step: ScreenSetupStep, state: ScreenControlState, status: ScreenSetupStatus,
     forcePair: Boolean = false, developerConfirmed: Boolean = false, wirelessConfirmed: Boolean = false): Boolean = when (step) {
     ScreenSetupStep.NOTIFICATIONS -> status.notificationsAllowed

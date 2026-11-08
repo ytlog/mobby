@@ -120,9 +120,8 @@ class ScreenControlSettingsActivity : ComponentActivity() {
         val path = screenSetupPath(current.mode)
         val permissions = freshStatus()
         return path.drop(path.indexOf(after) + 1).firstOrNull {
-            val skipAccessibility = it == ScreenSetupStep.ACCESSIBILITY && current.mode == ScreenMode.ADB &&
-                (manualAdbSetup || current.connected || (current.adbPaired && !forcePair))
-            !skipAccessibility && !screenStepComplete(it, current, permissions, forcePair, developerConfirmed, wirelessConfirmed)
+            !screenStepSkipped(it, current, manualAdbSetup, forcePair) &&
+                !screenStepComplete(it, current, permissions, forcePair, developerConfirmed, wirelessConfirmed)
         } ?: ScreenSetupStep.COMPLETE
     }
     fun execute(block: suspend () -> Unit) {
