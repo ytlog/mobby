@@ -177,10 +177,10 @@ class ScreenControlSettingsTest {
         compose.onNodeWithText("屏幕操作已就绪").assertIsDisplayed()
         compose.runOnIdle { assertEquals(listOf(ScreenSettingsTarget.ACCESSIBILITY), opened) }
     }
-    @Test fun `a saved ready pairing skips completed pages and connects only on request`() {
+    @Test fun `a saved pairing connects on request even when accessibility is unavailable`() {
         val controller = TestController(ScreenControlState(mode = ScreenMode.ADB, adbPaired = true))
         var finished = false
-        show(controller, finished = { finished = true })
+        show(controller, ready.copy(accessibilityEnabled = false), finished = { finished = true })
         next()
         compose.onNodeWithContentDescription("第 8 步：连接").assertIsSelected()
         button("连接").assertIsDisplayed()

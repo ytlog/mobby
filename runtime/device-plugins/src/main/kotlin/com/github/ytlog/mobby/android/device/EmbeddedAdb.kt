@@ -13,8 +13,10 @@ import io.github.muntashirakon.adb.AdbPairingRequiredException
 import io.github.muntashirakon.adb.PairingConnectionCtx
 import kotlinx.coroutines.*
 import java.io.ByteArrayOutputStream
+import java.io.IOException
 import java.net.InetAddress
 import java.net.NetworkInterface
+import java.net.SocketTimeoutException
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
@@ -22,6 +24,7 @@ import kotlin.coroutines.resumeWithException
 
 /** App-owned pairing identity. No plaintext key on disk, downloaded executable, or Agent-facing ADB API. */
 internal object EmbeddedAdb {
+    private const val LAST_CONNECTION_PORT = "adb-last-connection-port"
     @Volatile var port: Int? = null
         private set
 
@@ -64,33 +67,32 @@ internal object EmbeddedAdb {
         check(context.getSharedPreferences("screen-control", Context.MODE_PRIVATE).edit().putBoolean("adb-paired", true).commit())
     }
 
-    /** A single fixed bootstrap command. The ADB connection is closed before returning the screen socket. */
-    suspend fun connect(context: Context, connectionPort: Int? = port): ScreenChannel {
+    /** ADB authenticates the app and locates the shell worker. The transport closes once attached. */
+    suspend fun connect(context: Context, connectionPort: Int? = port, useRememberedPort: Boolean = true): ScreenChannel {
         var created: ScreenChannel? = null
         try {
-            val selected = connectionPort ?: try {
-                discover(context)
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (failure: Exception) {
-                throw AdbConnectionException(AdbConnectionFailure.ENDPOINT_NOT_FOUND, AppStrings.adbConnectionFailed, failure)
-            }
             return withContext(Dispatchers.IO) {
                 val identity = ScreenAdbIdentity.load(context)
-                transport(selected, identity).use { adb ->
-                    ensureActive()
-                    try {
-                        check(adb.connect(15, TimeUnit.SECONDS, true)) { "adb_connection_timeout" }
-                    } catch (failure: Exception) {
-                        if (failure !is AdbPairingRequiredException && failure !is AdbAuthenticationFailedException) throw failure
-                        forgetPairing(context)
-                        throw AdbConnectionException(AdbConnectionFailure.PAIRING_REQUIRED, AppStrings.adbConnectionPairingRequired, failure)
+                val preferences = context.getSharedPreferences("screen-control", Context.MODE_PRIVATE)
+                val hint = preferences.getInt(LAST_CONNECTION_PORT, 0).takeIf {
+                    connectionPort == null && useRememberedPort && it in 1..65535
+                }
+                val remembered = hint?.let {
+                    try { authenticate(context, it, identity, 3) }
+                    catch (_: IOException) {
+                        // Wireless debugging can change ports when restarted. Resolve the current endpoint.
+                        preferences.edit().remove(LAST_CONNECTION_PORT).apply()
+                        null
                     }
+                }
+                val selected = if (remembered != null) checkNotNull(hint) else connectionPort ?: discoverConnection(context)
+                (remembered ?: authenticate(context, selected, identity, 15)).use { adb ->
+                    ensureActive()
+                    val peerKey = checkNotNull(adb.tlsPeerPublicKey).encoded
                     adb.open(bootstrapCommand(context.applicationInfo.sourceDir)).use { stream ->
                         val line = readEndpointLine(stream.openInputStream()) { ensureActive() }
                         val endpoint = org.json.JSONObject(line)
                         check(endpoint.getInt("uid") == 2000) { "adb_worker_identity" }
-                        val peerKey = checkNotNull(adb.tlsPeerPublicKey).encoded
                         ScreenChannel(endpoint, root = false, verifyAdbAuthorization = {
                             try {
                                 verifyAuthorization(selected, identity, peerKey)
@@ -100,13 +102,37 @@ internal object EmbeddedAdb {
                                 forgetPairing(context)
                                 throw failure
                             }
-                        }).also { created = it }
+                        }).also {
+                            created = it
+                            preferences.edit().putInt(LAST_CONNECTION_PORT, selected).apply()
+                        }
                     }
                 }
             }
         } catch (failure: Throwable) {
             created?.close()
             throw failure
+        }
+    }
+
+    private suspend fun discoverConnection(context: Context): Int = try {
+        discover(context)
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (failure: Exception) {
+        throw AdbConnectionException(AdbConnectionFailure.ENDPOINT_NOT_FOUND, AppStrings.adbConnectionFailed, failure)
+    }
+
+    private fun authenticate(context: Context, port: Int, identity: ScreenAdbIdentity.Identity, timeout: Long): AdbConnection {
+        val adb = transport(port, identity)
+        try {
+            if (!adb.connect(timeout, TimeUnit.SECONDS, true)) throw SocketTimeoutException("adb_connection_timeout")
+            return adb
+        } catch (failure: Exception) {
+            try { adb.close() } catch (cleanup: Exception) { failure.addSuppressed(cleanup) }
+            if (failure !is AdbPairingRequiredException && failure !is AdbAuthenticationFailedException) throw failure
+            forgetPairing(context)
+            throw AdbConnectionException(AdbConnectionFailure.PAIRING_REQUIRED, AppStrings.adbConnectionPairingRequired, failure)
         }
     }
 

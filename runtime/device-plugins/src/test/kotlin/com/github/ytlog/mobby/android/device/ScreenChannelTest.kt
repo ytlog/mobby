@@ -1,5 +1,6 @@
 package com.github.ytlog.mobby.android.device
 
+import com.github.ytlog.mobby.android.device.privileged.ScreenServer
 import com.github.ytlog.mobby.android.runtime.api.device.DeviceErrorCode
 import com.github.ytlog.mobby.android.runtime.api.device.DeviceFailure
 import org.json.JSONObject
@@ -8,16 +9,32 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowProcess
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.net.InetAddress
 import java.net.ServerSocket
+import java.nio.file.Files
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], manifest = Config.NONE)
 class ScreenChannelTest {
+    @Test fun `ADB shell worker accepts a new client after the app disconnects`() {
+        ShadowProcess.setUid(2000)
+        val apk = Files.createTempFile("mobby-worker-test", ".apk")
+        try {
+            ScreenServer(apk.toFile()).use { worker ->
+                val endpoint = JSONObject(worker.endpoint())
+                ScreenChannel(endpoint, root = false).use { assertTrue(it.request("ping", emptyMap()).getBoolean("ok")) }
+                ScreenChannel(endpoint, root = false).use { assertTrue(it.request("ping", emptyMap()).getBoolean("ok")) }
+            }
+        } finally {
+            Files.delete(apk)
+        }
+    }
+
     @Test fun `authenticates once and sends the selected display action without executing shell text`() {
         withServer { endpoint, server ->
             val worker = server.submit {
