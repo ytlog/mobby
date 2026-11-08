@@ -157,5 +157,18 @@ class VirtualScreenPreviewCardTest {
         compose.runOnIdle { assertEquals("handBack" to listOf("handoff-fixture"), calls.last()) }
     }
 
+    @Test fun aFailedTextPreparationExplainsWhyNoEditorOpened() {
+        val controller = Proxy.newProxyInstance(ScreenControlPort::class.java.classLoader,
+            arrayOf(ScreenControlPort::class.java)) { _, method, _ ->
+            if (method.name == "prepareManualText") throw IllegalStateException(UiStrings.virtualScreenManualSelectField) else Unit
+        } as ScreenControlPort
+        compose.setContent { MaterialTheme {
+            ManualVirtualScreenDialog(controller, "handoff-fixture", ImageBitmap(72, 128), null, onMinimize = {})
+        } }
+        compose.onNodeWithText(UiStrings.virtualScreenManualInput).performClick()
+        compose.onNodeWithText(UiStrings.virtualScreenManualSelectField).assertIsDisplayed()
+        compose.onAllNodes(isDialog()).assertCountEquals(1)
+    }
+
     private val DpRect.ratio get() = (right - left).value / (bottom - top).value
 }
