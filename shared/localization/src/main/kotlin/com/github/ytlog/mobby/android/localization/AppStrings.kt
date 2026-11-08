@@ -191,9 +191,20 @@ open class StringCatalog(private val fixedLanguage: AppLanguage? = null) {
     val screenBackendDisconnected get() = text("权限后端未连接", "Screen backend disconnected")
     val openAccessibilitySettings get() = text("打开无障碍设置", "Open accessibility settings")
     val wizardDownloadedAccessibilityApps get() = text("已下载的应用", "Downloaded apps")
+    fun wizardEnableAccessibility(path: String) = text(
+        "开启「mobby 屏幕操作」后返回。如果没直接看到这个服务，可按系统菜单查找。\n{0}",
+        "Enable mobby Screen Control, then return. If the service does not open directly, find it here.\n{0}", path,
+    )
+    val accessibilityPathXiaomi get() = text("设置 → 更多设置 → 无障碍 → 已下载的应用", "Settings → Additional settings → Accessibility → Downloaded apps")
+    val accessibilityPathOppo get() = text("设置 → 系统设置或其他设置 → 无障碍", "Settings → System settings or Additional settings → Accessibility")
+    val accessibilityPathVivo get() = text("设置 → 快捷与辅助 → 无障碍", "Settings → Shortcuts & accessibility → Accessibility")
+    val accessibilityPathSamsung get() = text("设置 → 无障碍 → 已安装的应用或服务", "Settings → Accessibility → Installed apps or Installed services")
+    val accessibilityPathHonor get() = text("设置 → 辅助功能 → 无障碍 → 下载服务", "Settings → Accessibility features → Accessibility → Downloaded services")
+    val accessibilityPathHuawei get() = text("设置 → 辅助功能 → 无障碍 → 已安装的服务或下载服务", "Settings → Accessibility features → Accessibility → Installed services or Downloaded services")
+    val accessibilityPathAndroid get() = text("设置 → 无障碍 → 已下载的应用或已安装的服务", "Settings → Accessibility → Downloaded apps or Installed services")
     val wizardAdbAccessibilityHelp get() = text(
-        "启用「mobby 屏幕操作」后返回，mobby 会帮你找到无线调试并打开配对页面。若系统打开无障碍首页，请在「已下载的应用」或「已安装的服务」中找到它。",
-        "Enable mobby Screen Control and return. mobby can help you find Wireless debugging and open the pairing page. If Settings opens its accessibility home, look under Downloaded apps or Installed services.",
+        "启用后，mobby 可以协助打开无线调试和配对页。",
+        "Once enabled, mobby can help open Wireless debugging and the pairing page.",
     )
     val wizardManualAdbSetup get() = text("手动设置 ADB", "Set up ADB manually")
     val openNotificationSettings get() = text("打开通知设置", "Open notification settings")

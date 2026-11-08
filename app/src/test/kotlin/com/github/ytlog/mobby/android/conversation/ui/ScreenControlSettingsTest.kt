@@ -28,6 +28,7 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import org.robolectric.shadows.ShadowBuild
 import java.io.File
 
 @RunWith(RobolectricTestRunner::class)
@@ -154,6 +155,14 @@ class ScreenControlSettingsTest {
         }
         button("允许通知").assertIsDisplayed()
         compose.runOnIdle { assertTrue(controller.events.isEmpty()) }
+    }
+
+    @Test fun `Samsung accessibility help names the installed app list`() {
+        ShadowBuild.setManufacturer("samsung")
+        ShadowBuild.setBrand("samsung")
+        show(TestController(ScreenControlState(mode = ScreenMode.ADB)), ready.copy(accessibilityEnabled = false))
+        next()
+        compose.onNodeWithText("设置 → 无障碍 → 已安装的应用或服务", substring = true).assertIsDisplayed()
     }
 
     @Test fun `current screen only asks for accessibility after completed notifications`() {

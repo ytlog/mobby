@@ -35,6 +35,15 @@ internal enum class DeviceSettingsFamily {
         HUAWEI -> AppStrings.developerHuawei
         ANDROID -> AppStrings.developerAndroid
     }
+    fun accessibilityPath(): String = when (this) {
+        XIAOMI -> AppStrings.accessibilityPathXiaomi
+        OPPO -> AppStrings.accessibilityPathOppo
+        VIVO -> AppStrings.accessibilityPathVivo
+        SAMSUNG -> AppStrings.accessibilityPathSamsung
+        HONOR -> AppStrings.accessibilityPathHonor
+        HUAWEI -> AppStrings.accessibilityPathHuawei
+        ANDROID -> AppStrings.accessibilityPathAndroid
+    }
     companion object {
         fun detect(manufacturer: String = Build.MANUFACTURER, brand: String = Build.BRAND): DeviceSettingsFamily {
             val names = setOf(manufacturer.lowercase(java.util.Locale.ROOT), brand.lowercase(java.util.Locale.ROOT))

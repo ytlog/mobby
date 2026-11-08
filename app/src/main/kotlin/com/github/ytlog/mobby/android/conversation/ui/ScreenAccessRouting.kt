@@ -3,9 +3,11 @@ package com.github.ytlog.mobby.android.conversation.ui
 import android.app.NotificationManager
 import android.content.ActivityNotFoundException
 import android.app.Activity
+import android.content.ComponentName
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.Settings
 import com.github.ytlog.mobby.android.localization.AppStrings
@@ -53,20 +55,29 @@ internal object ScreenAccessRouting {
         }
     } + Intent(Settings.ACTION_SETTINGS)
 
-    private fun accessibilityIntents(context: Context): List<Intent> {
+    private fun accessibilityIntents(context: Context): List<Intent> = buildList {
         val accessibility = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-        val details = Intent("android.settings.ACCESSIBILITY_DETAILS_SETTINGS")
-            .putExtra(Intent.EXTRA_COMPONENT_NAME, screenAccessibilityComponent(context).flattenToString())
-        val settings = accessibility.resolveActivity(context.packageManager)
+        val settings = context.openableSystemSettings(accessibility)
         if (settings?.packageName == "com.android.settings" &&
-            settings.className == "com.android.settings.accessibility.MiuiAccessibilitySettingsActivity") {
+            settings.name == "com.android.settings.accessibility.MiuiAccessibilitySettingsActivity") {
             // This is the list fragment MIUI opens from its Downloaded apps preference.
-            val downloadedApps = Intent().setClassName(settings.packageName, "com.android.settings.SubSettings")
+            add(Intent().setClassName(settings.packageName, "com.android.settings.SubSettings")
                 .putExtra(":settings:show_fragment", "com.android.settings.accessibility.InstalledAccessibilityService")
-                .putExtra(":settings:show_fragment_title", AppStrings.wizardDownloadedAccessibilityApps)
-            return listOf(downloadedApps, details, accessibility)
+                .putExtra(":settings:show_fragment_title", AppStrings.wizardDownloadedAccessibilityApps))
         }
-        return listOf(details, accessibility)
+        val details = Intent("android.settings.ACCESSIBILITY_DETAILS_SETTINGS").setPackage(settings?.packageName)
+        context.openableSystemSettings(details)?.let { activity ->
+            add(details.setComponent(ComponentName(activity.packageName, activity.name))
+                .putExtra(Intent.EXTRA_COMPONENT_NAME, screenAccessibilityComponent(context).flattenToString()))
+        }
+        add(accessibility.setPackage(settings?.packageName))
+    }
+
+    private fun Context.openableSystemSettings(intent: Intent) = packageManager.resolveActivity(
+        intent, PackageManager.MATCH_DEFAULT_ONLY or PackageManager.MATCH_SYSTEM_ONLY,
+    )?.activityInfo?.takeIf { activity ->
+        activity.exported && activity.packageName != "android" &&
+            (activity.permission.isNullOrBlank() || checkSelfPermission(activity.permission) == PackageManager.PERMISSION_GRANTED)
     }
 
     fun openSettings(context: Context, target: ScreenSettingsTarget, pairing: Boolean = true,

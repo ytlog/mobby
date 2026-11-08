@@ -259,8 +259,10 @@ class ScreenControlSettingsActivity : ComponentActivity() {
     val description = when (step) {
         ScreenSetupStep.MODE -> AppStrings.wizardChooseModeHelp
         ScreenSetupStep.NOTIFICATIONS -> AppStrings.wizardNotificationsHelp
-        ScreenSetupStep.ACCESSIBILITY -> if (state.mode == ScreenMode.ADB) AppStrings.wizardAdbAccessibilityHelp
-            else AppStrings.currentScreenModeHelp
+        ScreenSetupStep.ACCESSIBILITY -> {
+            val path = AppStrings.wizardEnableAccessibility(DeviceSettingsFamily.detect().accessibilityPath())
+            if (state.mode == ScreenMode.ADB) "$path\n\n${AppStrings.wizardAdbAccessibilityHelp}" else path
+        }
         ScreenSetupStep.WIFI -> AppStrings.wizardWifiHelp
         ScreenSetupStep.DEVELOPER -> AppStrings.wizardDeveloperHelp
         ScreenSetupStep.WIRELESS -> if (status.accessibilityEnabled) AppStrings.wizardWirelessAssist else AppStrings.wizardWirelessHelp

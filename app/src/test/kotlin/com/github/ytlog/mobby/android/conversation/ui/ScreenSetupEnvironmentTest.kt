@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
 import android.content.pm.ActivityInfo
+import android.content.pm.ApplicationInfo
 import android.content.pm.ResolveInfo
 import android.provider.Settings
 import org.junit.Assert.*
@@ -21,6 +22,19 @@ import org.robolectric.annotation.Config
 @Config(sdk = [34])
 class ScreenSetupEnvironmentTest {
     private val context: Context get() = RuntimeEnvironment.getApplication()
+
+    private fun settingsHandler(intent: Intent, className: String, permission: String? = null) {
+        shadowOf(context.packageManager).addResolveInfoForIntent(intent, ResolveInfo().apply {
+            isDefault = true
+            activityInfo = ActivityInfo().apply {
+                packageName = "com.android.settings"
+                name = className
+                exported = true
+                this.permission = permission
+                applicationInfo = ApplicationInfo().apply { flags = ApplicationInfo.FLAG_SYSTEM }
+            }
+        })
+    }
     @Test fun `brand matching handles subbrands and does not confuse Honor with Huawei`() {
         assertEquals(DeviceSettingsFamily.XIAOMI, DeviceSettingsFamily.detect("XIAOMI", "Redmi"))
         assertEquals(DeviceSettingsFamily.XIAOMI, DeviceSettingsFamily.detect("unknown", "POCO"))
@@ -56,24 +70,33 @@ class ScreenSetupEnvironmentTest {
         assertEquals(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS, wireless[1].action)
         assertEquals(Settings.ACTION_SETTINGS, wireless.last().action)
         val access = ScreenAccessRouting.settingsIntents(context, ScreenSettingsTarget.ACCESSIBILITY)
-        assertTrue(access.first().getStringExtra(Intent.EXTRA_COMPONENT_NAME)!!.endsWith(".ScreenAccessService"))
-        assertEquals(Settings.ACTION_ACCESSIBILITY_SETTINGS, access[1].action)
+        assertEquals(listOf(Settings.ACTION_ACCESSIBILITY_SETTINGS, Settings.ACTION_SETTINGS), access.map(Intent::getAction))
     }
     @Test fun `MIUI accessibility opens the downloaded service list before the general settings fallback`() {
-        val accessibility = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-        shadowOf(context.packageManager).addResolveInfoForIntent(accessibility, ResolveInfo().apply {
-            isDefault = true
-            activityInfo = ActivityInfo().apply {
-                packageName = "com.android.settings"
-                name = "com.android.settings.accessibility.MiuiAccessibilitySettingsActivity"
-            }
-        })
+        settingsHandler(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS), "com.android.settings.accessibility.MiuiAccessibilitySettingsActivity")
         val intents = ScreenAccessRouting.settingsIntents(context, ScreenSettingsTarget.ACCESSIBILITY)
         val downloadedApps = intents.first()
         assertEquals("com.android.settings.SubSettings", downloadedApps.component?.className)
         assertEquals("com.android.settings.accessibility.InstalledAccessibilityService",
             downloadedApps.getStringExtra(":settings:show_fragment"))
         assertEquals(Settings.ACTION_ACCESSIBILITY_SETTINGS, intents[intents.lastIndex - 1].action)
+    }
+    @Test fun `protected service details fall back to the system accessibility page`() {
+        settingsHandler(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS), "com.android.settings.AccessibilitySettingsActivity")
+        settingsHandler(Intent("android.settings.ACCESSIBILITY_DETAILS_SETTINGS").setPackage("com.android.settings"),
+            "com.android.settings.AccessibilityDetailsSettingsActivity", "android.permission.OPEN_ACCESSIBILITY_DETAILS_SETTINGS")
+        val intents = ScreenAccessRouting.settingsIntents(context, ScreenSettingsTarget.ACCESSIBILITY)
+        assertEquals(listOf(Settings.ACTION_ACCESSIBILITY_SETTINGS, Settings.ACTION_SETTINGS), intents.map(Intent::getAction))
+        assertEquals("com.android.settings", intents.first().`package`)
+    }
+    @Test fun `an accessible system detail page receives the exact mobby service component`() {
+        settingsHandler(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS), "com.android.settings.AccessibilitySettingsActivity")
+        settingsHandler(Intent("android.settings.ACCESSIBILITY_DETAILS_SETTINGS").setPackage("com.android.settings"),
+            "com.android.settings.AccessibilityDetailsSettingsActivity")
+        val intents = ScreenAccessRouting.settingsIntents(context, ScreenSettingsTarget.ACCESSIBILITY)
+        assertEquals("com.android.settings.AccessibilityDetailsSettingsActivity", intents.first().component?.className)
+        assertEquals(screenAccessibilityComponent(context).flattenToString(), intents.first().getStringExtra(Intent.EXTRA_COMPONENT_NAME))
+        assertEquals(Settings.ACTION_ACCESSIBILITY_SETTINGS, intents[1].action)
     }
     @Test fun `current screen mode does not require an unrelated pairing notification channel`() {
         context.getSystemService(NotificationManager::class.java).createNotificationChannel(
