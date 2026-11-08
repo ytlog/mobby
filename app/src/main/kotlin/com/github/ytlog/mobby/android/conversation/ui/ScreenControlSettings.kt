@@ -49,8 +49,7 @@ class ScreenControlSettingsActivity : ComponentActivity() {
             }
             MaterialTheme(colorScheme = if (dark) MobbyDarkScheme else MobbyLightScheme, typography = MobbyTypography) {
                 Surface(Modifier.fillMaxSize()) {
-                    ScreenUi.controller?.let { ScreenControlSettings(it, onBack = ::finish,
-                        conversationGrant = ScreenAccessRouting.isConversationGrant(intent), onFinished = {
+                    ScreenUi.controller?.let { ScreenControlSettings(it, onBack = ::finish, onFinished = {
                         setResult(Activity.RESULT_OK)
                         finish()
                     }) }
@@ -65,7 +64,7 @@ class ScreenControlSettingsActivity : ComponentActivity() {
     statusOverride: ScreenSetupStatus? = null, settingsOverride: ((ScreenSettingsTarget) -> Unit)? = null,
     onFinished: () -> Unit = onBack, embedded: Boolean = false, stepOffset: Int = 0,
     canSelectPrefix: (Int) -> Boolean = { false }, selectPrefix: (Int) -> Unit = {},
-    isPrefixComplete: (Int) -> Boolean = { false }, conversationGrant: Boolean = false) {
+    isPrefixComplete: (Int) -> Boolean = { false }) {
     val state by controller.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -73,7 +72,7 @@ class ScreenControlSettingsActivity : ComponentActivity() {
     val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     val sdk = statusOverride?.sdk ?: Build.VERSION.SDK_INT
     val setup = viewModel<ScreenSetupViewModel>()
-    val initialMode = if (ScreenAccessRouting.recommendsAdb(state, sdk, conversationGrant)) ScreenMode.ADB else state.mode
+    val initialMode = if (ScreenAccessRouting.recommendsAdb(state, sdk)) ScreenMode.ADB else state.mode
     val draft = setup.draft(initialMode, state.adbPairing)
     var history by draft::history
     val step = ScreenSetupStep.valueOf(history.last())
@@ -231,14 +230,16 @@ class ScreenControlSettingsActivity : ComponentActivity() {
         if (connectAfterPairing) {
             val current = controller.state.value
             if (!current.adbPairing) {
-                if (current.error != null || current.mode != ScreenMode.ADB || current.active || current.adbPairingSuccess <= pairingSuccessAtStart) {
+                if (current.mode != ScreenMode.ADB || current.active || current.adbPairingSuccess <= pairingSuccessAtStart) {
                     connectAfterPairing = false
                     error = current.error ?: AppStrings.wizardPairCancelled
                 } else if (status.resumed && !busy) {
                     connectAfterPairing = false
                     forcePair = false
                     go(ScreenSetupStep.CONNECT)
-                    if (!current.connected) connect() else go(ScreenSetupStep.COMPLETE)
+                    if (current.connected) go(ScreenSetupStep.COMPLETE)
+                    else if (current.error != null) error = current.error
+                    else connect()
                 }
             }
         }
@@ -286,7 +287,11 @@ class ScreenControlSettingsActivity : ComponentActivity() {
         step == ScreenSetupStep.WIFI -> AppStrings.screenOpenWifi
         step == ScreenSetupStep.DEVELOPER -> AppStrings.screenAboutDevice
         step == ScreenSetupStep.WIRELESS -> AppStrings.screenOpenWireless
-        step == ScreenSetupStep.PAIR -> if (state.adbPairing) AppStrings.screenOpenWireless else AppStrings.adbStartPairing
+        step == ScreenSetupStep.PAIR -> when {
+            state.adbPairing -> AppStrings.screenOpenWireless
+            status.accessibilityEnabled -> AppStrings.adbStartAutomaticPairing
+            else -> AppStrings.adbStartPairing
+        }
         else -> AppStrings.connectScreen
     }
     fun primary() {

@@ -375,7 +375,9 @@ class ScreenAccessService : AccessibilityService() {
     companion object {
         @Volatile internal var instance: ScreenAccessService? = null
         fun connected() = instance != null
-        fun assistAdbSettings(destination: AdbSetupDestination) { instance?.adbSettings?.start(destination) }
+        fun assistAdbSettings(destination: AdbSetupDestination, returnTo: android.content.ComponentName? = null) {
+            instance?.adbSettings?.start(destination, returnTo)
+        }
         fun stopAdbSettingsAssist() { instance?.adbSettings?.stop() }
         internal fun stay(): AutoCloseable {
             val service = instance ?: error(AppStrings.accessibilityIsOffEnableMobbySScreenServiceIn)

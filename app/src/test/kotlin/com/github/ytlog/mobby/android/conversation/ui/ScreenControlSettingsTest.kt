@@ -39,10 +39,10 @@ class ScreenControlSettingsTest {
     private val opened = mutableListOf<ScreenSettingsTarget>()
     private fun button(text: String) = compose.onNode(hasText(text) and hasClickAction())
     private fun next() = button("下一步").performClick()
-    private fun show(controller: TestController, status: ScreenSetupStatus = ready, conversationGrant: Boolean = false, finished: () -> Unit = {}) {
+    private fun show(controller: TestController, status: ScreenSetupStatus = ready, finished: () -> Unit = {}) {
         compose.setContent { MaterialTheme(colorScheme = MobbyLightScheme) {
             ScreenControlSettings(controller, onBack = {}, onFinished = finished, statusOverride = status,
-                settingsOverride = { opened += it }, conversationGrant = conversationGrant)
+                settingsOverride = { opened += it })
         } }
     }
     @Before fun prepare() {
@@ -117,17 +117,19 @@ class ScreenControlSettingsTest {
         compose.onNodeWithText("手动填写连接端口").assertDoesNotExist()
         compose.runOnIdle { assertEquals(emptyList<String>(), controller.events) }
     }
-    @Test fun `an explicitly chosen current screen remains selected`() {
+    @Test fun `screen settings suggest ADB even after current screen was saved`() {
         val controller = TestController(ScreenControlState(modeConfigured = true))
         show(controller)
-        compose.onNodeWithText("当前屏幕（无障碍）").assertIsSelected()
+        compose.onNodeWithText("虚拟屏幕（内置 ADB）").assertIsSelected()
+        compose.runOnIdle { assertEquals(ScreenMode.CURRENT, controller.state.value.mode) }
+        compose.onNodeWithText("当前屏幕（无障碍）").performClick().assertIsSelected()
         next()
         compose.runOnIdle { assertEquals(ScreenMode.CURRENT, controller.state.value.mode) }
     }
 
-    @Test fun `conversation grant recommends ADB without changing the saved mode before confirmation`() {
+    @Test fun `the recommended ADB mode can continue with an existing pairing after confirmation`() {
         val controller = TestController(ScreenControlState(modeConfigured = true, adbPaired = true))
-        show(controller, conversationGrant = true)
+        show(controller)
         compose.onNodeWithText("虚拟屏幕（内置 ADB）").assertIsSelected()
         compose.runOnIdle { assertEquals(ScreenMode.CURRENT, controller.state.value.mode) }
         next()
@@ -256,7 +258,7 @@ class ScreenControlSettingsTest {
         val status = mutableStateOf(ready)
         compose.setContent { MaterialTheme { ScreenControlSettings(controller, {}, statusOverride = status.value, settingsOverride = { opened += it }) } }
         next()
-        button("通过通知配对").performClick()
+        button("自动配对").performClick()
         compose.runOnIdle {
             status.value = status.value.copy(resumed = false)
             controller.state.value = controller.state.value.copy(adbPaired = true, adbPairing = false, adbPairingSuccess = 1)
@@ -271,12 +273,26 @@ class ScreenControlSettingsTest {
         val controller = TestController(ScreenControlState(mode = ScreenMode.ADB), "fixture connection failed")
         show(controller)
         next()
-        button("通过通知配对").performClick()
+        button("自动配对").performClick()
         compose.runOnIdle { controller.state.value = controller.state.value.copy(adbPaired = true, adbPairing = false, adbPairingSuccess = 1) }
         compose.onNodeWithText("fixture connection failed").assertIsDisplayed()
         compose.onNode(hasSetTextAction()).assertDoesNotExist()
         compose.onNodeWithText("配对这台手机").assertDoesNotExist()
         compose.runOnIdle { assertEquals(1, controller.events.count { it == "connect" }) }
+    }
+    @Test fun `a connection completed in the background is not started again on return`() {
+        val controller = TestController(ScreenControlState(mode = ScreenMode.ADB))
+        val status = mutableStateOf(ready)
+        compose.setContent { MaterialTheme { ScreenControlSettings(controller, {}, statusOverride = status.value, settingsOverride = {}) } }
+        next()
+        button("自动配对").performClick()
+        compose.runOnIdle {
+            status.value = ready.copy(resumed = false)
+            controller.state.value = controller.state.value.copy(adbPaired = true, adbPairing = false, adbPairingSuccess = 1, connected = true)
+        }
+        compose.runOnIdle { status.value = ready }
+        compose.onNodeWithText("屏幕操作已就绪").assertIsDisplayed()
+        compose.runOnIdle { assertEquals(listOf("start-pairing"), controller.events) }
     }
     @Test fun `connection failure guides disabled developer settings before wireless debugging`() {
         val controller = TestController(ScreenControlState(mode = ScreenMode.ADB, adbPaired = true), "fixture connection failed")
@@ -313,7 +329,7 @@ class ScreenControlSettingsTest {
         next()
         button("连接").performClick()
         button("重新配对").performClick()
-        button("通过通知配对").performClick()
+        button("自动配对").performClick()
         compose.runOnIdle { controller.state.value = controller.state.value.copy(adbPairing = false) }
         compose.onNodeWithText("配对未完成，可以重新开始。").assertIsDisplayed()
         compose.runOnIdle { assertEquals(1, controller.events.count { it == "connect" }); assertTrue(controller.state.value.adbPaired) }

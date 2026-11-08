@@ -19,20 +19,12 @@ class AdbPairingService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == SUBMIT) {
             val code = RemoteInput.getResultsFromIntent(intent)?.getCharSequence(CODE)?.toString().orEmpty()
-            val selected = port
-            if (selected != null && !submitted) {
-                submitted = true
-                notifications.notify(ID, notice(AppStrings.adbPairingInProgress))
-                scope.launch {
-                    try { ScreenControl.pairAdb(this@AdbPairingService, selected.toString(), code); finishPairing(null) }
-                    catch (cancelled: CancellationException) { throw cancelled }
-                    catch (_: Exception) { finishPairing(AppStrings.adbPairingFailed) }
-                }
-            }
+            port?.let { submit(it, code) }
         } else if (discovery == null) {
             notifications.cancel(ID + 1)
             notifications.createNotificationChannel(NotificationChannel(CHANNEL, AppStrings.adbPairingNotification, NotificationManager.IMPORTANCE_DEFAULT))
             startForeground(ID, notice(AppStrings.adbPairingSearching))
+            active = this
             discovery = scope.launch {
                 try {
                     withTimeout(120_000) {
@@ -47,6 +39,26 @@ class AdbPairingService : Service() {
             }
         }
         return START_NOT_STICKY
+    }
+
+    private fun submit(port: Int, code: String, connect: Boolean = false, connectionPort: Int? = null): Boolean {
+        if (submitted || !ScreenControl.state.value.adbPairing) return false
+        submitted = true
+        discovery?.cancel()
+        notifications.notify(ID, notice(AppStrings.adbPairingInProgress))
+        scope.launch {
+            try { ScreenControl.pairAdb(this@AdbPairingService, port.toString(), code) }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { finishPairing(AppStrings.adbPairingFailed); return@launch }
+            if (connect) {
+                try {
+                    ScreenControl.connectAfterPairing(this@AdbPairingService, ScreenControl.state.value.adbPairingSuccess, connectionPort)
+                } catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { finishPairing(AppStrings.adbConnectionFailed); return@launch }
+            }
+            finishPairing(null)
+        }
+        return true
     }
 
     private fun notice(message: String, reply: Boolean = false): Notification {
@@ -71,9 +83,16 @@ class AdbPairingService : Service() {
     }
 
     override fun onDestroy() {
+        if (active === this) active = null
         scope.cancel(); ScreenControl.pairingFinished(ScreenControl.state.value.error); super.onDestroy()
     }
     companion object {
+        private var active: AdbPairingService? = null
+
+        /** Called on the main thread by the user-started Settings assistant. */
+        internal fun submitFromSettings(port: Int, code: String, connectionPort: Int?): Boolean =
+            active?.submit(port, code, connect = true, connectionPort = connectionPort) == true
+
         private const val CHANNEL = "screen-adb-pairing"
         private const val ID = 4602
         internal const val SUBMIT = "com.github.ytlog.mobby.android.screen.PAIR_ADB"

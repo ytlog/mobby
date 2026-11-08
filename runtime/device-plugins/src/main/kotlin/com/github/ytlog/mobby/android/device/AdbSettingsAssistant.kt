@@ -2,6 +2,8 @@ package com.github.ytlog.mobby.android.device
 
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.app.KeyguardManager
+import android.content.ComponentName
+import android.content.Intent
 import android.graphics.Rect
 import android.os.Build
 import android.os.PowerManager
@@ -13,6 +15,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -21,7 +24,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 internal class AdbSettingsAssistant(private val service: ScreenAccessService) {
     private var task: Job? = null
 
-    fun start(destination: ScreenAccessService.AdbSetupDestination) {
+    fun start(destination: ScreenAccessService.AdbSetupDestination, returnTo: ComponentName?) {
         stop()
         if (Build.VERSION.SDK_INT < 33 || ScreenCoordinator.chatActive) return
         task = CoroutineScope(Dispatchers.Main).launch {
@@ -33,7 +36,8 @@ internal class AdbSettingsAssistant(private val service: ScreenAccessService) {
                 service.serviceInfo = info
             }
             try {
-                withTimeoutOrNull(10_000) { navigate(destination) }
+                val timeout = if (destination == ScreenAccessService.AdbSetupDestination.PAIR) 30_000L else 10_000L
+                withTimeoutOrNull(timeout) { navigate(destination, returnTo) }
             } finally {
                 if (addedFlags != 0) service.serviceInfo?.let {
                     it.flags = it.flags and addedFlags.inv()
@@ -45,38 +49,119 @@ internal class AdbSettingsAssistant(private val service: ScreenAccessService) {
 
     fun stop() { task?.cancel(); task = null }
 
-    private suspend fun navigate(destination: ScreenAccessService.AdbSetupDestination) {
+    private suspend fun navigate(destination: ScreenAccessService.AdbSetupDestination, returnTo: ComponentName?) {
         var enteredSettings = false
         var openedPage = false
+        var awaitingPairingDialog = false
+        var connectionPort: Int? = null
         var scrolls = 0
+        val pairingSuccessAtStart = ScreenControl.state.value.adbPairingSuccess
         while (true) {
             delay(if (enteredSettings) 350 else 200)
-            if (!service.getSystemService(PowerManager::class.java).isInteractive ||
-                service.getSystemService(KeyguardManager::class.java).isKeyguardLocked) return
+            if (!screenAvailable() || destination == ScreenAccessService.AdbSetupDestination.PAIR &&
+                !ScreenControl.state.value.adbPairing) return
             val root = service.getRootInActiveWindow(AccessibilityNodeInfo.FLAG_PREFETCH_DESCENDANTS_HYBRID) ?: continue
-            try {
+            val result = try {
                 val packageName = root.packageName?.toString()
                 if (packageName != SETTINGS_PACKAGE) {
                     if (enteredSettings || packageName != service.packageName) return
                     continue
                 }
-                val window = root.window ?: continue
-                val foreground = try {
-                    window.displayId == Display.DEFAULT_DISPLAY && window.type == AccessibilityWindowInfo.TYPE_APPLICATION && window.isActive
-                } finally { window.recycle() }
-                if (!foreground) return
-                enteredSettings = true
-                val result = ScreenCoordinator.programAction {
-                    visit(root, destination, openedPage, scrolls < 8)
+                val foreground = isForeground(root) ?: continue
+                if (!foreground) {
+                    if (enteredSettings) return
+                    continue
                 }
-                when (result) {
-                    Result.STOP -> return
-                    Result.OPENED_PAGE -> { openedPage = true; delay(450) }
-                    Result.SCROLLED -> scrolls++
+                enteredSettings = true
+                ScreenCoordinator.programAction {
+                    if (destination == ScreenAccessService.AdbSetupDestination.PAIR) {
+                        val result = readPairingDialog(root, connectionPort)
+                        if (result != null) return@programAction result
+                        wirelessConnectionPort(root)?.let { connectionPort = it }
+                        if (awaitingPairingDialog) return@programAction Result.WAIT
+                    }
+                    visit(root, destination, openedPage, scrolls < 8)
                 }
             } catch (_: ScreenRefused) {
                 return
             } finally { root.recycle() }
+            when (result) {
+                Result.STOP -> if (destination == ScreenAccessService.AdbSetupDestination.PAIR) awaitingPairingDialog = true else return
+                Result.PAIRING_SUBMITTED -> {
+                    val finished = ScreenControl.state.first { !it.adbPairing }
+                    if (finished.adbPairingSuccess > pairingSuccessAtStart) returnToWizard(returnTo)
+                    return
+                }
+                Result.OPENED_PAGE -> { openedPage = true; delay(450) }
+                Result.OPENED_PAIRING -> awaitingPairingDialog = true
+                Result.SCROLLED -> scrolls++
+                Result.WAIT -> Unit
+            }
+        }
+    }
+
+    private fun screenAvailable(): Boolean = service.getSystemService(PowerManager::class.java).isInteractive &&
+        !service.getSystemService(KeyguardManager::class.java).isKeyguardLocked
+
+    private fun isForeground(root: AccessibilityNodeInfo): Boolean? {
+        val window = root.window ?: return null
+        return try {
+            window.displayId == Display.DEFAULT_DISPLAY && window.type == AccessibilityWindowInfo.TYPE_APPLICATION && window.isActive
+        } finally { window.recycle() }
+    }
+
+    private fun readPairingDialog(root: AccessibilityNodeInfo, connectionPort: Int?): Result? {
+        // The dialog container is omitted from the normal accessibility tree on MIUI.
+        val code = withSettingNode(root, PAIRING_CODE) { it.text?.toString().orEmpty() } ?: return null
+        val address = withSettingNode(root, PAIRING_ADDRESS) { it.text?.toString() }
+        val fields = AdbPairingFields.parse(code, address) ?: return Result.WAIT
+        val wirelessPort = connectionPort?.takeIf { it != fields.port }
+        return if (AdbPairingService.submitFromSettings(fields.port, fields.code, wirelessPort)) Result.PAIRING_SUBMITTED
+        else Result.WAIT
+    }
+
+    private fun wirelessConnectionPort(root: AccessibilityNodeInfo): Int? {
+        val labels = exactNodes(root, CONNECTION_ADDRESS)
+        return try {
+            val title = labels.singleOrNull { it.viewIdResourceName == "android:id/title" } ?: return null
+            val row = title.parent ?: return null
+            try {
+                val summaries = row.findAccessibilityNodeInfosByViewId("android:id/summary")
+                try {
+                    val value = summaries.singleOrNull { it.isVisibleToUser && it.packageName?.toString() == SETTINGS_PACKAGE &&
+                        it.windowId == root.windowId }?.text?.toString()
+                    AdbPairingFields.parsePort(value)
+                } finally { summaries.forEach(AccessibilityNodeInfo::recycle) }
+            } finally { row.recycle() }
+        } finally { labels.forEach(AccessibilityNodeInfo::recycle) }
+    }
+
+    private fun <T> withSettingNode(root: AccessibilityNodeInfo, id: String, read: (AccessibilityNodeInfo) -> T?): T? {
+        val nodes = root.findAccessibilityNodeInfosByViewId("$SETTINGS_PACKAGE:id/$id")
+        return try {
+            nodes.filter { it.isVisibleToUser && it.packageName?.toString() == SETTINGS_PACKAGE && it.windowId == root.windowId }
+                .singleOrNull()?.let(read)
+        } finally { nodes.forEach(AccessibilityNodeInfo::recycle) }
+    }
+
+    private suspend fun returnToWizard(component: ComponentName?) {
+        if (component?.packageName != service.packageName) return
+        // Settings can replace the dialog window immediately after accepting the pairing.
+        repeat(8) {
+            delay(200)
+            if (ScreenAccessService.instance !== service || !screenAvailable() || ScreenCoordinator.chatActive) return
+            val root = service.rootInActiveWindow ?: return@repeat
+            try {
+                if (root.packageName?.toString() != SETTINGS_PACKAGE) return
+                if (isForeground(root) != true ||
+                    !(hasHeading(root, WIRELESS) || wirelessConnectionPort(root) != null ||
+                        withSettingNode(root, PAIRING_CODE) { true } == true)) return@repeat
+                service.startActivity(Intent().setComponent(component).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+                return
+            } catch (_: android.content.ActivityNotFoundException) { return }
+            catch (_: SecurityException) { return }
+            finally { root.recycle() }
         }
     }
 
@@ -99,9 +184,10 @@ internal class AdbSettingsAssistant(private val service: ScreenAccessService) {
             } finally { wireless.forEach(AccessibilityNodeInfo::recycle) }
             return Result.STOP
         }
-        if (destination == ScreenAccessService.AdbSetupDestination.PAIR && hasHeading(root, WIRELESS) &&
+        if (destination == ScreenAccessService.AdbSetupDestination.PAIR &&
+            (hasHeading(root, WIRELESS) || wirelessConnectionPort(root) != null) &&
             Settings.Global.getInt(service.contentResolver, "adb_wifi_enabled", -1) != 0) {
-            clickUnique(root, PAIR)
+            if (clickUnique(root, PAIR)) return Result.OPENED_PAIRING
         }
         return Result.STOP
     }
@@ -181,10 +267,12 @@ internal class AdbSettingsAssistant(private val service: ScreenAccessService) {
         return matches
     }
 
-    private enum class Result { STOP, OPENED_PAGE, SCROLLED }
+    private enum class Result { STOP, OPENED_PAGE, OPENED_PAIRING, SCROLLED, WAIT, PAIRING_SUBMITTED }
 
     private companion object {
         const val SETTINGS_PACKAGE = "com.android.settings"
+        const val PAIRING_CODE = "pairing_code"
+        const val PAIRING_ADDRESS = "ip_addr"
         val ABOUT = listOf("关于手机", "关于本机", "我的设备", "關於手機", "About phone", "About device", "My device")
         val SOFTWARE_DETAILS = listOf("全部参数", "详细信息与规格", "软件信息", "版本信息", "版本",
             "All specs", "Detailed info and specs", "Software information", "Version information", "Version")
@@ -193,5 +281,23 @@ internal class AdbSettingsAssistant(private val service: ScreenAccessService) {
         val DEVELOPER = listOf("开发者选项", "開發人員選項", "開發者選項", "Developer options")
         val WIRELESS = listOf("无线调试", "無線偵錯", "無線除錯", "Wireless debugging")
         val PAIR = listOf("使用配对码配对设备", "使用配對碼配對裝置", "Pair device with pairing code")
+        val CONNECTION_ADDRESS = listOf("IP 地址和端口", "IP 地址与端口", "IP 位址和通訊埠", "IP address & Port", "IP address and port")
+    }
+}
+
+/** Parsed only from the visible system pairing dialog. The displayed IP is never used to connect. */
+internal class AdbPairingFields private constructor(val code: String, val port: Int) {
+    companion object {
+        private val codePattern = Regex("[0-9]{6}")
+        private val addressPattern = Regex("[0-9]{1,3}(?:\\.[0-9]{1,3}){3}:([0-9]{1,5})")
+
+        fun parse(code: String?, address: String?): AdbPairingFields? {
+            val pin = code?.trim()?.takeIf(codePattern::matches) ?: return null
+            val port = parsePort(address) ?: return null
+            return AdbPairingFields(pin, port)
+        }
+
+        fun parsePort(address: String?): Int? = addressPattern.matchEntire(address?.trim().orEmpty())
+            ?.groupValues?.get(1)?.toIntOrNull()?.takeIf { it in 1..65535 }
     }
 }

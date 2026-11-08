@@ -56,10 +56,10 @@ internal object EmbeddedAdb {
     }
 
     /** A single fixed bootstrap command. The ADB connection is closed before returning the screen socket. */
-    suspend fun connect(context: Context): ScreenChannel {
+    suspend fun connect(context: Context, connectionPort: Int? = port): ScreenChannel {
         var created: ScreenChannel? = null
         try {
-            val selected = port ?: discover(context)
+            val selected = connectionPort ?: discover(context)
             return withContext(Dispatchers.IO) {
                 val identity = ScreenAdbIdentity.load(context)
                 transport(selected, identity).use { adb ->

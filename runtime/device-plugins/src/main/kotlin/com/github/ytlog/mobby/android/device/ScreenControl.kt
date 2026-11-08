@@ -106,9 +106,20 @@ object ScreenControl {
         changes.update { it.copy(workflowPause = pause) }
     }
 
-    suspend fun connect(context: Context) = withContext(Dispatchers.IO) {
+    suspend fun connect(context: Context) = connect(context, null, null)
+
+    internal suspend fun connectAfterPairing(context: Context, pairingSuccess: Long, connectionPort: Int?) =
+        connect(context, pairingSuccess, connectionPort)
+
+    private suspend fun connect(context: Context, pairingSuccess: Long?, connectionPort: Int?) = withContext(Dispatchers.IO) {
         val mode = synchronized(this@ScreenControl) {
-            check((leases == 0 || canReconnectAdb()) && !connecting && !state.value.adbPairing) { AppStrings.screenModeBusy }
+            if (pairingSuccess != null) {
+                val current = state.value
+                check(current.mode == ScreenMode.ADB && current.adbPairing &&
+                    current.adbPairingSuccess == pairingSuccess) { AppStrings.screenModeBusy }
+            }
+            check((leases == 0 || canReconnectAdb()) && !connecting &&
+                (!state.value.adbPairing || pairingSuccess != null)) { AppStrings.screenModeBusy }
             check(state.value.mode != ScreenMode.CURRENT)
             check(Build.VERSION.SDK_INT >= 33) { AppStrings.virtualScreenAndroidVersion }
             clearConnection()
@@ -117,7 +128,7 @@ object ScreenControl {
         }
         try {
             val connected = when (mode) {
-                ScreenMode.ADB -> EmbeddedAdb.connect(context)
+                ScreenMode.ADB -> if (pairingSuccess == null) EmbeddedAdb.connect(context) else EmbeddedAdb.connect(context, connectionPort)
                 ScreenMode.ROOT -> rootChannel(context)
                 ScreenMode.CURRENT -> error("current_screen_has_no_backend")
             }

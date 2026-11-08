@@ -190,7 +190,6 @@ class DirectPluginSelectorTest {
         compose.waitUntil(5_000) { shadow.peekNextStartedActivityForResult() != null }
         val guide = shadow.nextStartedActivityForResult.intent
         assertEquals(ScreenControlSettingsActivity::class.java.name, guide.component?.className)
-        assertTrue(ScreenAccessRouting.isConversationGrant(guide))
         compose.runOnIdle { shadow.receiveResult(guide, android.app.Activity.RESULT_CANCELED, null) }
         compose.waitForIdle()
         assertTrue(written.isEmpty())
@@ -210,7 +209,6 @@ class DirectPluginSelectorTest {
         compose.onNodeWithText("设置推荐的屏幕模式").performClick()
         val guide = Shadows.shadowOf(context).nextStartedActivityForResult.intent
         assertEquals(ScreenControlSettingsActivity::class.java.name, guide.component?.className)
-        assertTrue(ScreenAccessRouting.isConversationGrant(guide))
         assertEquals(ScreenMode.CURRENT, ScreenControl.state.value.mode)
     }
 

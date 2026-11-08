@@ -126,7 +126,7 @@ internal fun ConversationDevicePermissionDialog(detail: ConversationDetail, vm: 
         val action = DeviceLabels.title(operation.plugin, operation.action)
         val screen = ScreenUi.controller?.state?.collectAsStateWithLifecycle()?.value
         val recommendAdb = ref == ScreenAccessRouting.REF &&
-            ScreenAccessRouting.recommendsAdb(screen, conversationGrant = true)
+            ScreenAccessRouting.recommendsAdb(screen)
         AlertDialog(
             onDismissRequest = { respond("cancel") },
             title = { Text(DeviceLabels.text("允许使用「$capability」？", "Allow $capability?")) },
