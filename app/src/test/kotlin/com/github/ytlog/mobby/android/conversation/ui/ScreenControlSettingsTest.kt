@@ -279,6 +279,28 @@ class ScreenControlSettingsTest {
         button("打开关于手机").assertIsDisplayed()
         compose.onNodeWithText("开启无线调试").assertDoesNotExist()
     }
+    @Test fun `returning after enabling developer options opens wireless debugging when accessibility is enabled`() {
+        val controller = TestController(ScreenControlState(mode = ScreenMode.ADB))
+        val status = mutableStateOf(ready.copy(developerEnabled = false, wirelessEnabled = false))
+        compose.setContent { MaterialTheme {
+            ScreenControlSettings(controller, {}, statusOverride = status.value, settingsOverride = { opened += it })
+        } }
+        next()
+        button("打开关于手机").performClick()
+        compose.runOnIdle {
+            assertEquals(listOf(ScreenSettingsTarget.ABOUT), opened)
+            status.value = status.value.copy(resumed = false, developerEnabled = true)
+        }
+        compose.runOnIdle {
+            assertEquals(listOf(ScreenSettingsTarget.ABOUT), opened)
+            status.value = status.value.copy(resumed = true)
+        }
+        button("打开无线调试").assertIsDisplayed()
+        compose.runOnIdle {
+            assertEquals(listOf(ScreenSettingsTarget.ABOUT, ScreenSettingsTarget.WIRELESS), opened)
+            assertTrue(controller.events.isEmpty())
+        }
+    }
     @Test fun `completed previous steps stay visible until explicitly continuing again`() {
         val controller = TestController(ScreenControlState(mode = ScreenMode.ADB))
         val status = mutableStateOf(ready.copy(wifiConnected = false, developerEnabled = false))

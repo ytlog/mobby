@@ -86,7 +86,7 @@ class ScreenControlSettingsActivity : ComponentActivity() {
     var pendingCheck by remember { mutableStateOf<ScreenSetupStep?>(null) }
     var developerConfirmed by remember { mutableStateOf(false) }
     var wirelessConfirmed by remember { mutableStateOf(false) }
-    var openWirelessAfterDeveloper by remember { mutableStateOf(false) }
+    var openWirelessOnArrival by remember { mutableStateOf(false) }
     var forcePair by remember { mutableStateOf(false) }
     var connectAfterPairing by remember { mutableStateOf(false) }
     var pairingSuccessAtStart by remember { mutableLongStateOf(0) }
@@ -119,7 +119,7 @@ class ScreenControlSettingsActivity : ComponentActivity() {
     fun previous() {
         focus.clearFocus()
         keyboard?.hide()
-        if (step == ScreenSetupStep.DEVELOPER || step == ScreenSetupStep.WIRELESS) openWirelessAfterDeveloper = false
+        if (step == ScreenSetupStep.DEVELOPER || step == ScreenSetupStep.WIRELESS) openWirelessOnArrival = false
         if (!step.auxiliary) {
             pendingCheck = null
             connectAfterPairing = false
@@ -134,11 +134,12 @@ class ScreenControlSettingsActivity : ComponentActivity() {
         if (history.size > 1) history = ArrayList(history.dropLast(1)) else onBack()
     }
     androidx.activity.compose.BackHandler { previous() }
-    fun open(target: ScreenSettingsTarget) {
+    fun open(target: ScreenSettingsTarget, assistNavigation: Boolean = false, openPairing: Boolean = false) {
         pendingCheck = step.takeIf { it in setOf(ScreenSetupStep.NOTIFICATIONS, ScreenSetupStep.ACCESSIBILITY,
             ScreenSetupStep.WIFI, ScreenSetupStep.DEVELOPER, ScreenSetupStep.WIRELESS) }
         if (settingsOverride != null) settingsOverride(target)
-        else if (!ScreenAccessRouting.openSettings(context, target, pairing = state.mode == ScreenMode.ADB)) {
+        else if (!ScreenAccessRouting.openSettings(context, target, pairing = state.mode == ScreenMode.ADB,
+                assistNavigation = assistNavigation && status.accessibilityEnabled, openPairing = openPairing)) {
             pendingCheck = null
             error = AppStrings.screenSettingsUnavailable
         }
@@ -166,7 +167,7 @@ class ScreenControlSettingsActivity : ComponentActivity() {
         } catch (failure: Exception) {
             if (controller.state.value.mode == ScreenMode.ADB) {
                 if (freshStatus().developerEnabled != true) {
-                    openWirelessAfterDeveloper = true
+                    openWirelessOnArrival = true
                     go(ScreenSetupStep.DEVELOPER)
                 }
                 else open(ScreenSettingsTarget.WIRELESS)
@@ -177,27 +178,30 @@ class ScreenControlSettingsActivity : ComponentActivity() {
         go(ScreenSetupStep.COMPLETE)
     }
     fun pair() {
-        if (state.adbPairing) { open(ScreenSettingsTarget.WIRELESS); return }
+        if (state.adbPairing) {
+            open(ScreenSettingsTarget.WIRELESS, assistNavigation = true, openPairing = true)
+            return
+        }
         if (!status.notificationsAllowed) { go(ScreenSetupStep.NOTIFICATIONS); return }
         execute {
             controller.startAdbPairing()
             pairingSuccessAtStart = controller.state.value.adbPairingSuccess
             connectAfterPairing = true
-            open(ScreenSettingsTarget.WIRELESS)
+            open(ScreenSettingsTarget.WIRELESS, assistNavigation = true, openPairing = true)
         }
     }
     LaunchedEffect(step, pendingCheck, status) {
         if (pendingCheck == step && status.resumed && screenStepComplete(step, controller.state.value, status, forcePair, developerConfirmed, wirelessConfirmed)) {
             pendingCheck = null
             val target = next(step)
-            if (step == ScreenSetupStep.DEVELOPER && target != ScreenSetupStep.WIRELESS) openWirelessAfterDeveloper = false
+            openWirelessOnArrival = target == ScreenSetupStep.WIRELESS && (openWirelessOnArrival || status.accessibilityEnabled)
             go(target)
         }
     }
-    LaunchedEffect(step, openWirelessAfterDeveloper) {
-        if (step == ScreenSetupStep.WIRELESS && openWirelessAfterDeveloper) {
-            openWirelessAfterDeveloper = false
-            open(ScreenSettingsTarget.WIRELESS)
+    LaunchedEffect(step, openWirelessOnArrival) {
+        if (step == ScreenSetupStep.WIRELESS && openWirelessOnArrival) {
+            openWirelessOnArrival = false
+            open(ScreenSettingsTarget.WIRELESS, assistNavigation = true)
         }
     }
     LaunchedEffect(state.adbPairing, state.adbPairingSuccess, state.error, state.mode, state.connected, state.active, status.resumed, busy, connectAfterPairing) {
@@ -239,8 +243,8 @@ class ScreenControlSettingsActivity : ComponentActivity() {
         ScreenSetupStep.ACCESSIBILITY -> AppStrings.currentScreenModeHelp
         ScreenSetupStep.WIFI -> AppStrings.wizardWifiHelp
         ScreenSetupStep.DEVELOPER -> AppStrings.wizardDeveloperHelp
-        ScreenSetupStep.WIRELESS -> AppStrings.wizardWirelessHelp
-        ScreenSetupStep.PAIR -> AppStrings.wizardPairHelp
+        ScreenSetupStep.WIRELESS -> if (status.accessibilityEnabled) AppStrings.wizardWirelessAssist else AppStrings.wizardWirelessHelp
+        ScreenSetupStep.PAIR -> if (status.accessibilityEnabled) AppStrings.wizardPairAssist else AppStrings.wizardPairHelp
         ScreenSetupStep.CONNECT -> if (state.mode == ScreenMode.ROOT) AppStrings.screenRootGuide else AppStrings.wizardConnectHelp
         ScreenSetupStep.PORT -> AppStrings.adbConnectionPortHelp
         ScreenSetupStep.PAIR_HELP -> if (family == DeviceSettingsFamily.XIAOMI) AppStrings.screenPairXiaomiHelp else AppStrings.screenPairHelp
@@ -269,7 +273,9 @@ class ScreenControlSettingsActivity : ComponentActivity() {
                     controller.select(selectedMode)
                     connectionPort = ""
                 }
-                go(next(ScreenSetupStep.MODE))
+                val target = next(ScreenSetupStep.MODE)
+                openWirelessOnArrival = target == ScreenSetupStep.WIRELESS && status.accessibilityEnabled
+                go(target)
             }
             step == ScreenSetupStep.PORT -> execute { controller.setAdbPort(connectionPort); previous() }
             step == ScreenSetupStep.BRANDS || step == ScreenSetupStep.PAIR_HELP -> previous()
@@ -282,8 +288,11 @@ class ScreenControlSettingsActivity : ComponentActivity() {
             step == ScreenSetupStep.NOTIFICATIONS -> notifications()
             step == ScreenSetupStep.ACCESSIBILITY -> open(ScreenSettingsTarget.ACCESSIBILITY)
             step == ScreenSetupStep.WIFI -> open(ScreenSettingsTarget.WIFI)
-            step == ScreenSetupStep.DEVELOPER -> open(ScreenSettingsTarget.ABOUT)
-            step == ScreenSetupStep.WIRELESS -> open(ScreenSettingsTarget.WIRELESS)
+            step == ScreenSetupStep.DEVELOPER -> {
+                openWirelessOnArrival = status.accessibilityEnabled
+                open(ScreenSettingsTarget.ABOUT, assistNavigation = true)
+            }
+            step == ScreenSetupStep.WIRELESS -> open(ScreenSettingsTarget.WIRELESS, assistNavigation = true)
             step == ScreenSetupStep.PAIR -> pair()
             step == ScreenSetupStep.CONNECT -> connect()
         }

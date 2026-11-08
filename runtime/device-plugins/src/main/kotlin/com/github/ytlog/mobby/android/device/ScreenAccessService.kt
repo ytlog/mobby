@@ -30,7 +30,10 @@ import java.util.concurrent.atomic.AtomicReference
 import java.security.MessageDigest
 
 class ScreenAccessService : AccessibilityService() {
+    enum class AdbSetupDestination { VERSION, WIRELESS, PAIR }
+
     private val stay = ScreenStay(ServiceDisplay())
+    private val adbSettings = AdbSettingsAssistant(this)
 
     override fun onCreate() {
         super.onCreate()
@@ -54,8 +57,9 @@ class ScreenAccessService : AccessibilityService() {
         info.eventTypes = if (content) base or android.view.accessibility.AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED else base
         serviceInfo = info
     }
-    override fun onInterrupt() = Unit
+    override fun onInterrupt() { adbSettings.stop() }
     override fun onDestroy() {
+        adbSettings.stop()
         stay.drop()
         if (instance === this) { instance = null; ScreenEvents.access?.invoke(false) }
         super.onDestroy()
@@ -371,6 +375,8 @@ class ScreenAccessService : AccessibilityService() {
     companion object {
         @Volatile internal var instance: ScreenAccessService? = null
         fun connected() = instance != null
+        fun assistAdbSettings(destination: AdbSetupDestination) { instance?.adbSettings?.start(destination) }
+        fun stopAdbSettingsAssist() { instance?.adbSettings?.stop() }
         internal fun stay(): AutoCloseable {
             val service = instance ?: error(AppStrings.accessibilityIsOffEnableMobbySScreenServiceIn)
             return service.stay.acquire()

@@ -54,10 +54,13 @@ internal object ScreenAccessRouting {
         }
     } + Intent(Settings.ACTION_SETTINGS)
 
-    fun openSettings(context: Context, target: ScreenSettingsTarget, pairing: Boolean = true): Boolean {
+    fun openSettings(context: Context, target: ScreenSettingsTarget, pairing: Boolean = true,
+        assistNavigation: Boolean = false, openPairing: Boolean = false): Boolean {
         for (intent in settingsIntents(context, target, pairing)) {
             try {
                 context.startActivity(intent)
+                if (assistNavigation && (target == ScreenSettingsTarget.WIRELESS || target == ScreenSettingsTarget.ABOUT) &&
+                    intent.action != Settings.ACTION_SETTINGS) assistAdbSettings(target, openPairing)
                 return true
             } catch (_: ActivityNotFoundException) { }
             catch (_: SecurityException) { }

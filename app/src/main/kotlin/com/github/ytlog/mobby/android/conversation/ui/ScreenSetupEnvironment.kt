@@ -82,6 +82,13 @@ internal data class ScreenSetupStatus(
 }
 
 internal fun screenAccessibilityComponent(context: Context) = ComponentName(context, ScreenAccessService::class.java)
+internal fun assistAdbSettings(target: ScreenSettingsTarget, openPairing: Boolean) = ScreenAccessService.assistAdbSettings(
+    when {
+        target == ScreenSettingsTarget.ABOUT -> ScreenAccessService.AdbSetupDestination.VERSION
+        openPairing -> ScreenAccessService.AdbSetupDestination.PAIR
+        else -> ScreenAccessService.AdbSetupDestination.WIRELESS
+    },
+)
 
 @Composable internal fun rememberScreenSetupStatus(refresh: Int = 0, pairing: Boolean = true): ScreenSetupStatus {
     val context = LocalContext.current
@@ -90,11 +97,17 @@ internal fun screenAccessibilityComponent(context: Context) = ComponentName(cont
     LaunchedEffect(refresh, pairing) { status = ScreenSetupStatus.read(context, pairing).copy(resumed = lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
     DisposableEffect(context, lifecycle, pairing) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) status = ScreenSetupStatus.read(context, pairing)
+            if (event == Lifecycle.Event.ON_RESUME) {
+                ScreenAccessService.stopAdbSettingsAssist()
+                status = ScreenSetupStatus.read(context, pairing)
+            }
             else if (event == Lifecycle.Event.ON_PAUSE) status = status.copy(resumed = false)
         }
         lifecycle.addObserver(observer)
-        onDispose { lifecycle.removeObserver(observer) }
+        onDispose {
+            lifecycle.removeObserver(observer)
+            ScreenAccessService.stopAdbSettingsAssist()
+        }
     }
     return status
 }
