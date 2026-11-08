@@ -1,8 +1,6 @@
 package com.github.ytlog.mobby.android.conversation.ui
 
 import android.app.Activity
-import android.content.Intent
-import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.Text
@@ -69,7 +67,6 @@ internal fun rememberDirectPluginSelector(vm: ConversationViewModel, conversatio
             }
         }
     }
-    val accessibility = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { finishAccess(true) }
     val screenSetup = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         finishAccess(result.resultCode == Activity.RESULT_OK)
     }
@@ -91,18 +88,14 @@ internal fun rememberDirectPluginSelector(vm: ConversationViewModel, conversatio
                 is DataResult.Failed -> vm.report(OperationResult.Failed(result.message))
                 is DataResult.Loaded -> {
                     val plugin = result.value.firstOrNull { it.ref == ref }
+                    val screenAccess = plugin?.let { ScreenAccessRouting.authorizationIntent(context, ref, it.available) }
                     when {
                         plugin == null -> vm.report(OperationResult.Failed(AppStrings.unknownPlugin))
-                        ref == "plugin:device:screen" && shouldRecommendAdb(ScreenUi.controller?.state?.value) -> {
+                        screenAccess != null -> {
                             pending = id to ref
-                            screenSetup.launch(screenSetupIntent(context))
+                            screenSetup.launch(screenAccess)
                         }
                         plugin.available -> vm.report(vm.actions.setPlugin(id, plugin, true))
-                        plugin.access == PluginAccess.ACCESSIBILITY -> {
-                            pending = id to ref
-                            accessibility.launch(if (ref == "plugin:device:screen") screenAccessSettingsIntent(context)
-                            else Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                        }
                         plugin.access == PluginAccess.DOCUMENT_TREE -> {
                             pending = id to ref
                             tree.launch(null)

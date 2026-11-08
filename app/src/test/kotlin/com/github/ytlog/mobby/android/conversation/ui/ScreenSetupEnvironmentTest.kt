@@ -42,17 +42,17 @@ class ScreenSetupEnvironmentTest {
         val manager = context.getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(NotificationChannel("screen-adb-pairing", "fixture", NotificationManager.IMPORTANCE_NONE))
         assertFalse(ScreenSetupStatus.read(context).notificationsAllowed)
-        val intent = screenSettingsIntents(context, ScreenSettingsTarget.NOTIFICATIONS).first()
+        val intent = ScreenAccessRouting.settingsIntents(context, ScreenSettingsTarget.NOTIFICATIONS).first()
         assertEquals(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS, intent.action)
         assertEquals("screen-adb-pairing", intent.getStringExtra(Settings.EXTRA_CHANNEL_ID))
         assertEquals(context.packageName, intent.getStringExtra(Settings.EXTRA_APP_PACKAGE))
     }
     @Test fun `wireless and accessibility shortcuts have standard Settings fallbacks`() {
-        val wireless = screenSettingsIntents(context, ScreenSettingsTarget.WIRELESS)
+        val wireless = ScreenAccessRouting.settingsIntents(context, ScreenSettingsTarget.WIRELESS)
         assertEquals("android.settings.WIRELESS_DEBUGGING_SETTINGS", wireless.first().action)
         assertEquals(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS, wireless[1].action)
         assertEquals(Settings.ACTION_SETTINGS, wireless.last().action)
-        val access = screenSettingsIntents(context, ScreenSettingsTarget.ACCESSIBILITY)
+        val access = ScreenAccessRouting.settingsIntents(context, ScreenSettingsTarget.ACCESSIBILITY)
         assertTrue(access.first().getStringExtra(Intent.EXTRA_COMPONENT_NAME)!!.endsWith(".ScreenAccessService"))
         assertEquals(Settings.ACTION_ACCESSIBILITY_SETTINGS, access[1].action)
     }
@@ -61,7 +61,7 @@ class ScreenSetupEnvironmentTest {
             NotificationChannel("screen-adb-pairing", "fixture", NotificationManager.IMPORTANCE_NONE))
         assertTrue(ScreenSetupStatus.read(context, pairing = false).notificationsAllowed)
         assertEquals(Settings.ACTION_APP_NOTIFICATION_SETTINGS,
-            screenSettingsIntents(context, ScreenSettingsTarget.NOTIFICATIONS, pairing = false).first().action)
+            ScreenAccessRouting.settingsIntents(context, ScreenSettingsTarget.NOTIFICATIONS, pairing = false).first().action)
     }
     @Test fun `unavailable or restricted shortcuts try the next page without claiming success`() {
         val attempts = mutableListOf<String?>()
@@ -72,10 +72,10 @@ class ScreenSetupEnvironmentTest {
                 if (attempts.size == 2) throw SecurityException()
             }
         }
-        assertTrue(openScreenSettings(wrapper, ScreenSettingsTarget.WIRELESS))
+        assertTrue(ScreenAccessRouting.openSettings(wrapper, ScreenSettingsTarget.WIRELESS))
         assertEquals(listOf("android.settings.WIRELESS_DEBUGGING_SETTINGS", Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS, Settings.ACTION_SETTINGS), attempts)
         val rejected = object : ContextWrapper(context) { override fun startActivity(intent: Intent) { throw ActivityNotFoundException() } }
-        assertFalse(openScreenSettings(rejected, ScreenSettingsTarget.WIRELESS))
+        assertFalse(ScreenAccessRouting.openSettings(rejected, ScreenSettingsTarget.WIRELESS))
     }
     @Test fun `setup progress resumes and completion does not write other settings`() {
         val preferences = context.getSharedPreferences("screen-control", 0)

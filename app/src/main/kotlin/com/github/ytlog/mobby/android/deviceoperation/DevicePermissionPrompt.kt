@@ -29,14 +29,12 @@ import com.github.ytlog.mobby.android.conversation.domain.ExecutionId
 import com.github.ytlog.mobby.android.conversation.domain.OperationResult
 import com.github.ytlog.mobby.android.conversation.ui.AlertDialog
 import com.github.ytlog.mobby.android.conversation.ui.ConversationViewModel
+import com.github.ytlog.mobby.android.conversation.ui.ScreenAccessRouting
 import com.github.ytlog.mobby.android.conversation.ui.ScreenUi
 import com.github.ytlog.mobby.android.conversation.ui.TextButton
 import com.github.ytlog.mobby.android.conversation.ui.UiStrings
 import com.github.ytlog.mobby.android.conversation.ui.capabilityLabel
 import com.github.ytlog.mobby.android.conversation.ui.raisedColor
-import com.github.ytlog.mobby.android.conversation.ui.screenAccessSettingsIntent
-import com.github.ytlog.mobby.android.conversation.ui.screenSetupIntent
-import com.github.ytlog.mobby.android.conversation.ui.shouldRecommendAdb
 import com.github.ytlog.mobby.android.device.DeviceAccess
 import com.github.ytlog.mobby.android.device.DeviceCatalog
 import com.github.ytlog.mobby.android.device.DeviceHost
@@ -52,8 +50,6 @@ internal fun devicePermissionPrompt(operation: DeviceOperation, vm: Conversation
     val context = LocalContext.current
     val spec = DeviceCatalog.all.first { it.id == operation.plugin }
     val ref = DeviceCatalog.actionRef(operation.plugin, operation.action)
-    val screen = if (spec.id == "screen") ScreenUi.controller?.state?.collectAsStateWithLifecycle()?.value else null
-    val recommendAdb = shouldRecommendAdb(screen)
     val latestResponse by rememberUpdatedState(respond)
     var pending by rememberSaveable(operation.operationId, operation.revision) { mutableStateOf(false) }
     fun finish() {
@@ -62,14 +58,14 @@ internal fun devicePermissionPrompt(operation: DeviceOperation, vm: Conversation
     }
     if (LocalActivityResultRegistryOwner.current == null) return { response ->
         if (!pending) {
-            if (response != "confirm" || !recommendAdb && DeviceHost.granted(context, ref)) {
+            if (response != "confirm" || DeviceHost.granted(context, ref) &&
+                ScreenAccessRouting.authorizationIntent(context, ref, available = true) == null) {
                 pending = true
                 latestResponse(response)
             } else vm.enqueue { vm.report(OperationResult.Failed(DeviceLabels.text("请打开 mobby 完成系统授权", "Open mobby to grant system access"))) }
         }
     }
     val runtime = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { finish() }
-    val settings = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { finish() }
     val screenSetup = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (pending) {
             if (result.resultCode == Activity.RESULT_OK) finish() else latestResponse("cancel")
@@ -84,14 +80,15 @@ internal fun devicePermissionPrompt(operation: DeviceOperation, vm: Conversation
     return { response ->
         if (!pending) {
             pending = true
-            if (response == "confirm" && recommendAdb) screenSetup.launch(screenSetupIntent(context))
-            else if (response != "confirm" || DeviceHost.granted(context, ref)) latestResponse(response)
+            val available = response == "confirm" && DeviceHost.granted(context, ref)
+            val setup = if (response == "confirm") ScreenAccessRouting.authorizationIntent(context, ref, available) else null
+            if (setup != null) screenSetup.launch(setup)
+            else if (response != "confirm" || available) latestResponse(response)
             else {
                 when {
                     ref == spec.grantRef -> runtime.launch(checkNotNull(spec.grant).permissions.toTypedArray())
                     spec.access == DeviceAccess.RUNTIME -> runtime.launch(
                         (if (spec.id == "media") DeviceHost.mediaPermissions() else spec.permissions).toTypedArray())
-                    spec.access == DeviceAccess.ACCESSIBILITY -> settings.launch(screenAccessSettingsIntent(context))
                     spec.access == DeviceAccess.DOCUMENT_TREE -> directory.launch(null)
                     else -> finish()
                 }
@@ -124,10 +121,12 @@ internal fun ConversationDevicePermissionDialog(detail: ConversationDetail, vm: 
         ?.operation ?: return
     key(operation.operationId) {
         val respond = devicePermissionPrompt(operation, vm) { vm.respondToOperation(execution, operation, it) }
-        val capability = capabilityLabel(DeviceCatalog.actionRef(operation.plugin, operation.action))
+        val ref = DeviceCatalog.actionRef(operation.plugin, operation.action)
+        val capability = capabilityLabel(ref)
         val action = DeviceLabels.title(operation.plugin, operation.action)
         val screen = ScreenUi.controller?.state?.collectAsStateWithLifecycle()?.value
-        val recommendAdb = operation.plugin == "screen" && shouldRecommendAdb(screen)
+        val recommendAdb = ref == ScreenAccessRouting.REF &&
+            ScreenAccessRouting.recommendsAdb(screen, conversationGrant = true)
         AlertDialog(
             onDismissRequest = { respond("cancel") },
             title = { Text(DeviceLabels.text("允许使用「$capability」？", "Allow $capability?")) },

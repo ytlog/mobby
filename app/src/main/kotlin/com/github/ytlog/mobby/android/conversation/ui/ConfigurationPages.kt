@@ -4,8 +4,6 @@ import com.github.ytlog.mobby.android.localization.CatalogIds
 
 import com.github.ytlog.mobby.android.conversation.ui.UiStrings as AppStrings
 
-import android.content.Intent
-import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
@@ -441,7 +439,7 @@ internal fun newConversationDialog(connectionsRead: Boolean, connections: List<G
             }
             SettingsGroup(AppStrings.runtime) {
                 SettingsItem(AppStrings.screenModeTitle, {
-                    context.startActivity(Intent(context, ScreenControlSettingsActivity::class.java))
+                    context.startActivity(ScreenAccessRouting.setupIntent(context))
                 })
                 GroupDivider()
                 SettingsItem(AppStrings.shellDiagnostics, { navigate("diagnostic") })
@@ -538,7 +536,6 @@ private fun pluginCatalogTabs(tablet: Boolean) = listOf(if (tablet) AppStrings.t
     val state by vm.state.collectAsStateWithLifecycle()
     val conversation = state.selected?.conversation
     val selectPlugin = rememberDirectPluginSelector(vm, conversation)
-    val screen = ScreenUi.controller?.state?.collectAsStateWithLifecycle()?.value
     val catalogue by vm.plugins.collectAsStateWithLifecycle()
     val error by vm.pluginsError.collectAsStateWithLifecycle()
     val loading by vm.pluginsLoading.collectAsStateWithLifecycle()
@@ -560,9 +557,6 @@ private fun pluginCatalogTabs(tablet: Boolean) = listOf(if (tablet) AppStrings.t
         val target = if (grant) plugin.grant else null
         when {
             grant && target == null -> Unit
-            !grant && plugin.access == PluginAccess.ACCESSIBILITY -> context.startActivity(
-                if (plugin.ref == "plugin:device:screen") screenAccessSettingsIntent(context)
-                else Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
             !grant && plugin.access == PluginAccess.DOCUMENT_TREE -> tree.launch(null)
             else -> {
                 val needed = if (grant) target?.permissions.orEmpty() else plugin.permissions
@@ -616,8 +610,9 @@ private fun pluginCatalogTabs(tablet: Boolean) = listOf(if (tablet) AppStrings.t
                             actionEnabled = !plugin.available || conversation != null,
                             onAction = {
                                 if (chosen && conversation != null) vm.enqueue { vm.report(vm.actions.setPlugin(conversation.id, plugin, false)) }
-                                else if (plugin.ref == "plugin:device:screen" && shouldRecommendAdb(screen)) {
-                                    if (conversation != null) selectPlugin(plugin.ref) else context.startActivity(screenSetupIntent(context))
+                                else if (plugin.ref == ScreenAccessRouting.REF) {
+                                    if (conversation != null) selectPlugin(plugin.ref)
+                                    else ScreenAccessRouting.authorizationIntent(context, plugin.ref, plugin.available)?.let(context::startActivity)
                                 }
                                 else if (!plugin.available) requestAccess(plugin)
                                 else if (conversation != null) vm.enqueue { vm.report(vm.actions.setPlugin(conversation.id, plugin, true)) }

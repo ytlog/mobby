@@ -38,9 +38,10 @@ class ScreenControlSettingsTest {
     private val opened = mutableListOf<ScreenSettingsTarget>()
     private fun button(text: String) = compose.onNode(hasText(text) and hasClickAction())
     private fun next() = button("下一步").performClick()
-    private fun show(controller: TestController, status: ScreenSetupStatus = ready, finished: () -> Unit = {}) {
+    private fun show(controller: TestController, status: ScreenSetupStatus = ready, conversationGrant: Boolean = false, finished: () -> Unit = {}) {
         compose.setContent { MaterialTheme(colorScheme = MobbyLightScheme) {
-            ScreenControlSettings(controller, onBack = {}, onFinished = finished, statusOverride = status, settingsOverride = { opened += it })
+            ScreenControlSettings(controller, onBack = {}, onFinished = finished, statusOverride = status,
+                settingsOverride = { opened += it }, conversationGrant = conversationGrant)
         } }
     }
     @Before fun prepare() {
@@ -95,6 +96,19 @@ class ScreenControlSettingsTest {
         compose.onNodeWithText("当前屏幕（无障碍）").assertIsSelected()
         next()
         compose.runOnIdle { assertEquals(ScreenMode.CURRENT, controller.state.value.mode) }
+    }
+
+    @Test fun `conversation grant recommends ADB without changing the saved mode before confirmation`() {
+        val controller = TestController(ScreenControlState(modeConfigured = true, adbPaired = true))
+        show(controller, conversationGrant = true)
+        compose.onNodeWithText("虚拟屏幕（内置 ADB）").assertIsSelected()
+        compose.runOnIdle { assertEquals(ScreenMode.CURRENT, controller.state.value.mode) }
+        next()
+        button("连接").assertIsDisplayed()
+        compose.runOnIdle {
+            assertEquals(ScreenMode.ADB, controller.state.value.mode)
+            assertFalse(controller.state.value.connected)
+        }
     }
 
     @Test fun `current screen only asks for accessibility after completed notifications`() {

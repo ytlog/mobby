@@ -14,7 +14,7 @@ import com.github.ytlog.mobby.android.conversation.domain.*
 import com.github.ytlog.mobby.android.conversation.ui.ConversationViewModel
 import com.github.ytlog.mobby.android.conversation.ui.LocalAttachmentPreviewHost
 import com.github.ytlog.mobby.android.conversation.ui.ScreenUi
-import com.github.ytlog.mobby.android.conversation.ui.screenSetupIntent
+import com.github.ytlog.mobby.android.conversation.ui.ScreenAccessRouting
 
 /** Composition root adapter: cards know neither ConversationViewModel nor the runtime client. */
 @Composable internal fun ConversationDeviceCard(operation: DeviceOperation, turn: Turn, conversation: Conversation, vm: ConversationViewModel) {
@@ -42,7 +42,7 @@ import com.github.ytlog.mobby.android.conversation.ui.screenSetupIntent
             if (previewHost != null) previewHost(ref) else preview = ref
         } },
         respond = permissionResponse,
-        reauthorizeAdb = if (reauthorize) ({ context.startActivity(screenSetupIntent(context)) }) else null,
+        reauthorizeAdb = if (reauthorize) ({ context.startActivity(ScreenAccessRouting.setupIntent(context)) }) else null,
     ), stopping = turn.phase == ExecutionPhase.CANCELLING, thumbnail = { ref ->
         val bytes by produceState<ByteArray?>(null, ref) {
             value = (vm.actions.previewAttachment(conversation.config.workspace, ref, false) as? DataResult.Loaded)?.value?.bytes

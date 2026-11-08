@@ -48,7 +48,8 @@ class ScreenControlSettingsActivity : ComponentActivity() {
             }
             MaterialTheme(colorScheme = if (dark) MobbyDarkScheme else MobbyLightScheme, typography = MobbyTypography) {
                 Surface(Modifier.fillMaxSize()) {
-                    ScreenUi.controller?.let { ScreenControlSettings(it, onBack = ::finish, onFinished = {
+                    ScreenUi.controller?.let { ScreenControlSettings(it, onBack = ::finish,
+                        conversationGrant = ScreenAccessRouting.isConversationGrant(intent), onFinished = {
                         setResult(Activity.RESULT_OK)
                         finish()
                     }) }
@@ -63,7 +64,7 @@ class ScreenControlSettingsActivity : ComponentActivity() {
     statusOverride: ScreenSetupStatus? = null, settingsOverride: ((ScreenSettingsTarget) -> Unit)? = null,
     onFinished: () -> Unit = onBack, embedded: Boolean = false, stepOffset: Int = 0,
     canSelectPrefix: (Int) -> Boolean = { false }, selectPrefix: (Int) -> Unit = {},
-    isPrefixComplete: (Int) -> Boolean = { false }) {
+    isPrefixComplete: (Int) -> Boolean = { false }, conversationGrant: Boolean = false) {
     val state by controller.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -75,7 +76,7 @@ class ScreenControlSettingsActivity : ComponentActivity() {
     val step = ScreenSetupStep.valueOf(history.last())
     val sdk = statusOverride?.sdk ?: Build.VERSION.SDK_INT
     var selectedMode by androidx.compose.runtime.saveable.rememberSaveable {
-        mutableStateOf(if (shouldRecommendAdb(state, sdk)) ScreenMode.ADB else state.mode)
+        mutableStateOf(if (ScreenAccessRouting.recommendsAdb(state, sdk, conversationGrant)) ScreenMode.ADB else state.mode)
     }
     var family by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(DeviceSettingsFamily.detect()) }
     var busy by remember { mutableStateOf(false) }
@@ -137,7 +138,7 @@ class ScreenControlSettingsActivity : ComponentActivity() {
         pendingCheck = step.takeIf { it in setOf(ScreenSetupStep.NOTIFICATIONS, ScreenSetupStep.ACCESSIBILITY,
             ScreenSetupStep.WIFI, ScreenSetupStep.DEVELOPER, ScreenSetupStep.WIRELESS) }
         if (settingsOverride != null) settingsOverride(target)
-        else if (!openScreenSettings(context, target, pairing = state.mode == ScreenMode.ADB)) {
+        else if (!ScreenAccessRouting.openSettings(context, target, pairing = state.mode == ScreenMode.ADB)) {
             pendingCheck = null
             error = AppStrings.screenSettingsUnavailable
         }

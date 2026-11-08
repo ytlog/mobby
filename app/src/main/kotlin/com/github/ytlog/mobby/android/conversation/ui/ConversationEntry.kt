@@ -1209,7 +1209,7 @@ internal fun timelineGap(previous: TimelineBlock?, next: TimelineBlock): Dp = wh
                             Text(com.github.ytlog.mobby.android.deviceoperation.ui.DeviceLabels.title("screen", pause.nextAction),
                                 style = processDetailStyle())
                             Text(AppStrings.adbCheckBeforeContinuing, style = processDetailStyle())
-                            if (!screen.connected) TextButton(onClick = { context.startActivity(screenSetupIntent(context)) }) {
+                            if (!screen.connected) TextButton(onClick = { context.startActivity(ScreenAccessRouting.setupIntent(context)) }) {
                                 Text(AppStrings.reauthorizeAdb)
                             }
                         } else ReplyActivity(turn.phase)

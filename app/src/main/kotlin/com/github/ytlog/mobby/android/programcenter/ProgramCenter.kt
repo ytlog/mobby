@@ -150,7 +150,9 @@ private fun shortTime(millis: Long): String {
             context.startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, android.net.Uri.parse("package:${context.packageName}")))
         }
         // The user switches the service on in system settings; mobby only opens the page.
-        ScreenAccessStatus(screenAccessMissing(programs)) { context.startActivity(screenAccessSettingsIntent(context)) }
+        ScreenAccessStatus(screenAccessMissing(programs)) {
+            ScreenAccessRouting.openSettings(context, ScreenSettingsTarget.ACCESSIBILITY, pairing = false)
+        }
         SettingsGroup {
             SettingsItem(AppStrings.writeNewProgram, { writeNew(null) }, AppStrings.writeNewProgramSummary, icon = AppIcons.Terminal)
             ProgramIdeas(writeNew)

@@ -10,11 +10,18 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.github.ytlog.mobby.android.conversation.domain.*
 import com.github.ytlog.mobby.android.conversation.domain.gateway.GatewayProfile
+import com.github.ytlog.mobby.android.deviceoperation.ConversationDevicePermissionDialog
+import com.github.ytlog.mobby.android.runtime.api.device.DeviceAttention
+import com.github.ytlog.mobby.android.runtime.api.device.DeviceOperation
+import com.github.ytlog.mobby.android.runtime.api.device.DeviceRecord
+import com.github.ytlog.mobby.android.runtime.api.device.DeviceStatus
+import com.github.ytlog.mobby.android.runtime.api.device.DeviceSubject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.serialization.json.JsonObject
 import com.github.ytlog.mobby.android.device.ScreenControl
 import com.github.ytlog.mobby.android.graph.AndroidScreenControl
 import com.github.ytlog.mobby.android.runtime.api.device.ScreenMode
@@ -140,15 +147,15 @@ class DirectPluginSelectorTest {
 
     @Test fun `available plugin attaches to the current conversation from its card`() {
         val written = mutableListOf<String>()
-        val ref = "plugin:device:screen"
-        val (vm, conversation) = viewModel({ Plugin(ref, "屏幕", "AI 操作手机", true, null) }, written)
+        val ref = "plugin:device:media"
+        val (vm, conversation) = viewModel({ Plugin(ref, "照片", "查看照片", true, null) }, written)
         compose.setContent {
             MaterialTheme {
                 val select = rememberDirectPluginSelector(vm, conversation)
                 EmptyConversationPlugins(emptySet(), onSelect = select)
             }
         }
-        compose.onNodeWithText("AI 操作手机").performClick()
+        compose.onNodeWithText("查看照片").performClick()
         compose.waitUntil(5_000) { written.isNotEmpty() }
         assertEquals(listOf(ref), written)
     }
@@ -168,9 +175,9 @@ class DirectPluginSelectorTest {
         assertTrue(written.isEmpty())
     }
 
-    @Test fun `unavailable phone opens accessibility settings directly`() {
+    @Test fun `phone card opens the same guide even when the saved current screen is available`() {
         val written = mutableListOf<String>()
-        val (vm, conversation) = viewModel({ Plugin("plugin:device:screen", "屏幕", "读取屏幕", false, "需要无障碍服务",
+        val (vm, conversation) = viewModel({ Plugin("plugin:device:screen", "屏幕", "读取屏幕", true, null,
             access = PluginAccess.ACCESSIBILITY) }, written)
         compose.setContent {
             MaterialTheme {
@@ -181,11 +188,33 @@ class DirectPluginSelectorTest {
         compose.onNodeWithText("AI 操作手机").performClick()
         val shadow = Shadows.shadowOf(compose.activity)
         compose.waitUntil(5_000) { shadow.peekNextStartedActivityForResult() != null }
-        assertEquals(Settings.ACTION_ACCESSIBILITY_SETTINGS, shadow.nextStartedActivityForResult.intent.action)
+        val guide = shadow.nextStartedActivityForResult.intent
+        assertEquals(ScreenControlSettingsActivity::class.java.name, guide.component?.className)
+        assertTrue(ScreenAccessRouting.isConversationGrant(guide))
+        compose.runOnIdle { shadow.receiveResult(guide, android.app.Activity.RESULT_CANCELED, null) }
+        compose.waitForIdle()
         assertTrue(written.isEmpty())
     }
 
-    @Test fun `screen selection opens notification settings before adding the capability`() {
+    @Test fun `an agent requesting screen access opens the ADB guide even with current screen saved`() {
+        val context = compose.activity
+        Shadows.shadowOf(context.getSystemService(NotificationManager::class.java)).setNotificationsEnabled(true)
+        Settings.Secure.putInt(context.contentResolver, Settings.Secure.ACCESSIBILITY_ENABLED, 0)
+        val (vm, conversation) = viewModel({ error("unexpected plugin lookup") }, mutableListOf())
+        val operation = DeviceOperation("operation", "request", 1, "screen", "snapshot", "screen_control",
+            DeviceStatus.AWAITING_USER, "device.authorize", DeviceSubject(), JsonObject(emptyMap()),
+            requiresAttention = DeviceAttention("device.authorize", "prompt", listOf("confirm", "cancel")))
+        val turn = Turn(TurnId("turn"), "操作手机", ExecutionId("execution"), ExecutionPhase.RUNNING, occupied = true,
+            deviceOperations = listOf(DeviceRecord(operation, "fingerprint", 1)))
+        compose.setContent { MaterialTheme { ConversationDevicePermissionDialog(ConversationDetail(conversation, listOf(turn)), vm) } }
+        compose.onNodeWithText("设置推荐的屏幕模式").performClick()
+        val guide = Shadows.shadowOf(context).nextStartedActivityForResult.intent
+        assertEquals(ScreenControlSettingsActivity::class.java.name, guide.component?.className)
+        assertTrue(ScreenAccessRouting.isConversationGrant(guide))
+        assertEquals(ScreenMode.CURRENT, ScreenControl.state.value.mode)
+    }
+
+    @Test fun `screen selection handles missing notifications in the guide before adding the capability`() {
         val notifications = compose.activity.getSystemService(NotificationManager::class.java)
         Shadows.shadowOf(notifications).setNotificationsEnabled(false)
         val written = mutableListOf<String>()
@@ -200,7 +229,7 @@ class DirectPluginSelectorTest {
         compose.onNodeWithText("AI 操作手机").performClick()
         val shadow = Shadows.shadowOf(compose.activity)
         compose.waitUntil(5_000) { shadow.peekNextStartedActivityForResult() != null }
-        assertEquals(Settings.ACTION_APP_NOTIFICATION_SETTINGS, shadow.nextStartedActivityForResult.intent.action)
+        assertEquals(ScreenControlSettingsActivity::class.java.name, shadow.nextStartedActivityForResult.intent.component?.className)
         assertTrue(written.isEmpty())
     }
 

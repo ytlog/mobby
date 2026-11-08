@@ -1,10 +1,8 @@
 package com.github.ytlog.mobby.android.conversation.ui
 
 import android.app.NotificationManager
-import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Context
-import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Build
@@ -72,7 +70,7 @@ internal data class ScreenSetupStatus(
             val allowed = notifications.areNotificationsEnabled() && channels.none {
                 notifications.getNotificationChannel(it)?.importance == NotificationManager.IMPORTANCE_NONE
             }
-            val expected = ComponentName(context, ScreenAccessService::class.java)
+            val expected = screenAccessibilityComponent(context)
             val accessibility = Settings.Secure.getInt(context.contentResolver, Settings.Secure.ACCESSIBILITY_ENABLED, 0) == 1 &&
                 Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES).orEmpty()
                     .split(':').mapNotNull(ComponentName::unflattenFromString).any { it == expected }
@@ -82,6 +80,8 @@ internal data class ScreenSetupStatus(
         }
     }
 }
+
+internal fun screenAccessibilityComponent(context: Context) = ComponentName(context, ScreenAccessService::class.java)
 
 @Composable internal fun rememberScreenSetupStatus(refresh: Int = 0, pairing: Boolean = true): ScreenSetupStatus {
     val context = LocalContext.current
@@ -97,37 +97,4 @@ internal data class ScreenSetupStatus(
         onDispose { lifecycle.removeObserver(observer) }
     }
     return status
-}
-
-internal enum class ScreenSettingsTarget { ABOUT, DEVELOPER, WIRELESS, WIFI, NOTIFICATIONS, ACCESSIBILITY }
-
-/** Try a device's exported shortcut, then a standard Settings destination. No privileged setting writes. */
-internal fun screenSettingsIntents(context: Context, target: ScreenSettingsTarget, pairing: Boolean = true): List<Intent> = when (target) {
-    ScreenSettingsTarget.ABOUT -> listOf(Intent(Settings.ACTION_DEVICE_INFO_SETTINGS))
-    ScreenSettingsTarget.DEVELOPER -> listOf(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS))
-    ScreenSettingsTarget.WIRELESS -> listOf(Intent("android.settings.WIRELESS_DEBUGGING_SETTINGS"), Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS))
-    ScreenSettingsTarget.WIFI -> listOf(Intent(Settings.ACTION_WIFI_SETTINGS))
-    ScreenSettingsTarget.ACCESSIBILITY -> listOf(
-        Intent("android.settings.ACCESSIBILITY_DETAILS_SETTINGS").putExtra(Intent.EXTRA_COMPONENT_NAME, ComponentName(context, ScreenAccessService::class.java).flattenToString()),
-        Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS),
-    )
-    ScreenSettingsTarget.NOTIFICATIONS -> {
-        val manager = context.getSystemService(NotificationManager::class.java)
-        val channels = if (pairing) listOf("screen-adb-pairing", "runtime") else listOf("runtime")
-        val blocked = channels.firstOrNull { manager.getNotificationChannel(it)?.importance == NotificationManager.IMPORTANCE_NONE }
-        if (manager.areNotificationsEnabled() && blocked != null) listOf(Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
-            .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName).putExtra(Settings.EXTRA_CHANNEL_ID, blocked))
-        else listOf(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName))
-    }
-} + Intent(Settings.ACTION_SETTINGS)
-
-internal fun openScreenSettings(context: Context, target: ScreenSettingsTarget, pairing: Boolean = true): Boolean {
-    for (intent in screenSettingsIntents(context, target, pairing)) {
-        try {
-            context.startActivity(intent)
-            return true
-        } catch (_: ActivityNotFoundException) { }
-        catch (_: SecurityException) { }
-    }
-    return false
 }
