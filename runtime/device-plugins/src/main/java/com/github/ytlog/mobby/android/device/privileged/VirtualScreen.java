@@ -130,7 +130,7 @@ final class VirtualScreen implements AutoCloseable {
             }
             if ("manual_gesture".equals(action)) {
                 if (!manualControl) throw new IllegalStateException("manual_control_inactive");
-                manualGesture(args.getJSONArray("points"));
+                manualGesture(new JSONArray(args.getString("points")));
                 return metadata(new JSONObject());
             }
             if (manualControl && !Set.of("back", "prepare_private_input", "private_input", "cancel_private_input").contains(action))

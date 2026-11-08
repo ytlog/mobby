@@ -202,6 +202,10 @@ class ScreenControlDeviceTest {
                     val manualCode = "mobby-manual-code-fixture"
                     ScreenControl.manualInput(context, owner, ManualScreenInput.Text(manualCode))
                     ScreenControl.manualInput(context, owner, ManualScreenInput.Gesture(listOf(ScreenTouch(x, y, 0), ScreenTouch(x, y, 80))))
+                    ScreenControl.manualInput(context, owner, ManualScreenInput.Gesture(listOf(
+                        ScreenTouch(0.5f, 0.85f, 0), ScreenTouch(0.5f, 0.70f, 100),
+                        ScreenTouch(0.5f, 0.55f, 200), ScreenTouch(0.5f, 0.40f, 300),
+                    )))
                     ScreenControl.handBack(context, owner)
                     val handoffResult = handoff.get(10, java.util.concurrent.TimeUnit.SECONDS)
                     assertEquals("succeeded", handoffResult.optString("status"))
@@ -211,6 +215,8 @@ class ScreenControlDeviceTest {
                     assertEquals("UNAVAILABLE", staleTap.getJSONObject("error").optString("code"))
                     val afterHandoff = perform("snapshot")
                     assertTrue(afterHandoff.getString("text").contains("Count: 3"))
+                    assertTrue("Manual drag must move the actual scroll container",
+                        scrollPosition(afterHandoff.getString("text")) > scrollPosition(afterPrivateInput.getString("text")))
                     assertFalse(afterHandoff.toString().contains(manualCode))
                     assertEquals("private_input", afterHandoff.optString("screenshotStatus"))
                 }
