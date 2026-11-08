@@ -120,7 +120,8 @@ final class VirtualScreen implements AutoCloseable {
             if (display == null || displayId <= 0 || !display.getDisplay().isValid()) throw new IllegalStateException("invalid_display");
             if ("frame".equals(action)) return screenshot(metadata(new JSONObject()), args.optLong("after"));
             if ("manual_begin".equals(action)) {
-                rememberManualTextTarget();
+                clearPrivateInputTarget();
+                rememberFocusedManualTextTarget();
                 manualControl = true;
                 return metadata(new JSONObject());
             }
@@ -147,6 +148,7 @@ final class VirtualScreen implements AutoCloseable {
             }
             if ("manual_prepare_text".equals(action)) {
                 if (!manualControl) throw new IllegalStateException("manual_control_inactive");
+                rememberFocusedManualTextTarget();
                 AccessibilityNodeInfo field = validatedManualTextTarget();
                 try { return metadata(new JSONObject().put("label", privateInputLabel(field))); }
                 finally { field.recycle(); }
@@ -274,15 +276,16 @@ final class VirtualScreen implements AutoCloseable {
         } finally { root.recycle(); }
     }
 
-    private void rememberManualTextTarget() {
-        clearPrivateInputTarget();
+    private void rememberFocusedManualTextTarget() {
         AccessibilityNodeInfo root = optionalVirtualRoot();
         if (root == null) return;
         try {
             AccessibilityNodeInfo focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
             if (focused != null) {
-                if (editablePrivateField(focused)) privateInputTargets.add(focused);
-                else focused.recycle();
+                if (editablePrivateField(focused)) {
+                    clearPrivateInputTarget();
+                    privateInputTargets.add(focused);
+                } else focused.recycle();
             }
         } finally { root.recycle(); }
     }

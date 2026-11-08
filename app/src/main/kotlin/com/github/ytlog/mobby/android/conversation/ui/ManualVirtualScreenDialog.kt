@@ -13,6 +13,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.input.pointer.PointerInputScope
@@ -40,6 +42,11 @@ internal fun ManualVirtualScreenDialog(controller: ScreenControlPort, id: String
     var inputTarget by remember(id) { mutableStateOf<String?>(null) }
     var text by remember(id) { mutableStateOf("") }
     var error by remember(id) { mutableStateOf<String?>(null) }
+    fun closeEditor() {
+        inputTarget = null
+        text = ""
+        error = null
+    }
     fun execute(action: suspend () -> Unit) {
         if (busy) return
         busy = true
@@ -77,18 +84,21 @@ internal fun ManualVirtualScreenDialog(controller: ScreenControlPort, id: String
             updates
         }
     })
-    Dialog(onDismissRequest = { if (!busy) onMinimize() }, properties = DialogProperties(usePlatformDefaultWidth = false,
+    val canOperatePreview = !busy && inputTarget == null
+    Dialog(onDismissRequest = { if (canOperatePreview) onMinimize() }, properties = DialogProperties(usePlatformDefaultWidth = false,
         dismissOnClickOutside = false, securePolicy = SecureFlagPolicy.SecureOn)) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween) {
                     Text(UiStrings.virtualScreenTakeOver, style = MaterialTheme.typography.titleLarge)
-                    TextButton(onClick = onMinimize, enabled = !busy) { Text(UiStrings.virtualScreenMinimizeManual) }
+                    TextButton(onClick = onMinimize, enabled = canOperatePreview) { Text(UiStrings.virtualScreenMinimizeManual) }
                 }
                 Text(UiStrings.virtualScreenInUserControl, style = MaterialTheme.typography.bodySmall)
                 Text(UiStrings.virtualScreenHandoffPrompt, style = MaterialTheme.typography.bodySmall)
-                (error ?: screenError)?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                if (inputTarget == null) (error ?: screenError)?.let {
+                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
                 BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainer),
                     contentAlignment = Alignment.Center) {
                     if (bitmap == null) {
@@ -100,40 +110,50 @@ internal fun ManualVirtualScreenDialog(controller: ScreenControlPort, id: String
                         Image(bitmap, UiStrings.virtualScreenPreview, Modifier.width(width).aspectRatio(ratio).then(touch))
                     }
                 }
-                inputTarget?.let { target ->
-                    OutlinedTextField(text, { if (it.length <= 2000) text = it }, Modifier.fillMaxWidth(),
-                        label = { Text(target.ifBlank { UiStrings.virtualScreenManualInput }) },
-                        supportingText = { Text(UiStrings.virtualScreenManualTargetHelp) },
-                        singleLine = true, enabled = !busy, visualTransformation = PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
-                    TextButton(onClick = {
-                        val value = text
-                        execute {
-                            controller.manualInput(id, ManualScreenInput.Text(value))
-                            text = ""
-                            inputTarget = null
-                        }
-                    }, enabled = !busy && text.isNotEmpty()) { Text(UiStrings.virtualScreenManualFill) }
-                }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    TextButton(onClick = { execute { controller.manualInput(id, ManualScreenInput.Back) } }, enabled = !busy && inputTarget == null) {
+                    TextButton(onClick = { execute { controller.manualInput(id, ManualScreenInput.Back) } }, enabled = canOperatePreview) {
                         Text(UiStrings.back)
                     }
-                    TextButton(onClick = {
-                        if (inputTarget != null) {
-                            inputTarget = null
-                            text = ""
-                            error = null
-                        } else execute { inputTarget = controller.prepareManualText(id) }
-                    }, enabled = !busy) {
-                        Text(if (inputTarget != null) UiStrings.cancel else UiStrings.virtualScreenManualInput)
+                    TextButton(onClick = { execute { inputTarget = controller.prepareManualText(id) } }, enabled = canOperatePreview) {
+                        Text(UiStrings.virtualScreenManualInput)
                     }
-                    TextButton(onClick = { text = ""; execute { controller.handBack(id) } }, enabled = !busy) {
+                    TextButton(onClick = { execute { controller.handBack(id) } }, enabled = canOperatePreview) {
                         Text(UiStrings.virtualScreenHandBack)
                     }
                 }
             }
         }
+    }
+    inputTarget?.let { target ->
+        val focus = remember { FocusRequester() }
+        AlertDialog(
+            onDismissRequest = { if (!busy) closeEditor() },
+            properties = DialogProperties(dismissOnClickOutside = false, securePolicy = SecureFlagPolicy.SecureOn),
+            title = { Text(UiStrings.virtualScreenManualInput) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(text, { if (it.length <= 2000) text = it }, Modifier.fillMaxWidth().focusRequester(focus),
+                        label = { Text(target.ifBlank { UiStrings.virtualScreenManualInput }) },
+                        supportingText = { Text(UiStrings.virtualScreenManualTargetHelp) },
+                        singleLine = true, enabled = !busy, visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
+                    error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                }
+                LaunchedEffect(focus) { focus.requestFocus() }
+            },
+            dismissButton = {
+                TextButton(onClick = ::closeEditor, enabled = !busy) { Text(UiStrings.cancel) }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val value = text
+                    execute {
+                        controller.manualInput(id, ManualScreenInput.Text(value))
+                        closeEditor()
+                    }
+                }, enabled = !busy && text.isNotEmpty()) { Text(UiStrings.virtualScreenManualFill) }
+            },
+        )
     }
 }
 

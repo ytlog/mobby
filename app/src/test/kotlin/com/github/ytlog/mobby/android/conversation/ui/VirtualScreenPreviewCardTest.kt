@@ -108,9 +108,12 @@ class VirtualScreenPreviewCardTest {
         compose.onNode(hasSetTextAction()).assertDoesNotExist()
         compose.onNodeWithText(UiStrings.virtualScreenManualInput).performClick()
         compose.runOnIdle { assertEquals(listOf("prepareManualText" to listOf("handoff-fixture")), calls) }
+        compose.onAllNodes(isDialog()).assertCountEquals(2)
+        compose.onNode(hasSetTextAction()).assertIsFocused()
         compose.onNode(hasSetTextAction()).performTextInput("123456")
         compose.onNodeWithText(UiStrings.virtualScreenManualFill).performClick()
         compose.runOnIdle { assertEquals("manualInput" to listOf("handoff-fixture", ManualScreenInput.Text("123456")), calls.last()) }
+        compose.onAllNodes(isDialog()).assertCountEquals(1)
     }
 
     @Test fun manualDialogSendsAStrokeToItsDisplayAndMinimizingDoesNotReturnControl() {

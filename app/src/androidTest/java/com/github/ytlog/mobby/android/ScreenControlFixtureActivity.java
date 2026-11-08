@@ -13,6 +13,7 @@ import android.widget.*;
 @android.annotation.TargetApi(33)
 public final class ScreenControlFixtureActivity extends Activity {
     static final String CLEAR_INPUT_FOCUS = "com.github.ytlog.mobby.android.test.CLEAR_INPUT_FOCUS";
+    static final String CHECK_MANUAL_FOCUS = "com.github.ytlog.mobby.android.test.CHECK_MANUAL_FOCUS";
     static final String CHECK_MANUAL_INPUT = "com.github.ytlog.mobby.android.test.CHECK_MANUAL_INPUT";
     static final String CHECK_MANUAL_SCROLL = "com.github.ytlog.mobby.android.test.CHECK_MANUAL_SCROLL";
     static final String CHECK_MANUAL_SLIDER = "com.github.ytlog.mobby.android.test.CHECK_MANUAL_SLIDER";
@@ -38,24 +39,28 @@ public final class ScreenControlFixtureActivity extends Activity {
         Button secure = new Button(this); secure.setText("Secure field");
         EditText code = new EditText(this); code.setHint("Probe code");
         code.setSingleLine(true); code.setVisibility(android.view.View.GONE);
-        code.setShowSoftInputOnFocus(false); content.addView(code);
+        code.setShowSoftInputOnFocus(false);
         secure.setOnClickListener(view -> {
             code.setVisibility(android.view.View.VISIBLE);
             input.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
             input.requestFocus();
         });
         content.addView(secure);
+        content.addView(code);
         TextView geometry = new TextView(this); content.addView(geometry);
+        TextView focusGeometry = new TextView(this); content.addView(focusGeometry);
         increment.post(() -> {
             int[] location = new int[2]; increment.getLocationOnScreen(location);
             int[] field = new int[2]; input.getLocationOnScreen(field);
             int[] track = new int[2]; slider.getLocationOnScreen(track);
+            int[] focusButton = new int[2]; secure.getLocationOnScreen(focusButton);
             DisplayMetrics metrics = new DisplayMetrics(); getDisplay().getRealMetrics(metrics);
             geometry.setText("Button center: " + (location[0] + increment.getWidth() / 2) + "," +
                 (location[1] + increment.getHeight() / 2) + "/" + metrics.widthPixels + "," + metrics.heightPixels +
                 " Input center: " + (field[0] + input.getWidth() / 2) + "," + (field[1] + input.getHeight() / 2) +
                 " Slider track: " + (track[0] + slider.getPaddingLeft()) + "," + (track[1] + slider.getHeight() / 2) +
                 "," + (slider.getWidth() - slider.getPaddingLeft() - slider.getPaddingRight()));
+            focusGeometry.setText("Focus button: " + (focusButton[0] + secure.getWidth() / 2) + "," + (focusButton[1] + secure.getHeight() / 2));
         });
         TextView scrollPosition = new TextView(this); scrollPosition.setText("Scroll position: 0"); content.addView(scrollPosition);
         ScrollView scroll = new ScrollView(this);
@@ -71,6 +76,8 @@ public final class ScreenControlFixtureActivity extends Activity {
                 if (CLEAR_INPUT_FOCUS.equals(intent.getAction())) {
                     content.requestFocus();
                     passed = !input.hasFocus();
+                } else if (CHECK_MANUAL_FOCUS.equals(intent.getAction())) {
+                    passed = input.hasFocus();
                 } else if (CHECK_MANUAL_INPUT.equals(intent.getAction())) {
                     passed = MANUAL_TEXT.contentEquals(input.getText());
                 } else if (CHECK_MANUAL_SCROLL.equals(intent.getAction())) {
@@ -82,6 +89,7 @@ public final class ScreenControlFixtureActivity extends Activity {
             }
         };
         IntentFilter filter = new IntentFilter(CLEAR_INPUT_FOCUS);
+        filter.addAction(CHECK_MANUAL_FOCUS);
         filter.addAction(CHECK_MANUAL_INPUT);
         filter.addAction(CHECK_MANUAL_SCROLL);
         filter.addAction(CHECK_MANUAL_SLIDER);

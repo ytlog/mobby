@@ -222,6 +222,19 @@ class ScreenControlDeviceTest {
                     val fieldY = field.groupValues[2].toFloat() / geometry.groupValues[4].toFloat()
                     fun touch(phase: ScreenTouchPhase, x: Float, y: Float) =
                         ScreenControl.manualInput(context, owner, ManualScreenInput.Touch(phase, x, y))
+                    val focusButton = Regex("Focus button: (\\d+),(\\d+)").find(afterPrivateInput.getString("text"))!!
+                    val focusX = focusButton.groupValues[1].toFloat() / geometry.groupValues[3].toFloat()
+                    val focusY = focusButton.groupValues[2].toFloat() / geometry.groupValues[4].toFloat()
+                    touch(ScreenTouchPhase.DOWN, focusX, focusY)
+                    touch(ScreenTouchPhase.UP, focusX, focusY)
+                    assertTrue("The page must focus its field without a tap on the field",
+                        inputProbe(ScreenControlFixtureActivity.CHECK_MANUAL_FOCUS))
+                    assertEquals("Typing must open for a field focused by the page itself",
+                        "Probe input", ScreenControl.prepareManualText(context, owner))
+                    assertTrue(inputProbe(ScreenControlFixtureActivity.CLEAR_INPUT_FOCUS))
+                    ScreenControl.manualInput(context, owner, ManualScreenInput.Text(manualCode))
+                    assertTrue("Changing focus after opening the editor must keep the original destination",
+                        inputProbe(ScreenControlFixtureActivity.CHECK_MANUAL_INPUT))
                     touch(ScreenTouchPhase.DOWN, fieldX, fieldY)
                     touch(ScreenTouchPhase.UP, fieldX, fieldY)
                     assertTrue("The fixture must relinquish focus before local text is submitted",
