@@ -167,6 +167,7 @@ open class StringCatalog(private val fixedLanguage: AppLanguage? = null) {
     val adbInvalidPort get() = text("端口必须为 1 到 65535 的数字。", "Enter a port number from 1 to 65535.")
     val adbPairingFailed get() = text("配对失败，请重新打开系统配对弹窗并核对六位码；输入时保持系统弹窗打开。", "Pairing failed. Reopen the system pairing dialog and check its six-digit code. Keep that dialog open while entering the code.")
     val adbConnectionFailed get() = text("内置 ADB 连接失败。请检查无线调试和配对状态；自动发现失败时，填写无线调试首页的连接端口后重试。", "Built-in ADB connection failed. Check Wireless debugging and pairing. If discovery fails, enter the connection port from the main Wireless debugging page and retry.")
+    val adbConnectionPairingRequired get() = text("系统未接受当前 ADB 授权，请重新配对。", "Android rejected the current ADB authorization. Pair again.")
     val rootScreenMode get() = text("虚拟屏幕（root）", "Virtual screen (root)")
     val checkScreenRootPermission get() = text("检查 Root 权限", "Check root permission")
     val screenRootPermissionUnavailable get() = text("mobby 没有可用的 Root 权限。", "Root permission is unavailable to mobby.")

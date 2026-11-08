@@ -324,6 +324,37 @@ class ScreenControlSettingsTest {
         compose.runOnIdle { assertEquals(listOf(ScreenSettingsTarget.WIRELESS), opened); assertEquals(1, controller.events.count { it == "connect" }) }
         button("手动填写连接端口").assertIsDisplayed()
     }
+    @Test fun `rejected ADB authorization starts pairing from the connect button`() {
+        val controller = TestController(ScreenControlState(mode = ScreenMode.ADB, adbPaired = true))
+        controller.connectionFailure = AdbConnectionException(AdbConnectionFailure.PAIRING_REQUIRED, "fixture pairing required")
+        show(controller)
+        next()
+        button("连接").performClick()
+        button("取消配对").assertIsDisplayed()
+        compose.runOnIdle {
+            assertEquals(listOf("port:", "connect", "start-pairing"), controller.events)
+            assertEquals(listOf(ScreenSettingsTarget.WIRELESS), opened)
+            assertEquals(ScreenMode.ADB, controller.state.value.mode)
+            controller.state.value = controller.state.value.copy(adbPairing = false)
+        }
+        compose.onNodeWithText("配对未完成，可以重新开始。").assertIsDisplayed()
+        compose.runOnIdle { assertEquals(1, controller.events.count { it == "connect" }) }
+    }
+    @Test fun `missing auto-discovered endpoint falls back to assisted pairing`() {
+        val controller = TestController(ScreenControlState(mode = ScreenMode.ADB, adbPaired = true))
+        controller.connectionFailure = AdbConnectionException(AdbConnectionFailure.ENDPOINT_NOT_FOUND, "fixture endpoint missing")
+        show(controller)
+        next()
+        button("连接").performClick()
+        button("取消配对").assertIsDisplayed()
+        compose.runOnIdle {
+            assertEquals(listOf("port:", "connect", "start-pairing"), controller.events)
+            assertTrue(controller.state.value.adbPaired)
+            controller.state.value = controller.state.value.copy(adbPairing = false, adbPairingSuccess = 1, connected = true)
+        }
+        compose.onNodeWithText("屏幕操作已就绪").assertIsDisplayed()
+        compose.runOnIdle { assertEquals(1, controller.events.count { it == "connect" }) }
+    }
     @Test fun `cancelled or interrupted pairing never uses an old identity as new success`() {
         val controller = TestController(ScreenControlState(mode = ScreenMode.ADB, adbPairing = true, adbPaired = true))
         show(controller)
@@ -435,11 +466,17 @@ class ScreenControlSettingsTest {
         val events = mutableListOf<String>()
         var port = ""
         var grantRoot = false
+        var connectionFailure: AdbConnectionException? = null
         override suspend fun hasRootCommand() = rootCommandAvailable
         override suspend fun checkRootPermission(): Boolean { events += "root-check"; return grantRoot }
         override suspend fun select(mode: ScreenMode) { state.value = state.value.copy(mode = mode, modeConfigured = true) }
         override suspend fun setAdbPort(port: String) { events += "port:$port"; this.port = port }
-        override suspend fun connect() { events += "connect"; failure?.let { error(it) }; state.value = state.value.copy(connected = true) }
+        override suspend fun connect() {
+            events += "connect"
+            connectionFailure?.let { throw it }
+            failure?.let { error(it) }
+            state.value = state.value.copy(connected = true)
+        }
         override suspend fun disconnect() { events += "disconnect"; state.value = state.value.copy(connected = false) }
         override fun startAdbPairing(returnToActivity: String?) { events += "start-pairing"; state.value = state.value.copy(adbPairing = true, error = null) }
         override fun cancelAdbPairing() { events += "cancel-pairing"; state.value = state.value.copy(adbPairing = false) }

@@ -1,5 +1,7 @@
 package com.github.ytlog.mobby.android.device
 
+import com.github.ytlog.mobby.android.runtime.api.device.AdbConnectionException
+import com.github.ytlog.mobby.android.runtime.api.device.AdbConnectionFailure
 import com.github.ytlog.mobby.android.runtime.api.device.DeviceErrorCode
 import com.github.ytlog.mobby.android.runtime.api.device.DeviceFailure
 import com.github.ytlog.mobby.android.runtime.api.device.ScreenMode
@@ -148,17 +150,21 @@ object ScreenControl {
                 connecting = false
             }
         } catch (failure: Exception) {
+            val message = when {
+                failure is kotlinx.coroutines.CancellationException -> null
+                failure is AdbConnectionException -> failure.message
+                mode == ScreenMode.ADB -> AppStrings.adbConnectionFailed
+                else -> AppStrings.screenBackendConnectionFailed
+            }
             synchronized(this@ScreenControl) {
                 connecting = false
                 clearConnection()
-                changes.value = state.value.copy(error = when {
-                    failure is kotlinx.coroutines.CancellationException -> null
-                    mode == ScreenMode.ADB -> AppStrings.adbConnectionFailed
-                    else -> AppStrings.screenBackendConnectionFailed
-                })
+                changes.value = state.value.copy(error = message,
+                    adbPaired = state.value.adbPaired &&
+                        (failure as? AdbConnectionException)?.reason != AdbConnectionFailure.PAIRING_REQUIRED)
             }
-            if (failure is kotlinx.coroutines.CancellationException) throw failure
-            throw IllegalStateException(if (mode == ScreenMode.ADB) AppStrings.adbConnectionFailed else AppStrings.screenBackendConnectionFailed, failure)
+            if (failure is kotlinx.coroutines.CancellationException || failure is AdbConnectionException) throw failure
+            throw IllegalStateException(message, failure)
         }
     }
 

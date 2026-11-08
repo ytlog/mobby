@@ -4,7 +4,12 @@ import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.os.Build
+import com.github.ytlog.mobby.android.localization.AppStrings
+import com.github.ytlog.mobby.android.runtime.api.device.AdbConnectionException
+import com.github.ytlog.mobby.android.runtime.api.device.AdbConnectionFailure
+import io.github.muntashirakon.adb.AdbAuthenticationFailedException
 import io.github.muntashirakon.adb.AdbConnection
+import io.github.muntashirakon.adb.AdbPairingRequiredException
 import io.github.muntashirakon.adb.PairingConnectionCtx
 import kotlinx.coroutines.*
 import java.io.ByteArrayOutputStream
@@ -27,6 +32,10 @@ internal object EmbeddedAdb {
     fun setPort(value: String) { port = if (value.isBlank()) null else parsePort(value.trim()) }
     fun validateCode(value: String) { require(value.matches(Regex("[0-9]{6}"))) { "invalid_pairing_code" } }
     fun paired(context: Context) = context.getSharedPreferences("screen-control", Context.MODE_PRIVATE).getBoolean("adb-paired", false)
+
+    private fun forgetPairing(context: Context) {
+        context.getSharedPreferences("screen-control", Context.MODE_PRIVATE).edit().remove("adb-paired").apply()
+    }
 
     suspend fun pair(context: Context, value: String, code: String) = withContext(Dispatchers.IO) {
         val pairingPort = parsePort(value.trim()); validateCode(code)
@@ -59,12 +68,24 @@ internal object EmbeddedAdb {
     suspend fun connect(context: Context, connectionPort: Int? = port): ScreenChannel {
         var created: ScreenChannel? = null
         try {
-            val selected = connectionPort ?: discover(context)
+            val selected = connectionPort ?: try {
+                discover(context)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                throw AdbConnectionException(AdbConnectionFailure.ENDPOINT_NOT_FOUND, AppStrings.adbConnectionFailed, failure)
+            }
             return withContext(Dispatchers.IO) {
                 val identity = ScreenAdbIdentity.load(context)
                 transport(selected, identity).use { adb ->
                     ensureActive()
-                    check(adb.connect(15, TimeUnit.SECONDS, true)) { "adb_connection_timeout" }
+                    try {
+                        check(adb.connect(15, TimeUnit.SECONDS, true)) { "adb_connection_timeout" }
+                    } catch (failure: Exception) {
+                        if (failure !is AdbPairingRequiredException && failure !is AdbAuthenticationFailedException) throw failure
+                        forgetPairing(context)
+                        throw AdbConnectionException(AdbConnectionFailure.PAIRING_REQUIRED, AppStrings.adbConnectionPairingRequired, failure)
+                    }
                     adb.open(bootstrapCommand(context.applicationInfo.sourceDir)).use { stream ->
                         val line = readEndpointLine(stream.openInputStream()) { ensureActive() }
                         val endpoint = org.json.JSONObject(line)
@@ -76,7 +97,7 @@ internal object EmbeddedAdb {
                             } catch (cancelled: InterruptedException) {
                                 throw java.util.concurrent.CancellationException("ADB verification interrupted").apply { initCause(cancelled) }
                             } catch (failure: Exception) {
-                                context.getSharedPreferences("screen-control", Context.MODE_PRIVATE).edit().remove("adb-paired").apply()
+                                forgetPairing(context)
                                 throw failure
                             }
                         }).also { created = it }

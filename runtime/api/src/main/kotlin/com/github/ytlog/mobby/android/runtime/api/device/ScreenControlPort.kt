@@ -11,6 +11,11 @@ enum class ScreenMode {
 
 data class ScreenWorkflowPause(val completed: Int, val total: Int, val nextAction: String)
 
+enum class AdbConnectionFailure { PAIRING_REQUIRED, ENDPOINT_NOT_FOUND }
+
+class AdbConnectionException(val reason: AdbConnectionFailure, message: String, cause: Throwable? = null) :
+    IllegalStateException(message, cause)
+
 data class ScreenControlState(val mode: ScreenMode = ScreenMode.CURRENT, val connected: Boolean = false,
     val active: Boolean = false, val displayId: Int? = null, val jpeg: ByteArray? = null,
     val packageName: String = "", val error: String? = null, val adbPaired: Boolean = false, val adbPairing: Boolean = false,

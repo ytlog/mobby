@@ -22,6 +22,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.ytlog.mobby.android.MobbyApplication
 import com.github.ytlog.mobby.android.conversation.domain.Appearance
+import com.github.ytlog.mobby.android.runtime.api.device.AdbConnectionException
+import com.github.ytlog.mobby.android.runtime.api.device.AdbConnectionFailure
 import com.github.ytlog.mobby.android.runtime.api.device.ScreenControlPort
 import com.github.ytlog.mobby.android.runtime.api.device.ScreenMode
 import kotlinx.coroutines.*
@@ -160,7 +162,7 @@ class ScreenControlSettingsActivity : ComponentActivity() {
             ScreenSetupStep.WIFI, ScreenSetupStep.DEVELOPER, ScreenSetupStep.WIRELESS) }
         if (settingsOverride != null) settingsOverride(target)
         else if (!ScreenAccessRouting.openSettings(context, target, pairing = state.mode == ScreenMode.ADB,
-                assistNavigation = assistNavigation && status.accessibilityEnabled, openPairing = openPairing)) {
+                assistNavigation = assistNavigation && freshStatus().accessibilityEnabled, openPairing = openPairing)) {
             pendingCheck = null
             error = AppStrings.screenSettingsUnavailable
         }
@@ -178,6 +180,16 @@ class ScreenControlSettingsActivity : ComponentActivity() {
             permission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
         else open(ScreenSettingsTarget.NOTIFICATIONS)
     }
+    fun startPairing() {
+        if (!freshStatus().notificationsAllowed) {
+            go(ScreenSetupStep.NOTIFICATIONS)
+            return
+        }
+        val baseline = controller.state.value.adbPairingSuccess
+        controller.startAdbPairing(ScreenAccessRouting.wizardActivity(context))
+        pairingSuccessAtStart = baseline
+        open(ScreenSettingsTarget.WIRELESS, assistNavigation = true, openPairing = true)
+    }
     fun connect() = execute {
         if (state.mode == ScreenMode.ADB) controller.setAdbPort(connectionPort)
         try {
@@ -186,12 +198,26 @@ class ScreenControlSettingsActivity : ComponentActivity() {
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Exception) {
-            if (controller.state.value.mode == ScreenMode.ADB) {
-                if (freshStatus().developerEnabled != true) {
+            val current = controller.state.value
+            if (current.mode == ScreenMode.ADB) {
+                val permissions = freshStatus()
+                val shouldPair = when ((failure as? AdbConnectionException)?.reason) {
+                    AdbConnectionFailure.PAIRING_REQUIRED -> true
+                    AdbConnectionFailure.ENDPOINT_NOT_FOUND -> permissions.accessibilityEnabled
+                    null -> false
+                }
+                if (!screenStepComplete(ScreenSetupStep.DEVELOPER, current, permissions, developerConfirmed = developerConfirmed)) {
                     openWirelessOnArrival = true
                     go(ScreenSetupStep.DEVELOPER)
+                } else if (shouldPair && permissions.wifiConnected &&
+                    screenStepComplete(ScreenSetupStep.WIRELESS, current, permissions, wirelessConfirmed = wirelessConfirmed)) {
+                    forcePair = true
+                    go(ScreenSetupStep.PAIR)
+                    startPairing()
+                    return@execute
+                } else {
+                    open(ScreenSettingsTarget.WIRELESS)
                 }
-                else open(ScreenSettingsTarget.WIRELESS)
             }
             error = failure.message ?: AppStrings.screenBackendConnectionFailed
             return@execute
@@ -203,13 +229,7 @@ class ScreenControlSettingsActivity : ComponentActivity() {
             open(ScreenSettingsTarget.WIRELESS, assistNavigation = true, openPairing = true)
             return
         }
-        if (!status.notificationsAllowed) { go(ScreenSetupStep.NOTIFICATIONS); return }
-        execute {
-            val baseline = controller.state.value.adbPairingSuccess
-            controller.startAdbPairing(ScreenAccessRouting.wizardActivity(context))
-            pairingSuccessAtStart = baseline
-            open(ScreenSettingsTarget.WIRELESS, assistNavigation = true, openPairing = true)
-        }
+        execute { startPairing() }
     }
     LaunchedEffect(step, pendingCheck, status) {
         if (pendingCheck == step && status.resumed && screenStepComplete(step, controller.state.value, status, forcePair, developerConfirmed, wirelessConfirmed)) {
