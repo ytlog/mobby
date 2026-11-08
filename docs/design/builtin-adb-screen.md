@@ -52,6 +52,8 @@ Android 13 小米 M2007J1SC（versionCode 138）真机验证了「重新配对 �
 
 `BuiltinAdbPairingDeviceTest` 在真实系统配对弹窗保持前台时，将当次六位码经只在内存使用的私有测试通道交给 mobby 通知的实际 RemoteInput PendingIntent，触发正式配对服务、TLS/SPAKE2 和 Android 系统配对。成功用例耗时 8.626 秒，系统无线调试列表显示 `mobby-screen`。这验证实际后端，不等同于 MIUI 通知回复按钮的手动点击验收；后者等待用户将通知样式切换为 Android。实际配对码未作为 instrumentation 参数、日志、源码或文件保存。
 
+Android 13 小米 M2007J1SC（versionCode 140）通过同一真实通知回复入口验证了新的配对和后台副屏连接均在系统设置仍处于前台时完成。测试使用系统无线调试页显示的连接端口作为手动端口提示，未覆盖连接端口自动发现或通知栏上的手动操作。
+
 随后停止了本任务先前启动的 Shizuku shell 服务，在另一个 instrumentation 进程中重新加载加密身份并通过内置 ADB 连接。当前手机没有广播 `_adb-tls-connect._tcp`（App 发现超时，电脑 mDNS 也未发现），因此使用系统无线调试首页的本机连接端口；没有扫描端口或切换到其他权限。`builtinAdbVirtualScreenKeepsMobbyVisibleAndReleasesDisplay` 通过，耗时 19.684 秒，覆盖正式 DeviceHost 协议、应用启动、语义与坐标点击计数、中文输入、真实滚动、截图、mobby 主屏预览与亮屏、拒绝 home/recents、返回和副屏释放。主屏实际截图显示 Count: 2、中文文本与 Scroll position: 840；结束后 `dumpsys display` 不存在 mobby-agent，Shizuku 服务仍未运行。
 
 生产 APK 的 `AdbScreenMain` 还单独经 USB ADB 验证：启动进程退出后，脱离会话的工作进程仍可完成认证、open/apps/close；随后清理副屏。这是启动生命周期探针，不替代上述实际配对与内置模式用例。
