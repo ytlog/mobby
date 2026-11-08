@@ -3,6 +3,7 @@ package com.github.ytlog.mobby.android.device
 import com.github.ytlog.mobby.android.device.privileged.ScreenServer
 import com.github.ytlog.mobby.android.runtime.api.device.DeviceErrorCode
 import com.github.ytlog.mobby.android.runtime.api.device.DeviceFailure
+import com.github.ytlog.mobby.android.runtime.api.device.EffectState
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
@@ -89,6 +90,49 @@ class ScreenChannelTest {
                 }
                 assertEquals(DeviceErrorCode.ADB_AUTHORIZATION_REQUIRED, denied.error.code)
                 assertFalse(channel.alive)
+            }
+            worker.get(2, TimeUnit.SECONDS)
+        }
+    }
+
+    @Test fun `missing control reports an undispatched click and the same display remains usable`() {
+        withServer { endpoint, server ->
+            val worker = server.submit {
+                read(); write(JSONObject().put("ok", true).put("uid", 2000))
+                assertEquals("click", read().getString("action"))
+                write(JSONObject().put("ok", false).put("error", "virtual_screen_click_failed")
+                    .put("cause", "IllegalStateException").put("detail", "control_not_found"))
+                assertEquals("snapshot", read().getString("action"))
+                write(JSONObject().put("ok", true).put("displayId", 7))
+            }
+            ScreenChannel(endpoint, root = false).use { channel ->
+                val denied = assertThrows(DeviceFailure::class.java) {
+                    ScreenControl.request(channel, "click", mapOf("query" to "fixture"), expectedDisplay = 7)
+                }
+                assertEquals(DeviceErrorCode.NOT_FOUND, denied.error.code)
+                assertEquals(EffectState.NONE, denied.error.effectState)
+                assertTrue(denied.error.message.isNotBlank())
+                assertTrue(channel.alive)
+                assertEquals(7, ScreenControl.request(channel, "snapshot", expectedDisplay = 7).getInt("displayId"))
+            }
+            worker.get(2, TimeUnit.SECONDS)
+        }
+    }
+
+    @Test fun `launch that was dispatched but not observed keeps an unknown effect`() {
+        withServer { endpoint, server ->
+            val worker = server.submit {
+                read(); write(JSONObject().put("ok", true).put("uid", 2000))
+                assertEquals("launch", read().getString("action"))
+                write(JSONObject().put("ok", false).put("error", "virtual_screen_launch_failed")
+                    .put("cause", "IllegalStateException").put("detail", "app_not_on_virtual_display"))
+            }
+            ScreenChannel(endpoint, root = false).use { channel ->
+                val failure = assertThrows(DeviceFailure::class.java) {
+                    ScreenControl.request(channel, "launch", mapOf("package" to "com.example.app"), expectedDisplay = 7)
+                }
+                assertEquals(DeviceErrorCode.RESULT_UNCONFIRMED, failure.error.code)
+                assertEquals(EffectState.UNKNOWN, failure.error.effectState)
             }
             worker.get(2, TimeUnit.SECONDS)
         }

@@ -67,7 +67,7 @@ internal class DeviceActions(private val context: Context, private val inbox: Fi
         val observation = screenSession()?.operate(action, args, gate::checkActive)
             ?: selectScreenBackend(ScreenControl.state.value.mode,
                 { (ScreenAccessService.instance ?: error(AppStrings.accessibilityIsOffEnableMobbySScreenServiceIn)).operate(action, args, gate::checkActive) },
-                { error(AppStrings.connectScreenBackend) })
+                { deviceFailure(DeviceErrorCode.UNAVAILABLE, AppStrings.connectScreenBackend) })
         val screenshot = observation.screenshot
         var status = screenshot.status
         val ref = screenshot.jpeg?.let { bytes ->

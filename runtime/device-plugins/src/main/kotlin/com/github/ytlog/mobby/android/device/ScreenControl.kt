@@ -4,6 +4,7 @@ import com.github.ytlog.mobby.android.runtime.api.device.AdbConnectionException
 import com.github.ytlog.mobby.android.runtime.api.device.AdbConnectionFailure
 import com.github.ytlog.mobby.android.runtime.api.device.DeviceErrorCode
 import com.github.ytlog.mobby.android.runtime.api.device.DeviceFailure
+import com.github.ytlog.mobby.android.runtime.api.device.EffectState
 import com.github.ytlog.mobby.android.runtime.api.device.ScreenMode
 import com.github.ytlog.mobby.android.runtime.api.device.deviceFailure
 
@@ -232,7 +233,7 @@ object ScreenControl {
         }, {
             requireUnlocked(context)
             check(leases == 0) { AppStrings.screenModeBusy }
-            val connected = channel ?: error(AppStrings.connectScreenBackend)
+            val connected = channel ?: deviceFailure(DeviceErrorCode.UNAVAILABLE, AppStrings.connectScreenBackend)
             val initial = openVirtual(context, mode, connected)
             if (mode == ScreenMode.ADB) RecoveringAdbScreenSession(
                 initial, { channel?.alive == true && state.value.active }, { channel?.alive == true },
@@ -380,18 +381,32 @@ object ScreenControl {
                 com.github.ytlog.mobby.android.runtime.api.device.DeviceErrorCode.UNAVAILABLE, AppStrings.unlockForVirtualScreen)
     }
 
-    private fun request(connection: ScreenChannel, action: String, args: Map<String, String> = emptyMap(),
+    internal fun request(connection: ScreenChannel, action: String, args: Map<String, String> = emptyMap(),
         expectedDisplay: Int? = null): JSONObject {
         try {
             val result = connection.request(action, args)
-            if (!result.optBoolean("ok") && result.optString("cause") == "TimeoutException")
-                throw java.util.concurrent.TimeoutException("virtual_screen_timeout")
-            if (!result.optBoolean("ok") && result.optString("cause") == "UnsupportedOperationException")
-                com.github.ytlog.mobby.android.runtime.api.device.deviceFailure(
-                    com.github.ytlog.mobby.android.runtime.api.device.DeviceErrorCode.UNSUPPORTED_CAPABILITY)
-            check(result.getBoolean("ok")) {
-                if (result.optString("detail") in setOf("invalid_display", "virtual_screen_closed")) connection.close()
-                result.optString("error", "virtual_screen_failed")
+            if (!result.getBoolean("ok")) {
+                when (result.optString("detail")) {
+                    "invalid_display", "virtual_screen_closed", "virtual_screen_not_open" -> {
+                        connection.close()
+                        deviceFailure(DeviceErrorCode.UNAVAILABLE, AppStrings.virtualScreenDisconnected)
+                    }
+                    "no_virtual_window", "no_virtual_app_window" ->
+                        deviceFailure(DeviceErrorCode.UNAVAILABLE, AppStrings.virtualScreenWindowUnavailable)
+                    "control_not_found" -> deviceFailure(DeviceErrorCode.NOT_FOUND, AppStrings.virtualScreenControlNotFound)
+                    "control_not_unique" -> deviceFailure(DeviceErrorCode.INVALID_ARGUMENT, AppStrings.virtualScreenControlNotUnique)
+                    "no_editable_field" -> deviceFailure(DeviceErrorCode.NOT_FOUND, AppStrings.virtualScreenNoEditableField)
+                    "click_refused" -> deviceFailure(DeviceErrorCode.UNAVAILABLE, AppStrings.virtualScreenClickRefused, EffectState.UNKNOWN)
+                    "app_already_on_other_display" ->
+                        deviceFailure(DeviceErrorCode.UNSUPPORTED_CAPABILITY, AppStrings.virtualScreenAppOnOtherDisplay)
+                    "app_not_on_virtual_display" ->
+                        deviceFailure(DeviceErrorCode.RESULT_UNCONFIRMED, AppStrings.virtualScreenAppNotVisible, EffectState.UNKNOWN)
+                }
+                when (result.optString("cause")) {
+                    "TimeoutException" -> throw java.util.concurrent.TimeoutException("virtual_screen_timeout")
+                    "UnsupportedOperationException" -> deviceFailure(DeviceErrorCode.UNSUPPORTED_CAPABILITY)
+                }
+                error(result.optString("error", "virtual_screen_failed"))
             }
             val display = result.optInt("displayId", -1)
             if ((action == "open" && display <= 0) || (expectedDisplay != null && display != expectedDisplay)) {
@@ -400,6 +415,7 @@ object ScreenControl {
             }
             return result
         } catch (failure: Exception) {
+            if (failure is java.util.concurrent.CancellationException) throw failure
             if (failure is DeviceFailure && failure.error.code == DeviceErrorCode.ADB_AUTHORIZATION_REQUIRED) {
                 changes.update { current ->
                     if (channel !== connection) current else current.copy(connected = false, active = false,
@@ -413,10 +429,11 @@ object ScreenControl {
             changes.update { current ->
                 when {
                     channel !== connection -> current
-                    connection.alive -> current.copy(error = AppStrings.virtualScreenOperationFailed)
+                    connection.alive -> current.copy(error = (failure as? DeviceFailure)?.error?.message
+                        ?.takeIf(String::isNotBlank) ?: AppStrings.virtualScreenOperationFailed)
                     else -> current.copy(connected = false, active = false, displayId = null, jpeg = null,
                         packageName = "", error = if (current.mode == ScreenMode.ADB && leases > 0)
-                            AppStrings.adbScreenWaitingForReconnect else AppStrings.virtualScreenOperationFailed)
+                            AppStrings.adbScreenWaitingForReconnect else AppStrings.virtualScreenDisconnected)
                 }
             }
             throw failure

@@ -103,7 +103,11 @@ class DeviceCardActions(
                 Caption(if (total == null) DeviceLabels.text("已处理 ${progress.completed} ${progress.unit}", "Processed ${progress.completed} ${progress.unit}")
                     else "${progress.completed} / $total ${progress.unit}")
             }
-            operation.error?.let { Text(DeviceLabels.error(it.code), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+            operation.error?.let { failure ->
+                val reason = failure.message.takeIf { operation.plugin == "screen" && it.isNotBlank() }
+                    ?: DeviceLabels.error(failure.code)
+                Text(displayRuntimePaths(reason), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            }
             if (operation.result?.effectState in setOf(EffectState.SUBMITTED, EffectState.UNKNOWN) || operation.error?.effectState == EffectState.UNKNOWN)
                 Caption(DeviceLabels.text("可能已发生外部操作，请先核对结果，不要重复提交。", "An external effect may have occurred. Check the result before submitting again."))
             @OptIn(ExperimentalLayoutApi::class)

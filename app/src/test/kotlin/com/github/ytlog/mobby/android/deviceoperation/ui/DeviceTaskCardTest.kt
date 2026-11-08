@@ -77,6 +77,14 @@ class DeviceTaskCardTest {
         compose.onAllNodes(hasClickAction()).onFirst().performClick()
         compose.onNodeWithText("preview:photo-ref").assertIsDisplayed()
     }
+    @Test fun `screen failure shows the specific reason on the card`() {
+        val reason = com.github.ytlog.mobby.android.localization.AppStrings.unlockForVirtualScreen
+        val screen = operation("screen_control").copy(plugin = "screen", action = "snapshot", status = DeviceStatus.FAILED,
+            input = buildJsonObject {}, result = null, error = DeviceError(DeviceErrorCode.UNAVAILABLE, reason))
+        compose.setContent { MaterialTheme { DeviceTaskCard(screen, DeviceCardActions()) } }
+        compose.onAllNodes(hasClickAction()).onFirst().performClick()
+        compose.onNodeWithText(reason).assertIsDisplayed()
+    }
     @Test fun `unavailable capability offers no execution action`() {
         compose.setContent { MaterialTheme { DeviceUnavailableCard("Candidate", "Not implemented") } }
         compose.onAllNodes(hasClickAction()).assertCountEquals(0)
