@@ -69,17 +69,18 @@ class GatewayFormTest {
         assertEquals("已连接，可用于 Codex、OpenCode", notice)
     }
 
-    @Test fun `a recommendation the service does not offer is never used and one tap on a model finishes`() {
+    @Test fun `a recommendation the service does not offer requires choosing a default`() {
         var saved: GatewayEdit? = null
         form(save = { saved = it; connected })
         compose.onNodeWithText("DeepSeek").performScrollTo().performClick()
         field("API Key").performTextReplacement("sk-synthetic")
         connect()
         assertNull(saved)
-        compose.onNodeWithText("选一个模型来完成连接").assertExists()
-        compose.onNodeWithText("Other · other").performScrollTo().performClick()
+        compose.onNodeWithText("连接").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("设为默认 other").performScrollTo().performClick()
+        connect()
         assertEquals("other", saved!!.model)
-        assertEquals(setOf("chat", "other"), saved!!.selectedModels)
+        assertEquals(setOf("other"), saved!!.selectedModels)
     }
 
     @Test fun `another service asks for its address and connects straight away with a single model`() {
@@ -93,12 +94,28 @@ class GatewayFormTest {
         assertEquals("only", saved!!.model)
     }
 
+    @Test fun `model configuration saves only checked models and probes the chosen default`() {
+        val available = discovered.copy(models = discovered.models + GatewayModel("third", "Third"))
+        var saved: GatewayEdit? = null
+        form(fetch = { DataResult.Loaded(available) }, save = { saved = it; connected })
+        compose.onNodeWithText("其他服务（填写地址）").performScrollTo().performClick()
+        field("服务地址").performTextReplacement("https://gateway.invalid/v1")
+        compose.onNodeWithText("配置模型").performScrollTo().performClick()
+        compose.onNodeWithText("Chat · chat").performScrollTo().performClick()
+        compose.onNodeWithText("Third · third").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("设为默认 third").performScrollTo().performClick()
+        assertNull(saved)
+        connect()
+        assertEquals("third", saved!!.model)
+        assertEquals(setOf("chat", "third"), saved!!.selectedModels)
+    }
+
     @Test fun `without a model list the user enters a model id and connects`() {
         var saved: GatewayEdit? = null
         form(fetch = { DataResult.Loaded(GatewayCatalogResult(emptyList(), "没有模型列表接口")) }, save = { saved = it; connected })
         compose.onNodeWithText("其他服务（填写地址）").performScrollTo().performClick()
         field("服务地址").performTextReplacement("https://gateway.invalid/v1")
-        connect()
+        compose.onNodeWithText("配置模型").performScrollTo().performClick()
         assertNull(saved)
         compose.onNodeWithText("这个服务没有提供模型列表（没有模型列表接口）。请填写模型 ID 后再连接。").assertExists()
         field("模型 ID").performScrollTo().performTextReplacement("manual")
@@ -120,7 +137,8 @@ class GatewayFormTest {
         assertEquals(0, saves)
         fetchFails = false
         connect()
-        compose.onNodeWithText("Chat · chat").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("设为默认 chat").performScrollTo().performClick()
+        connect()
         assertEquals(1, saves)
         compose.onNodeWithText("没有连上").assertExists()
         assertNull(notice)
@@ -155,7 +173,7 @@ class GatewayFormTest {
     }
 
     @Test fun `editing keeps the saved key and model until the service changes`() {
-        val profile = GatewayProfile(AgentId.CODEX, "saved", 2, "https://openrouter.ai/api/v1", "chat", "RESPONSES", true, discovered.models)
+        val profile = GatewayProfile(AgentId.CODEX, "saved", 2, "https://openrouter.ai/api/v1", "chat", "RESPONSES", true, discovered.models.take(1))
         var fetched: GatewayEdit? = null
         var saved: GatewayEdit? = null
         form(listOf(profile), fetch = { fetched = it; DataResult.Loaded(discovered) }, save = { saved = it; connected })
@@ -163,21 +181,23 @@ class GatewayFormTest {
         connect()
         assertNull(fetched!!.credential)
         assertEquals("chat", saved!!.model)
+        assertEquals(setOf("chat"), saved!!.selectedModels)
         saved = null
         compose.onNodeWithText("Groq").performScrollTo().performClick()
         connect()
         assertEquals(0, fetched!!.credential!!.size)
     }
 
-    @Test fun `the model row changes the default with one tap and the next connect probes it`() {
+    @Test fun `editing a default keeps other checked models and applies on connect`() {
         val profile = GatewayProfile(AgentId.CODEX, "saved", 2, "https://gateway.invalid/v1", "chat", "RESPONSES", true, discovered.models)
         var saved: GatewayEdit? = null
         form(listOf(profile), save = { saved = it; connected })
-        compose.onNodeWithText("模型：chat").performScrollTo().performClick()
-        compose.onNodeWithText("Other · other").performScrollTo().performClick()
-        compose.onNodeWithText("模型：other").assertExists()
+        compose.onNodeWithText("配置模型").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("设为默认 other").performScrollTo().performClick()
+        assertNull(saved)
         connect()
         assertEquals("other", saved!!.model)
+        assertEquals(setOf("chat", "other"), saved!!.selectedModels)
     }
 
     @Test fun `site choice, guide and delete wait under advanced settings`() {

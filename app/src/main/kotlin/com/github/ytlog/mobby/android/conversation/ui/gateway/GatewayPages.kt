@@ -7,6 +7,7 @@ import com.github.ytlog.mobby.android.conversation.domain.gateway.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -194,18 +195,36 @@ internal fun gatewayLabel(profile: GatewayProfile): String {
     }
 }
 
-/** A searchable list where one tap picks a model. */
-@Composable private fun ModelPicker(models: List<GatewayModel>, selected: String, enabled: Boolean, pick: (String) -> Unit, other: () -> Unit) {
-    var search by remember { mutableStateOf("") }
+@Composable private fun ModelPicker(models: List<GatewayModel>, selected: Set<String>, default: String, enabled: Boolean,
+    toggle: (String) -> Unit, makeDefault: (String) -> Unit, clear: () -> Unit, other: () -> Unit) {
+    var search by rememberSaveable { mutableStateOf("") }
     val matches = models.filter { search.isBlank() || it.id.contains(search, true) || it.name.contains(search, true) }
     SettingsGroup {
         SettingsField(search, { search = it }, AppStrings.searchModels, enabled = enabled)
         matches.take(30).forEach { model ->
             GroupDivider()
-            ChoiceRow(if (model.name == model.id) model.id else "${model.name} · ${model.id}", model.id == selected, { pick(model.id) }, enabled = enabled)
+            val checked = model.id in selected
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.weight(1f).heightIn(min = 48.dp)
+                    .toggleable(checked, enabled = enabled, role = Role.Checkbox, onValueChange = { toggle(model.id) })
+                    .padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked, onCheckedChange = null, enabled = enabled)
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (model.name == model.id) model.id else "${model.name} · ${model.id}")
+                }
+                if (model.id == default) Text(AppStrings.default, Modifier.padding(horizontal = 12.dp))
+                else androidx.compose.material3.TextButton(onClick = { makeDefault(model.id) }, enabled = enabled,
+                    modifier = Modifier.semantics { contentDescription = AppStrings.setGatewayModelDefault(model.id) }) {
+                    Text(AppStrings.setGatewayDefault)
+                }
+            }
         }
         if (matches.size > 30) { GroupDivider(); SettingsCaption(AppStrings.moreResultsSearch(matches.size - 30)) }
         GroupDivider()
+        if (selected.isNotEmpty()) {
+            SettingsAction(AppStrings.clearGatewayModelSelection, enabled = enabled, onClick = clear)
+            GroupDivider()
+        }
         SettingsAction(AppStrings.useAnotherModelId, enabled = enabled, onClick = other)
     }
 }
@@ -223,8 +242,9 @@ internal class GatewayFormDraft {
     var catalogError by mutableStateOf<String?>(null)
     var manualId by mutableStateOf("")
     var manualOpen by mutableStateOf(false)
-    var picking by mutableStateOf(false)
-    var pickToConnect by mutableStateOf(false)
+    var selectingModels by mutableStateOf(false)
+    var selectedModels by mutableStateOf<Set<String>?>(null)
+    var fetchingModels by mutableStateOf(false)
     var advanced by mutableStateOf(false)
     var notice by mutableStateOf("")
     var noticeError by mutableStateOf(false)
@@ -261,8 +281,9 @@ internal class GatewayFormDraft {
     var catalogError by draft::catalogError
     var manualId by draft::manualId
     var manualOpen by draft::manualOpen
-    var picking by draft::picking
-    var pickToConnect by draft::pickToConnect
+    var selectingModels by draft::selectingModels
+    var selectedModels by draft::selectedModels
+    var fetchingModels by draft::fetchingModels
     var advanced by draft::advanced
     var notice by draft::notice
     var noticeError by draft::noticeError
@@ -285,6 +306,7 @@ internal class GatewayFormDraft {
         baseEndpoint = gatewayBaseAddress(provider?.candidates()?.responses ?: first?.endpoint.orEmpty())
         model = first?.model.orEmpty()
         catalog = first?.models?.takeIf { it.isNotEmpty() }
+        selectedModels = first?.let { catalog.orEmpty().map { entry -> entry.id }.toSet() + it.model }
         key = ""; keyEdited = false
     }
     val idle = !busy && !checking && !signingIn
@@ -294,7 +316,12 @@ internal class GatewayFormDraft {
         if (keyEdited || saved == null) key.toCharArray() else null, models)
     fun changed() {
         noticeError = false; notice = ""; connectionNotice = ""
-        catalog = null; catalogError = null; picking = false; pickToConnect = false
+        catalog = null; catalogError = null; selectingModels = false
+    }
+    fun sourceChanged() {
+        key = ""; keyEdited = true
+        model = saved?.model.orEmpty(); manualId = ""; manualOpen = false; selectedModels = null
+        changed()
     }
     val savedMatches = saved != null && model.trim() == saved.model && !keyEdited &&
         group.all { candidates().forAgent(it.agent) == it.endpoint }
@@ -302,48 +329,73 @@ internal class GatewayFormDraft {
         if (providerId == id && providerSite == site) return
         providerId = id; providerSite = site
         baseEndpoint = GatewayProviders.find(id, site)?.let { gatewayBaseAddress(it.candidates().responses) }.orEmpty()
-        key = ""; keyEdited = true
-        if (saved == null) { model = ""; manualId = ""; manualOpen = false }
-        changed()
+        sourceChanged()
     }
     fun openOfficial(url: String) {
         try { if (openLink != null) openLink(url) else uriHandler.openUri(url) }
         catch (_: Exception) { noticeError = true; notice = AppStrings.cannotOpenThisLink }
     }
-    /** Fetch the list unless a tapped [chosen] model already came from it, settle the default, then probe and save. */
-    fun connect(chosen: String? = null) {
+    suspend fun loadCatalog(): Boolean {
+        val request = edit(model.trim())
+        return when (val result = try { fetchModels(request) } finally { request.credential?.fill('\u0000') }) {
+            is DataResult.Failed -> {
+                noticeError = true; notice = result.message
+                false
+            }
+            is DataResult.Loaded -> {
+                catalog = result.value.models; catalogError = result.value.catalogError
+                true
+            }
+        }
+    }
+    fun suggestedDefault(listed: List<GatewayModel>): String? =
+        model.takeIf { id -> listed.any { it.id == id } }
+            ?: providerId?.let { GatewayRecommendations.pick(it, listed) } ?: listed.singleOrNull()?.id
+
+    fun showModelSelection(listed: List<GatewayModel>) {
+        if (selectedModels == null) {
+            model = suggestedDefault(listed).orEmpty()
+            selectedModels = setOfNotNull(model.takeIf { it.isNotBlank() })
+        }
+        selectingModels = true
+    }
+
+    fun configureModels() {
+        busy = true; fetchingModels = true; notice = ""; noticeError = false
+        submit {
+            try { if (loadCatalog()) showModelSelection(catalog.orEmpty()) }
+            finally { fetchingModels = false; busy = false }
+        }
+    }
+
+    fun connect() {
         if (providerId == GatewayProviders.CUSTOM) baseEndpoint = gatewayBaseAddress(baseEndpoint)
         noticeError = false; notice = ""; connectionNotice = ""; busy = true; connecting = true
         submit {
             var leave: String? = null
             try {
-                if (chosen == null || catalog == null) {
-                    val request = edit(model.trim())
-                    val result = try { fetchModels(request) } finally { request.credential?.fill('\u0000') }
-                    when (result) {
-                        is DataResult.Failed -> { noticeError = true; notice = result.message; return@submit }
-                        is DataResult.Loaded -> { catalog = result.value.models; catalogError = result.value.catalogError }
-                    }
-                }
+                if (!selectingModels && !loadCatalog()) return@submit
                 val listed = catalog.orEmpty()
                 val typed = manualId.trim().takeIf { manualOpen || listed.isEmpty() }.orEmpty()
                 if (typed.isNotEmpty() && (typed.length > 200 || typed.any { it.isISOControl() || it == ',' })) {
                     noticeError = true; notice = AppStrings.enterValidModelId; return@submit
                 }
-                val target = chosen ?: typed.ifEmpty { null } ?: when {
-                    listed.isEmpty() -> null
-                    listed.any { it.id == model } -> model
-                    else -> providerId?.let { GatewayRecommendations.pick(it, listed) } ?: listed.singleOrNull()?.id
+                val target = typed.ifEmpty { null } ?: selectedModels.let { selected ->
+                    if (selected == null) suggestedDefault(listed) else model.takeIf { it in selected }
                 }
                 if (target == null) {
-                    if (listed.isEmpty()) manualOpen = true else { picking = true; pickToConnect = true }
+                    if (listed.isEmpty()) manualOpen = true else showModelSelection(listed)
                     return@submit
                 }
-                model = target; picking = false; pickToConnect = false
-                val request = edit(target, listed.map { it.id }.toSet() + target)
+                val models = (selectedModels ?: listed.map { it.id }.toSet()) + target
+                if (models.size > 2_000) {
+                    noticeError = true; notice = AppStrings.invalidModelList; return@submit
+                }
+                val request = edit(target, models)
                 val result = try { save(request) } finally { request.credential?.fill('\u0000') }
                 when (result) {
                     is GatewaySaveResult.Saved -> {
+                        model = target; selectedModels = models
                         key = ""; keyEdited = false; refresh()
                         leave = AppStrings.gatewayConnected(result.agents.sortedBy { it.ordinal }.joinToString("、") { it.label() })
                     }
@@ -384,7 +436,7 @@ internal class GatewayFormDraft {
             }
             SettingsGroup {
                 if (chosenId == GatewayProviders.CUSTOM) {
-                    SettingsField(baseEndpoint, { baseEndpoint = it; key = ""; keyEdited = true; changed() }, AppStrings.baseAddress, enabled = idle)
+                    SettingsField(baseEndpoint, { baseEndpoint = it; sourceChanged() }, AppStrings.baseAddress, enabled = idle)
                     GroupDivider()
                 }
                 SettingsField(key, { key = it; keyEdited = true; changed() },
@@ -416,26 +468,33 @@ internal class GatewayFormDraft {
             if (listOf(candidates().responses, candidates().messages).any { it.startsWith("http://", ignoreCase = true) })
                 SettingsCaption(AppStrings.httpSendsKeysAndContentInPlainTextUse, error = true)
             val listed = catalog.orEmpty()
-            if (model.isNotBlank() && !picking) SettingsGroup {
-                Row(Modifier.fillMaxWidth().clickable(enabled = idle && listed.isNotEmpty()) { picking = true; pickToConnect = false }
-                    .padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(AppStrings.modelLabel(model), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-                    if (listed.isNotEmpty()) Text(AppStrings.changeModel, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
+            val showManual = manualOpen || (catalog != null && listed.isEmpty())
+            if (selectingModels) {
+                val selected = selectedModels.orEmpty()
+                val available = (listed + selected.map { GatewayModel(it, it) }).distinctBy { it.id }
+                if (available.isNotEmpty()) {
+                    SettingsCaption(AppStrings.gatewayModelSelectionHelp)
+                    ModelPicker(available, selected, model, idle, toggle = { id ->
+                        selectedModels = if (id in selected) selected - id else selected + id
+                        if (id == model) model = ""
+                    }, makeDefault = { id ->
+                        selectedModels = selected + id; model = id; manualOpen = false; manualId = ""
+                    }, clear = { selectedModels = emptySet(); model = "" }, other = { manualOpen = true })
                 }
+            } else SettingsGroup {
+                GatewayFormAction(if (fetchingModels) AppStrings.loadingGatewayModels else AppStrings.configureGatewayModels,
+                    fetchingModels, idle && candidates().responses.isNotBlank(), "gateway-models-loading", ::configureModels)
+                if (model.isNotBlank()) SettingsCaption(AppStrings.modelLabel(model))
             }
-            if (picking && listed.isNotEmpty()) {
-                if (pickToConnect) SettingsCaption(AppStrings.chooseModelToConnect)
-                ModelPicker(listed, model, idle, pick = { id ->
-                    if (pickToConnect) connect(id) else { model = id; picking = false; connectionNotice = "" }
-                }, other = { manualOpen = true; picking = false; pickToConnect = false })
-            }
-            if (manualOpen || (catalog != null && listed.isEmpty())) {
+            if (showManual) {
                 catalogError?.takeIf { listed.isEmpty() }?.let { SettingsCaption(AppStrings.noModelListEnterModelId(it)) }
                 SettingsGroup { SettingsField(manualId, { manualId = it; notice = "" }, AppStrings.modelId, enabled = idle) }
             }
             SettingsGroup {
                 GatewayFormAction(if (connecting) AppStrings.connectingGateway else AppStrings.connectGateway, connecting,
-                    enabled = idle && candidates().responses.isNotBlank(), loadingTag = "gateway-connect-loading") { connect() }
+                    enabled = idle && candidates().responses.isNotBlank() &&
+                        (!selectingModels || model in selectedModels.orEmpty() || showManual && manualId.isNotBlank()),
+                    loadingTag = "gateway-connect-loading") { connect() }
             }
             SettingsCaption(AppStrings.connectUsesASmallRequest)
             if (notice.isNotBlank()) SettingsCaption(notice, error = noticeError)

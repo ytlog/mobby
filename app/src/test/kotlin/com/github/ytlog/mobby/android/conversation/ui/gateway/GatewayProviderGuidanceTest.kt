@@ -73,7 +73,7 @@ class GatewayProviderGuidanceTest {
         assertEquals("https://gateway.invalid/v1", fetched!!.addresses.responses)
         assertEquals("https://gateway.invalid/v1", fetched!!.addresses.messages)
     }
-    @Test fun `English sign in keeps the full catalog, never picks the free route and accepts a typed model`() {
+    @Test fun `English sign in offers the full catalog without picking the free route and accepts a typed model`() {
         language(AppLanguage.ENGLISH)
         val secret = "synthetic-authorized-key".toCharArray()
         var fetchedKey = ""
@@ -87,15 +87,15 @@ class GatewayProviderGuidanceTest {
         compose.waitUntil(5_000) { fetchedKey.isNotEmpty() }
         assertEquals("synthetic-authorized-key", fetchedKey)
         assertNull(saved)
-        compose.onNodeWithText("Choose a model to finish connecting").assertExists()
+        compose.onNodeWithText("Connect").assertIsNotEnabled()
         compose.onNodeWithText("Free router · openrouter/free").assertExists()
-        compose.onNodeWithText("Paid model · openai/paid").assertExists()
+        compose.onNodeWithText("Paid model · openai/paid").performScrollTo().performClick()
         compose.onNodeWithText("Enter another model ID").performScrollTo().performClick()
         field("Model ID").performScrollTo().performTextReplacement("openai/manual")
         compose.onNodeWithText("Connect").performScrollTo().performClick()
         compose.waitUntil(5_000) { saved != null }
         assertEquals("openai/manual", saved!!.model)
-        assertEquals(setOf("openrouter/free", "openai/paid", "openai/manual"), saved!!.selectedModels)
+        assertEquals(setOf("openai/paid", "openai/manual"), saved!!.selectedModels)
     }
     @Test fun `every provider opens its own key page and, under advanced settings, its guide`() {
         language(AppLanguage.CHINESE)
@@ -141,7 +141,7 @@ class GatewayProviderGuidanceTest {
         compose.onNodeWithText("Requesty").performScrollTo().performClick()
         compose.onNodeWithText("Connect").performScrollTo().performClick()
         compose.waitUntil(5_000) { fetchedKey == "" }
-        compose.onNodeWithText("Choose a model to finish connecting").assertExists()
+        compose.onNodeWithText("Connect").assertIsNotEnabled()
     }
     @Test fun `saved international Kimi keeps its site until the user selects China`() {
         language(AppLanguage.CHINESE)
