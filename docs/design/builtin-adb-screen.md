@@ -11,6 +11,13 @@
 4. 自动配对完成后，后台用无线调试主页的连接端口尝试连接一次，读不到时使用本机服务发现。通知手动配对完成后，在返回 mobby 时尝试连接。已有配对身份时可直接点「连接」。失败后可进入独立的手动端口步骤，填写无线调试主页的连接端口。连接端口与配对端口不同，只在内存中使用。详见[首次使用与屏幕操作引导](setup-guide.md)。
 5. 选择屏幕能力后，Agent 在独立副屏中打开、读取和操作应用。用户留在 mobby 内查看预览。重启或工作进程退出后重新连接；系统遗忘该配对时重新配对。
 
+### 厂商差异
+
+- 小米继续使用已验证的无线调试直达入口。其他机型先尝试系统无线调试入口，再从开发者选项定位无线调试。
+- 配对只识别系统设置的前台窗口。优先使用 Android 系统弹窗的控件 ID。厂商更换 ID 时，可用系统设置包提供的本地化标题与标签匹配同一弹窗里的配对码和端口。缺字段、字段重复或格式不符时保留通知回复。若只读到明确的配对端口，通知可直接使用它，读不到时继续通过本机 mDNS 查找。[Android 配对弹窗实现](https://android.googlesource.com/platform/packages/apps/Settings/+/refs/heads/main/src/com/android/settings/development/AdbWirelessDialogController.java)
+- OPPO Find X9 Pro 有同机配对的公开实测，vivo/iQOO 的 OriginOS 4 有六位码弹窗的公开记录。三星 Galaxy S25 有同类弹窗的公开记录，也有本机配对服务发现失败的记录。它们说明系统具备配对入口，mobby 的自动识别与副屏连接仍需分别真机验收。[OPPO 测试记录](https://github.com/Damien-llado/snapkey-mapper) · [vivo/iQOO 操作记录](https://bbs.vivo.com.cn/newbbs/thread/37604186) · [三星设备报告](https://github.com/RikkaApps/Shizuku/issues/1072)
+- 华为官方列出的多版 EMUI 和 HarmonyOS 没有系统无线调试开关。这些版本无法使用内置 ADB 的自动或通知配对。在兼容 Android 的设备上可明确选择当前屏幕无障碍模式。[华为支持说明](https://consumer.huawei.com/cn/support/content/zh-cn15997564/)
+
 ## 权限与生命周期
 
 ADB 身份私钥由软件 RSA 生成，以独立 Android Keystore AES 密钥 `mobby.screen.adb.seal` 进行 AES-256-GCM 加密，密文通过 AtomicFile 保存在应用的 noBackupFilesDir。密钥材料仅在配对、连接时解密到内存；现有网关别名 `mobby.gateway` 不变。另保存是否曾成功配对的非敏感标记，不保存 IP、配对码、私钥明文或屏幕令牌。损坏或缺少加密密钥时明确失败，不静默重建已保存身份。只连接 `127.0.0.1`；mDNS 结果必须属于本机网络接口，远端设备记录不会被连接。仅接受无线调试 TLS，拒绝旧的明文 ADB。
@@ -36,6 +43,8 @@ ADB 身份私钥由软件 RSA 生成，以独立 Android Keystore AES 密钥 `mo
 Android 13 小米实测中，从 mobby 的「通过通知配对」启动，已启用的无障碍服务自动从开发者选项进入无线调试详情并打开系统六位码弹窗。测试停在系统弹窗，未输入配对码，退出后原有配对和无线调试开关保持原状。其他厂商的自动导航仍需逐台验证。
 
 Android 13 小米 M2007J1SC（versionCode 138）真机验证了「重新配对 → 自动配对」。mobby 使用系统弹窗的六位码和配对端口完成本机配对，在后台使用无线调试主页的连接端口建立副屏连接，随后自动回到「屏幕操作已就绪」。全程未手填配对码或端口。其他厂商的弹窗识别尚未验证。
+
+同一台小米手机以 versionCode 139 复跑「重新配对 → 自动配对」，再次自动回到「屏幕操作已就绪」。更换控件 ID 和配对码不可见的分支由测试样例验证。
 
 真实系统配对先复现了本机 Android Keystore RSA 私钥在所用 Conscrypt TLS 签名中的 InvalidKeyException。最终实现使用 Keystore 加密的软件身份，替换该不可用路径，不在握手失败时切换身份或回退到其他权限。
 

@@ -4,6 +4,9 @@ import android.accessibilityservice.AccessibilityServiceInfo
 import android.app.KeyguardManager
 import android.content.ComponentName
 import android.content.Intent
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
+import android.content.res.Resources
 import android.graphics.Rect
 import android.os.Build
 import android.os.PowerManager
@@ -23,10 +26,37 @@ import kotlinx.coroutines.withTimeoutOrNull
 @android.annotation.TargetApi(33)
 internal class AdbSettingsAssistant(private val service: ScreenAccessService) {
     private var task: Job? = null
+    private val settingsPackage by lazy {
+        val manager = service.packageManager
+        manager.resolveActivity(Intent(Settings.ACTION_SETTINGS), PackageManager.MATCH_SYSTEM_ONLY)
+            ?.activityInfo?.packageName?.takeUnless { it == "android" } ?: try {
+            val info = manager.getApplicationInfo("com.android.settings", 0)
+            info.packageName.takeIf { info.flags and (ApplicationInfo.FLAG_SYSTEM or ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0 }
+        } catch (_: PackageManager.NameNotFoundException) { null }
+    }
+    private val settingsResources by lazy {
+        try { settingsPackage?.let(service.packageManager::getResourcesForApplication) }
+        catch (_: PackageManager.NameNotFoundException) { null }
+    }
+    private val developerLabels by lazy { systemLabels("development_settings_title", DEVELOPER) }
+    private val wirelessLabels by lazy { systemLabels("adb_wireless_settings", WIRELESS) }
+    private val pairLabels by lazy { systemLabels("adb_pair_method_code_title", PAIR) }
+    private val dialogTitles by lazy { systemLabels("adb_pairing_device_dialog_title", PAIR_DIALOG) }
+    private val codeLabels by lazy { systemLabels("adb_pairing_device_dialog_pairing_code_label", CODE_LABELS) }
+    private val addressLabels by lazy { systemLabels("adb_wireless_ip_addr_preference_title", CONNECTION_ADDRESS) }
+
+    @android.annotation.SuppressLint("DiscouragedApi") // Known strings in the system Settings APK.
+    private fun systemLabels(name: String, aliases: List<String>): List<String> {
+        val resources = settingsResources ?: return aliases
+        val id = resources.getIdentifier(name, "string", settingsPackage)
+        if (id == 0) return aliases
+        val label = try { resources.getString(id) } catch (_: Resources.NotFoundException) { return aliases }
+        return (aliases + label).distinct()
+    }
 
     fun start(destination: ScreenAccessService.AdbSetupDestination, returnTo: ComponentName?) {
         stop()
-        if (Build.VERSION.SDK_INT < 33 || ScreenCoordinator.chatActive) return
+        if (Build.VERSION.SDK_INT < 33 || ScreenCoordinator.chatActive || settingsPackage == null) return
         task = CoroutineScope(Dispatchers.Main).launch {
             val flags = AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS or AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
             val info = service.serviceInfo ?: return@launch
@@ -63,7 +93,7 @@ internal class AdbSettingsAssistant(private val service: ScreenAccessService) {
             val root = service.getRootInActiveWindow(AccessibilityNodeInfo.FLAG_PREFETCH_DESCENDANTS_HYBRID) ?: continue
             val result = try {
                 val packageName = root.packageName?.toString()
-                if (packageName != SETTINGS_PACKAGE) {
+                if (packageName != settingsPackage) {
                     if (enteredSettings || packageName != service.packageName) return
                     continue
                 }
@@ -112,23 +142,48 @@ internal class AdbSettingsAssistant(private val service: ScreenAccessService) {
 
     private fun readPairingDialog(root: AccessibilityNodeInfo, connectionPort: Int?): Result? {
         // The dialog container is omitted from the normal accessibility tree on MIUI.
-        val code = withSettingNode(root, PAIRING_CODE) { it.text?.toString().orEmpty() } ?: return null
+        val code = withSettingNode(root, PAIRING_CODE) { it.text?.toString().orEmpty() }
         val address = withSettingNode(root, PAIRING_ADDRESS) { it.text?.toString() }
-        val fields = AdbPairingFields.parse(code, address) ?: return Result.WAIT
+        val fields = AdbPairingFields.parse(code, address) ?: run {
+            if (!hasHeading(root, dialogTitles)) return if (code == null) null else Result.WAIT
+            val text = dialogText(root) ?: return Result.WAIT
+            AdbPairingFields.parseLabeled(text, codeLabels, addressLabels) ?: run {
+                val port = AdbPairingFields.parsePort(address) ?: AdbPairingFields.parseLabeledPort(text, addressLabels)
+                port?.let { AdbPairingService.offerSettingsPort(it) }
+                return Result.WAIT
+            }
+        }
         val wirelessPort = connectionPort?.takeIf { it != fields.port }
         return if (AdbPairingService.submitFromSettings(fields.port, fields.code, wirelessPort)) Result.PAIRING_SUBMITTED
         else Result.WAIT
     }
 
+    private fun dialogText(root: AccessibilityNodeInfo): List<String>? {
+        val text = mutableListOf<String>()
+        var remaining = 96
+        fun visit(node: AccessibilityNodeInfo, depth: Int): Boolean {
+            if (remaining-- <= 0 || depth > 12) return false
+            if (!node.isVisibleToUser || node.packageName?.toString() != settingsPackage || node.windowId != root.windowId) return true
+            if (node.isEditable || node.isPassword) return false
+            node.text?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let(text::add)
+            for (index in 0 until node.childCount) {
+                val child = node.getChild(index) ?: continue
+                try { if (!visit(child, depth + 1)) return false } finally { child.recycle() }
+            }
+            return true
+        }
+        return if (visit(root, 0)) text else null
+    }
+
     private fun wirelessConnectionPort(root: AccessibilityNodeInfo): Int? {
-        val labels = exactNodes(root, CONNECTION_ADDRESS)
+        val labels = exactNodes(root, addressLabels)
         return try {
             val title = labels.singleOrNull { it.viewIdResourceName == "android:id/title" } ?: return null
             val row = title.parent ?: return null
             try {
                 val summaries = row.findAccessibilityNodeInfosByViewId("android:id/summary")
                 try {
-                    val value = summaries.singleOrNull { it.isVisibleToUser && it.packageName?.toString() == SETTINGS_PACKAGE &&
+                    val value = summaries.singleOrNull { it.isVisibleToUser && it.packageName?.toString() == settingsPackage &&
                         it.windowId == root.windowId }?.text?.toString()
                     AdbPairingFields.parsePort(value)
                 } finally { summaries.forEach(AccessibilityNodeInfo::recycle) }
@@ -137,9 +192,9 @@ internal class AdbSettingsAssistant(private val service: ScreenAccessService) {
     }
 
     private fun <T> withSettingNode(root: AccessibilityNodeInfo, id: String, read: (AccessibilityNodeInfo) -> T?): T? {
-        val nodes = root.findAccessibilityNodeInfosByViewId("$SETTINGS_PACKAGE:id/$id")
+        val nodes = root.findAccessibilityNodeInfosByViewId("$settingsPackage:id/$id")
         return try {
-            nodes.filter { it.isVisibleToUser && it.packageName?.toString() == SETTINGS_PACKAGE && it.windowId == root.windowId }
+            nodes.filter { it.isVisibleToUser && it.packageName?.toString() == settingsPackage && it.windowId == root.windowId }
                 .singleOrNull()?.let(read)
         } finally { nodes.forEach(AccessibilityNodeInfo::recycle) }
     }
@@ -152,9 +207,9 @@ internal class AdbSettingsAssistant(private val service: ScreenAccessService) {
             if (ScreenAccessService.instance !== service || !screenAvailable() || ScreenCoordinator.chatActive) return
             val root = service.rootInActiveWindow ?: return@repeat
             try {
-                if (root.packageName?.toString() != SETTINGS_PACKAGE) return
+                if (root.packageName?.toString() != settingsPackage) return
                 if (isForeground(root) != true ||
-                    !(hasHeading(root, WIRELESS) || wirelessConnectionPort(root) != null ||
+                    !(hasHeading(root, wirelessLabels) || wirelessConnectionPort(root) != null || hasHeading(root, dialogTitles) ||
                         withSettingNode(root, PAIRING_CODE) { true } == true)) return@repeat
                 service.startActivity(Intent().setComponent(component).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or
                     Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
@@ -173,9 +228,9 @@ internal class AdbSettingsAssistant(private val service: ScreenAccessService) {
             if (!openedPage && hasHeading(root, ABOUT) && clickUnique(root, SOFTWARE_DETAILS)) return Result.OPENED_PAGE
             return scroll(root, canScroll)
         }
-        if (hasHeading(root, DEVELOPER)) {
+        if (hasHeading(root, developerLabels)) {
             if (openedPage) return Result.STOP
-            val wireless = exactNodes(root, WIRELESS)
+            val wireless = exactNodes(root, wirelessLabels)
             try {
                 val entry = wireless.singleOrNull()
                 if (entry != null && fullLabel(entry))
@@ -185,9 +240,9 @@ internal class AdbSettingsAssistant(private val service: ScreenAccessService) {
             return Result.STOP
         }
         if (destination == ScreenAccessService.AdbSetupDestination.PAIR &&
-            (hasHeading(root, WIRELESS) || wirelessConnectionPort(root) != null) &&
+            (hasHeading(root, wirelessLabels) || wirelessConnectionPort(root) != null || hasLabel(root, wirelessLabels)) &&
             Settings.Global.getInt(service.contentResolver, "adb_wifi_enabled", -1) != 0) {
-            if (clickUnique(root, PAIR)) return Result.OPENED_PAIRING
+            if (clickUnique(root, pairLabels)) return Result.OPENED_PAIRING
         }
         return Result.STOP
     }
@@ -248,10 +303,15 @@ internal class AdbSettingsAssistant(private val service: ScreenAccessService) {
         }
 
     private fun hasHeading(root: AccessibilityNodeInfo, labels: List<String>): Boolean {
+        val window = root.window
+        if (window != null) {
+            val title = try { window.title?.toString()?.trim() } finally { window.recycle() }
+            if (labels.any { it.equals(title, ignoreCase = true) }) return true
+        }
         val nodes = exactNodes(root, labels)
         return try { nodes.any {
             val id = it.viewIdResourceName?.substringAfterLast('/')
-            id?.startsWith("action_bar_title") == true || id == "toolbar_title" || id == "collapsing_toolbar_title"
+            it.isHeading || id?.startsWith("action_bar_title") == true || id in HEADING_IDS
         } } finally { nodes.forEach(AccessibilityNodeInfo::recycle) }
     }
 
@@ -260,7 +320,7 @@ internal class AdbSettingsAssistant(private val service: ScreenAccessService) {
         for (label in labels) {
             for (node in root.findAccessibilityNodeInfosByText(label)) {
                 if (node.isVisibleToUser && node.text?.toString()?.trim()?.equals(label, ignoreCase = true) == true &&
-                    node.packageName?.toString() == SETTINGS_PACKAGE && node !in matches) matches += node
+                    node.packageName?.toString() == settingsPackage && node.windowId == root.windowId && node !in matches) matches += node
                 else node.recycle()
             }
         }
@@ -270,9 +330,9 @@ internal class AdbSettingsAssistant(private val service: ScreenAccessService) {
     private enum class Result { STOP, OPENED_PAGE, OPENED_PAIRING, SCROLLED, WAIT, PAIRING_SUBMITTED }
 
     private companion object {
-        const val SETTINGS_PACKAGE = "com.android.settings"
         const val PAIRING_CODE = "pairing_code"
         const val PAIRING_ADDRESS = "ip_addr"
+        val HEADING_IDS = setOf("toolbar_title", "collapsing_toolbar_title", "alertTitle", "dialog_title", "sesl_dialog_title")
         val ABOUT = listOf("关于手机", "关于本机", "我的设备", "關於手機", "About phone", "About device", "My device")
         val SOFTWARE_DETAILS = listOf("全部参数", "详细信息与规格", "软件信息", "版本信息", "版本",
             "All specs", "Detailed info and specs", "Software information", "Version information", "Version")
@@ -280,7 +340,9 @@ internal class AdbSettingsAssistant(private val service: ScreenAccessService) {
             "Build number", "Software version", "Version number")
         val DEVELOPER = listOf("开发者选项", "開發人員選項", "開發者選項", "Developer options")
         val WIRELESS = listOf("无线调试", "無線偵錯", "無線除錯", "Wireless debugging")
-        val PAIR = listOf("使用配对码配对设备", "使用配對碼配對裝置", "Pair device with pairing code")
+        val PAIR = listOf("使用配对码配对设备", "使用配對碼配對裝置", "Pair device with pairing code", "Pair using pairing code")
+        val PAIR_DIALOG = listOf("与设备配对", "與裝置配對", "Pair with device")
+        val CODE_LABELS = listOf("WLAN 配对码", "Wi-Fi 配对码", "Wi‑Fi 配对码", "Wi-Fi 配對碼", "Wi-Fi pairing code", "Wi‑Fi pairing code")
         val CONNECTION_ADDRESS = listOf("IP 地址和端口", "IP 地址与端口", "IP 位址和通訊埠", "IP address & Port", "IP address and port")
     }
 }
@@ -295,6 +357,18 @@ internal class AdbPairingFields private constructor(val code: String, val port: 
             val pin = code?.trim()?.takeIf(codePattern::matches) ?: return null
             val port = parsePort(address) ?: return null
             return AdbPairingFields(pin, port)
+        }
+
+        /** Fallback for a recognized system dialog with different view IDs. */
+        fun parseLabeled(text: List<String>, codeLabels: List<String>, addressLabels: List<String>): AdbPairingFields? =
+            parse(valueAfter(text, codeLabels), valueAfter(text, addressLabels))
+
+        fun parseLabeledPort(text: List<String>, addressLabels: List<String>): Int? = parsePort(valueAfter(text, addressLabels))
+
+        private fun valueAfter(text: List<String>, labels: List<String>): String? {
+            val index = text.indices.singleOrNull { index -> labels.any { it.equals(text[index], ignoreCase = true) } }
+                ?: return null
+            return text.getOrNull(index + 1)
         }
 
         fun parsePort(address: String?): Int? = addressPattern.matchEntire(address?.trim().orEmpty())

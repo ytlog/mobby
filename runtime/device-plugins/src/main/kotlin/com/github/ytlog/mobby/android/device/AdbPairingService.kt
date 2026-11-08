@@ -28,8 +28,8 @@ class AdbPairingService : Service() {
             discovery = scope.launch {
                 try {
                     withTimeout(120_000) {
-                        port = EmbeddedAdb.discover(this@AdbPairingService, pairing = true)
-                        notifications.notify(ID, notice(AppStrings.adbPairingReplyHelp, reply = true))
+                        val discovered = EmbeddedAdb.discover(this@AdbPairingService, pairing = true)
+                        if (port == null) offerReply(discovered)
                         awaitCancellation()
                     }
                 } catch (timeout: TimeoutCancellationException) { finishPairing(AppStrings.adbPairingTimedOut) }
@@ -39,6 +39,12 @@ class AdbPairingService : Service() {
             }
         }
         return START_NOT_STICKY
+    }
+
+    private fun offerReply(port: Int) {
+        if (submitted || !ScreenControl.state.value.adbPairing || this.port == port) return
+        this.port = port
+        notifications.notify(ID, notice(AppStrings.adbPairingReplyHelp, reply = true))
     }
 
     private fun submit(port: Int, code: String, connect: Boolean = false, connectionPort: Int? = null): Boolean {
@@ -92,6 +98,8 @@ class AdbPairingService : Service() {
         /** Called on the main thread by the user-started Settings assistant. */
         internal fun submitFromSettings(port: Int, code: String, connectionPort: Int?): Boolean =
             active?.submit(port, code, connect = true, connectionPort = connectionPort) == true
+
+        internal fun offerSettingsPort(port: Int) { active?.offerReply(port) }
 
         private const val CHANNEL = "screen-adb-pairing"
         private const val ID = 4602

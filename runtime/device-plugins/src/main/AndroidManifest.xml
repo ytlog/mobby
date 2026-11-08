@@ -29,6 +29,10 @@
             <action android:name="android.app.appfunctions.AppFunctionService" />
         </intent>
     </queries>
+    <queries>
+        <intent><action android:name="android.settings.SETTINGS" /></intent>
+        <package android:name="com.android.settings" />
+    </queries>
     <application>
         <service android:name="com.github.ytlog.mobby.android.device.AdbPairingService" android:exported="false" android:foregroundServiceType="dataSync" />
         <service android:name="com.github.ytlog.mobby.android.device.ScreenAccessService" android:exported="true" android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE" android:label="@string/screen_accessibility_label">
