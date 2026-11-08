@@ -10,7 +10,6 @@ import com.github.ytlog.mobby.android.runtime.api.device.ScreenMode
 import com.github.ytlog.mobby.android.runtime.api.device.deviceFailure
 
 import com.github.ytlog.mobby.android.runtime.api.device.ScreenControlState
-import android.content.ComponentName
 import android.content.Context
 import android.os.Build
 import android.util.Base64
@@ -87,7 +86,8 @@ object ScreenControl {
     }
 
     fun available(context: Context): Boolean = when (state.value.mode) {
-        ScreenMode.CURRENT -> currentScreenPermission(context)
+        // Admission follows the user's grant in settings; a service rebind must not reject a whole turn.
+        ScreenMode.CURRENT -> ScreenAccessService.status(context) != ScreenAccessService.Status.OFF
         ScreenMode.ADB -> leases > 0 || (state.value.connected && channel?.alive == true)
         ScreenMode.ROOT -> state.value.connected && channel?.alive == true
     }
@@ -97,12 +97,6 @@ object ScreenControl {
         Build.VERSION.SDK_INT < 33 -> AppStrings.virtualScreenAndroidVersion
         state.value.mode == ScreenMode.ADB && channel?.authorizationLost == true -> AppStrings.adbScreenAuthorizationRequired
         else -> AppStrings.connectScreenBackend
-    }
-    private fun currentScreenPermission(context: Context): Boolean {
-        if (android.provider.Settings.Secure.getInt(context.contentResolver, android.provider.Settings.Secure.ACCESSIBILITY_ENABLED, 0) != 1) return false
-        val expected = ComponentName(context, ScreenAccessService::class.java)
-        return android.provider.Settings.Secure.getString(context.contentResolver, android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
-            .orEmpty().split(':').mapNotNull(ComponentName::unflattenFromString).any { it == expected }
     }
 
     private fun canReconnectAdb() =
@@ -239,9 +233,9 @@ object ScreenControl {
     @Synchronized internal fun open(context: Context): ScreenSession {
         val mode = state.value.mode
         val session = selectScreenBackend(mode, {
-            val stay = ScreenAccessService.stay()
+            val stay = ScreenAccessService.require(context).stay.acquire()
             object : ScreenSession {
-                private fun service() = ScreenAccessService.instance ?: error(AppStrings.accessibilityIsOffEnableMobbySScreenServiceIn)
+                private fun service() = ScreenAccessService.require(context)
                 override fun operate(action: String, args: Map<String, String>, checkActive: () -> Unit) = service().operate(action, args, checkActive)
                 override fun inspect(query: String?, expectedInput: String?) = service().inspect(query, expectedInput)
                 override fun close() { stay.close() }
@@ -573,7 +567,8 @@ object ScreenControl {
                         ?.takeIf(String::isNotBlank) ?: AppStrings.virtualScreenOperationFailed)
                     else -> current.copy(connected = false, active = false, displayId = null, jpeg = null,
                         packageName = "", manualControlId = null, readRequiredAfterHandoff = false,
-                        error = if (current.mode == ScreenMode.ADB && leases > 0)
+                        error = (failure as? DeviceFailure)?.error?.message?.takeIf(String::isNotBlank)
+                            ?: if (current.mode == ScreenMode.ADB && leases > 0)
                             AppStrings.adbScreenWaitingForReconnect else AppStrings.virtualScreenDisconnected)
                 }
             }
@@ -640,10 +635,14 @@ internal class ScreenChannel(
         if (verifyAdbAuthorization != null && action !in MAINTENANCE_ACTIONS) {
             try { verifyAdbAuthorization() }
             catch (cancelled: java.util.concurrent.CancellationException) { throw cancelled }
-            catch (_: Exception) {
+            catch (_: AdbAuthorizationRevoked) {
                 authorizationLost = true
                 close()
                 requireAuthorization()
+            } catch (_: Exception) {
+                // Authorization cannot be confirmed, so nothing is sent. The pairing itself was not rejected.
+                close()
+                deviceFailure(DeviceErrorCode.UNAVAILABLE, AppStrings.adbWirelessDebuggingUnreachable)
             }
         }
         try {

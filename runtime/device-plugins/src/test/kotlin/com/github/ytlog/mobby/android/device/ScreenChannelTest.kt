@@ -80,7 +80,7 @@ class ScreenChannelTest {
             }
             var paired = true
             ScreenChannel(endpoint, root = false, verifyAdbAuthorization = {
-                if (!paired) throw java.io.IOException("fixture ADB rejection")
+                if (!paired) throw AdbAuthorizationRevoked()
             }).use { channel ->
                 assertEquals(7, channel.request("tap", emptyMap()).getInt("displayId"))
                 paired = false
@@ -90,6 +90,27 @@ class ScreenChannelTest {
                 }
                 assertEquals(DeviceErrorCode.ADB_AUTHORIZATION_REQUIRED, denied.error.code)
                 assertFalse(channel.alive)
+            }
+            worker.get(2, TimeUnit.SECONDS)
+        }
+    }
+
+    @Test fun `an unreachable ADB daemon stops the command without revoking the pairing`() {
+        withServer { endpoint, server ->
+            val worker = server.submit {
+                read()
+                write(JSONObject().put("ok", true).put("uid", 2000))
+                assertEquals(-1, input!!.read())
+            }
+            ScreenChannel(endpoint, root = false, verifyAdbAuthorization = {
+                throw java.io.IOException("fixture wireless debugging is off")
+            }).use { channel ->
+                val stopped = assertThrows(DeviceFailure::class.java) { channel.request("tap", emptyMap()) }
+                assertEquals(DeviceErrorCode.UNAVAILABLE, stopped.error.code)
+                assertEquals(EffectState.NONE, stopped.error.effectState)
+                assertFalse(channel.authorizationLost)
+                assertFalse(channel.alive)
+                channel.requireAuthorization()
             }
             worker.get(2, TimeUnit.SECONDS)
         }
@@ -106,7 +127,7 @@ class ScreenChannelTest {
             }
             var paired = true
             ScreenChannel(endpoint, root = false, verifyAdbAuthorization = {
-                if (!paired) throw java.io.IOException("fixture ADB rejection")
+                if (!paired) throw AdbAuthorizationRevoked()
             }).use { channel ->
                 channel.request("manual_touch", mapOf("phase" to "DOWN", "x" to "0.2", "y" to "0.3"))
                 paired = false

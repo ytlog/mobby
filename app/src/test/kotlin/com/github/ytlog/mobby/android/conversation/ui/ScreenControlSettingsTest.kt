@@ -157,6 +157,19 @@ class ScreenControlSettingsTest {
         compose.runOnIdle { assertTrue(controller.events.isEmpty()) }
     }
 
+    @Test fun `an accessibility service the system stopped asks for a restart and is not ready`() {
+        val controller = TestController()
+        val status = mutableStateOf(ready.copy(accessibilityEnabled = false, accessibilityNotRunning = true))
+        compose.setContent { MaterialTheme { ScreenControlSettings(controller, {}, statusOverride = status.value, settingsOverride = { opened += it }) } }
+        compose.onNodeWithText("当前屏幕（无障碍）").performClick()
+        next()
+        compose.onNodeWithText(UiStrings.accessibilityServiceNotRunning, substring = true).assertIsDisplayed()
+        compose.onNodeWithText("屏幕操作已就绪").assertDoesNotExist()
+        button("打开无障碍设置").performClick()
+        compose.runOnIdle { status.value = status.value.copy(accessibilityEnabled = true, accessibilityNotRunning = false) }
+        compose.onNodeWithText("屏幕操作已就绪").assertIsDisplayed()
+    }
+
     @Test fun `Samsung accessibility help names the installed app list`() {
         ShadowBuild.setManufacturer("samsung")
         ShadowBuild.setBrand("samsung")

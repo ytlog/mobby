@@ -94,14 +94,7 @@ internal object EmbeddedAdb {
                         val endpoint = org.json.JSONObject(line)
                         check(endpoint.getInt("uid") == 2000) { "adb_worker_identity" }
                         ScreenChannel(endpoint, root = false, verifyAdbAuthorization = {
-                            try {
-                                verifyAuthorization(selected, identity, peerKey)
-                            } catch (cancelled: InterruptedException) {
-                                throw java.util.concurrent.CancellationException("ADB verification interrupted").apply { initCause(cancelled) }
-                            } catch (failure: Exception) {
-                                forgetPairing(context)
-                                throw failure
-                            }
+                            checkAuthorization(context) { verifyAuthorization(selected, identity, peerKey) }
                         }).also {
                             created = it
                             preferences.edit().putInt(LAST_CONNECTION_PORT, selected).apply()
@@ -140,11 +133,28 @@ internal object EmbeddedAdb {
         AdbConnection.Builder("127.0.0.1", port).setApi(Build.VERSION.SDK_INT)
             .setPrivateKey(identity.key).setCertificate(identity.certificate).setDeviceName("mobby-screen").build()
 
+    /**
+     * Only a rejected identity or a different daemon revokes the pairing. An unreachable daemon, such as wireless
+     * debugging turned off, throws its own failure and keeps the pairing so the user can reconnect without pairing again.
+     */
+    internal fun checkAuthorization(context: Context, verify: () -> Unit) {
+        try {
+            verify()
+        } catch (cancelled: InterruptedException) {
+            throw java.util.concurrent.CancellationException("ADB verification interrupted").apply { initCause(cancelled) }
+        } catch (failure: Exception) {
+            if (failure !is AdbAuthenticationFailedException && failure !is AdbPairingRequiredException &&
+                failure !is AdbDaemonChangedException) throw failure
+            forgetPairing(context)
+            throw AdbAuthorizationRevoked(failure)
+        }
+    }
+
     private fun verifyAuthorization(port: Int, identity: ScreenAdbIdentity.Identity, peerKey: ByteArray) {
         transport(port, identity).use { probe ->
             check(probe.connect(3, TimeUnit.SECONDS, true)) { "adb_authorization_timeout" }
             val actualKey = checkNotNull(probe.tlsPeerPublicKey).encoded
-            check(MessageDigest.isEqual(peerKey, actualKey)) { "adb_daemon_changed" }
+            if (!MessageDigest.isEqual(peerKey, actualKey)) throw AdbDaemonChangedException()
         }
     }
 
@@ -207,3 +217,9 @@ internal object EmbeddedAdb {
         }
     } ?: throw java.util.concurrent.TimeoutException("adb_discovery_timeout")
 }
+
+/** The device no longer accepts this app's ADB identity. The saved pairing is cleared. */
+internal class AdbAuthorizationRevoked(cause: Throwable? = null) : Exception("adb_authorization_revoked", cause)
+
+/** The daemon answering the saved port is not the one that started the screen worker. */
+internal class AdbDaemonChangedException : Exception("adb_daemon_changed")

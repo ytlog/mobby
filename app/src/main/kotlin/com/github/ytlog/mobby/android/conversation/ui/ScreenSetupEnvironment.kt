@@ -64,10 +64,13 @@ internal data class ScreenSetupStatus(
     val developerEnabled: Boolean? = null,
     val wirelessEnabled: Boolean? = null,
     val notificationsAllowed: Boolean = false,
+    /** The service is enabled and bound, so it can operate the screen or assist with ADB setup. */
     val accessibilityEnabled: Boolean = false,
     val wifiConnected: Boolean = false,
     val sdk: Int = Build.VERSION.SDK_INT,
     val resumed: Boolean = true,
+    /** Enabled in system settings but not bound; Android needs the user to turn it off and on again. */
+    val accessibilityNotRunning: Boolean = false,
 ) {
     companion object {
         fun read(context: Context, pairing: Boolean = true): ScreenSetupStatus {
@@ -79,13 +82,12 @@ internal data class ScreenSetupStatus(
             val allowed = notifications.areNotificationsEnabled() && channels.none {
                 notifications.getNotificationChannel(it)?.importance == NotificationManager.IMPORTANCE_NONE
             }
-            val expected = screenAccessibilityComponent(context)
-            val accessibility = Settings.Secure.getInt(context.contentResolver, Settings.Secure.ACCESSIBILITY_ENABLED, 0) == 1 &&
-                Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES).orEmpty()
-                    .split(':').mapNotNull(ComponentName::unflattenFromString).any { it == expected }
+            val accessibility = ScreenAccessService.status(context)
             val network = context.getSystemService(ConnectivityManager::class.java)
             @Suppress("DEPRECATION") val wifi = network.allNetworks.any { network.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true }
-            return ScreenSetupStatus(flag(Settings.Global.DEVELOPMENT_SETTINGS_ENABLED), flag("adb_wifi_enabled"), allowed, accessibility, wifi)
+            return ScreenSetupStatus(flag(Settings.Global.DEVELOPMENT_SETTINGS_ENABLED), flag("adb_wifi_enabled"), allowed,
+                accessibility == ScreenAccessService.Status.RUNNING, wifi,
+                accessibilityNotRunning = accessibility == ScreenAccessService.Status.NOT_RUNNING)
         }
     }
 }
@@ -103,7 +105,9 @@ internal fun assistAdbSettings(target: ScreenSettingsTarget, openPairing: Boolea
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     var status by remember(context, pairing) { mutableStateOf(ScreenSetupStatus.read(context, pairing).copy(resumed = lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))) }
-    LaunchedEffect(refresh, pairing) { status = ScreenSetupStatus.read(context, pairing).copy(resumed = lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
+    // The service can bind after the wizard resumes, or be stopped while it is open.
+    val accessibilityRunning by ScreenAccessService.running.collectAsState()
+    LaunchedEffect(refresh, pairing, accessibilityRunning) { status = ScreenSetupStatus.read(context, pairing).copy(resumed = lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
     DisposableEffect(context, lifecycle, pairing) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {

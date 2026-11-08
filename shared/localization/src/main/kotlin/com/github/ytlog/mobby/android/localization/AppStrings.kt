@@ -185,6 +185,9 @@ open class StringCatalog(private val fixedLanguage: AppLanguage? = null) {
     val adbScreenAuthorizationRequired get() = text(
         "无法验证 ADB 授权，副屏已关闭。请在「屏幕操作模式」中重新配对并连接。",
         "ADB authorization could not be verified. The virtual display was closed. Pair again and connect in Screen control mode.")
+    val adbWirelessDebuggingUnreachable get() = text(
+        "连不上本机无线调试，副屏已关闭，配对仍保留。请开启无线调试后在「屏幕操作模式」中重新连接。",
+        "Wireless debugging is unreachable. The virtual display was closed and the pairing is kept. Turn on wireless debugging, then reconnect in Screen control mode.")
     val adbScreenReconnectTimedOut get() = text("等待 ADB 副屏重连超时。", "Timed out waiting for the ADB secondary display to reconnect.")
     val adbScreenReadAfterReconnect get() = text("副屏已重建，请先重新打开应用或读取副屏，再执行下一步。", "The secondary display was recreated. Open the app or read the display before continuing.")
     val virtualScreenOperationFailed get() = text("这一步副屏操作失败。", "This step failed on the virtual display.")
@@ -408,6 +411,9 @@ open class StringCatalog(private val fixedLanguage: AppLanguage? = null) {
     val operationFailed get() = text("操作失败", "Operation failed")
     val unknownPlugin get() = text("未知插件", "Unknown plugin")
     fun allowForFirst(arg0: Any?, arg1: Any?) = text("请先允许{0}的{1}", "Allow {1} for {0} first", arg0, arg1)
+    val accessibilityServiceNotRunning get() = text(
+        "系统显示“mobby 屏幕操作”已开启，但服务没有运行。请在无障碍设置中关闭后重新开启。",
+        "“mobby Screen Control” is on in system settings but the service is not running. Turn it off and on again in Accessibility settings.")
     val enableMobbySScreenAccessibilityServiceInSystemSettings get() = text("请在系统设置中开启“mobby 屏幕操作”无障碍服务", "Enable the “mobby Screen Control” accessibility service in system settings")
     val enableMobbyNotificationsForScreenTasks get() = text("请在系统设置中开启 mobby 通知，屏幕任务需要显示可停止的通知", "Enable mobby notifications in system settings so screen tasks can show a stoppable notification")
     val selectADirectoryToAllowAccess get() = text("请选择允许访问的目录", "Select a directory to allow access")

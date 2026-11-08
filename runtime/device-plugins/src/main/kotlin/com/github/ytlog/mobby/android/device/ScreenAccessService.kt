@@ -32,7 +32,7 @@ import java.security.MessageDigest
 class ScreenAccessService : AccessibilityService() {
     enum class AdbSetupDestination { VERSION, WIRELESS, PAIR }
 
-    private val stay = ScreenStay(ServiceDisplay())
+    internal val stay = ScreenStay(ServiceDisplay())
     private val adbSettings = AdbSettingsAssistant(this)
 
     override fun onCreate() {
@@ -372,18 +372,39 @@ class ScreenAccessService : AccessibilityService() {
         }
     }
 
+    /** Settings can list the service while Android has not bound it, for example after the system stopped it. */
+    enum class Status { OFF, NOT_RUNNING, RUNNING }
+
     companion object {
+        private val bound = kotlinx.coroutines.flow.MutableStateFlow(false)
+        /** Whether Android has bound the service in this process. */
+        val running: kotlinx.coroutines.flow.StateFlow<Boolean> = bound
         @Volatile internal var instance: ScreenAccessService? = null
+            set(value) { field = value; bound.value = value != null }
         fun connected() = instance != null
+
+        /** The only accessibility check: enabled in system settings and bound in this process. */
+        fun status(context: android.content.Context): Status {
+            val resolver = context.contentResolver
+            val expected = android.content.ComponentName(context, ScreenAccessService::class.java)
+            val enabled = android.provider.Settings.Secure.getInt(resolver, android.provider.Settings.Secure.ACCESSIBILITY_ENABLED, 0) == 1 &&
+                android.provider.Settings.Secure.getString(resolver, android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
+                    .orEmpty().split(':').mapNotNull(android.content.ComponentName::unflattenFromString).any { it == expected }
+            return when {
+                !enabled -> Status.OFF
+                connected() -> Status.RUNNING
+                else -> Status.NOT_RUNNING
+            }
+        }
         fun assistAdbSettings(destination: AdbSetupDestination) {
             instance?.adbSettings?.start(destination)
         }
         internal fun returnFromAdbPairing(component: android.content.ComponentName) { instance?.adbSettings?.returnAfterPairing(component) }
         fun stopAdbSettingsAssist() { instance?.adbSettings?.stop() }
-        internal fun stay(): AutoCloseable {
-            val service = instance ?: error(AppStrings.accessibilityIsOffEnableMobbySScreenServiceIn)
-            return service.stay.acquire()
-        }
+        /** The bound service, or a failure that says whether the user must enable it or restart it. */
+        internal fun require(context: android.content.Context): ScreenAccessService = instance ?: error(
+            if (status(context) == Status.NOT_RUNNING) AppStrings.accessibilityServiceNotRunning
+            else AppStrings.accessibilityIsOffEnableMobbySScreenServiceIn)
     }
 }
 

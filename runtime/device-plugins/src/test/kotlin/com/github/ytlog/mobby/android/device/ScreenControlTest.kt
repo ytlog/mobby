@@ -6,11 +6,13 @@ import com.github.ytlog.mobby.android.runtime.api.device.DeviceFailure
 import com.github.ytlog.mobby.android.runtime.api.device.EffectState
 
 import android.content.ComponentName
+import com.github.ytlog.mobby.android.localization.AppStrings
 import android.provider.Settings
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
@@ -21,10 +23,39 @@ class ScreenControlTest {
     private val context get() = RuntimeEnvironment.getApplication()
     @After fun restore() { ScreenControl.select(context, ScreenMode.CURRENT) }
 
-    @Test fun `a saved virtual mode cannot use current screen permission as a fallback`() {
+    private fun enableAccessibilityInSettings() {
         Settings.Secure.putInt(context.contentResolver, Settings.Secure.ACCESSIBILITY_ENABLED, 1)
         Settings.Secure.putString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
             ComponentName(context, ScreenAccessService::class.java).flattenToString())
+    }
+
+    @Test fun `a stopped accessibility service keeps admission but asks for a restart when used`() {
+        enableAccessibilityInSettings()
+        ScreenControl.select(context, ScreenMode.CURRENT)
+        assertEquals(ScreenAccessService.Status.NOT_RUNNING, ScreenAccessService.status(context))
+        assertTrue(DeviceHost.granted(context, "plugin:device:screen"))
+        assertEquals(AppStrings.accessibilityServiceNotRunning,
+            assertThrows(IllegalStateException::class.java) { ScreenControl.open(context) }.message)
+        val service = Robolectric.buildService(ScreenAccessService::class.java).create()
+        try {
+            assertEquals(ScreenAccessService.Status.RUNNING, ScreenAccessService.status(context))
+            assertTrue(ScreenAccessService.running.value)
+            ScreenControl.open(context).close()
+        } finally { service.destroy() }
+        assertFalse(ScreenAccessService.running.value)
+        Settings.Secure.putInt(context.contentResolver, Settings.Secure.ACCESSIBILITY_ENABLED, 0)
+        assertEquals(ScreenAccessService.Status.OFF, ScreenAccessService.status(context))
+        assertFalse(DeviceHost.granted(context, "plugin:device:screen"))
+        assertEquals(AppStrings.accessibilityIsOffEnableMobbySScreenServiceIn,
+            assertThrows(IllegalStateException::class.java) { ScreenControl.open(context) }.message)
+    }
+
+    @Test fun `a saved virtual mode cannot use current screen permission as a fallback`() {
+        enableAccessibilityInSettings()
+        assertSavedVirtualModeHasNoFallback()
+    }
+
+    private fun assertSavedVirtualModeHasNoFallback() {
         ScreenControl.select(context, ScreenMode.CURRENT)
         assertTrue(DeviceHost.granted(context, "plugin:device:screen"))
         for (mode in ScreenMode.entries.filter { it != ScreenMode.CURRENT }) {
