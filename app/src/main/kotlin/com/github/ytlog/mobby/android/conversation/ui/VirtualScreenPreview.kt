@@ -167,8 +167,13 @@ internal class VirtualScreenPreview(
         }
         if (manualId != null) {
             if (manualMinimized) {
-                Surface(modifier, shape = RoundedCornerShape(16.dp), color = conversationCanvas()) {
-                    TextButton(onClick = { manualMinimized = false }) { Text(UiStrings.virtualScreenResumeManual) }
+                Surface(modifier, shape = RoundedCornerShape(24.dp), color = conversationCanvas(),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)), shadowElevation = 6.dp) {
+                    TextButton(onClick = { manualMinimized = false }, modifier = Modifier.heightIn(min = 48.dp)) {
+                        AppIcon(AppIcons.Hand, null, Modifier.size(16.dp))
+                        Text(UiStrings.virtualScreenResumeManual, Modifier.padding(start = 6.dp), maxLines = 1,
+                            overflow = TextOverflow.Ellipsis)
+                    }
                 }
             } else if (lifecycleState.isAtLeast(Lifecycle.State.RESUMED)) {
                 ManualVirtualScreenDialog(controller, manualId, bitmap.takeIf { jpeg != null }, state.error, onMinimize = { manualMinimized = true })
