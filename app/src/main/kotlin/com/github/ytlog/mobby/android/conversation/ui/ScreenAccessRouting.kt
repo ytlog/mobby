@@ -27,6 +27,7 @@ internal object ScreenAccessRouting {
     }
 
     fun setupIntent(context: Context) = Intent(context, ScreenControlSettingsActivity::class.java)
+    fun wizardActivity(context: Context): String? = context.hostActivity()?.componentName?.className
 
     /** Try a device's exported shortcut, then a standard Settings destination. No privileged setting writes. */
     fun settingsIntents(context: Context, target: ScreenSettingsTarget, pairing: Boolean = true): List<Intent> = when (target) {
@@ -75,7 +76,7 @@ internal object ScreenAccessRouting {
                 context.startActivity(intent)
                 if (assistNavigation && (target == ScreenSettingsTarget.WIRELESS || target == ScreenSettingsTarget.ABOUT) &&
                     intent.action != Settings.ACTION_SETTINGS) {
-                    assistAdbSettings(target, openPairing, if (openPairing) context.hostActivity()?.componentName else null)
+                    assistAdbSettings(target, openPairing)
                 }
                 return true
             } catch (_: ActivityNotFoundException) { }

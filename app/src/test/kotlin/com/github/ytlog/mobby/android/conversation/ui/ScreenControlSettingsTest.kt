@@ -253,7 +253,7 @@ class ScreenControlSettingsTest {
         button("打开无线调试").assertIsDisplayed()
         compose.runOnIdle { assertTrue(controller.events.isEmpty()) }
     }
-    @Test fun `user started pairing connects once only after a real success and foreground return`() {
+    @Test fun `returning after pairing never starts a connection from the wizard`() {
         val controller = TestController(ScreenControlState(mode = ScreenMode.ADB))
         val status = mutableStateOf(ready)
         compose.setContent { MaterialTheme { ScreenControlSettings(controller, {}, statusOverride = status.value, settingsOverride = { opened += it }) } }
@@ -264,33 +264,34 @@ class ScreenControlSettingsTest {
             controller.state.value = controller.state.value.copy(adbPaired = true, adbPairing = false, adbPairingSuccess = 1)
         }
         compose.runOnIdle { assertEquals(listOf("start-pairing"), controller.events); status.value = status.value.copy(resumed = true) }
-        compose.onNodeWithText("屏幕操作已就绪").assertIsDisplayed()
+        button("连接").assertIsDisplayed()
         compose.runOnIdle { status.value = status.value.copy(resumed = false) }
         compose.runOnIdle { status.value = status.value.copy(resumed = true) }
-        compose.runOnIdle { assertEquals(listOf("start-pairing", "port:", "connect"), controller.events) }
+        compose.runOnIdle { assertEquals(listOf("start-pairing"), controller.events) }
     }
     @Test fun `failed automatic connection stays on connection task without retry or inline inputs`() {
-        val controller = TestController(ScreenControlState(mode = ScreenMode.ADB), "fixture connection failed")
+        val controller = TestController(ScreenControlState(mode = ScreenMode.ADB))
         show(controller)
         next()
         button("自动配对").performClick()
-        compose.runOnIdle { controller.state.value = controller.state.value.copy(adbPaired = true, adbPairing = false, adbPairingSuccess = 1) }
+        compose.runOnIdle { controller.state.value = controller.state.value.copy(adbPaired = true, adbPairing = false, adbPairingSuccess = 1, error = "fixture connection failed") }
         compose.onNodeWithText("fixture connection failed").assertIsDisplayed()
         compose.onNode(hasSetTextAction()).assertDoesNotExist()
         compose.onNodeWithText("配对这台手机").assertDoesNotExist()
-        compose.runOnIdle { assertEquals(1, controller.events.count { it == "connect" }) }
+        compose.runOnIdle { assertEquals(listOf("start-pairing"), controller.events) }
     }
     @Test fun `a connection completed in the background is not started again on return`() {
         val controller = TestController(ScreenControlState(mode = ScreenMode.ADB))
-        val status = mutableStateOf(ready)
+        val status = mutableStateOf(ready.copy(accessibilityEnabled = false))
         compose.setContent { MaterialTheme { ScreenControlSettings(controller, {}, statusOverride = status.value, settingsOverride = {}) } }
         next()
-        button("自动配对").performClick()
+        button("手动设置 ADB").performClick()
+        button("通过通知配对").performClick()
         compose.runOnIdle {
-            status.value = ready.copy(resumed = false)
+            status.value = status.value.copy(resumed = false)
             controller.state.value = controller.state.value.copy(adbPaired = true, adbPairing = false, adbPairingSuccess = 1, connected = true)
         }
-        compose.runOnIdle { status.value = ready }
+        compose.runOnIdle { status.value = status.value.copy(resumed = true) }
         compose.onNodeWithText("屏幕操作已就绪").assertIsDisplayed()
         compose.runOnIdle { assertEquals(listOf("start-pairing"), controller.events) }
     }
@@ -431,7 +432,7 @@ class ScreenControlSettingsTest {
         override suspend fun setAdbPort(port: String) { events += "port:$port"; this.port = port }
         override suspend fun connect() { events += "connect"; failure?.let { error(it) }; state.value = state.value.copy(connected = true) }
         override suspend fun disconnect() { events += "disconnect"; state.value = state.value.copy(connected = false) }
-        override fun startAdbPairing() { events += "start-pairing"; state.value = state.value.copy(adbPairing = true, error = null) }
+        override fun startAdbPairing(returnToActivity: String?) { events += "start-pairing"; state.value = state.value.copy(adbPairing = true, error = null) }
         override fun cancelAdbPairing() { events += "cancel-pairing"; state.value = state.value.copy(adbPairing = false) }
         override suspend fun refreshPreview() = Unit
     }

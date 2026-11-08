@@ -1,6 +1,7 @@
 package com.github.ytlog.mobby.android.device
 
 import android.app.*
+import android.content.ComponentName
 import android.content.Intent
 import android.os.IBinder
 import com.github.ytlog.mobby.android.localization.AppStrings
@@ -11,7 +12,10 @@ import kotlinx.coroutines.*
 class AdbPairingService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var port: Int? = null
+    private var connectionPort: Int? = null
+    private var returnTo: ComponentName? = null
     private var submitted = false
+    private var finished = false
     private var discovery: Job? = null
     private val notifications get() = getSystemService(NotificationManager::class.java)
 
@@ -21,6 +25,7 @@ class AdbPairingService : Service() {
             val code = RemoteInput.getResultsFromIntent(intent)?.getCharSequence(CODE)?.toString().orEmpty()
             port?.let { submit(it, code) }
         } else if (discovery == null) {
+            returnTo = intent?.getStringExtra(RETURN_TO_ACTIVITY)?.let { ComponentName(packageName, it) }
             notifications.cancel(ID + 1)
             notifications.createNotificationChannel(NotificationChannel(CHANNEL, AppStrings.adbPairingNotification, NotificationManager.IMPORTANCE_DEFAULT))
             startForeground(ID, notice(AppStrings.adbPairingSearching))
@@ -47,22 +52,26 @@ class AdbPairingService : Service() {
         notifications.notify(ID, notice(AppStrings.adbPairingReplyHelp, reply = true))
     }
 
-    private fun submit(port: Int, code: String, connect: Boolean = false, connectionPort: Int? = null): Boolean {
+    private fun submit(port: Int, code: String): Boolean {
         if (submitted || !ScreenControl.state.value.adbPairing) return false
         submitted = true
         discovery?.cancel()
+        val portHint = (connectionPort ?: EmbeddedAdb.port)?.takeUnless { it == port }
         notifications.notify(ID, notice(AppStrings.adbPairingInProgress))
         scope.launch {
             try { ScreenControl.pairAdb(this@AdbPairingService, port.toString(), code) }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { finishPairing(AppStrings.adbPairingFailed); return@launch }
-            if (connect) {
-                try {
-                    ScreenControl.connectAfterPairing(this@AdbPairingService, ScreenControl.state.value.adbPairingSuccess, connectionPort)
-                } catch (cancelled: CancellationException) { throw cancelled }
-                catch (_: Exception) { finishPairing(AppStrings.adbConnectionFailed); return@launch }
+            notifications.notify(ID, notice(AppStrings.adbConnectingAfterPairing))
+            val connectionError = try {
+                ScreenControl.connectAfterPairing(this@AdbPairingService, ScreenControl.state.value.adbPairingSuccess, portHint)
+                null
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                AppStrings.adbConnectionFailed
             }
-            finishPairing(null)
+            finishPairing(connectionError, paired = true)
         }
         return true
     }
@@ -79,31 +88,46 @@ class AdbPairingService : Service() {
         return builder.build()
     }
 
-    private fun finishPairing(error: String?) {
+    private fun finishPairing(error: String?, paired: Boolean = false) {
+        if (active !== this) return
+        finished = true
+        active = null
         ScreenControl.pairingFinished(error)
         stopForeground(STOP_FOREGROUND_REMOVE)
-        notifications.notify(ID + 1, Notification.Builder(this, CHANNEL).setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
-            .setContentTitle(AppStrings.adbPairingNotification).setContentText(error ?: AppStrings.adbPaired)
-            .setStyle(Notification.BigTextStyle().bigText(error ?: AppStrings.adbPaired)).setAutoCancel(true).build())
+        val message = error ?: AppStrings.screenBackendReady
+        val result = Notification.Builder(this, CHANNEL).setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
+            .setContentTitle(AppStrings.adbPairingNotification).setContentText(message)
+            .setStyle(Notification.BigTextStyle().bigText(message)).setAutoCancel(true)
+        returnTo?.let { component ->
+            result.setContentIntent(PendingIntent.getActivity(this, 0, wizardIntent(component), PendingIntent.FLAG_IMMUTABLE))
+            if (paired) ScreenAccessService.returnFromAdbPairing(component)
+        }
+        notifications.notify(ID + 1, result.build())
         stopSelf()
     }
 
     override fun onDestroy() {
+        scope.cancel()
         if (active === this) active = null
-        scope.cancel(); ScreenControl.pairingFinished(ScreenControl.state.value.error); super.onDestroy()
+        if (!finished) ScreenControl.pairingFinished(ScreenControl.state.value.error)
+        super.onDestroy()
     }
     companion object {
         private var active: AdbPairingService? = null
 
         /** Called on the main thread by the user-started Settings assistant. */
-        internal fun submitFromSettings(port: Int, code: String, connectionPort: Int?): Boolean =
-            active?.submit(port, code, connect = true, connectionPort = connectionPort) == true
+        internal fun submitFromSettings(port: Int, code: String): Boolean = active?.submit(port, code) == true
 
         internal fun offerSettingsPort(port: Int) { active?.offerReply(port) }
+        internal fun offerConnectionPort(port: Int) { active?.takeUnless { it.submitted }?.connectionPort = port }
+
+        internal fun wizardIntent(component: ComponentName) = Intent().setComponent(component)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
 
         private const val CHANNEL = "screen-adb-pairing"
         private const val ID = 4602
         internal const val SUBMIT = "com.github.ytlog.mobby.android.screen.PAIR_ADB"
+        internal const val RETURN_TO_ACTIVITY = "return_to_activity"
         private const val CODE = "code"
     }
 }

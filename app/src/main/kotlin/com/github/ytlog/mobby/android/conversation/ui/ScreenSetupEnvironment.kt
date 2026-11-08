@@ -82,13 +82,12 @@ internal data class ScreenSetupStatus(
 }
 
 internal fun screenAccessibilityComponent(context: Context) = ComponentName(context, ScreenAccessService::class.java)
-internal fun assistAdbSettings(target: ScreenSettingsTarget, openPairing: Boolean, returnTo: ComponentName?) = ScreenAccessService.assistAdbSettings(
+internal fun assistAdbSettings(target: ScreenSettingsTarget, openPairing: Boolean) = ScreenAccessService.assistAdbSettings(
     when {
         target == ScreenSettingsTarget.ABOUT -> ScreenAccessService.AdbSetupDestination.VERSION
         openPairing -> ScreenAccessService.AdbSetupDestination.PAIR
         else -> ScreenAccessService.AdbSetupDestination.WIRELESS
     },
-    returnTo,
 )
 
 @Composable internal fun rememberScreenSetupStatus(refresh: Int = 0, pairing: Boolean = true): ScreenSetupStatus {

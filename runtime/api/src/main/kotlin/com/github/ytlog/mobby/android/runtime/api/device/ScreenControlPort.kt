@@ -27,7 +27,7 @@ interface ScreenControlPort {
     suspend fun connect()
     suspend fun disconnect()
     suspend fun setAdbPort(port: String)
-    fun startAdbPairing()
+    fun startAdbPairing(returnToActivity: String? = null)
     fun cancelAdbPairing()
     suspend fun refreshPreview()
 }

@@ -16,7 +16,7 @@ class AndroidScreenControl(context: Context) : ScreenControlPort {
     override suspend fun connect() = ScreenControl.connect(context)
     override suspend fun disconnect() = withContext(Dispatchers.IO) { ScreenControl.disconnect() }
     override suspend fun setAdbPort(port: String) = ScreenControl.setAdbPort(context, port)
-    override fun startAdbPairing() = ScreenControl.startAdbPairing(context)
+    override fun startAdbPairing(returnToActivity: String?) = ScreenControl.startAdbPairing(context, returnToActivity)
     override fun cancelAdbPairing() = ScreenControl.cancelAdbPairing(context)
     override suspend fun refreshPreview() = ScreenControl.refreshPreview()
 }

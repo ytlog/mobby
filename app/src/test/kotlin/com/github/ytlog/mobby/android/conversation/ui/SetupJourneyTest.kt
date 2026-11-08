@@ -31,7 +31,7 @@ class SetupJourneyTest {
             override suspend fun connect() = Unit
             override suspend fun disconnect() = Unit
             override suspend fun setAdbPort(port: String) = Unit
-            override fun startAdbPairing() = Unit
+            override fun startAdbPairing(returnToActivity: String?) = Unit
             override fun cancelAdbPairing() = Unit
             override suspend fun refreshPreview() = Unit
         }

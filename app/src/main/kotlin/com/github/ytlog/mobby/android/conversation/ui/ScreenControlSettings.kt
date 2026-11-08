@@ -88,7 +88,6 @@ class ScreenControlSettingsActivity : ComponentActivity() {
     var wirelessConfirmed by draft::wirelessConfirmed
     var openWirelessOnArrival by draft::openWirelessOnArrival
     var forcePair by draft::forcePair
-    var connectAfterPairing by draft::connectAfterPairing
     var pairingSuccessAtStart by draft::pairingSuccessAtStart
     var permissionRefresh by remember { mutableIntStateOf(0) }
     val status = statusOverride ?: rememberScreenSetupStatus(permissionRefresh, pairing = state.mode == ScreenMode.ADB)
@@ -144,7 +143,7 @@ class ScreenControlSettingsActivity : ComponentActivity() {
         if (step == ScreenSetupStep.DEVELOPER || step == ScreenSetupStep.WIRELESS) openWirelessOnArrival = false
         if (!step.auxiliary) {
             pendingCheck = null
-            connectAfterPairing = false
+            pairingSuccessAtStart = null
             operation?.cancel()
             if (controller.state.value.adbPairing) {
                 try { controller.cancelAdbPairing() }
@@ -206,9 +205,9 @@ class ScreenControlSettingsActivity : ComponentActivity() {
         }
         if (!status.notificationsAllowed) { go(ScreenSetupStep.NOTIFICATIONS); return }
         execute {
-            controller.startAdbPairing()
-            pairingSuccessAtStart = controller.state.value.adbPairingSuccess
-            connectAfterPairing = true
+            val baseline = controller.state.value.adbPairingSuccess
+            controller.startAdbPairing(ScreenAccessRouting.wizardActivity(context))
+            pairingSuccessAtStart = baseline
             open(ScreenSettingsTarget.WIRELESS, assistNavigation = true, openPairing = true)
         }
     }
@@ -226,22 +225,18 @@ class ScreenControlSettingsActivity : ComponentActivity() {
             open(ScreenSettingsTarget.WIRELESS, assistNavigation = true)
         }
     }
-    LaunchedEffect(state.adbPairing, state.adbPairingSuccess, state.error, state.mode, state.connected, state.active, status.resumed, busy, connectAfterPairing) {
-        if (connectAfterPairing) {
-            val current = controller.state.value
-            if (!current.adbPairing) {
-                if (current.mode != ScreenMode.ADB || current.active || current.adbPairingSuccess <= pairingSuccessAtStart) {
-                    connectAfterPairing = false
-                    error = current.error ?: AppStrings.wizardPairCancelled
-                } else if (status.resumed && !busy) {
-                    connectAfterPairing = false
-                    forcePair = false
-                    go(ScreenSetupStep.CONNECT)
-                    if (current.connected) go(ScreenSetupStep.COMPLETE)
-                    else if (current.error != null) error = current.error
-                    else connect()
-                }
-            }
+    LaunchedEffect(state.adbPairing, state.adbPairingSuccess, state.error, state.mode, state.connected, state.active, status.resumed, busy, pairingSuccessAtStart) {
+        val baseline = pairingSuccessAtStart ?: return@LaunchedEffect
+        val current = controller.state.value
+        if (current.adbPairing || !status.resumed || busy) return@LaunchedEffect
+        pairingSuccessAtStart = null
+        if (current.mode != ScreenMode.ADB || current.active || current.adbPairingSuccess <= baseline) {
+            error = current.error ?: AppStrings.wizardPairCancelled
+        } else {
+            forcePair = false
+            go(ScreenSetupStep.CONNECT)
+            if (current.connected) go(ScreenSetupStep.COMPLETE)
+            else error = current.error ?: AppStrings.screenBackendConnectionFailed
         }
     }
     val complete = screenStepComplete(step, state, status, forcePair, developerConfirmed, wirelessConfirmed)

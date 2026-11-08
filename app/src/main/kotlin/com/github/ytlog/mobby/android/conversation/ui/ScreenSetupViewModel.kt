@@ -3,7 +3,6 @@ package com.github.ytlog.mobby.android.conversation.ui
 import android.os.Bundle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.SavedStateHandle
@@ -50,8 +49,7 @@ internal class ScreenSetupDraft(initialMode: ScreenMode, pairing: Boolean, resto
     var wirelessConfirmed by mutableStateOf(false)
     var openWirelessOnArrival by mutableStateOf(false)
     var forcePair by mutableStateOf(false)
-    var connectAfterPairing by mutableStateOf(false)
-    var pairingSuccessAtStart by mutableLongStateOf(0)
+    var pairingSuccessAtStart by mutableStateOf<Long?>(null)
 
     fun furthestStep(mode: ScreenMode): Int = if (progressMode == mode) furthestStep else 0
 

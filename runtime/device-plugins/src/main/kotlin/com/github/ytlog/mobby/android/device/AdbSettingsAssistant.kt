@@ -18,7 +18,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -54,10 +53,21 @@ internal class AdbSettingsAssistant(private val service: ScreenAccessService) {
         return (aliases + label).distinct()
     }
 
-    fun start(destination: ScreenAccessService.AdbSetupDestination, returnTo: ComponentName?) {
+    fun start(destination: ScreenAccessService.AdbSetupDestination) {
+        val timeout = if (destination == ScreenAccessService.AdbSetupDestination.PAIR) 30_000L else 10_000L
+        withSettingsWindow(timeout) { navigate(destination) }
+    }
+
+    fun returnAfterPairing(component: ComponentName) {
+        if (component.packageName == service.packageName) withSettingsWindow(3_000) { returnToWizard(component) }
+    }
+
+    private fun withSettingsWindow(timeout: Long, action: suspend () -> Unit) {
+        val previous = task
         stop()
         if (Build.VERSION.SDK_INT < 33 || ScreenCoordinator.chatActive || settingsPackage == null) return
         task = CoroutineScope(Dispatchers.Main).launch {
+            previous?.join()
             val flags = AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS or AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
             val info = service.serviceInfo ?: return@launch
             val addedFlags = flags and info.flags.inv()
@@ -66,8 +76,7 @@ internal class AdbSettingsAssistant(private val service: ScreenAccessService) {
                 service.serviceInfo = info
             }
             try {
-                val timeout = if (destination == ScreenAccessService.AdbSetupDestination.PAIR) 30_000L else 10_000L
-                withTimeoutOrNull(timeout) { navigate(destination, returnTo) }
+                withTimeoutOrNull(timeout) { action() }
             } finally {
                 if (addedFlags != 0) service.serviceInfo?.let {
                     it.flags = it.flags and addedFlags.inv()
@@ -79,13 +88,11 @@ internal class AdbSettingsAssistant(private val service: ScreenAccessService) {
 
     fun stop() { task?.cancel(); task = null }
 
-    private suspend fun navigate(destination: ScreenAccessService.AdbSetupDestination, returnTo: ComponentName?) {
+    private suspend fun navigate(destination: ScreenAccessService.AdbSetupDestination) {
         var enteredSettings = false
         var openedPage = false
         var awaitingPairingDialog = false
-        var connectionPort: Int? = null
         var scrolls = 0
-        val pairingSuccessAtStart = ScreenControl.state.value.adbPairingSuccess
         while (true) {
             delay(if (enteredSettings) 350 else 200)
             if (!screenAvailable() || destination == ScreenAccessService.AdbSetupDestination.PAIR &&
@@ -105,9 +112,9 @@ internal class AdbSettingsAssistant(private val service: ScreenAccessService) {
                 enteredSettings = true
                 ScreenCoordinator.programAction {
                     if (destination == ScreenAccessService.AdbSetupDestination.PAIR) {
-                        val result = readPairingDialog(root, connectionPort)
+                        val result = readPairingDialog(root)
                         if (result != null) return@programAction result
-                        wirelessConnectionPort(root)?.let { connectionPort = it }
+                        wirelessConnectionPort(root)?.let { AdbPairingService.offerConnectionPort(it) }
                         if (awaitingPairingDialog) return@programAction Result.WAIT
                     }
                     visit(root, destination, openedPage, scrolls < 8)
@@ -117,11 +124,7 @@ internal class AdbSettingsAssistant(private val service: ScreenAccessService) {
             } finally { root.recycle() }
             when (result) {
                 Result.STOP -> if (destination == ScreenAccessService.AdbSetupDestination.PAIR) awaitingPairingDialog = true else return
-                Result.PAIRING_SUBMITTED -> {
-                    val finished = ScreenControl.state.first { !it.adbPairing }
-                    if (finished.adbPairingSuccess > pairingSuccessAtStart) returnToWizard(returnTo)
-                    return
-                }
+                Result.PAIRING_SUBMITTED -> return
                 Result.OPENED_PAGE -> { openedPage = true; delay(450) }
                 Result.OPENED_PAIRING -> awaitingPairingDialog = true
                 Result.SCROLLED -> scrolls++
@@ -140,7 +143,7 @@ internal class AdbSettingsAssistant(private val service: ScreenAccessService) {
         } finally { window.recycle() }
     }
 
-    private fun readPairingDialog(root: AccessibilityNodeInfo, connectionPort: Int?): Result? {
+    private fun readPairingDialog(root: AccessibilityNodeInfo): Result? {
         // The dialog container is omitted from the normal accessibility tree on MIUI.
         val code = withSettingNode(root, PAIRING_CODE) { it.text?.toString().orEmpty() }
         val address = withSettingNode(root, PAIRING_ADDRESS) { it.text?.toString() }
@@ -153,8 +156,7 @@ internal class AdbSettingsAssistant(private val service: ScreenAccessService) {
                 return Result.WAIT
             }
         }
-        val wirelessPort = connectionPort?.takeIf { it != fields.port }
-        return if (AdbPairingService.submitFromSettings(fields.port, fields.code, wirelessPort)) Result.PAIRING_SUBMITTED
+        return if (AdbPairingService.submitFromSettings(fields.port, fields.code)) Result.PAIRING_SUBMITTED
         else Result.WAIT
     }
 
@@ -199,20 +201,20 @@ internal class AdbSettingsAssistant(private val service: ScreenAccessService) {
         } finally { nodes.forEach(AccessibilityNodeInfo::recycle) }
     }
 
-    private suspend fun returnToWizard(component: ComponentName?) {
-        if (component?.packageName != service.packageName) return
+    private suspend fun returnToWizard(component: ComponentName) {
         // Settings can replace the dialog window immediately after accepting the pairing.
         repeat(8) {
             delay(200)
             if (ScreenAccessService.instance !== service || !screenAvailable() || ScreenCoordinator.chatActive) return
             val root = service.rootInActiveWindow ?: return@repeat
             try {
-                if (root.packageName?.toString() != settingsPackage) return
+                val packageName = root.packageName?.toString()
+                if (packageName == "com.android.systemui") return@repeat
+                if (packageName != settingsPackage) return
                 if (isForeground(root) != true ||
                     !(hasHeading(root, wirelessLabels) || wirelessConnectionPort(root) != null || hasHeading(root, dialogTitles) ||
                         withSettingNode(root, PAIRING_CODE) { true } == true)) return@repeat
-                service.startActivity(Intent().setComponent(component).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or
-                    Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+                service.startActivity(AdbPairingService.wizardIntent(component))
                 return
             } catch (_: android.content.ActivityNotFoundException) { return }
             catch (_: SecurityException) { return }

@@ -44,6 +44,7 @@ class BuiltinAdbPairingDeviceTest {
         ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { server ->
             server.soTimeout = 90_000
             try {
+                val previousSuccess = ScreenControl.state.value.adbPairingSuccess
                 ScreenControl.startAdbPairing(target)
                 instrumentation.runOnMainSync {
                     target.startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -61,6 +62,8 @@ class BuiltinAdbPairingDeviceTest {
                     check(MessageDigest.isEqual(nonce.toByteArray(), body.getString("nonce").toByteArray())) { "invalid_test_authentication" }
                     val code = body.getString("code")
                     check(code.matches(Regex("[0-9]{6}"))) { "invalid_system_code_shape" }
+                    // An explicit port exercises the same user-provided hint on devices without mDNS.
+                    body.optString("connectionPort").takeIf { it.isNotBlank() }?.let { ScreenControl.setAdbPort(target, it) }
                     val notifications = target.getSystemService(NotificationManager::class.java)
                     var action: android.app.Notification.Action? = null
                     val deadline = SystemClock.uptimeMillis() + 15_000
@@ -74,16 +77,21 @@ class BuiltinAdbPairingDeviceTest {
                     RemoteInput.addResultsToIntent(reply.remoteInputs, fill, results)
                     reply.actionIntent.send(target, 0, fill)
                 }
-                val deadline = SystemClock.uptimeMillis() + 40_000
+                val deadline = SystemClock.uptimeMillis() + 60_000
                 while (ScreenControl.state.value.adbPairing && SystemClock.uptimeMillis() < deadline) SystemClock.sleep(100)
                 assertFalse("Pairing must finish within its deadline", ScreenControl.state.value.adbPairing)
                 assertNull("System pairing failed", ScreenControl.state.value.error)
                 assertTrue("System must accept this app's pairing identity", ScreenControl.state.value.adbPaired)
+                assertTrue("This notification must complete a new pairing", ScreenControl.state.value.adbPairingSuccess > previousSuccess)
+                assertTrue("The backend must connect without reopening the wizard", ScreenControl.state.value.connected)
             } finally {
                 ScreenControl.cancelAdbPairing(target)
                 val deadline = SystemClock.uptimeMillis() + 2000
                 while (ScreenControl.state.value.adbPairing && SystemClock.uptimeMillis() < deadline) SystemClock.sleep(50)
-                if (!ScreenControl.state.value.adbPairing) ScreenControl.select(target, previous)
+                if (!ScreenControl.state.value.adbPairing) {
+                    ScreenControl.setAdbPort(target, "")
+                    ScreenControl.select(target, previous)
+                }
             }
         }
     }

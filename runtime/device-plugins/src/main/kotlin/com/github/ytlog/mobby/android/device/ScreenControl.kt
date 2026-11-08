@@ -184,13 +184,15 @@ object ScreenControl {
         try { EmbeddedAdb.setPort(value) } catch (_: IllegalArgumentException) { error(AppStrings.adbInvalidPort) }
     }
 
-    @Synchronized fun startAdbPairing(context: Context) {
+    @Synchronized fun startAdbPairing(context: Context, returnToActivity: String? = null) {
         check(Build.VERSION.SDK_INT >= 33) { AppStrings.virtualScreenAndroidVersion }
         check(state.value.mode == ScreenMode.ADB && (leases == 0 || canReconnectAdb()) && !connecting && !state.value.adbPairing) { AppStrings.screenModeBusy }
         check(context.getSystemService(android.app.NotificationManager::class.java).areNotificationsEnabled()) { AppStrings.adbPairingNotifications }
         clearConnection()
         changes.value = state.value.copy(adbPairing = true, error = null)
-        try { context.startForegroundService(android.content.Intent(context, AdbPairingService::class.java)) }
+        val intent = android.content.Intent(context, AdbPairingService::class.java)
+            .putExtra(AdbPairingService.RETURN_TO_ACTIVITY, returnToActivity)
+        try { context.startForegroundService(intent) }
         catch (failure: Exception) { pairingFinished(AppStrings.adbPairingFailed); throw failure }
     }
 
