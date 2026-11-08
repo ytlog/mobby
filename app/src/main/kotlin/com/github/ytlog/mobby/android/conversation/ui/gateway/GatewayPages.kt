@@ -6,6 +6,8 @@ import com.github.ytlog.mobby.android.conversation.domain.gateway.*
 
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -17,14 +19,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.github.ytlog.mobby.android.conversation.domain.*
 import com.github.ytlog.mobby.android.conversation.ui.*
+import com.github.ytlog.mobby.android.conversation.ui.Button as MobbyButton
 import kotlinx.coroutines.*
 
 internal fun gatewayBaseAddress(value: String): String = value.trim().trimEnd('/')
@@ -251,7 +256,7 @@ internal class GatewayFormDraft {
     var connectionError by mutableStateOf(false)
     var connectionNotice by mutableStateOf("")
     var busy by mutableStateOf(false)
-    var connecting by mutableStateOf(false)
+    var saving by mutableStateOf(false)
 }
 
 @Composable internal fun GatewayForm(profiles: List<GatewayProfile>, submit: (suspend () -> Unit) -> Unit,
@@ -290,11 +295,13 @@ internal class GatewayFormDraft {
     var connectionError by draft::connectionError
     var connectionNotice by draft::connectionNotice
     var busy by draft::busy
-    var connecting by draft::connecting
+    var saving by draft::saving
     var checking by remember { mutableStateOf(false) }
     var signingIn by remember { mutableStateOf(false) }
     var signInJob by remember { mutableStateOf<Job?>(null) }
     var checkJob by remember { mutableStateOf<Job?>(null) }
+    val advancedContent = remember { BringIntoViewRequester() }
+    var revealAdvanced by remember { mutableStateOf(false) }
     val checkScope = rememberCoroutineScope()
     LaunchedEffect(draft) {
         if (draft.initialized) return@LaunchedEffect
@@ -368,9 +375,9 @@ internal class GatewayFormDraft {
         }
     }
 
-    fun connect() {
+    fun saveConfiguration() {
         if (providerId == GatewayProviders.CUSTOM) baseEndpoint = gatewayBaseAddress(baseEndpoint)
-        noticeError = false; notice = ""; connectionNotice = ""; busy = true; connecting = true
+        noticeError = false; notice = ""; connectionNotice = ""; busy = true; saving = true
         submit {
             var leave: String? = null
             try {
@@ -401,7 +408,7 @@ internal class GatewayFormDraft {
                     }
                     is GatewaySaveResult.Failed -> { noticeError = true; notice = result.message }
                 }
-            } finally { connecting = false; busy = false }
+            } finally { saving = false; busy = false }
             leave?.let { if (onSaved != null) onSaved(it) else notice = it }
         }
     }
@@ -490,19 +497,54 @@ internal class GatewayFormDraft {
                 catalogError?.takeIf { listed.isEmpty() }?.let { SettingsCaption(AppStrings.noModelListEnterModelId(it)) }
                 SettingsGroup { SettingsField(manualId, { manualId = it; notice = "" }, AppStrings.modelId, enabled = idle) }
             }
-            SettingsGroup {
-                GatewayFormAction(if (connecting) AppStrings.connectingGateway else AppStrings.connectGateway, connecting,
-                    enabled = idle && candidates().responses.isNotBlank() &&
-                        (!selectingModels || model in selectedModels.orEmpty() || showManual && manualId.isNotBlank()),
-                    loadingTag = "gateway-connect-loading") { connect() }
+            val saveColors = filledButtonColors(
+                container = if (darkChrome()) MobbyColors.Dark.button else menuAccent(),
+                content = if (darkChrome()) MobbyColors.Dark.onButton else MobbyColors.onAccent,
+            )
+            MobbyButton(
+                onClick = ::saveConfiguration,
+                enabled = idle && candidates().responses.isNotBlank() &&
+                    (!selectingModels || model in selectedModels.orEmpty() || showManual && manualId.isNotBlank()),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                shape = RoundedCornerShape(22.dp),
+                colors = saveColors,
+                elevation = null,
+            ) {
+                if (saving) {
+                    CircularProgressIndicator(Modifier.size(18.dp).testTag("gateway-save-loading"),
+                        color = saveColors.contentColor, strokeWidth = 2.dp)
+                    Spacer(Modifier.width(10.dp))
+                }
+                Text(if (saving) AppStrings.saving else AppStrings.save,
+                    style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
             }
-            SettingsCaption(AppStrings.connectUsesASmallRequest)
+            SettingsCaption(AppStrings.gatewaySaveChecksConnection)
             if (notice.isNotBlank()) SettingsCaption(notice, error = noticeError)
             val sites = GatewayProviders.sites(chosenId)
             val hasAdvanced = sites.size > 1 || guide?.helpUrl != null || saved != null
             if (hasAdvanced) {
-                SettingsGroup { SettingsAction(AppStrings.advancedSettings, enabled = !busy) { advanced = !advanced } }
-                if (advanced) {
+                SettingsGroup {
+                    androidx.compose.material3.TextButton(
+                        onClick = { advanced = !advanced; revealAdvanced = advanced },
+                        modifier = Modifier.fillMaxWidth().semantics {
+                            stateDescription = if (advanced) AppStrings.expanded else AppStrings.collapsed
+                        },
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
+                        colors = ButtonDefaults.textButtonColors(contentColor = onButtonColor()),
+                    ) {
+                        Text(AppStrings.advancedSettings, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                        AppIcon(if (advanced) AppIcons.ChevronUp else AppIcons.ChevronDown, null, Modifier.size(18.dp))
+                    }
+                }
+            }
+            if (hasAdvanced && advanced) {
+                LaunchedEffect(revealAdvanced) {
+                    if (revealAdvanced) {
+                        advancedContent.bringIntoView()
+                        revealAdvanced = false
+                    }
+                }
+                Column(Modifier.bringIntoViewRequester(advancedContent), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     if (sites.size > 1) {
                         SettingsCaption(AppStrings.gatewayProviderSiteHelp)
                         SettingsGroup {

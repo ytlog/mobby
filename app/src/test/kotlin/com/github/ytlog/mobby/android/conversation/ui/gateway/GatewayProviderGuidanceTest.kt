@@ -51,9 +51,9 @@ class GatewayProviderGuidanceTest {
         compose.onNodeWithText("其他服务（填写地址）").assertIsNotSelected().performScrollTo().performClick()
         field("服务地址").assertIsEnabled()
         assertEquals("", field("服务地址").fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
-        compose.onNodeWithText("连接").assertIsNotEnabled()
+        compose.onNodeWithText("保存").assertIsNotEnabled()
         field("服务地址").performScrollTo().performTextReplacement("https://gateway.invalid/v1")
-        compose.onNodeWithText("连接").performScrollTo().performClick()
+        compose.onNodeWithText("保存").performScrollTo().performClick()
         compose.waitUntil(5_000) { saved != null }
         assertEquals("https://gateway.invalid/v1", saved!!.addresses.responses)
         assertEquals("https://gateway.invalid/v1", saved!!.addresses.messages)
@@ -66,9 +66,9 @@ class GatewayProviderGuidanceTest {
         form(fetch = { fetched = it; DataResult.Loaded(catalog) })
         compose.onNodeWithText("Other service (enter address)").performScrollTo().performClick()
         assertEquals("", field("Service address").fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
-        compose.onNodeWithText("Connect").assertIsNotEnabled()
+        compose.onNodeWithText("Save").assertIsNotEnabled()
         field("Service address").performScrollTo().performTextReplacement("https://gateway.invalid/v1")
-        compose.onNodeWithText("Connect").performScrollTo().performClick()
+        compose.onNodeWithText("Save").performScrollTo().performClick()
         compose.waitUntil(5_000) { fetched != null }
         assertEquals("https://gateway.invalid/v1", fetched!!.addresses.responses)
         assertEquals("https://gateway.invalid/v1", fetched!!.addresses.messages)
@@ -83,16 +83,16 @@ class GatewayProviderGuidanceTest {
         selectOpenRouter()
         compose.onNodeWithText("Sign in with OpenRouter").performScrollTo().performClick()
         compose.waitUntil(5_000) { secret.all { it == '\u0000' } }
-        compose.onNodeWithText("Connect").performScrollTo().performClick()
+        compose.onNodeWithText("Save").performScrollTo().performClick()
         compose.waitUntil(5_000) { fetchedKey.isNotEmpty() }
         assertEquals("synthetic-authorized-key", fetchedKey)
         assertNull(saved)
-        compose.onNodeWithText("Connect").assertIsNotEnabled()
+        compose.onNodeWithText("Save").assertIsNotEnabled()
         compose.onNodeWithText("Free router · openrouter/free").assertExists()
         compose.onNodeWithText("Paid model · openai/paid").performScrollTo().performClick()
         compose.onNodeWithText("Enter another model ID").performScrollTo().performClick()
         field("Model ID").performScrollTo().performTextReplacement("openai/manual")
-        compose.onNodeWithText("Connect").performScrollTo().performClick()
+        compose.onNodeWithText("Save").performScrollTo().performClick()
         compose.waitUntil(5_000) { saved != null }
         assertEquals("openai/manual", saved!!.model)
         assertEquals(setOf("openai/paid", "openai/manual"), saved!!.selectedModels)
@@ -135,13 +135,13 @@ class GatewayProviderGuidanceTest {
         selectOpenRouter()
         compose.onNodeWithText("Sign in with OpenRouter").performScrollTo().performClick()
         selectOpenRouter()
-        compose.onNodeWithText("Connect").performScrollTo().performClick()
+        compose.onNodeWithText("Save").performScrollTo().performClick()
         compose.waitUntil(5_000) { fetchedKey != null }
         assertEquals("synthetic-key", fetchedKey)
         compose.onNodeWithText("Requesty").performScrollTo().performClick()
-        compose.onNodeWithText("Connect").performScrollTo().performClick()
+        compose.onNodeWithText("Save").performScrollTo().performClick()
         compose.waitUntil(5_000) { fetchedKey == "" }
-        compose.onNodeWithText("Connect").assertIsNotEnabled()
+        compose.onNodeWithText("Save").assertIsNotEnabled()
     }
     @Test fun `saved international Kimi keeps its site until the user selects China`() {
         language(AppLanguage.CHINESE)
@@ -156,7 +156,7 @@ class GatewayProviderGuidanceTest {
         compose.onNodeWithText("国内站").performScrollTo().performClick()
         compose.onNodeWithText("还没有 Key？去官网领取").performScrollTo().performClick()
         assertEquals("https://platform.kimi.com/console/api-keys", opened)
-        compose.onNodeWithText("连接").performScrollTo().performClick()
+        compose.onNodeWithText("保存").performScrollTo().performClick()
         compose.waitUntil(5_000) { fetched != null }
         assertEquals("https://api.moonshot.cn/v1", fetched!!.addresses.responses)
         assertEquals("https://api.moonshot.cn/anthropic/v1", fetched!!.addresses.messages)
@@ -172,7 +172,7 @@ class GatewayProviderGuidanceTest {
         compose.onNodeWithText("编辑 AI 服务").assertExists()
         compose.onNodeWithText("Kimi").assertIsSelected()
         compose.onNodeWithText(GatewayProviderGuides.find("kimi")!!.summary).assertExists()
-        compose.onNodeWithText("连接").performScrollTo().performClick()
+        compose.onNodeWithText("保存").performScrollTo().performClick()
         compose.waitUntil(5_000) { fetched != null }
         assertNull(fetched!!.credential)
         assertEquals(profile.model, fetched!!.model)

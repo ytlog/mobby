@@ -3,10 +3,15 @@ package com.github.ytlog.mobby.android.conversation.ui.gateway
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import com.github.ytlog.mobby.android.conversation.domain.AgentId
 import com.github.ytlog.mobby.android.conversation.domain.DataResult
 import com.github.ytlog.mobby.android.conversation.domain.OperationResult
@@ -28,17 +33,19 @@ class GatewayFormTest {
     private val discovered = GatewayCatalogResult(listOf(GatewayModel("chat", "Chat"), GatewayModel("other", "Other")), null)
     private val connected = GatewaySaveResult.Saved(discovered.models, null, setOf(AgentId.CODEX, AgentId.OPEN_CODE))
     private fun field(label: String) = compose.onNode(hasSetTextAction() and hasText(label))
-    private fun connect() = compose.onNodeWithText("连接").performScrollTo().performClick()
+    private fun tapSave() = compose.onNodeWithText("保存").performScrollTo().performClick()
 
     private fun form(profiles: List<GatewayProfile> = emptyList(),
         fetch: suspend (GatewayEdit) -> DataResult<GatewayCatalogResult> = { DataResult.Loaded(discovered) },
         save: suspend (GatewayEdit) -> GatewaySaveResult = { connected },
         delete: suspend (String) -> OperationResult = { OperationResult.Done },
-        onSaved: (String) -> Unit = {}, async: Boolean = false) {
+        onSaved: (String) -> Unit = {}, async: Boolean = false, viewportHeight: Dp = Dp.Unspecified) {
         compose.setContent { MaterialTheme {
             val scope = rememberCoroutineScope()
-            GatewayForm(profiles, { task -> if (async) scope.launch { task() } else runBlocking { task() } }, save, fetch, {}, {},
-                { DataResult.Failed("unused") }, editingId = profiles.firstOrNull()?.id ?: "", delete = delete, onSaved = onSaved)
+            Box(if (viewportHeight == Dp.Unspecified) Modifier else Modifier.height(viewportHeight)) {
+                GatewayForm(profiles, { task -> if (async) scope.launch { task() } else runBlocking { task() } }, save, fetch, {}, {},
+                    { DataResult.Failed("unused") }, editingId = profiles.firstOrNull()?.id ?: "", delete = delete, onSaved = onSaved)
+            }
         } }
     }
 
@@ -46,11 +53,11 @@ class GatewayFormTest {
         form()
         compose.onNodeWithText("添加 AI 服务").assertExists()
         field("API Key").assertDoesNotExist()
-        compose.onNodeWithText("连接").assertDoesNotExist()
+        compose.onNodeWithText("保存").assertDoesNotExist()
         compose.onNodeWithText("DeepSeek").performScrollTo().performClick()
         field("API Key").assertExists()
         compose.onNodeWithText("还没有 Key？去官网领取").assertExists()
-        compose.onNodeWithText("连接").assertExists()
+        compose.onNodeWithText("保存").assertExists()
         compose.onNodeWithText("本地模型服务").assertDoesNotExist()
     }
 
@@ -62,7 +69,7 @@ class GatewayFormTest {
         form(fetch = { fetched = it; DataResult.Loaded(catalog) }, save = { saved = it; connected }, onSaved = { notice = it })
         compose.onNodeWithText("DeepSeek").performScrollTo().performClick()
         field("API Key").performTextReplacement("sk-synthetic")
-        connect()
+        tapSave()
         assertEquals("https://api.deepseek.com", fetched!!.addresses.responses)
         assertEquals("deepseek-chat", saved!!.model)
         assertEquals(setOf("deepseek-reasoner", "deepseek-chat"), saved!!.selectedModels)
@@ -74,11 +81,11 @@ class GatewayFormTest {
         form(save = { saved = it; connected })
         compose.onNodeWithText("DeepSeek").performScrollTo().performClick()
         field("API Key").performTextReplacement("sk-synthetic")
-        connect()
+        tapSave()
         assertNull(saved)
-        compose.onNodeWithText("连接").assertIsNotEnabled()
+        compose.onNodeWithText("保存").assertIsNotEnabled()
         compose.onNodeWithContentDescription("设为默认 other").performScrollTo().performClick()
-        connect()
+        tapSave()
         assertEquals("other", saved!!.model)
         assertEquals(setOf("other"), saved!!.selectedModels)
     }
@@ -88,7 +95,7 @@ class GatewayFormTest {
         form(fetch = { DataResult.Loaded(GatewayCatalogResult(listOf(GatewayModel("only", "Only")), null)) }, save = { saved = it; connected })
         compose.onNodeWithText("其他服务（填写地址）").performScrollTo().performClick()
         field("服务地址").performTextReplacement("https://gateway.invalid/v1/responses")
-        connect()
+        tapSave()
         assertEquals("https://gateway.invalid/v1", saved!!.addresses.responses)
         assertEquals("https://gateway.invalid/v1", saved!!.addresses.messages)
         assertEquals("only", saved!!.model)
@@ -105,7 +112,7 @@ class GatewayFormTest {
         compose.onNodeWithText("Third · third").performScrollTo().performClick()
         compose.onNodeWithContentDescription("设为默认 third").performScrollTo().performClick()
         assertNull(saved)
-        connect()
+        tapSave()
         assertEquals("third", saved!!.model)
         assertEquals(setOf("chat", "third"), saved!!.selectedModels)
     }
@@ -117,9 +124,9 @@ class GatewayFormTest {
         field("服务地址").performTextReplacement("https://gateway.invalid/v1")
         compose.onNodeWithText("配置模型").performScrollTo().performClick()
         assertNull(saved)
-        compose.onNodeWithText("这个服务没有提供模型列表（没有模型列表接口）。请填写模型 ID 后再连接。").assertExists()
+        compose.onNodeWithText("这个服务没有提供模型列表（没有模型列表接口）。请填写模型 ID 后再保存。").assertExists()
         field("模型 ID").performScrollTo().performTextReplacement("manual")
-        connect()
+        tapSave()
         assertEquals("manual", saved!!.model)
         assertEquals(setOf("manual"), saved!!.selectedModels)
     }
@@ -132,13 +139,13 @@ class GatewayFormTest {
             save = { saves++; GatewaySaveResult.Failed("没有连上") }, onSaved = { notice = it })
         compose.onNodeWithText("其他服务（填写地址）").performScrollTo().performClick()
         field("服务地址").performTextReplacement("https://gateway.invalid/v1")
-        connect()
+        tapSave()
         compose.onNodeWithText("模型列表认证失败（HTTP 401），请检查 Key").assertExists()
         assertEquals(0, saves)
         fetchFails = false
-        connect()
+        tapSave()
         compose.onNodeWithContentDescription("设为默认 chat").performScrollTo().performClick()
-        connect()
+        tapSave()
         assertEquals(1, saves)
         compose.onNodeWithText("没有连上").assertExists()
         assertNull(notice)
@@ -151,9 +158,9 @@ class GatewayFormTest {
             save = { pending.await() }, onSaved = { notice = it }, async = true)
         compose.onNodeWithText("其他服务（填写地址）").performScrollTo().performClick()
         field("服务地址").performTextReplacement("https://gateway.invalid/v1")
-        connect()
-        compose.waitUntil(5_000) { compose.onAllNodesWithText("正在连接…").fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithTag("gateway-connect-loading").assertExists()
+        tapSave()
+        compose.waitUntil(5_000) { compose.onAllNodesWithText("正在保存…").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("gateway-save-loading").assertExists()
         assertNull(notice)
         compose.runOnIdle { pending.complete(connected) }
         compose.waitUntil(5_000) { notice != null }
@@ -165,10 +172,10 @@ class GatewayFormTest {
         var fetchedKey: String? = null
         form(fetch = { fetchedKey = it.credential?.concatToString(); DataResult.Loaded(discovered) })
         compose.onNodeWithText("DeepSeek").performScrollTo().performClick()
-        connect()
+        tapSave()
         assertEquals("", fetchedKey)
         compose.onNodeWithText("粘贴").performScrollTo().performClick()
-        connect()
+        tapSave()
         assertEquals("sk-from-clipboard", fetchedKey)
     }
 
@@ -178,13 +185,13 @@ class GatewayFormTest {
         var saved: GatewayEdit? = null
         form(listOf(profile), fetch = { fetched = it; DataResult.Loaded(discovered) }, save = { saved = it; connected })
         compose.onNodeWithText("编辑 AI 服务").assertExists()
-        connect()
+        tapSave()
         assertNull(fetched!!.credential)
         assertEquals("chat", saved!!.model)
         assertEquals(setOf("chat"), saved!!.selectedModels)
         saved = null
         compose.onNodeWithText("Groq").performScrollTo().performClick()
-        connect()
+        tapSave()
         assertEquals(0, fetched!!.credential!!.size)
     }
 
@@ -195,7 +202,7 @@ class GatewayFormTest {
         compose.onNodeWithText("配置模型").performScrollTo().performClick()
         compose.onNodeWithContentDescription("设为默认 other").performScrollTo().performClick()
         assertNull(saved)
-        connect()
+        tapSave()
         assertEquals("other", saved!!.model)
         assertEquals(setOf("chat", "other"), saved!!.selectedModels)
     }
@@ -214,12 +221,19 @@ class GatewayFormTest {
         assertEquals("saved", deleted)
     }
 
+    @Test fun `tapping advanced settings reveals options in a short viewport`() {
+        val profile = GatewayProfile(AgentId.CODEX, "saved", 2, "https://gateway.invalid/v1", "chat", "RESPONSES", true)
+        form(listOf(profile), viewportHeight = 420.dp)
+        compose.onNodeWithText("高级设置").performScrollTo().performTouchInput { click() }
+        compose.onNodeWithText("删除 AI 服务").assertIsDisplayed()
+    }
+
     @Test fun `the model picker searches past the first thirty models`() {
         val large = GatewayCatalogResult((1..446).map { GatewayModel("model-$it", "Model $it") }, null)
         form(fetch = { DataResult.Loaded(large) })
         compose.onNodeWithText("其他服务（填写地址）").performScrollTo().performClick()
         field("服务地址").performTextReplacement("https://gateway.invalid/v1")
-        connect()
+        tapSave()
         compose.onNodeWithText("Model 446 · model-446").assertDoesNotExist()
         field("搜索模型").performScrollTo().performTextReplacement("model-446")
         compose.onNodeWithText("Model 446 · model-446").assertExists()
