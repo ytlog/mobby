@@ -25,6 +25,8 @@ class SetupJourneyTest {
     @Before fun screenController() {
         ScreenUi.controller = object : com.github.ytlog.mobby.android.runtime.api.device.ScreenControlPort {
             override val state = MutableStateFlow(com.github.ytlog.mobby.android.runtime.api.device.ScreenControlState())
+            override suspend fun hasRootCommand() = false
+            override suspend fun checkRootPermission() = false
             override suspend fun select(mode: com.github.ytlog.mobby.android.runtime.api.device.ScreenMode) { state.value = state.value.copy(mode = mode) }
             override suspend fun connect() = Unit
             override suspend fun disconnect() = Unit

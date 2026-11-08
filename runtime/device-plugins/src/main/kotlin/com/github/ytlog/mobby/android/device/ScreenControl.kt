@@ -18,6 +18,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -25,6 +26,8 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.DataInputStream
 import java.io.DataOutputStream
+import java.io.File
+import java.io.IOException
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.util.concurrent.CompletableFuture
@@ -45,6 +48,29 @@ object ScreenControl {
     fun initialize(context: Context) {
         val saved = context.getSharedPreferences("screen-control", Context.MODE_PRIVATE).getString("mode", null)
         changes.value = ScreenControlState(mode = ScreenMode.restore(saved), adbPaired = EmbeddedAdb.paired(context), modeConfigured = saved != null)
+    }
+
+    suspend fun hasRootCommand(): Boolean = withContext(Dispatchers.IO) {
+        System.getenv("PATH").orEmpty().split(File.pathSeparatorChar).any { directory ->
+            directory.startsWith('/') && File(directory, "su").canExecute()
+        }
+    }
+
+    /** Run only when the user checks permission. The worker still verifies its own UID at connection. */
+    suspend fun checkRootPermission(): Boolean = runInterruptible(Dispatchers.IO) {
+        try {
+            val process = ProcessBuilder("su", "-c", "/system/bin/id -u").start()
+            try {
+                process.waitFor(30, TimeUnit.SECONDS) && process.exitValue() == 0 &&
+                    process.inputStream.bufferedReader().use { it.readLine() } == "0"
+            } finally {
+                process.destroyForcibly()
+            }
+        } catch (_: IOException) {
+            false
+        } catch (_: SecurityException) {
+            false
+        }
     }
 
     @Synchronized fun select(context: Context, mode: ScreenMode) {

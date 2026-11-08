@@ -60,6 +60,31 @@ class ScreenControlSettingsTest {
         compose.runOnIdle { assertEquals(ScreenMode.ADB, controller.state.value.mode) }
     }
 
+    @Test fun `root is disabled when the device cannot grant it`() {
+        val controller = TestController()
+        show(controller)
+        compose.onNodeWithText("虚拟屏幕（root）").assertIsNotEnabled().assertIsNotSelected()
+        compose.onNodeWithText("检查 Root 权限").assertDoesNotExist()
+        compose.onNodeWithText("虚拟屏幕（内置 ADB）").assertIsSelected()
+    }
+
+    @Test fun `root becomes selectable only after a successful permission check`() {
+        val controller = TestController(rootCommandAvailable = true)
+        show(controller)
+        val root = compose.onNodeWithText("虚拟屏幕（root）")
+        root.assertIsNotEnabled()
+        compose.runOnIdle { assertTrue(controller.events.isEmpty()) }
+        button("检查 Root 权限").performClick()
+        root.assertIsNotEnabled()
+        compose.onNodeWithText("mobby 没有可用的 Root 权限。").assertIsDisplayed()
+        compose.runOnIdle { controller.grantRoot = true }
+        button("检查 Root 权限").performClick()
+        root.assertIsEnabled().performClick().assertIsSelected()
+        compose.runOnIdle { assertEquals(ScreenMode.CURRENT, controller.state.value.mode) }
+        next()
+        compose.runOnIdle { assertEquals(ScreenMode.ROOT, controller.state.value.mode) }
+    }
+
     @Test fun `choosing a screen mode does not change configuration or show later tasks`() {
         val controller = TestController()
         show(controller)
@@ -378,10 +403,14 @@ class ScreenControlSettingsTest {
             }
         }
     }
-    private class TestController(initial: ScreenControlState = ScreenControlState(), val failure: String? = null) : ScreenControlPort {
+    private class TestController(initial: ScreenControlState = ScreenControlState(), val failure: String? = null,
+        private val rootCommandAvailable: Boolean = false) : ScreenControlPort {
         override val state = MutableStateFlow(initial)
         val events = mutableListOf<String>()
         var port = ""
+        var grantRoot = false
+        override suspend fun hasRootCommand() = rootCommandAvailable
+        override suspend fun checkRootPermission(): Boolean { events += "root-check"; return grantRoot }
         override suspend fun select(mode: ScreenMode) { state.value = state.value.copy(mode = mode, modeConfigured = true) }
         override suspend fun setAdbPort(port: String) { events += "port:$port"; this.port = port }
         override suspend fun connect() { events += "connect"; failure?.let { error(it) }; state.value = state.value.copy(connected = true) }

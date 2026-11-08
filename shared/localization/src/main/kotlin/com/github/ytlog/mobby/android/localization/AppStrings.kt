@@ -103,7 +103,7 @@ open class StringCatalog(private val fixedLanguage: AppLanguage? = null) {
     val screenAutoConnectAfterPair get() = text("配对成功返回后会自动尝试连接一次；失败时保留提示，由你决定重试。", "After pairing succeeds, returning here starts one connection attempt. If it fails, the error stays visible and you choose when to retry.")
     val screenManualPort get() = text("手动填写连接端口", "Enter the connection port manually")
     val screenAutomaticPortHelp get() = text("默认自动发现，通常不用填写。找不到服务时再展开。", "Automatic discovery is the default. Expand this only if the service cannot be found.")
-    val screenRootGuide get() = text("仅适用于已经有 root 的手机。点击连接后，在系统的超级用户授权弹窗中允许 mobby；本应用不会安装 root。一般用户可选择无障碍或内置 ADB。", "For phones that already have root. Tap Connect and allow mobby in your superuser manager. mobby does not install root. Most users can choose accessibility or built-in ADB.")
+    val screenRootGuide get() = text("连接后，屏幕操作在独立虚拟屏中运行。若超级用户管理器再次询问，请允许 mobby。", "Connect to operate on a separate virtual display. Allow mobby if your superuser manager asks again.")
     val screenSettingsUnavailable get() = text("无法打开该系统页面，请打开手机设置并按上方路径操作。", "This Settings page could not be opened. Open phone Settings and follow the path above.")
     val screenCheckOnReturn get() = text("返回后会自动检查进度，已完成的步骤无需重做。", "Progress is checked when you return; completed steps do not need repeating.")
 
@@ -166,6 +166,8 @@ open class StringCatalog(private val fixedLanguage: AppLanguage? = null) {
     val adbPairingFailed get() = text("配对失败，请重新打开系统配对弹窗并核对六位码；输入时保持系统弹窗打开。", "Pairing failed. Reopen the system pairing dialog and check its six-digit code. Keep that dialog open while entering the code.")
     val adbConnectionFailed get() = text("内置 ADB 连接失败。请检查无线调试和配对状态；自动发现失败时，填写无线调试首页的连接端口后重试。", "Built-in ADB connection failed. Check Wireless debugging and pairing. If discovery fails, enter the connection port from the main Wireless debugging page and retry.")
     val rootScreenMode get() = text("虚拟屏幕（root）", "Virtual screen (root)")
+    val checkScreenRootPermission get() = text("检查 Root 权限", "Check root permission")
+    val screenRootPermissionUnavailable get() = text("mobby 没有可用的 Root 权限。", "Root permission is unavailable to mobby.")
     val currentScreenModeHelp get() = text("在手机当前界面操作，需启用 mobby 无障碍服务。", "Operate the phone’s current screen. Enable mobby’s accessibility service.")
     val virtualScreenModeHelp get() = text("停留在 mobby 内，Agent 在独立虚拟屏中打开和操作应用。仅屏幕功能使用所选权限。", "Stay in mobby while the Agent opens and operates apps on a separate virtual display. Only screen control uses this permission.")
     val virtualScreenAndroidVersion get() = text("虚拟屏模式需要 Android 13 或更高版本。", "Virtual screen mode requires Android 13 or later.")

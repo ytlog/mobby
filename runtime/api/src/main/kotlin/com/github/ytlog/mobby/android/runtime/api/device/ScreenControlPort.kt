@@ -21,6 +21,8 @@ data class ScreenControlState(val mode: ScreenMode = ScreenMode.CURRENT, val con
 /** UI contract. Privilege acquisition and Android display APIs belong to the host implementation. */
 interface ScreenControlPort {
     val state: StateFlow<ScreenControlState>
+    suspend fun hasRootCommand(): Boolean
+    suspend fun checkRootPermission(): Boolean
     suspend fun select(mode: ScreenMode)
     suspend fun connect()
     suspend fun disconnect()

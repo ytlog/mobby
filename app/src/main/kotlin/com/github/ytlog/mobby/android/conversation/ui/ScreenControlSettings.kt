@@ -93,6 +93,20 @@ class ScreenControlSettingsActivity : ComponentActivity() {
     var pairingSuccessAtStart by draft::pairingSuccessAtStart
     var permissionRefresh by remember { mutableIntStateOf(0) }
     val status = statusOverride ?: rememberScreenSetupStatus(permissionRefresh, pairing = state.mode == ScreenMode.ADB)
+    var rootCommandAvailable by remember(controller) { mutableStateOf(false) }
+    var rootGranted by remember(controller) { mutableStateOf(false) }
+    LaunchedEffect(controller, step, sdk, status.resumed) {
+        if (!status.resumed) rootGranted = false
+        if (step == ScreenSetupStep.MODE && sdk >= 33 && status.resumed) {
+            rootCommandAvailable = controller.hasRootCommand()
+            if (!rootCommandAvailable) rootGranted = false
+        }
+    }
+    fun modeAvailable(mode: ScreenMode): Boolean = when (mode) {
+        ScreenMode.CURRENT -> true
+        ScreenMode.ADB -> sdk >= 33
+        ScreenMode.ROOT -> sdk >= 33 && rootGranted
+    }
     fun freshStatus() = statusOverride ?: ScreenSetupStatus.read(context, pairing = controller.state.value.mode == ScreenMode.ADB)
     fun go(target: ScreenSetupStep) {
         focus.clearFocus()
@@ -279,6 +293,7 @@ class ScreenControlSettingsActivity : ComponentActivity() {
         when {
             step == ScreenSetupStep.MODE -> execute {
                 check(!state.active && !state.adbPairing) { AppStrings.screenModeBusy }
+                if (!modeAvailable(selectedMode)) return@execute
                 if (selectedMode != state.mode || !state.modeConfigured) {
                     controller.select(selectedMode)
                     connectionPort = ""
@@ -310,7 +325,7 @@ class ScreenControlSettingsActivity : ComponentActivity() {
     }
     val enabled = !state.active && (step != ScreenSetupStep.MODE || !state.adbPairing) &&
         (step !in setOf(ScreenSetupStep.CONNECT, ScreenSetupStep.PORT, ScreenSetupStep.DISCONNECT) || !state.adbPairing) &&
-        (step != ScreenSetupStep.MODE || selectedMode == ScreenMode.CURRENT || status.sdk >= 33) &&
+        (step != ScreenSetupStep.MODE || modeAvailable(selectedMode)) &&
         (step != ScreenSetupStep.DISCONNECT || state.connected)
     val chrome = if (embedded) Modifier.fillMaxSize() else Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()
     val path = screenSetupPath(if (step == ScreenSetupStep.MODE) selectedMode else state.mode)
@@ -351,11 +366,22 @@ class ScreenControlSettingsActivity : ComponentActivity() {
                 ScreenSetupStep.MODE -> {
                     if (sdk >= 33) Text(AppStrings.adbScreenRecommendation, style = MaterialTheme.typography.bodyMedium)
                     val modes = if (sdk >= 33) listOf(ScreenMode.ADB, ScreenMode.CURRENT, ScreenMode.ROOT) else ScreenMode.entries
+                    val canChoose = !busy && !state.active && !state.adbPairing
                     SettingsGroup {
                         modes.forEachIndexed { index, mode ->
                             if (index > 0) GroupDivider()
-                            ChoiceRow(screenModeLabel(mode), selectedMode == mode, { selectedMode = mode }, enabled = !busy && !state.active && !state.adbPairing && (mode == ScreenMode.CURRENT || sdk >= 33))
+                            val available = modeAvailable(mode)
+                            ChoiceRow(screenModeLabel(mode), available && selectedMode == mode, { selectedMode = mode },
+                                enabled = canChoose && available)
                         }
+                    }
+                    if (sdk >= 33 && !rootGranted) {
+                        if (rootCommandAvailable) {
+                            TextButton(onClick = { execute {
+                                rootGranted = controller.checkRootPermission()
+                                if (!rootGranted) error = AppStrings.screenRootPermissionUnavailable
+                            } }, enabled = canChoose) { Text(AppStrings.checkScreenRootPermission) }
+                        } else SettingsCaption(AppStrings.screenRootPermissionUnavailable)
                     }
                     Text(when (selectedMode) { ScreenMode.CURRENT -> AppStrings.currentScreenModeHelp; ScreenMode.ADB -> AppStrings.virtualScreenModeHelp; ScreenMode.ROOT -> AppStrings.screenRootGuide },
                         style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
