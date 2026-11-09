@@ -276,57 +276,93 @@ final class VirtualScreen implements AutoCloseable {
         } finally { root.recycle(); }
     }
 
+    /**
+     * Windows on the virtual display, topmost first. A page's field can sit below a popup of the same app, such as the
+     * tooltip Douyin shows over its search box, so manual text looks up the window that owns the focus or the touch.
+     */
+    private List<AccessibilityWindowInfo> virtualWindows() {
+        List<AccessibilityWindowInfo> windows = automation.getWindowsOnAllDisplays().get(displayId);
+        if (windows == null) return new ArrayList<>();
+        List<AccessibilityWindowInfo> sorted = new ArrayList<>(windows);
+        sorted.sort(Comparator.comparingInt(AccessibilityWindowInfo::getLayer).reversed());
+        return sorted;
+    }
+
+    private static void recycle(List<AccessibilityWindowInfo> windows) {
+        for (AccessibilityWindowInfo window : windows) window.recycle();
+    }
+
+    /** Typing goes to the topmost application window that holds an input focus; a popup that takes no focus is skipped. */
     private void rememberFocusedManualTextTarget() {
-        AccessibilityNodeInfo root = optionalVirtualRoot();
-        if (root == null) return;
+        List<AccessibilityWindowInfo> windows = virtualWindows();
         try {
-            AccessibilityNodeInfo focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
-            if (focused != null) {
-                if (editablePrivateField(focused)) {
-                    clearPrivateInputTarget();
-                    privateInputTargets.add(focused);
-                } else focused.recycle();
+            for (AccessibilityWindowInfo window : windows) {
+                if (window.getType() != AccessibilityWindowInfo.TYPE_APPLICATION) continue;
+                AccessibilityNodeInfo root = window.getRoot();
+                if (root == null) continue;
+                try {
+                    AccessibilityNodeInfo focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
+                    if (focused == null) continue;
+                    if (editablePrivateField(focused)) {
+                        clearPrivateInputTarget();
+                        privateInputTargets.add(focused);
+                    } else focused.recycle();
+                    return;
+                } finally { root.recycle(); }
             }
-        } finally { root.recycle(); }
+        } finally { recycle(windows); }
     }
 
-    private AccessibilityNodeInfo optionalVirtualRoot() {
-        try { return root(); }
-        catch (IllegalStateException failure) {
-            if (!"no_virtual_window".equals(failure.getMessage()) && !"no_virtual_app_window".equals(failure.getMessage())) throw failure;
-            return null;
-        }
-    }
-
+    /** The finger lands on the topmost window under it. A field below a covering window, or under the keyboard, is not chosen. */
     private void rememberManualTextTargetAt(int x, int y) {
-        AccessibilityNodeInfo root = optionalVirtualRoot();
-        if (root == null) return;
-        int[] deepest = {-1};
+        List<AccessibilityWindowInfo> windows = virtualWindows();
         Rect bounds = new Rect();
         try {
-            walk(root, 0, new int[]{0}, (node, depth) -> {
-                if (depth < deepest[0] || !editablePrivateField(node)) return;
-                node.getBoundsInScreen(bounds);
-                if (!bounds.contains(x, y)) return;
-                if (depth > deepest[0]) {
-                    clearPrivateInputTarget();
-                    deepest[0] = depth;
-                }
-                privateInputTargets.add(AccessibilityNodeInfo.obtain(node));
-            });
-            if (privateInputTargets.size() != 1) clearPrivateInputTarget();
-        } finally { root.recycle(); }
+            for (AccessibilityWindowInfo window : windows) {
+                window.getBoundsInScreen(bounds);
+                if (!bounds.contains(x, y)) continue;
+                if (window.getType() != AccessibilityWindowInfo.TYPE_APPLICATION) return;
+                AccessibilityNodeInfo root = window.getRoot();
+                if (root == null) return;
+                int[] deepest = {-1};
+                try {
+                    walk(root, 0, new int[]{0}, (node, depth) -> {
+                        if (depth < deepest[0] || !editablePrivateField(node)) return;
+                        node.getBoundsInScreen(bounds);
+                        if (!bounds.contains(x, y)) return;
+                        if (depth > deepest[0]) {
+                            clearPrivateInputTarget();
+                            deepest[0] = depth;
+                        }
+                        privateInputTargets.add(AccessibilityNodeInfo.obtain(node));
+                    });
+                    if (privateInputTargets.size() != 1) clearPrivateInputTarget();
+                } finally { root.recycle(); }
+                return;
+            }
+        } finally { recycle(windows); }
+    }
+
+    /** Whether the window that held [node] is still on the virtual display and still shows the same app. */
+    private boolean windowStillShows(AccessibilityNodeInfo node) {
+        List<AccessibilityWindowInfo> windows = virtualWindows();
+        try {
+            for (AccessibilityWindowInfo window : windows) {
+                if (window.getId() != node.getWindowId()) continue;
+                AccessibilityNodeInfo root = window.getRoot();
+                if (root == null) return false;
+                try { return Objects.equals(root.getPackageName(), node.getPackageName()); }
+                finally { root.recycle(); }
+            }
+            return false;
+        } finally { recycle(windows); }
     }
 
     private AccessibilityNodeInfo validatedManualTextTarget() {
         if (privateInputTargets.size() != 1) throw new IllegalStateException("manual_input_target_missing");
         if (privateValues.size() >= 20) throw new IllegalStateException("private_input_field_count");
         AccessibilityNodeInfo selected = privateInputTargets.get(0);
-        AccessibilityNodeInfo currentRoot = root();
-        try {
-            if (currentRoot.getWindowId() != selected.getWindowId() || !Objects.equals(currentRoot.getPackageName(), selected.getPackageName()))
-                throw new IllegalStateException("private_input_fields_changed");
-        } finally { currentRoot.recycle(); }
+        if (!windowStillShows(selected)) throw new IllegalStateException("private_input_fields_changed");
         AccessibilityNodeInfo field = AccessibilityNodeInfo.obtain(selected);
         boolean valid = false;
         try {

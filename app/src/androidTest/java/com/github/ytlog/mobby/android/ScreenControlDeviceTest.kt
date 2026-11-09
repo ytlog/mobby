@@ -225,6 +225,8 @@ class ScreenControlDeviceTest {
                     val focusButton = Regex("Focus button: (\\d+),(\\d+)").find(afterPrivateInput.getString("text"))!!
                     val focusX = focusButton.groupValues[1].toFloat() / geometry.groupValues[3].toFloat()
                     val focusY = focusButton.groupValues[2].toFloat() / geometry.groupValues[4].toFloat()
+                    // Apps such as Douyin show a tooltip popup over the page; the field stays in the page's window below it.
+                    assertTrue(inputProbe(ScreenControlFixtureActivity.SHOW_TIP))
                     touch(ScreenTouchPhase.DOWN, focusX, focusY)
                     touch(ScreenTouchPhase.UP, focusX, focusY)
                     assertTrue("The page must focus its field without a tap on the field",
@@ -243,6 +245,7 @@ class ScreenControlDeviceTest {
                     ScreenControl.manualInput(context, owner, ManualScreenInput.Text(manualCode))
                     assertTrue("Manual text must reach the originally selected field",
                         inputProbe(ScreenControlFixtureActivity.CHECK_MANUAL_INPUT))
+                    assertTrue(inputProbe(ScreenControlFixtureActivity.HIDE_TIP))
                     touch(ScreenTouchPhase.DOWN, x, y)
                     touch(ScreenTouchPhase.UP, x, y)
                     val track = Regex("Slider track: (\\d+),(\\d+),(\\d+)").find(afterPrivateInput.getString("text"))!!

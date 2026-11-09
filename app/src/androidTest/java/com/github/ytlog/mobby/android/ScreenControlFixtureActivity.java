@@ -17,9 +17,13 @@ public final class ScreenControlFixtureActivity extends Activity {
     static final String CHECK_MANUAL_INPUT = "com.github.ytlog.mobby.android.test.CHECK_MANUAL_INPUT";
     static final String CHECK_MANUAL_SCROLL = "com.github.ytlog.mobby.android.test.CHECK_MANUAL_SCROLL";
     static final String CHECK_MANUAL_SLIDER = "com.github.ytlog.mobby.android.test.CHECK_MANUAL_SLIDER";
+    /** A tooltip popup above the page, as apps show over a search box. It takes no focus and covers no control. */
+    static final String SHOW_TIP = "com.github.ytlog.mobby.android.test.SHOW_TIP";
+    static final String HIDE_TIP = "com.github.ytlog.mobby.android.test.HIDE_TIP";
     static final String MANUAL_TEXT = "mobby-manual-code-fixture";
     private int count;
     private BroadcastReceiver inputProbe;
+    private PopupWindow tip;
     @Override public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         LinearLayout content = new LinearLayout(this); content.setOrientation(LinearLayout.VERTICAL);
@@ -84,6 +88,14 @@ public final class ScreenControlFixtureActivity extends Activity {
                     passed = scroll.getScrollY() > intent.getIntExtra("previousY", Integer.MAX_VALUE);
                 } else if (CHECK_MANUAL_SLIDER.equals(intent.getAction())) {
                     passed = Math.abs(slider.getProgress() - intent.getIntExtra("progress", -100)) <= 1;
+                } else if (SHOW_TIP.equals(intent.getAction())) {
+                    TextView label = new TextView(ScreenControlFixtureActivity.this); label.setText("Probe tip");
+                    tip = new PopupWindow(label, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, false);
+                    tip.showAtLocation(content, android.view.Gravity.TOP | android.view.Gravity.END, 0, 0);
+                    passed = tip.isShowing();
+                } else if (HIDE_TIP.equals(intent.getAction())) {
+                    if (tip != null) tip.dismiss();
+                    passed = tip != null && !tip.isShowing();
                 }
                 setResultCode(passed ? RESULT_OK : RESULT_CANCELED);
             }
@@ -93,10 +105,13 @@ public final class ScreenControlFixtureActivity extends Activity {
         filter.addAction(CHECK_MANUAL_INPUT);
         filter.addAction(CHECK_MANUAL_SCROLL);
         filter.addAction(CHECK_MANUAL_SLIDER);
+        filter.addAction(SHOW_TIP);
+        filter.addAction(HIDE_TIP);
         registerReceiver(inputProbe, filter, Context.RECEIVER_EXPORTED);
     }
     @Override protected void onDestroy() {
         if (inputProbe != null) unregisterReceiver(inputProbe);
+        if (tip != null) tip.dismiss();
         super.onDestroy();
     }
     public static final class Detail extends Activity {
