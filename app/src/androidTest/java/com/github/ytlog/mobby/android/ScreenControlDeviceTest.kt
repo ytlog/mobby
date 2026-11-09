@@ -187,6 +187,8 @@ class ScreenControlDeviceTest {
                     SystemClock.sleep(3000)
                     verifyBackgroundPreview(returned)
                     perform("click", mapOf("query" to "Secure field"))
+                    // A tooltip popup without fields must not hide the page's fields from the private form.
+                    assertTrue(inputProbe(ScreenControlFixtureActivity.SHOW_TIP))
                     val fixture = "mobby-probe-only-secret"
                     val response = java.util.concurrent.CompletableFuture.supplyAsync {
                         request("request_input")
@@ -203,6 +205,7 @@ class ScreenControlDeviceTest {
                     val result = response.get(10, java.util.concurrent.TimeUnit.SECONDS)
                     assertEquals("succeeded", result.optString("status"))
                     assertFalse(result.toString().contains(fixture))
+                    assertTrue(inputProbe(ScreenControlFixtureActivity.HIDE_TIP))
                     val afterPrivateInput = perform("snapshot")
                     assertFalse(afterPrivateInput.toString().contains(fixture))
                     assertFalse(afterPrivateInput.toString().contains("probe-code-fixture"))

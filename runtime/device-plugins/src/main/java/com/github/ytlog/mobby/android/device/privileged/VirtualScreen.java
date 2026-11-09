@@ -259,27 +259,34 @@ final class VirtualScreen implements AutoCloseable {
         });
     }
 
+    /**
+     * The focused field, or every editable field of the topmost application window that has one. A popup without fields,
+     * such as the tooltip Douyin shows over its search box, does not hide the page's fields below it.
+     */
     private List<AccessibilityNodeInfo> privateInputFields(boolean focusedOnly) {
-        AccessibilityNodeInfo root = root();
+        if (focusedOnly) {
+            AccessibilityNodeInfo focused = focusedEditableField();
+            return focused == null ? List.of() : List.of(focused);
+        }
+        List<AccessibilityWindowInfo> windows = virtualWindows();
         try {
-            if (focusedOnly) {
-                AccessibilityNodeInfo focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
-                if (focused != null && editablePrivateField(focused)) return List.of(focused);
-                if (focused != null) focused.recycle();
-                return List.of();
+            for (AccessibilityWindowInfo window : windows) {
+                if (window.getType() != AccessibilityWindowInfo.TYPE_APPLICATION) continue;
+                AccessibilityNodeInfo root = window.getRoot();
+                if (root == null) continue;
+                List<AccessibilityNodeInfo> fields = new ArrayList<>();
+                try {
+                    walk(root, 0, new int[]{0}, (node, depth) -> {
+                        if (editablePrivateField(node)) fields.add(AccessibilityNodeInfo.obtain(node));
+                    });
+                } finally { root.recycle(); }
+                if (!fields.isEmpty()) return fields;
             }
-            List<AccessibilityNodeInfo> fields = new ArrayList<>();
-            walk(root, 0, new int[]{0}, (node, depth) -> {
-                if (editablePrivateField(node)) fields.add(AccessibilityNodeInfo.obtain(node));
-            });
-            return fields;
-        } finally { root.recycle(); }
+            return List.of();
+        } finally { recycle(windows); }
     }
 
-    /**
-     * Windows on the virtual display, topmost first. A page's field can sit below a popup of the same app, such as the
-     * tooltip Douyin shows over its search box, so manual text looks up the window that owns the focus or the touch.
-     */
+    /** Windows on the virtual display, topmost first. A page's field can sit below a popup window of the same app. */
     private List<AccessibilityWindowInfo> virtualWindows() {
         List<AccessibilityWindowInfo> windows = automation.getWindowsOnAllDisplays().get(displayId);
         if (windows == null) return new ArrayList<>();
@@ -292,8 +299,11 @@ final class VirtualScreen implements AutoCloseable {
         for (AccessibilityWindowInfo window : windows) window.recycle();
     }
 
-    /** Typing goes to the topmost application window that holds an input focus; a popup that takes no focus is skipped. */
-    private void rememberFocusedManualTextTarget() {
+    /**
+     * Typing goes to the topmost application window that holds an input focus; a popup that takes no focus is skipped.
+     * Returns that focus when it is an editable field, otherwise null.
+     */
+    private AccessibilityNodeInfo focusedEditableField() {
         List<AccessibilityWindowInfo> windows = virtualWindows();
         try {
             for (AccessibilityWindowInfo window : windows) {
@@ -303,14 +313,20 @@ final class VirtualScreen implements AutoCloseable {
                 try {
                     AccessibilityNodeInfo focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
                     if (focused == null) continue;
-                    if (editablePrivateField(focused)) {
-                        clearPrivateInputTarget();
-                        privateInputTargets.add(focused);
-                    } else focused.recycle();
-                    return;
+                    if (editablePrivateField(focused)) return focused;
+                    focused.recycle();
+                    return null;
                 } finally { root.recycle(); }
             }
+            return null;
         } finally { recycle(windows); }
+    }
+
+    private void rememberFocusedManualTextTarget() {
+        AccessibilityNodeInfo focused = focusedEditableField();
+        if (focused == null) return;
+        clearPrivateInputTarget();
+        privateInputTargets.add(focused);
     }
 
     /** The finger lands on the topmost window under it. A field below a covering window, or under the keyboard, is not chosen. */
