@@ -119,6 +119,20 @@ object ScreenControl {
         }
     }
 
+    /** Restores a lost ADB channel while a task holds the screen. Failures that need the user are [DeviceFailure]s. */
+    private fun reconnectAdbDuringTask(context: Context) {
+        if (android.provider.Settings.Global.getInt(context.contentResolver, "adb_wifi_enabled", -1) == 0)
+            deviceFailure(DeviceErrorCode.UNAVAILABLE, AppStrings.adbWirelessDebuggingUnreachable)
+        if (!state.value.adbPaired) deviceFailure(DeviceErrorCode.ADB_AUTHORIZATION_REQUIRED, AppStrings.adbScreenAuthorizationRequired)
+        try {
+            kotlinx.coroutines.runBlocking { connect(context, null, null) }
+        } catch (failure: AdbConnectionException) {
+            if (failure.reason == AdbConnectionFailure.PAIRING_REQUIRED)
+                deviceFailure(DeviceErrorCode.ADB_AUTHORIZATION_REQUIRED, failure.message ?: AppStrings.adbScreenAuthorizationRequired)
+            throw failure
+        }
+    }
+
     internal suspend fun connectAfterPairing(context: Context, pairingSuccess: Long, connectionPort: Int?) =
         connect(context, pairingSuccess, connectionPort)
 
@@ -248,6 +262,7 @@ object ScreenControl {
             if (mode == ScreenMode.ADB) RecoveringAdbScreenSession(
                 initial, { channel?.alive == true && state.value.active }, { channel?.alive == true },
                 checkAuthorization = { channel?.requireAuthorization() },
+                reconnect = { reconnectAdbDuringTask(context) },
             ) {
                 synchronized(this) {
                     check(state.value.mode == ScreenMode.ADB)

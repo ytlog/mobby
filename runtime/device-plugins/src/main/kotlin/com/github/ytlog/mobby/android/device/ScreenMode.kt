@@ -23,6 +23,8 @@ internal class RecoveringAdbScreenSession(
     private val displayAlive: () -> Boolean,
     private val connected: () -> Boolean,
     private val checkAuthorization: () -> Unit = {},
+    private val reconnect: () -> Unit = {},
+    private val reconnectTimeoutMillis: Long = 60_000,
     private val reopen: () -> ScreenSession,
 ) : ScreenSession {
     private var needsObservation = false
@@ -46,13 +48,24 @@ internal class RecoveringAdbScreenSession(
         return result
     }
 
+    /**
+     * A running task holds the screen, so nothing else reconnects for it. Recovery reconnects with the saved pairing
+     * itself. A [DeviceFailure] from [reconnect] (wireless debugging off, pairing revoked) needs the user and ends
+     * recovery at once; other failures (worker restarting, endpoint briefly missing) are retried until the deadline.
+     */
     private fun recover(checkActive: () -> Unit) {
-        val deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(60)
+        val deadline = System.nanoTime() + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(reconnectTimeoutMillis)
+        var lastFailure: Exception? = null
         while (!connected()) {
             checkActive()
             checkAuthorization()
-            if (System.nanoTime() >= deadline)
-                throw java.util.concurrent.TimeoutException(AppStrings.adbScreenReconnectTimedOut)
+            try { reconnect() }
+            catch (cancelled: java.util.concurrent.CancellationException) { throw cancelled }
+            catch (failure: DeviceFailure) { throw failure }
+            catch (failure: Exception) { lastFailure = failure }
+            if (connected()) break
+            if (System.nanoTime() >= deadline) deviceFailure(DeviceErrorCode.TIMEOUT,
+                listOfNotNull(AppStrings.adbScreenReconnectTimedOut, lastFailure?.message?.takeIf { it.isNotBlank() }).joinToString(" "))
             Thread.sleep(200)
         }
         checkActive()
