@@ -220,6 +220,10 @@ class DevicePluginTest {
         assertTrue(markdown.contains("keyboard"))
         assertTrue(markdown.contains("USER_IN_CONTROL"))
         assertTrue(markdown.contains("user_in_control"))
+        // A model that reached a login page ended its turn with options in chat instead of opening the prompt.
+        assertTrue(markdown.contains("login page"))
+        assertTrue(markdown.contains("Do not end your turn to ask in chat"))
+        assertTrue(markdown.contains("the user accepts or declines it there"))
     }
 
     @Test fun `skill text includes only the actions enabled for this run`() {

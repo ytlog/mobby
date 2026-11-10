@@ -499,7 +499,8 @@ object ScreenControl {
         execution.waiting("screen.user_control", id, allowCancel = false)
         while (state.value.manualControlId == id) {
             checkActive()
-            if (System.nanoTime() >= deadline) deviceFailure(DeviceErrorCode.TIMEOUT, AppStrings.virtualScreenStillInUserControl)
+            // Still in the user's hands, not unanswered: the agent keeps waiting with another request_handoff.
+            if (System.nanoTime() >= deadline) deviceFailure(DeviceErrorCode.USER_IN_CONTROL, AppStrings.virtualScreenStillInUserControl)
             Thread.sleep(100)
         }
         checkActive()
