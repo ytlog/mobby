@@ -427,14 +427,6 @@ object ScreenControl {
         return connection to display
     }
 
-    /** The page can be hidden while the user still owns the display. */
-    fun showTakeoverKeyboard(context: Context, id: String, visible: Boolean) = ScreenCoordinator.chatAction {
-        if (state.value.manualControlId != id) return@chatAction
-        val (connection, display) = manualDisplay(context, id, requireInteractive = false)
-        request(connection, "manual_ime", mapOf("visible" to visible.toString()), expectedDisplay = display)
-        Unit
-    }
-
     fun prepareManualText(context: Context, id: String): String = ScreenCoordinator.chatAction {
         val (connection, display) = manualDisplay(context, id)
         request(connection, "manual_prepare_text", expectedDisplay = display).getString("label")

@@ -35,7 +35,6 @@ class SetupJourneyTest {
             override fun cancelAdbPairing() = Unit
             override suspend fun refreshPreview() = Unit
             override suspend fun takeOver(): String = error("No virtual display in the setup fixture")
-            override suspend fun showTakeoverKeyboard(id: String, visible: Boolean) = Unit
             override suspend fun prepareManualText(id: String): String = error("No virtual display in the setup fixture")
             override suspend fun manualInput(id: String, input: com.github.ytlog.mobby.android.runtime.api.device.ManualScreenInput) = Unit
             override suspend fun handBack(id: String) = Unit

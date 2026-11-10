@@ -1,5 +1,6 @@
 package com.github.ytlog.mobby.android.conversation.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -43,17 +44,14 @@ import com.github.ytlog.mobby.android.runtime.api.device.ManualScreenInput
 import com.github.ytlog.mobby.android.runtime.api.device.ScreenControlPort
 import com.github.ytlog.mobby.android.runtime.api.device.ScreenTouchPhase
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 @Composable
 internal fun ManualVirtualScreenDialog(controller: ScreenControlPort, id: String, bitmap: ImageBitmap?, screenError: String?,
-    onMinimize: () -> Unit, keyboardLease: Mutex = remember { Mutex() }) {
+    onMinimize: () -> Unit) {
     val scope = rememberCoroutineScope()
     var busy by remember(id) { mutableStateOf(false) }
     var inputTarget by remember(id) { mutableStateOf<String?>(null) }
@@ -101,45 +99,30 @@ internal fun ManualVirtualScreenDialog(controller: ScreenControlPort, id: String
             updates
         }
     })
-    var keyboardReady by remember(id) { mutableStateOf(false) }
-    LaunchedEffect(id, inputTarget == null) {
-        if (inputTarget == null) keyboardLease.withLock {
-            try {
-                controller.showTakeoverKeyboard(id, true)
-                keyboardReady = true
-                awaitCancellation()
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (failure: Exception) {
-                error = failure.message ?: UiStrings.virtualScreenOperationFailed
-            } finally {
-                withContext(NonCancellable) {
-                    try { controller.showTakeoverKeyboard(id, false) }
-                    catch (failure: Exception) { error = failure.message ?: UiStrings.virtualScreenOperationFailed }
-                    finally { keyboardReady = false }
-                }
-            }
-        }
-    }
     val canOperatePreview = !busy && inputTarget == null
+    // The page window never takes focus, so Back reaches the activity below it.
+    BackHandler(enabled = inputTarget == null) { if (canOperatePreview) onMinimize() }
     Dialog(onDismissRequest = { if (canOperatePreview) onMinimize() }, properties = DialogProperties(usePlatformDefaultWidth = false,
         dismissOnClickOutside = false)) {
-        // Every touch on this page focuses its window again. Android hides the keyboard shown in the virtual display
-        // when a window that may use the input method gains focus, so this window opts out and keeps Back.
+        // A field tapped in the virtual screen opens the keyboard on the main screen. Android hides it when a window
+        // that may use the input method gains focus, and layers it below a focusable window that opts out of it, so
+        // this page never takes focus and still lets the keyboard sit above it.
         val window = (LocalView.current.parent as DialogWindowProvider).window
-        SideEffect { window.addFlags(WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM) }
+        SideEffect {
+            window.addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM)
+        }
         ManualVirtualScreenPanel(
             bitmap = bitmap,
             error = if (inputTarget == null) error ?: screenError else null,
             enabled = canOperatePreview,
-            screenTouch = if (keyboardReady) Modifier.pointerInput(id) { forwardScreenTouches { startTouch(it) } } else Modifier,
+            screenTouch = Modifier.pointerInput(id) { forwardScreenTouches { startTouch(it) } },
             onMinimize = onMinimize,
             onBack = { execute { controller.manualInput(id, ManualScreenInput.Back) } },
             onEnterText = { execute { inputTarget = controller.prepareManualText(id) } },
             onHandBack = { execute { controller.handBack(id) } },
         )
     }
-    inputTarget?.takeUnless { keyboardReady }?.let { target ->
+    inputTarget?.let { target ->
         val focus = remember { FocusRequester() }
         AlertDialog(
             onDismissRequest = { if (!busy) closeEditor() },

@@ -58,10 +58,7 @@ final class VirtualScreen implements AutoCloseable {
     private int displayId = -1;
     private Context context;
     private Object taskManager;
-    private Object windowManager;
-    private java.lang.reflect.Method setDisplayImePolicy;
-    // WindowManager.DISPLAY_IME_POLICY_LOCAL and DISPLAY_IME_POLICY_FALLBACK_DISPLAY.
-    private static final int IME_ON_VIRTUAL_DISPLAY = 0;
+    // WindowManager.DISPLAY_IME_POLICY_FALLBACK_DISPLAY.
     private static final int IME_ON_MAIN_DISPLAY = 1;
     private Class<?> taskInterface;
     private Method getTasks;
@@ -105,10 +102,10 @@ final class VirtualScreen implements AutoCloseable {
             if (displayId == Display.DEFAULT_DISPLAY) throw new IllegalStateException("main_display_refused");
             IBinder windowBinder = (IBinder) Class.forName("android.os.ServiceManager").getMethod("getService", String.class).invoke(null, "window");
             Class<?> windowInterface = Class.forName("android.view.IWindowManager");
-            windowManager = Class.forName("android.view.IWindowManager$Stub").getMethod("asInterface", IBinder.class).invoke(null, windowBinder);
-            setDisplayImePolicy = windowInterface.getMethod("setDisplayImePolicy", int.class, int.class);
-            // Outside the takeover page, Android routes any keyboard request to the main display.
-            setImePolicy(IME_ON_MAIN_DISPLAY);
+            Object windowManager = Class.forName("android.view.IWindowManager$Stub").getMethod("asInterface", IBinder.class).invoke(null, windowBinder);
+            // Every keyboard a virtual display field requests shows on the main screen and types into that field,
+            // also while the user operates the display from the takeover page.
+            windowInterface.getMethod("setDisplayImePolicy", int.class, int.class).invoke(windowManager, displayId, IME_ON_MAIN_DISPLAY);
             Class<?> connection = Class.forName("android.app.IUiAutomationConnection");
             Object binder = Class.forName("android.app.UiAutomationConnection").getConstructor().newInstance();
             automation = (UiAutomation) UiAutomation.class.getConstructor(Looper.class, connection).newInstance(callbacks.getLooper(), binder);
@@ -131,16 +128,10 @@ final class VirtualScreen implements AutoCloseable {
                 manualControl = true;
                 return metadata(new JSONObject());
             }
-            if ("manual_ime".equals(action)) {
-                if (!manualControl) throw new IllegalStateException("manual_control_inactive");
-                setImePolicy("true".equals(args.getString("visible")) ? IME_ON_VIRTUAL_DISPLAY : IME_ON_MAIN_DISPLAY);
-                return metadata(new JSONObject());
-            }
             if ("manual_end".equals(action)) {
                 if (!manualControl) throw new IllegalStateException("manual_control_inactive");
                 cancelManualTouch();
                 clearPrivateInputTarget();
-                setImePolicy(IME_ON_MAIN_DISPLAY);
                 synchronized (frameLock) {
                     try (Image discarded = reader.acquireLatestImage()) { }
                     jpeg = null;
@@ -276,10 +267,6 @@ final class VirtualScreen implements AutoCloseable {
             } finally { root.recycle(); }
             return observe("Action delivered to virtual display", true);
         });
-    }
-
-    private void setImePolicy(int policy) throws Exception {
-        setDisplayImePolicy.invoke(windowManager, displayId, policy);
     }
 
     /**

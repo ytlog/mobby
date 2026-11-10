@@ -16,7 +16,6 @@ import com.github.ytlog.mobby.android.runtime.api.device.ScreenTouchPhase
 import java.lang.reflect.Proxy
 import android.view.WindowManager
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -111,9 +110,7 @@ class VirtualScreenPreviewCardTest {
         compose.onNode(hasSetTextAction()).assertDoesNotExist()
         compose.onNodeWithText(UiStrings.virtualScreenManualInput).performClick()
         compose.runOnIdle {
-            assertEquals(listOf("showTakeoverKeyboard" to listOf("handoff-fixture", true),
-                "prepareManualText" to listOf("handoff-fixture"),
-                "showTakeoverKeyboard" to listOf("handoff-fixture", false)), calls)
+            assertEquals(listOf("prepareManualText" to listOf("handoff-fixture")), calls)
         }
         compose.onAllNodes(isDialog()).assertCountEquals(2)
         compose.onNode(hasSetTextAction()).assertIsFocused()
@@ -161,11 +158,9 @@ class VirtualScreenPreviewCardTest {
         compose.onNodeWithText(UiStrings.virtualScreenMinimizeManual).performClick()
         compose.runOnIdle {
             assertTrue(minimized.value)
-            assertEquals("showTakeoverKeyboard" to listOf("handoff-fixture", false), calls.last())
             assertTrue(calls.none { it.first == "handBack" })
             minimized.value = false
         }
-        compose.runOnIdle { assertEquals("showTakeoverKeyboard" to listOf("handoff-fixture", true), calls.last()) }
         compose.onNodeWithText(UiStrings.virtualScreenHandBack).performClick()
         compose.runOnIdle { assertEquals("handBack" to listOf("handoff-fixture"), calls.last()) }
     }
@@ -192,18 +187,24 @@ class VirtualScreenPreviewCardTest {
         compose.onNodeWithText(UiStrings.virtualScreenManualPrivateHint).assertIsDisplayed()
     }
 
-    @Test fun touchingTheTakeoverPageLeavesTheVirtualDisplayKeyboardOpen() {
+    @Test fun theKeyboardOfAVirtualScreenFieldStaysAboveTheTakeoverPage() {
         val controller = Proxy.newProxyInstance(ScreenControlPort::class.java.classLoader,
             arrayOf(ScreenControlPort::class.java)) { _, _, _ -> Unit } as ScreenControlPort
+        var minimized = false
+        lateinit var back: androidx.activity.OnBackPressedDispatcher
         compose.setContent { MaterialTheme {
-            ManualVirtualScreenDialog(controller, "handoff-fixture", ImageBitmap(72, 128), null, onMinimize = {})
+            back = checkNotNull(androidx.activity.compose.LocalOnBackPressedDispatcherOwner.current).onBackPressedDispatcher
+            ManualVirtualScreenDialog(controller, "handoff-fixture", ImageBitmap(72, 128), null, onMinimize = { minimized = true })
         } }
         compose.runOnIdle {
-            // Each touch on the page focuses its window again. A window that may use the input method makes Android
-            // hide the keyboard the user is typing on in the virtual display.
             val flags = ShadowDialog.getLatestDialog().window!!.attributes.flags
-            assertFalse(WindowManager.LayoutParams.mayUseInputMethod(flags))
-            assertEquals("the page still receives Back", 0, flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
+            // The main-screen keyboard types into the virtual screen's field. A touch on the page must not focus it,
+            // which would hide that keyboard. Android layers the keyboard above a window only when both flags are set
+            // or both are clear, so the page sets both.
+            val imeFlags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM
+            assertEquals(imeFlags, flags and imeFlags)
+            back.onBackPressed()
+            assertTrue("Back still minimizes the page", minimized)
         }
     }
 

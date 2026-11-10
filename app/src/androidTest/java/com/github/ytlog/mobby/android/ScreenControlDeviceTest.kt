@@ -286,17 +286,19 @@ class ScreenControlDeviceTest {
                     assertTrue("The virtual screen must scroll while the finger is still down",
                         inputProbe(ScreenControlFixtureActivity.CHECK_MANUAL_SCROLL, "previousY", previousY))
                     touch(ScreenTouchPhase.UP, 0.5f, 0.40f)
-                    // During the user's takeover a field opens the system keyboard inside the virtual display.
-                    ScreenControl.showTakeoverKeyboard(context, owner, true)
+                    // During the user's takeover a field opens the phone keyboard on the main screen; the virtual display hosts none.
                     assertTrue(inputProbe(ScreenControlFixtureActivity.ALLOW_KEYBOARD))
                     touch(ScreenTouchPhase.DOWN, fieldX, fieldY)
                     touch(ScreenTouchPhase.UP, fieldX, fieldY)
-                    waitFor("The takeover keyboard must show on the virtual display") {
-                        inputProbe(ScreenControlFixtureActivity.CHECK_KEYBOARD)
+                    waitFor("The takeover keyboard must show on the main screen") {
+                        val ime = instrumentation.uiAutomation.executeShellCommand("dumpsys input_method").use { output ->
+                            android.os.ParcelFileDescriptor.AutoCloseInputStream(output).bufferedReader().readText()
+                        }
+                        "mInputShown=true" in ime && "mCurTokenDisplayId=0" in ime
                     }
-                    instrumentation.sendStatus(0, Bundle().apply { putString("screen_probe_phase", "virtual_keyboard_visible") })
-                    ScreenControl.showTakeoverKeyboard(context, owner, false)
-                    assertEquals("Minimizing preserves manual control", owner, ScreenControl.state.value.manualControlId)
+                    assertFalse("The virtual display must not host the keyboard", inputProbe(ScreenControlFixtureActivity.CHECK_KEYBOARD))
+                    instrumentation.sendStatus(0, Bundle().apply { putString("screen_probe_phase", "main_keyboard_for_takeover") })
+                    assertEquals("Typing preserves manual control", owner, ScreenControl.state.value.manualControlId)
                     verifyMainKeyboardAfterTakeover(returned)
                     assertEquals("awaiting_user", status(handoff).optString("status"))
                     ScreenControl.handBack(context, owner)

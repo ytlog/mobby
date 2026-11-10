@@ -45,7 +45,6 @@ import com.github.ytlog.mobby.android.runtime.api.device.ScreenControlPort
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.sync.Mutex
 
 private const val PreviewWidth = 184
 
@@ -137,7 +136,6 @@ internal class VirtualScreenPreview(
         var takeoverPending by remember { mutableStateOf(false) }
         var takeoverError by remember(state.displayId) { mutableStateOf<String?>(null) }
         var manualMinimized by rememberSaveable(manualId) { mutableStateOf(false) }
-        val keyboardLease = remember { Mutex() }
         val view = LocalView.current
         val lifecycle = LocalLifecycleOwner.current.lifecycle
         val lifecycleState by lifecycle.currentStateFlow.collectAsState()
@@ -179,7 +177,7 @@ internal class VirtualScreenPreview(
                 }
             } else if (lifecycleState.isAtLeast(Lifecycle.State.RESUMED)) {
                 ManualVirtualScreenDialog(controller, manualId, bitmap.takeIf { jpeg != null }, state.error,
-                    onMinimize = { manualMinimized = true }, keyboardLease = keyboardLease)
+                    onMinimize = { manualMinimized = true })
             }
         } else {
             VirtualScreenPreviewCard(bitmap.takeIf { jpeg != null }, state.error ?: takeoverError, expanded, { expanded = !expanded }, modifier, hasObservedApp,
