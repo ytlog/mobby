@@ -9,9 +9,13 @@ import java.util.function.UnaryOperator;
  * <p>The whole tree is read, without a node count or depth limit. A node gets a line when it is on screen and has text, a
  * description, an image or an action (click, long click, edit, scroll, check). Nodes that are not visible to the user are
  * skipped with their subtrees, as {@code uiautomator dump} does; containers with none of the above are walked through without
- * a line. Each line is indented by its listed ancestors. Text is given in full; line breaks are written as {@code \n}.
+ * a line. Each line is indented by its listed ancestors. Line breaks are written as {@code \n}. A text or description longer
+ * than {@link #MAX_TEXT} characters is cut there and says how many characters were left out.
  */
 public final class WindowOutline {
+    /** Characters of one text or description; an article body or chat history in one node would otherwise flood the outline. */
+    public static final int MAX_TEXT = 500;
+
     private WindowOutline() { }
 
     /** The parts of an accessibility node the outline reads. A child returned by {@link #child} is released by the caller. */
@@ -47,8 +51,9 @@ public final class WindowOutline {
     /** Recursion is as deep as the app's own view tree, which the app measures and draws recursively on a smaller stack. */
     private static void line(Node node, int indent, StringBuilder out, UnaryOperator<String> redact) {
         if (!node.visible()) return;
-        String text = node.password() ? "[secure]" : redact.apply(clean(node.text()));
-        String description = redact.apply(clean(node.description()));
+        // Redaction runs on the whole value first, so a cut never leaves part of a private value behind.
+        String text = node.password() ? "[secure]" : shorten(redact.apply(clean(node.text())));
+        String description = shorten(redact.apply(clean(node.description())));
         String name = simpleName(node.className());
         boolean image = name.contains("Image");
         boolean action = node.clickable() || node.longClickable() || node.editable() || node.scrollable() || node.checkable();
@@ -74,6 +79,13 @@ public final class WindowOutline {
             try { line(child, childIndent, out, redact); }
             finally { child.release(); }
         }
+    }
+
+    /** Cuts at a character boundary, never inside a surrogate pair, and says how much is missing. */
+    static String shorten(String value) {
+        int length = value.codePointCount(0, value.length());
+        if (length <= MAX_TEXT) return value;
+        return value.substring(0, value.offsetByCodePoints(0, MAX_TEXT)) + "…(+" + (length - MAX_TEXT) + " chars)";
     }
 
     private static String simpleName(String name) {

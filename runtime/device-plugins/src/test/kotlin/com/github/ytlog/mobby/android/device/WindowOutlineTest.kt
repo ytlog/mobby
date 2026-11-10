@@ -80,6 +80,28 @@ class WindowOutlineTest {
         assertEquals(0, root.released)
     }
 
+    @Test fun `long text and descriptions are cut and say how much is missing`() {
+        val body = "评".repeat(WindowOutline.MAX_TEXT) + "😀".repeat(20)
+        val root = Fake(children = listOf(
+            Fake("android.widget.TextView", text = body, description = "x".repeat(WindowOutline.MAX_TEXT + 3)),
+            Fake("android.widget.TextView", text = "y".repeat(WindowOutline.MAX_TEXT)),
+        ))
+        val (long, exact) = lines(outline(root))
+        assertEquals("TextView \"" + "评".repeat(WindowOutline.MAX_TEXT) + "…(+20 chars)\" desc=\"" +
+            "x".repeat(WindowOutline.MAX_TEXT) + "…(+3 chars)\"", long)
+        assertEquals("TextView \"" + "y".repeat(WindowOutline.MAX_TEXT) + "\"", exact)
+        // Emoji are whole code points: a cut never splits a surrogate pair.
+        val emoji = WindowOutline.shorten("😀".repeat(WindowOutline.MAX_TEXT + 1))
+        assertEquals("😀".repeat(WindowOutline.MAX_TEXT) + "…(+1 chars)", emoji)
+    }
+
+    @Test fun `a private value is hidden before a long text is cut`() {
+        val code = "482913"
+        val text = "a".repeat(WindowOutline.MAX_TEXT - 3) + code
+        val outline = outline(Fake(children = listOf(Fake("android.widget.TextView", text = text)))) { it.replace(code, "[secure]") }
+        assertFalse(outline.contains("482"))
+    }
+
     @Test fun `secret values never appear`() {
         val root = Fake(children = listOf(
             Fake("android.widget.EditText", text = "hunter2", editable = true, password = true),
