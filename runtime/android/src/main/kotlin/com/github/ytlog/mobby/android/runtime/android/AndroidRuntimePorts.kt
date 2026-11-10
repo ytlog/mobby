@@ -380,9 +380,10 @@ private class LiveAgent(
                     is OutputLine.Stdout -> {
                         session.onStdout(line.text, autoAllow = true).forEach { output(it, false) }
                         if (session.takeTurnEnded()) {
-                            withContext(Dispatchers.IO) { deviceSession?.awaitIdle { if (stop.value != null) throw CancellationException() } }
+                            val answeredAfterTurn = withContext(Dispatchers.IO) { deviceSession?.awaitIdle { if (stop.value != null) throw CancellationException() } } == true
                             withContext(Dispatchers.IO) { appFunctionSession?.awaitIdle { if (stop.value != null) throw CancellationException() } }
                             return finish(retain = deviceSession == null && appFunctionSession == null && stop.value == null && session.sessionId() != null, force = false, acceptProtocolExit = session.abandonAfterTurn())
+                                .copy(userAnsweredAfterTurn = answeredAfterTurn)
                         }
                     }
                     is OutputLine.Stderr -> output(line.text, true)

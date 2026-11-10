@@ -416,7 +416,8 @@ class RunCoordinator(
                             terminalBase = journal.snapshot(id)!!
                         }
                     }
-                    val evidence = TerminalEvidence(protocolSuccess, result.exitCode, error, result.terminationConfirmed)
+                    val evidence = TerminalEvidence(protocolSuccess, result.exitCode, error, result.terminationConfirmed,
+                        userAnsweredAfterTurn = phase == RunPhase.SUCCEEDED && result.userAnsweredAfterTurn)
                     append(terminalBase, RuntimeEvent.RunFinished(phase, evidence), terminalBase.copy(phase = phase, terminalEvidence = evidence, pendingApprovals = emptyList(), deviceOperations = terminalBase.deviceOperations.map { it.copy(operation = DeviceOperationRules.stopped(it.operation, phase != RunPhase.CANCELLED)) }))
                     if (result.terminationConfirmed) { activeState.value = null; activeRequest = null; stop = null }
                 } catch (_: Exception) { failStorage() }

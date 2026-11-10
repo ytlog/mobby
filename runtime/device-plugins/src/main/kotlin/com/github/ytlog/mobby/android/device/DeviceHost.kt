@@ -135,6 +135,7 @@ object DeviceHost {
             }
             val pendingScreenInput = SupervisorJob()
             val screenInputScope = CoroutineScope(pendingScreenInput + Dispatchers.IO)
+            val screenInputOutcome = java.util.concurrent.atomic.AtomicReference<DeviceStatus?>()
             fun mayReadScreen(): Boolean = pendingScreenInput.children.none() &&
                 (authorization == null || runCatching { runBlocking { authorization.permits("plugin:device:screen") } }.getOrDefault(false))
             val workflow = DeviceWorkflowManager(context, ::mayReadScreen, ScreenControl::workflowPaused, prepareResume = {
@@ -153,12 +154,12 @@ object DeviceHost {
                 (screen ?: deviceFailure(DeviceErrorCode.UNAVAILABLE)).inspect(query, input)
             }
             val bridge = DeviceBridge(gate::close, { try { workflow.close() } finally { dynamicScreen?.close() } },
-                pendingScreenInput) { line ->
+                pendingScreenInput, screenInputOutcome) { line ->
                 workflow.handle(line, token, allow) { request ->
                     DeviceCommands.handle(request, token, allow, operations, gate::checkActive, exportResource,
                         authorize = { plugin, action, execution ->
                             authorization?.require(DeviceCatalog.actionRef(plugin, action), execution)
-                        }, pendingScreenInput = screenInputScope) { plugin, action, args, execution -> actions.perform(plugin, action, args, execution) }
+                        }, pendingScreenInput = screenInputScope, screenInputOutcome = screenInputOutcome) { plugin, action, args, execution -> actions.perform(plugin, action, args, execution) }
                 }
             }
             try {
@@ -193,7 +194,8 @@ class DeviceSession internal constructor(
     private val awake: AutoCloseable? = null,
 ) : AutoCloseable {
     private val closed = AtomicBoolean(false)
-    suspend fun awaitIdle(checkActive: () -> Unit) = bridge.awaitIdle(checkActive)
+    /** True when the user completed a screen request after the agent's turn ended; see [DeviceBridge.awaitIdle]. */
+    suspend fun awaitIdle(checkActive: () -> Unit): Boolean = bridge.awaitIdle(checkActive)
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
         try {
@@ -208,6 +210,8 @@ internal class DeviceBridge(
     private val onClose: () -> Unit = {},
     private val afterWorker: () -> Unit = {},
     private val pendingScreenInput: Job? = null,
+    /** Final status of the latest request_input or request_handoff, written when it settles. */
+    private val screenInputOutcome: java.util.concurrent.atomic.AtomicReference<DeviceStatus?>? = null,
     private val handle: (String) -> String,
 ) : AutoCloseable {
     private val running = AtomicBoolean(true)
@@ -249,12 +253,19 @@ internal class DeviceBridge(
             afterWorker()
         }
     }
-    suspend fun awaitIdle(checkActive: () -> Unit) {
+    /**
+     * Waits until no request is in flight after the agent's turn ended. Returns true when that turn ended while the
+     * user still had a screen request open and the user then completed it, so the agent never saw the result.
+     */
+    suspend fun awaitIdle(checkActive: () -> Unit): Boolean {
         val deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(125)
+        var waitedForUser = false
         while (true) {
             checkActive()
             val waitingForInput = pendingScreenInput?.children?.any() == true
-            if (!waitingForInput && synchronized(socketLock) { accepted == null }) return
+            if (waitingForInput) waitedForUser = true
+            if (!waitingForInput && synchronized(socketLock) { accepted == null })
+                return waitedForUser && screenInputOutcome?.get() == DeviceStatus.SUCCEEDED
             if (!waitingForInput && System.nanoTime() >= deadline) deviceFailure(DeviceErrorCode.TIMEOUT)
             delay(25)
         }

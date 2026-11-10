@@ -4,7 +4,9 @@ import com.github.ytlog.mobby.android.runtime.api.device.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.boolean
@@ -38,6 +40,11 @@ class DevicePluginTest {
             return operation
         }
         override suspend fun find(requestId: String) = records[requestId]?.second
+    }
+    private fun send(bridge: DeviceBridge, line: String): String = java.net.Socket("127.0.0.1", bridge.port).use { socket ->
+        socket.getOutputStream().write("$line\n".toByteArray())
+        socket.shutdownOutput()
+        socket.getInputStream().bufferedReader().readText()
     }
     private fun request(plugin: String = "screen", action: String = "snapshot", args: String = "{}", version: String = "1", token: String = "fixture", id: String = "request") =
         """{"token":"$token","protocolVersion":$version,"requestId":"$id","plugin":"$plugin","action":"$action","args":$args}"""
@@ -166,6 +173,41 @@ class DevicePluginTest {
         } finally { scope.cancel() }
     }
 
+    @Test(timeout = 5_000) fun `a handoff the user completes after the agent's turn ended asks for the run to continue`() {
+        for (answer in listOf<PrivateScreenInput.Answer?>(PrivateScreenInput.Answer.TakeOver, null)) {
+            val port = MemoryDevices()
+            val pending = SupervisorJob()
+            val outcome = java.util.concurrent.atomic.AtomicReference<DeviceStatus?>()
+            val bridge = DeviceBridge(pendingScreenInput = pending, screenInputOutcome = outcome) { line ->
+                DeviceCommands.handle(line, "fixture", mapOf("screen" to setOf("request_handoff")), port,
+                    pendingScreenInput = CoroutineScope(pending + Dispatchers.IO), screenInputOutcome = outcome) { _, _, _, execution ->
+                    when (PrivateScreenInput.await(execution, emptyList()) {}) {
+                        PrivateScreenInput.Answer.TakeOver -> deviceText("The user returned control.")
+                        else -> deviceFailure(DeviceErrorCode.CANCELLED)
+                    }
+                }
+            }
+            try {
+                val receipt = DeviceJson.decodeFromString<DeviceResponse>(send(bridge, request(action = "request_handoff")))
+                assertEquals(DeviceStatus.AWAITING_USER, receipt.status)
+                // The agent ends its turn here; the run then waits for the user.
+                val idle = CoroutineScope(Dispatchers.IO).async { bridge.awaitIdle {} }
+                Thread.sleep(100)
+                val prompt = port.records.getValue("request").second.requiresAttention!!
+                assertTrue(if (answer != null) PrivateScreenInput.chooseTakeOver(receipt.operationId!!, prompt.promptId)
+                    else PrivateScreenInput.submit(receipt.operationId!!, prompt.promptId, null))
+                assertEquals("answer $answer", answer != null, runBlocking { idle.await() })
+            } finally { bridge.close() }
+        }
+    }
+
+    @Test fun `a handoff answered while the agent waited does not ask for the run to continue`() {
+        val pending = SupervisorJob()
+        val outcome = java.util.concurrent.atomic.AtomicReference<DeviceStatus?>(DeviceStatus.SUCCEEDED)
+        val bridge = DeviceBridge(pendingScreenInput = pending, screenInputOutcome = outcome) { error("unused") }
+        try { assertFalse(runBlocking { bridge.awaitIdle {} }) } finally { bridge.close() }
+    }
+
     @Test fun `write grant is absent until its own ref is enabled`() {
         assertTrue(DeviceCatalog.missingParent(setOf("plugin:device:sms:send")))
         assertFalse(DeviceCatalog.missingParent(setOf("plugin:device:sms", "plugin:device:sms:send")))
@@ -258,6 +300,8 @@ class DevicePluginTest {
         assertTrue(markdown.contains("login page"))
         assertTrue(markdown.contains("Do not end your turn to ask in chat"))
         assertTrue(markdown.contains("the user accepts or declines it there"))
+        // A model that stopped waiting told the user to reply to continue; mobby now continues on its own.
+        assertTrue(markdown.contains("never ask the user to reply to continue"))
         assertTrue(markdown.contains("""request_handoff {"reason":"""))
     }
 

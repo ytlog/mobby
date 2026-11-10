@@ -22,7 +22,9 @@ object DeviceCommands {
     fun handle(line: String, token: String, allow: Map<String, Set<String>>, operations: DeviceOperationPort,
         gate: () -> Unit = {}, exportResource: ((String) -> String)? = null,
         authorize: suspend (String, String, DeviceExecution) -> Unit = { _, _, _ -> },
-        pendingScreenInput: CoroutineScope? = null, performer: DevicePerformer): String = runBlocking {
+        pendingScreenInput: CoroutineScope? = null,
+        screenInputOutcome: java.util.concurrent.atomic.AtomicReference<DeviceStatus?>? = null,
+        performer: DevicePerformer): String = runBlocking {
         var requestId = "invalid-request"
         var operation: DeviceOperation? = null
         var writes = false
@@ -132,8 +134,10 @@ object DeviceCommands {
             }
             if (deferred == null || firstResponse == null) performAction()
             else {
+                screenInputOutcome?.set(null)
                 val job = deferred.launch {
                     val response = try { performAction() } catch (failure: Exception) { fail(failure) }
+                    screenInputOutcome?.set(DeviceJson.decodeFromString<DeviceResponse>(response).status)
                     firstResponse.complete(response)
                 }
                 job.invokeOnCompletion { failure ->

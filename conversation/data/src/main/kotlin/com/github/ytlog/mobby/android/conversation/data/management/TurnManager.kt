@@ -18,7 +18,7 @@ internal class TurnManager(private val db: ConversationDatabase, private val now
     private val execution: ExecutionPort) {
     private val dao = db.dao()
     private val inFlight = ConcurrentHashMap.newKeySet<String>()
-    private val runs = RunSynchronizer(db, client, scope, outputCache, ::dispatchQueued)
+    private val runs = RunSynchronizer(db, client, scope, outputCache, ::dispatchQueued, ::continueAfterUser)
     private val dispatchLock = Mutex()
     fun isInFlight(id: String) = id in inFlight
     suspend fun prepareInsertion(conversationId: ConversationId, turnId: TurnId): PrepareInsertionResult = db.withTransaction {
@@ -120,6 +120,26 @@ internal class TurnManager(private val db: ConversationDatabase, private val now
         inFlight.remove(turn.turnId.value)
         if (result is Submission.Accepted) observe(turn.turnId.value, result.executionId.value)
         else if (result is Submission.Rejected) dispatchQueued()
+    }
+    /**
+     * The user completed a screen request after the agent's turn had ended, so the agent never saw it. Queue one
+     * continuation in that conversation with the turn's frozen settings, unless the user already sent something newer.
+     * The user's draft is left alone.
+     */
+    private suspend fun continueAfterUser(turnId: String) {
+        val queued = db.withTransaction {
+            val row = dao.turn(turnId) ?: return@withTransaction false
+            val id = java.util.UUID.nameUUIDFromBytes("$turnId:continue".toByteArray()).toString()
+            if (dao.turn(id) != null) return@withTransaction false
+            val c = dao.conversation(row.conversationId)?.domain() ?: return@withTransaction false
+            if (c.archived || c.deleted || dao.conversationTurns(c.id.value).lastOrNull()?.id != turnId) return@withTransaction false
+            val text = AppStrings.continueAfterUserReturnedControl
+            val frozen = storageJson.decodeFromString<StoredConversation>(row.frozen).copy(text = text, draftRevision = -1,
+                selectionStart = text.length, selectionEnd = text.length, attachments = emptyList(), pendingAttachment = null)
+            dao.save(TurnRow(id, c.id.value, text, storageJson.encodeToString(frozen), now(), pending = false, occupied = false, queued = true))
+            true
+        }
+        if (queued) dispatchQueued()
     }
     fun dispatchQueued() {
         scope.launch {

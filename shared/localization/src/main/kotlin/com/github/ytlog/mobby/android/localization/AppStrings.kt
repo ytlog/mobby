@@ -247,6 +247,8 @@ open class StringCatalog(private val fixedLanguage: AppLanguage? = null) {
     val virtualScreenEnterTakeover get() = text("进入接手页面", "Open takeover page")
     val virtualScreenEnterTakeoverDetail get() = text("自己点副屏，例如获取验证码、滑块", "Tap the display yourself, for example to get a code or solve a slider")
     val virtualScreenManualInput get() = text("输入文字", "Enter text")
+    val continueAfterUserReturnedControl get() = text("我已在副屏完成操作并交还控制，请继续刚才的任务。",
+        "I finished on the virtual display and returned control. Please continue the task.")
     val virtualScreenManualFill get() = text("填入副屏", "Fill on display")
     val virtualScreenManualTargetHelp get() = text("内容会填入刚选中的副屏输入框。", "Your text goes into the selected field on the virtual display.")
     val virtualScreenManualPrivateHint get() = text("用键盘输入的内容，交还后 Agent 能看到；验证码等需要隐藏的内容请用「输入文字」。",

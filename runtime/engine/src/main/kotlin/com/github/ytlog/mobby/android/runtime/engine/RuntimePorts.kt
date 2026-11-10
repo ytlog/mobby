@@ -6,7 +6,9 @@ import com.github.ytlog.mobby.android.runtime.api.device.DeviceOperationPort
 
 enum class StopCause { USER, TIMEOUT, HOST_STOP, STORAGE_FAILURE, PROTOCOL_FAILURE }
 enum class InsertionOffer { ACCEPTED, NOT_READY, UNSUPPORTED }
-data class ProcessResult(val exitCode: Int?, val terminationConfirmed: Boolean, val error: ErrorCode? = null, val retained: Boolean = false)
+/** [userAnsweredAfterTurn]: the user completed a screen request after the agent's turn had ended, so the agent never saw it. */
+data class ProcessResult(val exitCode: Int?, val terminationConfirmed: Boolean, val error: ErrorCode? = null, val retained: Boolean = false,
+    val userAnsweredAfterTurn: Boolean = false)
 /** A live CLI can take another turn only when the process, engine, workspace, model, gateway, skills and output mode are unchanged. */
 data class LiveSessionBinding(
     val agentId: AgentId, val workspaceRef: WorkspaceRef, val modelId: String, val gatewayProfileRef: GatewayProfileRef,

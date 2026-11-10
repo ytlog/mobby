@@ -158,6 +158,47 @@ class RoomConversationStoreTest {
         assertFalse(db.dao().turn("queued-turn")!!.queued)
         assertEquals("follow up", db.dao().turn("queued-turn")!!.userText)
     }
+    @Test fun `a run the user completed after the agent's turn continues once without touching the draft`() = runBlocking {
+        val conversation = state().selected!!.conversation
+        repository.setSkill(conversation.id, "plugin:device:screen", true)
+        repository.editDraft(conversation.id, "open my profile", 15, 15)
+        val first = (repository.prepareTurn(conversation.id, TurnId("handoff-turn")) as PrepareTurnResult.Prepared).turn
+        runtime.admit(first)
+        repository.recordSubmission(first, Submission.Accepted(ExecutionId(first.turnId.value)))
+        state { it.selected?.turns?.singleOrNull()?.occupied == true }
+        repository.editDraft(conversation.id, "unsent note", 11, 11)
+
+        runtime.acceptSubmissions = true
+        runtime.snapshots[first.turnId.value] = runtime.snapshots.getValue(first.turnId.value).copy(phase = RunPhase.SUCCEEDED,
+            sessionRef = SessionRef("session-1"), terminalEvidence = TerminalEvidence(true, 0, userAnsweredAfterTurn = true))
+        repository.refreshExecution(ExecutionId(first.turnId.value))
+        repository.refreshExecution(ExecutionId(first.turnId.value))
+        withTimeout(10_000) { while (runtime.submissions == 0) delay(20) }
+        delay(200)
+        val continued = runtime.submittedRequests.single()
+        assertEquals(SessionRef("session-1"), continued.sessionRef)
+        assertTrue(CapabilityRef("plugin:device:screen") in continued.capabilityRefs)
+        val turns = db.dao().conversationTurns(conversation.id.value)
+        assertEquals(listOf("open my profile", com.github.ytlog.mobby.android.localization.AppStrings.continueAfterUserReturnedControl),
+            turns.map { it.userText })
+        assertEquals("unsent note", db.dao().conversation(conversation.id.value)!!.domain().draft.text)
+    }
+
+    @Test fun `a run that ends normally does not add a continuation`() = runBlocking {
+        val conversation = state().selected!!.conversation
+        repository.editDraft(conversation.id, "first", 5, 5)
+        val first = (repository.prepareTurn(conversation.id, TurnId("plain-turn")) as PrepareTurnResult.Prepared).turn
+        runtime.admit(first)
+        repository.recordSubmission(first, Submission.Accepted(ExecutionId(first.turnId.value)))
+        runtime.acceptSubmissions = true
+        runtime.snapshots[first.turnId.value] = runtime.snapshots.getValue(first.turnId.value).copy(
+            phase = RunPhase.SUCCEEDED, terminalEvidence = TerminalEvidence(true, 0))
+        repository.refreshExecution(ExecutionId(first.turnId.value))
+        delay(300)
+        assertEquals(0, runtime.submissions)
+        assertEquals(1, db.dao().conversationTurns(conversation.id.value).size)
+    }
+
     @Test fun `direct insertion records the user message and never turns into a queued run`() = runBlocking {
         val conversation = state().selected!!.conversation
         repository.editDraft(conversation.id, "first", 5, 5)

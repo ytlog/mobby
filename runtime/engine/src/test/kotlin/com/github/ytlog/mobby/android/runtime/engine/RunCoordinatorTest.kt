@@ -127,6 +127,23 @@ class RunCoordinatorTest {
         assertEquals(3, journal.events.count { it.payload is RuntimeEvent.DeviceOperationUpdated })
         assertEquals(1, journal.states.getValue(id).deviceOperations.size)
     }
+    @Test fun `a user answer that arrived after the agent's turn marks the run for continuation`() = runTest {
+        for (answeredAfterTurn in listOf(true, false)) {
+            val journal = MemoryJournal()
+            val runtime = RunCoordinator(backgroundScope, environment, object : ProcessPort {
+                override suspend fun execute(request: RunRequest, stop: StateFlow<StopCause?>, devices: DeviceOperationPort, output: suspend (String, Boolean) -> Unit): ProcessResult {
+                    output("""{"type":"turn.completed"}""", false)
+                    return ProcessResult(0, true, userAnsweredAfterTurn = answeredAfterTurn)
+                }
+            }, journal, MemoryOutput())
+            runtime.recover()
+            val id = (runtime.submit(request()) as SubmitResult.Accepted).runId
+            runCurrent()
+            val evidence = journal.states.getValue(id).terminalEvidence!!
+            assertEquals(answeredAfterTurn, evidence.userAnsweredAfterTurn)
+            assertEquals(answeredAfterTurn, (journal.events.last().payload as RuntimeEvent.RunFinished).evidence.userAnsweredAfterTurn)
+        }
+    }
     @Test fun `CLI success cannot hide an unfinished device action`() = runTest {
         val journal = MemoryJournal()
         val runtime = RunCoordinator(backgroundScope, environment, object : ProcessPort {

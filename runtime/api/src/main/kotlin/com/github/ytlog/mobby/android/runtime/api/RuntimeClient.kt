@@ -161,7 +161,9 @@ enum class RunPhase(val terminal: Boolean = false) {
 enum class ProgressNotice { OUTPUT_TRUNCATED }
 /** A successful protocol message alone is insufficient. The turn is confirmed by a zero exit, or by an explicit confirmation while the process stays open for the next turn. */
 @Serializable
-data class TerminalEvidence(val protocolSucceeded: Boolean?, val exitCode: Int?, val error: RuntimeError? = null, val terminationConfirmed: Boolean = exitCode != null)
+/** [userAnsweredAfterTurn]: the user completed a screen request after the agent's turn ended; the conversation continues the task. */
+data class TerminalEvidence(val protocolSucceeded: Boolean?, val exitCode: Int?, val error: RuntimeError? = null, val terminationConfirmed: Boolean = exitCode != null,
+    val userAnsweredAfterTurn: Boolean = false)
 /**
  * What an approval is asking to run. Fields are the same kinds as a conversation step,
  * with the proposed write or diff inline because the tool has not produced output yet.

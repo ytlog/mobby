@@ -13,7 +13,8 @@ import com.github.ytlog.mobby.android.conversation.domain.AgentId as DomainAgent
 
 /** Sole writer of runtime snapshots and their conversation/session projection. */
 internal class RunSynchronizer(private val db: ConversationDatabase, private val client: RuntimeClient,
-    private val scope: CoroutineScope, cache: OutputCache, private val onReleased: () -> Unit) {
+    private val scope: CoroutineScope, cache: OutputCache, private val onReleased: () -> Unit,
+    private val onUserAnsweredAfterTurn: suspend (String) -> Unit = {}) {
     private val dao = db.dao()
     private val observers = mutableMapOf<String, Job>()
     private val output = RunOutputSynchronizer(db, client, scope, cache)
@@ -100,6 +101,7 @@ internal class RunSynchronizer(private val db: ConversationDatabase, private val
         if (saved) {
             output.request(snapshot.runId)
             if (!RunStateRules.occupiesExecution(snapshot)) {
+                if (snapshot.terminalEvidence?.userAnsweredAfterTurn == true) onUserAnsweredAfterTurn(turnId)
                 onReleased()
                 synchronized(observers) { observers[snapshot.runId.value]?.cancel() }
             }
