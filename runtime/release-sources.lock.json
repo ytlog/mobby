@@ -1,6 +1,6 @@
 {
   "bootstrap_sha256": "1f48f4d05da9fab3ce74fb1d9b137fdbc745ba1f7a6f9e8f743fd89b7047d17b",
-  "agents_lock_sha256": "1866eb0681081b34cc810aa000ac452b47132d20410d8678e8fab746aa19d686",
+  "agents_lock_sha256": "33ec65143333998a0fecab641985d7522f51d547181ed033f769c3ddcdffe662",
   "packages": [
     {
       "name": "pcre2",
@@ -48,26 +48,26 @@
     },
     {
       "name": "libiconv",
-      "version": "1.19",
+      "version": "1.19.1",
       "license": "LGPL-2.1, GPL-3.0",
       "recipe": "libiconv",
-      "recipe_commit": "e392c87ee0005397d3b3b9b43576c270bef76cd8",
-      "recipe_source_input": "termux-agent-recipes",
+      "recipe_commit": "6d95362aff8261df6b5d64b3352dc04624d158c7",
+      "recipe_source_input": "termux-november-10-runtime-recipes",
       "source_inputs": [
         "termux-libiconv-1",
-        "termux-agent-recipes"
+        "termux-november-10-runtime-recipes"
       ]
     },
     {
       "name": "ca-certificates",
-      "version": "1:2026.11.05",
+      "version": "1:2026.11.05-1",
       "license": "MPL-2.0",
       "recipe": "ca-certificates",
-      "recipe_commit": "5bb067b440eafcb1e3abe76adfefa52b58d44d90",
-      "recipe_source_input": "termux-november-runtime-recipes",
+      "recipe_commit": "6d95362aff8261df6b5d64b3352dc04624d158c7",
+      "recipe_source_input": "termux-november-10-runtime-recipes",
       "source_inputs": [
         "termux-ca-certificates-2026-11-05",
-        "termux-november-runtime-recipes"
+        "termux-november-10-runtime-recipes"
       ]
     },
     {
@@ -867,11 +867,11 @@
     },
     {
       "name": "libicu",
-      "version": "78.3",
+      "version": "79.1",
       "license": "custom",
       "recipe": "libicu",
-      "recipe_commit": "e392c87ee0005397d3b3b9b43576c270bef76cd8",
-      "recipe_source_input": "termux-agent-recipes"
+      "recipe_commit": "6d95362aff8261df6b5d64b3352dc04624d158c7",
+      "recipe_source_input": "termux-november-10-runtime-recipes"
     },
     {
       "name": "libsqlite",
@@ -883,11 +883,11 @@
     },
     {
       "name": "nodejs-lts",
-      "version": "24.22.2",
+      "version": "24.22.2-1",
       "license": "MIT",
       "recipe": "nodejs-lts",
-      "recipe_commit": "5bb067b440eafcb1e3abe76adfefa52b58d44d90",
-      "recipe_source_input": "termux-november-runtime-recipes"
+      "recipe_commit": "6d95362aff8261df6b5d64b3352dc04624d158c7",
+      "recipe_source_input": "termux-november-10-runtime-recipes"
     },
     {
       "name": "npm",
@@ -914,8 +914,8 @@
     },
     {
       "name": "termux-libiconv-1",
-      "url": "https://mirrors.kernel.org/gnu/libiconv/libiconv-1.19.tar.gz",
-      "sha256": "88dd96a8c0464eca144fc791ae60cd31cd8ee78321e67397e25fc095c4a19aa6"
+      "url": "https://mirrors.kernel.org/gnu/libiconv/libiconv-1.19.1.tar.gz",
+      "sha256": "9a06844846d664d7122161700c10a64480d7c7bcead3091925a785b38c91edab"
     },
     {
       "name": "termux-coreutils-1",
@@ -1336,6 +1336,11 @@
       "name": "termux-ca-certificates-2026-11-05",
       "url": "https://curl.se/ca/cacert-2026-11-05.pem",
       "sha256": "427c064216761a1e72a8b30f0d954d08cb6e4435a82091fb865afd20c8497285"
+    },
+    {
+      "name": "termux-november-10-runtime-recipes",
+      "url": "https://codeload.github.com/termux/termux-packages/tar.gz/6d95362aff8261df6b5d64b3352dc04624d158c7",
+      "sha256": "f86ff661ca82257b10362bf422627ff681406d4544045a2df613fabcaa0a4b51"
     }
   ],
   "webkit": {
