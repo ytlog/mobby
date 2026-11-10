@@ -116,8 +116,30 @@ public final class ScreenServer implements AutoCloseable {
                 String detail = cause.getMessage();
                 if (detail != null && detail.matches("[a-z][a-z0-9_]{0,79}")) result.put("detail", detail);
             }
-            write(output, result);
+            write(output, fit(result, action));
         }
+    }
+
+    static final int MAX_RESPONSE = 4 * 1024 * 1024;
+
+    /**
+     * A response over the transport limit would end the session and release the display. The screenshot goes first, with
+     * its status saying so; a page whose text alone is too large is refused as an error.
+     */
+    static JSONObject fit(JSONObject result, String action) throws org.json.JSONException {
+        if (size(result) <= MAX_RESPONSE) return result;
+        if (result.has("jpeg")) {
+            result.remove("jpeg");
+            result.remove("frameAt");
+            result.put("screenshotStatus", "too_large");
+            if (size(result) <= MAX_RESPONSE) return result;
+        }
+        return new JSONObject().put("ok", false).put("error", "virtual_screen_" + action + "_failed")
+            .put("cause", "IOException").put("detail", "response_too_large");
+    }
+
+    private static int size(JSONObject value) {
+        return value.toString().getBytes(StandardCharsets.UTF_8).length;
     }
 
     private boolean authenticate(Socket socket, DataInputStream input, long deadline) {
@@ -159,7 +181,7 @@ public final class ScreenServer implements AutoCloseable {
     }
     private static void write(DataOutputStream output, JSONObject value) throws IOException {
         byte[] bytes = value.toString().getBytes(StandardCharsets.UTF_8);
-        if (bytes.length > 4 * 1024 * 1024) throw new IOException("response_size");
+        if (bytes.length > MAX_RESPONSE) throw new IOException("response_size");
         output.writeInt(bytes.length); output.write(bytes); output.flush();
     }
     private synchronized void releaseScreen() {

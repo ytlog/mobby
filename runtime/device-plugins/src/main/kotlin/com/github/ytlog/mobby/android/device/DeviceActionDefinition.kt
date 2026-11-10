@@ -27,7 +27,7 @@ internal class DeviceActionDefinition(val plugin: String, val action: String) {
         "screen.request_input" -> mapOf("label" to 80, "reason" to 200)
         "screen.request_handoff" -> mapOf("reason" to 200)
         "screen.type" -> mapOf("text" to 2000)
-        "screen.tap" -> mapOf("x" to 24, "y" to 24)
+        "screen.tap", "screen.long_press" -> mapOf("x" to 24, "y" to 24)
         "screen.swipe" -> mapOf("x" to 24, "y" to 24, "toX" to 24, "toY" to 24)
         "screen.launch", "screen.force_stop" -> mapOf("package" to 255)
         "sms.send" -> mapOf("to" to 23, "body" to 500)
@@ -57,7 +57,7 @@ internal class DeviceActionDefinition(val plugin: String, val action: String) {
     }
     /** Refusals name the argument and the expected form, never the value, so the caller can correct itself without leaking input. */
     fun validate(args: JsonObject): Map<String, String> {
-        val tap = plugin == "screen" && action in setOf("tap", "swipe")
+        val tap = plugin == "screen" && action in setOf("tap", "long_press", "swipe")
         fun invalid(message: String): Nothing = deviceFailure(DeviceErrorCode.INVALID_ARGUMENT, message)
         args.keys.firstOrNull { it !in fields }?.let {
             invalid(if (fields.isEmpty()) "$plugin.$action takes no arguments, got $it"

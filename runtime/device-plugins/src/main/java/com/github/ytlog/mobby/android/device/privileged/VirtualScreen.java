@@ -48,6 +48,7 @@ final class VirtualScreen implements AutoCloseable {
     private ImageReader reader;
     private byte[] jpeg;
     private long frameAt;
+    private boolean frameBlack;
     private long lastCaptureUptime;
     private boolean capturePending;
     private final Object frameLock = new Object();
@@ -236,15 +237,17 @@ final class VirtualScreen implements AutoCloseable {
             }
             if ("launch".equals(action)) {
                 String name = args.getString("package"); launch(name);
-                return observe("Opened " + name + " on virtual display", false);
+                // The window can exist before its first frame is drawn.
+                return observe("Opened " + name + " on virtual display", true);
             }
             if ("force_stop".equals(action)) {
                 String name = args.getString("package"); forceStop(name);
                 return observe("Force-stopped " + name, true);
             }
-            if ("tap".equals(action) || "swipe".equals(action)) {
+            if ("tap".equals(action) || "long_press".equals(action) || "swipe".equals(action)) {
                 float x = fraction(args, "x") * (WIDTH - 1), y = fraction(args, "y") * (HEIGHT - 1);
                 if ("tap".equals(action)) gesture(x, y, x, y, 80);
+                else if ("long_press".equals(action)) gesture(x, y, x, y, WindowOutline.LONG_PRESS_MILLIS);
                 else gesture(x, y, fraction(args, "toX") * (WIDTH - 1), fraction(args, "toY") * (HEIGHT - 1), 350);
                 return observe("Input delivered to virtual display", true);
             }
@@ -456,7 +459,7 @@ final class VirtualScreen implements AutoCloseable {
      * The windows the agent reads and acts on, topmost first: mobby's navigation list while it is shown, otherwise the
      * application windows from the top down to the one with input focus. A window above the focused one, such as the tooltip
      * Douyin shows over its search box, takes no focus and covers part of the page without replacing it, so both are read.
-     * Windows below the focused one are behind it. When no window on the display has focus, every application window is read.
+     * Windows below the focused one are behind it. When no window on the display has focus, see {@link WindowOutline#readable}.
      */
     private List<Layer> layers() {
         List<AccessibilityWindowInfo> windows = virtualWindows();
@@ -472,13 +475,18 @@ final class VirtualScreen implements AutoCloseable {
                 }
                 node.recycle();
             }
-            for (AccessibilityWindowInfo window : windows) {
-                if (window.getType() != AccessibilityWindowInfo.TYPE_APPLICATION) continue;
-                AccessibilityNodeInfo node = window.getRoot();
-                if (node == null) continue;
-                Layer layer = new Layer(node, window);
-                layers.add(layer);
-                if (layer.focused) break;
+            boolean[] application = new boolean[windows.size()], focused = new boolean[windows.size()], child = new boolean[windows.size()];
+            for (int index = 0; index < windows.size(); index++) {
+                AccessibilityWindowInfo window = windows.get(index);
+                application[index] = window.getType() == AccessibilityWindowInfo.TYPE_APPLICATION;
+                focused[index] = window.isFocused();
+                AccessibilityWindowInfo parent = window.getParent();
+                child[index] = parent != null;
+                if (parent != null) parent.recycle();
+            }
+            for (int index : WindowOutline.readable(application, focused, child)) {
+                AccessibilityNodeInfo node = windows.get(index).getRoot();
+                if (node != null) layers.add(new Layer(node, windows.get(index)));
             }
             if (layers.isEmpty()) throw new IllegalStateException("no_virtual_app_window");
             return layers;
@@ -506,12 +514,8 @@ final class VirtualScreen implements AutoCloseable {
         StringBuilder text = new StringBuilder();
         for (int index = 0; index < layers.size(); index++) {
             Layer layer = layers.get(index);
-            if (layers.size() > 1) {
-                text.append("-- window ").append(index + 1).append(" of ").append(layers.size()).append(": ")
-                    .append(layer.root.getPackageName()).append(index == 0 ? ", on top" : "").append(layer.focused ? ", focused" : "")
-                    .append(index > 0 ? ", parts under the windows above are covered" : "").append(" --\n");
-            }
-            text.append(WindowOutline.of(layer.root, this::redactPrivateValues));
+            if (layers.size() > 1) text.append(WindowOutline.header(index, layers.size(), layer.root.getPackageName(), layer.focused));
+            text.append(WindowOutline.of(layer.root, WIDTH, HEIGHT, this::redactPrivateValues));
         }
         return agentScreenshot(metadata(new JSONObject().put("text", text).put("packageName", String.valueOf(base(layers).getPackageName()))));
     }
@@ -553,10 +557,9 @@ final class VirtualScreen implements AutoCloseable {
         } finally { if (focused != null) focused.recycle(); }
     }
     private AccessibilityNodeInfo soleEditable(List<Layer> layers) {
-        List<AccessibilityNodeInfo> inputs = new ArrayList<>();
-        for (Layer layer : layers) walk(layer.root, 0, (node, depth) -> {
-            if (node.isEditable() && node.isEnabled() && node.isVisibleToUser()) inputs.add(AccessibilityNodeInfo.obtain(node));
-        });
+        List<AccessibilityNodeInfo> roots = new ArrayList<>();
+        for (Layer layer : layers) roots.add(layer.root);
+        List<AccessibilityNodeInfo> inputs = WindowOutline.editableFields(roots);
         if (inputs.size() == 1) return inputs.get(0);
         for (AccessibilityNodeInfo node : inputs) node.recycle();
         return null;
@@ -646,8 +649,12 @@ final class VirtualScreen implements AutoCloseable {
         throw new IllegalStateException("app_not_on_virtual_display");
     }
     private interface NodeVisitor { void visit(AccessibilityNodeInfo node, int depth); }
-    /** Visits the whole tree with no node or depth limit; it is as deep as the app's own recursively drawn view tree. */
+    /**
+     * Visits every node on screen, with no node or depth limit; it is as deep as the app's own recursively drawn view tree.
+     * A node not visible to the user is skipped with its subtree, which also keeps off-screen pages out of the page evidence.
+     */
     private void walk(AccessibilityNodeInfo node, int depth, NodeVisitor visitor) {
+        if (!node.isVisibleToUser()) return;
         visitor.visit(node, depth);
         for (int i = 0; i < node.getChildCount(); i++) {
             AccessibilityNodeInfo child = node.getChild(i);
@@ -655,29 +662,26 @@ final class VirtualScreen implements AutoCloseable {
         }
     }
     /**
-     * Clickable controls whose text or description contains [query], in every read window. A control whose centre lies
+     * Clickable controls whose text, hint or description contains [query], in every read window. A control whose centre lies
      * under a window above its own is covered, as it is for a finger, and is not a match.
      */
     private List<AccessibilityNodeInfo> matches(List<Layer> layers, String query) {
         if (query.isEmpty() || query.length() > 200) throw new IllegalArgumentException("invalid_query");
         List<AccessibilityNodeInfo> result = new ArrayList<>();
-        Rect bounds = new Rect();
-        for (int index = 0; index < layers.size(); index++) {
-            List<Layer> above = layers.subList(0, index);
-            walk(layers.get(index).root, 0, (node, depth) -> {
-                if (!node.isVisibleToUser() || node.isPassword()) return;
-                String text = redactPrivateValues(String.valueOf(node.getText()) + " " + node.getContentDescription());
+        List<Rect> above = new ArrayList<>();
+        for (Layer layer : layers) {
+            walk(layer.root, 0, (node, depth) -> {
+                if (node.isPassword()) return;
+                String text = redactPrivateValues(WindowOutline.searchable(node));
                 if (!text.toLowerCase(Locale.ROOT).contains(query.toLowerCase(Locale.ROOT))) return;
                 AccessibilityNodeInfo target = AccessibilityNodeInfo.obtain(node);
-                while (target != null && !target.isClickable()) {
+                while (target != null && !WindowOutline.clickable(target)) {
                     AccessibilityNodeInfo parent = target.getParent(); target.recycle(); target = parent;
                 }
                 if (target == null) return;
-                target.getBoundsInScreen(bounds);
-                boolean covered = false;
-                for (Layer layer : above) covered |= layer.bounds.contains(bounds.centerX(), bounds.centerY());
-                if (covered || result.contains(target)) target.recycle(); else result.add(target);
+                if (WindowOutline.covered(target, above) || result.contains(target)) target.recycle(); else result.add(target);
             });
+            above.add(layer.bounds);
         }
         return result;
     }
@@ -791,8 +795,29 @@ final class VirtualScreen implements AutoCloseable {
     }
     private JSONObject agentScreenshot(JSONObject result) throws Exception {
         // Pixel output can reveal a value even when the app does not expose a text node.
-        return !manualControl && privateValues.isEmpty() ? screenshot(result, 0) : result.put("screenshotStatus", "private_input");
+        if (manualControl || !privateValues.isEmpty()) return result.put("screenshotStatus", "private_input");
+        // The action already ran; a late frame is a screenshot status, not a failed action.
+        if (!captureNow()) return result.put("screenshotStatus", "timeout");
+        synchronized (frameLock) {
+            // A window that forbids screenshots is drawn black on a display without the secure flag.
+            if (jpeg != null && frameBlack) return result.put("screenshotStatus", "black_frame");
+        }
+        return screenshot(result, 0);
     }
+
+    /**
+     * Takes the newest frame now instead of waiting out the preview throttle, so an observation never shows the display as it
+     * was before the action. When no frame arrived since the last capture, the display has not changed and the kept one is current.
+     */
+    private boolean captureNow() throws InterruptedException {
+        CountDownLatch done = new CountDownLatch(1);
+        frameHandler.post(() -> {
+            try { synchronized (frameLock) { if (!closed) captureFrame(reader); } }
+            finally { done.countDown(); }
+        });
+        return done.await(2, TimeUnit.SECONDS);
+    }
+
     private JSONObject screenshot(JSONObject result, long after) throws Exception {
         byte[] frame;
         long capturedAt;
@@ -835,11 +860,30 @@ final class VirtualScreen implements AutoCloseable {
                 try {
                     ByteArrayOutputStream bytes = new ByteArrayOutputStream();
                     if (!crop.compress(Bitmap.CompressFormat.JPEG, 78, bytes)) return;
-                    if (bytes.size() <= 2 * 1024 * 1024) { jpeg = bytes.toByteArray(); frameAt = System.currentTimeMillis(); }
+                    if (bytes.size() <= 2 * 1024 * 1024) {
+                        jpeg = bytes.toByteArray();
+                        frameAt = System.currentTimeMillis();
+                        frameBlack = black(samples(crop));
+                    }
                 } finally { if (crop != bitmap) crop.recycle(); }
             } finally { bitmap.recycle(); }
         } catch (RuntimeException failed) { jpeg = null; }
     }
+    /** A 64 by 64 grid of pixels across the frame. */
+    private static int[] samples(Bitmap frame) {
+        int[] pixels = new int[64 * 64];
+        for (int row = 0; row < 64; row++)
+            for (int column = 0; column < 64; column++)
+                pixels[row * 64 + column] = frame.getPixel(column * (frame.getWidth() - 1) / 63, row * (frame.getHeight() - 1) / 63);
+        return pixels;
+    }
+
+    /** Whether every sampled pixel is pure black, as a protected window is drawn; any page with content has a lit pixel. */
+    static boolean black(int[] pixels) {
+        for (int pixel : pixels) if ((pixel & 0x00FFFFFF) != 0) return false;
+        return true;
+    }
+
     private <T> T call(Callable<T> block) throws Exception {
         if (closed) throw new IllegalStateException("virtual_screen_closed");
         FutureTask<T> task = new FutureTask<>(block); handler.post(task);

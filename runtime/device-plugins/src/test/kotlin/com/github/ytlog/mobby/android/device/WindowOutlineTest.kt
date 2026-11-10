@@ -8,6 +8,11 @@ class WindowOutlineTest {
         val name: String = "android.widget.FrameLayout",
         val text: String? = null,
         val description: String? = null,
+        val hint: String? = null,
+        val state: String? = null,
+        val error: String? = null,
+        val enabled: Boolean = true,
+        val bounds: IntArray = intArrayOf(0, 0, 0, 0),
         val visible: Boolean = true,
         val clickable: Boolean = false,
         val longClickable: Boolean = false,
@@ -21,6 +26,11 @@ class WindowOutlineTest {
         override fun className() = name
         override fun text() = text
         override fun description() = description
+        override fun hint() = hint
+        override fun state() = state
+        override fun error() = error
+        override fun enabled() = enabled
+        override fun bounds() = bounds
         override fun visible() = visible
         override fun clickable() = clickable
         override fun longClickable() = longClickable
@@ -37,8 +47,9 @@ class WindowOutlineTest {
         fun all(): List<Fake> = listOf(this) + children.flatMap { it.all() }
     }
 
-    private fun outline(root: WindowOutline.Node, redact: (String) -> String = { it }) = WindowOutline.of(root) { redact(it) }
-    private fun lines(text: String) = text.lines().filter(String::isNotBlank)
+    private fun outline(root: WindowOutline.Node, redact: (String) -> String = { it }) = WindowOutline.of(root, 720, 1280) { redact(it) }
+    /** Lines without the trailing area, for tests about what is listed. */
+    private fun lines(text: String) = text.lines().filter(String::isNotBlank).map { it.substringBeforeLast(" [") }
 
     @Test fun `every on-screen node at any depth and count is listed`() {
         // Compose and React Native pages nest real controls far below any fixed depth; the former limit stopped at 12.
@@ -100,6 +111,51 @@ class WindowOutlineTest {
         val text = "a".repeat(WindowOutline.MAX_TEXT - 3) + code
         val outline = outline(Fake(children = listOf(Fake("android.widget.TextView", text = text)))) { it.replace(code, "[secure]") }
         assertFalse(outline.contains("482"))
+    }
+
+    @Test fun `each line ends with its area in the units tap takes, clipped to the display`() {
+        val root = Fake(children = listOf(
+            Fake("android.widget.ImageButton", description = "更多", clickable = true, bounds = intArrayOf(648, 64, 720, 140)),
+            Fake("android.widget.TextView", text = "半露在外", bounds = intArrayOf(-36, 1250, 360, 1400)),
+        ))
+        assertEquals(listOf(
+            "ImageButton desc=\"更多\" clickable [0.900,0.050,1.000,0.109]",
+            "TextView \"半露在外\" [0.000,0.977,0.500,1.000]",
+        ), outline(root).lines().filter(String::isNotBlank))
+    }
+
+    @Test fun `hints, states, errors and disabled controls are shown`() {
+        val root = Fake(children = listOf(
+            Fake("android.widget.EditText", hint = "搜索商品", editable = true, clickable = true),
+            Fake("android.widget.Switch", state = "已开启", clickable = true),
+            Fake("android.widget.EditText", text = "138", error = "手机号格式不对", editable = true),
+            Fake("android.widget.Button", text = "提交", clickable = true, enabled = false),
+            Fake("android.view.View", state = "3/10"),
+        ))
+        assertEquals(listOf(
+            "EditText hint=\"搜索商品\" clickable editable",
+            "Switch state=\"已开启\" clickable",
+            "EditText \"138\" error=\"手机号格式不对\" editable",
+            "Button \"提交\" clickable disabled",
+            "View state=\"3/10\"",
+        ), lines(outline(root)))
+    }
+
+    @Test fun `windows are read down to the focused one, or past popups to the first page when none has focus`() {
+        fun read(vararg windows: String): List<Int> = WindowOutline.readable(
+            BooleanArray(windows.size) { windows[it] != "system" },
+            BooleanArray(windows.size) { windows[it].endsWith("focused") },
+            BooleanArray(windows.size) { windows[it].startsWith("popup") },
+        ).toList()
+        // A bubble that takes no focus covers the focused page without replacing it.
+        assertEquals(listOf(0, 1), read("popup", "page focused", "page"))
+        assertEquals(listOf(1, 2), read("system", "popup", "page focused"))
+        // A focused dialog hides the page behind it.
+        assertEquals(listOf(0), read("dialog focused", "page"))
+        // Without focus information a popup still shows the page, and a top-level dialog still ends the stack.
+        assertEquals(listOf(0, 1), read("popup", "page", "page"))
+        assertEquals(listOf(0), read("dialog", "page"))
+        assertEquals(emptyList<Int>(), read("system"))
     }
 
     @Test fun `secret values never appear`() {

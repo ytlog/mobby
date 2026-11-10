@@ -90,6 +90,16 @@ class ScreenControlTest {
         assertThrows(DeviceFailure::class.java) { stop.validate(kotlinx.serialization.json.buildJsonObject { }) }
     }
 
+    @Test fun `long press takes fractions like tap`() {
+        val press = DeviceActionDefinition("screen", "long_press")
+        assertTrue(press.writes)
+        fun args(x: String, y: String) = kotlinx.serialization.json.buildJsonObject {
+            put("x", kotlinx.serialization.json.JsonPrimitive(x)); put("y", kotlinx.serialization.json.JsonPrimitive(y))
+        }
+        assertEquals(mapOf("x" to "0.25", "y" to "0.75"), press.validate(args("0.25", "0.75")))
+        assertThrows(DeviceFailure::class.java) { press.validate(args("1.5", "0.5")) }
+    }
+
     @Test fun `input and handoff requests take an optional reason for the user`() {
         fun args(vararg pairs: Pair<String, String>) = kotlinx.serialization.json.buildJsonObject {
             pairs.forEach { (key, value) -> put(key, kotlinx.serialization.json.JsonPrimitive(value)) }
