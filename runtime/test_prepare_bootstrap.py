@@ -24,12 +24,15 @@ class BootstrapTest(unittest.TestCase):
     def test_preserves_assets_and_maps_elf_files(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            self.fixture(root, {'bin/bash': b'\x7fELFbash', 'bin/pi': b'\x7fELFpi', 'lib/libc.so.1': b'\x7fELFlib', 'etc/config': b'data'})
+            self.fixture(root, {'bin/bash': b'\x7fELFbash', 'bin/pi': b'\x7fELFpi', 'bin/codex-code-mode-host': b'\x7fELFhost',
+                                'lib/libc.so.1': b'\x7fELFlib', 'etc/config': b'data'})
             prepare.prepare(root / 'out')
             mapping = json.loads((root / 'out/assets/bootstrap/binaries.json').read_text())
             self.assertEqual(mapping['bin/bash'], 'libbash.so')
             self.assertEqual(mapping['bin/pi'], 'libpi.so')
-            self.assertEqual(len(mapping), 3)
+            # Android extracts only lib*.so names; the gateway starts the helper through this stable name.
+            self.assertEqual(mapping['bin/codex-code-mode-host'], 'libcodex_code_mode_host.so')
+            self.assertEqual(len(mapping), 4)
             with zipfile.ZipFile(root / 'out/assets/bootstrap/data.zip') as stream:
                 self.assertEqual(stream.read('etc/config'), b'data')
                 self.assertNotIn('bin/bash', stream.namelist())
@@ -174,9 +177,9 @@ class CodexPayloadTest(unittest.TestCase):
             root = Path(directory)
             cache = root / 'cache'; cache.mkdir()
             source = cache / 'codex.tgz'
-            codex, bwrap = b'\x7fELFcodex-fixture', b'\x7fELFsandbox-fixture'
+            codex, bwrap, host = b'\x7fELFcodex-fixture', b'\x7fELFsandbox-fixture', b'\x7fELFcode-mode-host-fixture'
             with tarfile.open(source, 'w:gz') as archive:
-                for path, data in [('bin/codex', codex), ('codex-resources/bwrap', bwrap)]:
+                for path, data in [('bin/codex', codex), ('bin/codex-code-mode-host', host), ('codex-resources/bwrap', bwrap)]:
                     member = tarfile.TarInfo('package/vendor/aarch64-unknown-linux-musl/' + path)
                     member.size = len(data)
                     archive.addfile(member, io.BytesIO(data))
@@ -190,16 +193,22 @@ class CodexPayloadTest(unittest.TestCase):
                 add_agents(root, files, links, '/unused-fixture-ndk')
             self.assertEqual(files['bin/codex'], codex)
             self.assertEqual(files.get('bin/bwrap'), bwrap, 'Codex must find its official sandbox helper on PATH')
-            # A package update that loses the helper must fail at build time, not on a user's phone.
-            with tarfile.open(source, 'w:gz') as archive:
-                member = tarfile.TarInfo('package/vendor/aarch64-unknown-linux-musl/bin/codex')
-                member.size = len(codex)
-                archive.addfile(member, io.BytesIO(codex))
-            lock = json.loads((root / 'agents.lock.json').read_text())
-            lock['npm'][0]['sha256'] = hashlib.sha256(source.read_bytes()).hexdigest()
-            (root / 'agents.lock.json').write_text(json.dumps(lock))
-            with patch('agent_bundle.subprocess.run'), self.assertRaisesRegex(ValueError, 'Missing required Codex program: codex-resources/bwrap'):
-                add_agents(root, {}, {}, '/unused-fixture-ndk')
+            # Code-mode-only models run every tool through this helper; the gateway starts it beside Codex.
+            self.assertEqual(files.get('bin/codex-code-mode-host'), host)
+            # A package update that loses a helper must fail at build time, not on a user's phone.
+            for missing in ['codex-resources/bwrap', 'bin/codex-code-mode-host']:
+                with tarfile.open(source, 'w:gz') as archive:
+                    for path, data in [('bin/codex', codex), ('bin/codex-code-mode-host', host), ('codex-resources/bwrap', bwrap)]:
+                        if path == missing:
+                            continue
+                        member = tarfile.TarInfo('package/vendor/aarch64-unknown-linux-musl/' + path)
+                        member.size = len(data)
+                        archive.addfile(member, io.BytesIO(data))
+                lock = json.loads((root / 'agents.lock.json').read_text())
+                lock['npm'][0]['sha256'] = hashlib.sha256(source.read_bytes()).hexdigest()
+                (root / 'agents.lock.json').write_text(json.dumps(lock))
+                with patch('agent_bundle.subprocess.run'), self.assertRaisesRegex(ValueError, 'Missing required Codex program: ' + missing):
+                    add_agents(root, {}, {}, '/unused-fixture-ndk')
 
     def test_opencode_runtime_is_installed_beside_its_android_launcher(self):
         import io

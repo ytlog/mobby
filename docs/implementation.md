@@ -1105,3 +1105,14 @@ JDK 17 下主 APK、App 与 termux-core 单测及 App lint 通过。versionCode 
 ## 照片文字识别引导（2026-10-30）
 
 “查看照片”入口放到空对话页后，常见用法是识别截图或单据里的文字。相册技能说明补充：`list` 按时间从新到旧，“最新截图”通常是第一张图；要读图中文字，先 `copy`，再用 `resource` 导出，然后用 Agent 自己的图片或文件查看工具看这张图，只转写能看到的内容；模型看不了图片时要直说，不能凭文件名猜。回归测试检查生成的技能文本包含这些步骤。平板实测需要用户先授权 mobby 读取照片，尚未进行。
+
+## Codex code-mode host（2026-11-11）
+
+用户在手机上用 Codex 时所有命令都失败，模型转述 `codex-code-mode-host: No such file or directory`。原因有两层：固定的 `@openai/codex` 0.155.1 包在 `bin/` 下带有 `codex-code-mode-host`，打包脚本只提取了 `codex` 与 `bwrap`；而且 Codex 只在自身可执行文件旁（或 `bin/` + `codex-package.json` 包布局、`$CODEX_HOME` 独立安装目录）查找它，Android 上 Codex 运行在 APK native 库目录，只能存放 `lib*.so`，任何配置都无法让它找到。Codex 目录把 gpt-6-astra、gpt-5.6-sol/terra/luna、gpt-daybreak-* 等标为 `code_mode_only`，这类模型只提供 `exec`（JavaScript 单元），主机不可用时按设计失败关闭，于是 shell、文件和 MCP 工具全部失败；无 tool_mode 的模型（gpt-5.5、网关里的 deepseek 等）仍走 Direct 工具，不受影响。原生 ChatGPT 登录上线后才会用到这类模型，近期 Termux 包更新与此无关。手机上旧版用 `gpt-5.6-sol` 复现到 `Code Mode is unavailable because failed to spawn code-mode host <native 库目录>/codex-code-mode-host: host executable was not found`。
+
+修复先加打包与启动参数的失败测试。打包把该程序作为 `libcodex_code_mode_host.so` 放入 APK 并链接为 `bin/codex-code-mode-host`，缺失即构建失败。网关在 Codex app-server 启动前运行 `codex-code-mode-host --listen grpc://127.0.0.1:0`，读取它输出的本机地址，经 Codex 官方的 `app-server --code-mode-host` 传入；主机不继承 stdin/stdout 与网关/原生凭据，日志不混入 Agent 输出，Codex 退出、取消或信号时一并结束，启动失败、超时或地址异常时报告“无法启动 Codex code-mode host”且不启动 Codex。
+
+设备验证（a2106254，覆盖安装，配置与 HOME 保留）：新增 `CodexCodeModeDeviceTest` 由 App 进程经已安装网关启动内置 Codex，`gpt-5.6-sol` 与 `gpt-6-astra` 请求中只提供 custom `exec`，模拟网关下发的 JavaScript 单元调用 `tools.exec_command` 成功（exit 0，结果回传并写入工作区），会话结束后无残留主机进程；`deepseek/deepseek-v4.1-flash-1017` 仍以 Direct `exec_command` 成功。APK 中该库压缩后约 26.3 MB，安装后解压 63.4 MB。
+
+尚未解决：主机的 gRPC 端口没有鉴权，运行期间同机其他应用可连接并在 mobby UID 下的 V8 中执行 JavaScript（工具回调回到连接方自身），与本地服务需鉴权的约定不符，后续需单独设计。原生登录模式的 HTTPS 隧道通过 `NO_PROXY=127.0.0.1,localhost,::1` 排除本机地址，Codex 到主机的连接按此不经隧道，但尚未在原生登录会话中实测。真实 ChatGPT 登录与真实模型仍待手机验收；V8 等新增依赖的许可证通知尚未补齐，见[许可证合规](license-compliance.md)。
+

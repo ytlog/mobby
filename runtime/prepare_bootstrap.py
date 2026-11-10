@@ -124,7 +124,12 @@ def prepare(output, ndk=None):
         for path, data in sorted(files.items()):
             if data.startswith(b'\x7fELF'):
                 command = path.removeprefix('bin/')
-                name = 'lib' + command + '.so' if path in ('bin/bash', 'bin/node', 'bin/npm', 'bin/npx', 'bin/claude', 'bin/codex', 'bin/opencode', 'bin/pi') else 'libbootstrap_' + hashlib.sha256(path.encode()).hexdigest()[:16] + '.so'
+                if path == 'bin/codex-code-mode-host':
+                    name = 'libcodex_code_mode_host.so'
+                elif path in ('bin/bash', 'bin/node', 'bin/npm', 'bin/npx', 'bin/claude', 'bin/codex', 'bin/opencode', 'bin/pi'):
+                    name = 'lib' + command + '.so'
+                else:
+                    name = 'libbootstrap_' + hashlib.sha256(path.encode()).hexdigest()[:16] + '.so'
                 (native / name).write_bytes(data)
                 mapping[path] = name
             else:

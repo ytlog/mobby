@@ -8,6 +8,7 @@ const {spawn} = require('node:child_process');
 const {Readable} = require('node:stream');
 const {pipeline} = require('node:stream/promises');
 const {GatewayStrings, GatewayError} = require('./gateway-strings.cjs');
+const codeMode = require('./codex-code-mode-host.cjs');
 const strings = new GatewayStrings();
 const MAX_BODY = 16 * 1024 * 1024;
 function endpoint(config) {
@@ -163,8 +164,20 @@ async function main() {
   let launch;
   let input;
   let child;
+  let host;
   try {
     launch = prepared || agentLaunch(mode, args, config, process.env, bridge);
+    if (codeMode.needsCodeModeHost(mode, launch.args)) {
+      try {
+        // The host runs model-written code only; it does not need gateway or native credentials.
+        host = await codeMode.startCodeModeHost(codeMode.hostProgram(process.env),
+          {env:{PATH:process.env.PATH, HOME:process.env.HOME, TMPDIR:process.env.TMPDIR}});
+      } catch (error) {
+        console.error(error instanceof GatewayError ? error.message : strings.codeModeHostFailed('spawn'));
+        bridge.close(); process.exitCode = 1; return;
+      }
+      launch = {...launch, args:codeMode.withCodeModeHost(launch.args, host.url)};
+    }
     if (mode === 'PI' && !native) {
       process.exitCode = await require('./pi-live.cjs').runPi(executable, launch.args, launch.env);
       bridge.close();
@@ -176,11 +189,14 @@ async function main() {
     }
     if (process.env.MOBBY_AGENT_INPUT_FILE) input = openAgentInput(process.env.MOBBY_AGENT_INPUT_FILE);
     child = spawn(executable, launch.args, {env:launch.env, stdio:input === undefined ? 'inherit' : [input, 1, 2]});
-  } catch (error) { bridge.close(); throw error; }
+  } catch (error) { host?.close(); bridge.close(); throw error; }
   finally { if (input !== undefined) fs.closeSync(input); }
-  child.on('error', () => { console.error(strings.agentStartFailed); bridge.close(); process.exitCode=1; });
-  child.on('exit', code => { bridge.close(); process.exitCode=code ?? 1; });
-  for (const signal of ['SIGTERM','SIGINT']) process.on(signal, () => { child.kill(signal); bridge.close(); });
+  let finished = false;
+  host?.child.on('exit', () => { if (!finished) console.error(strings.codeModeHostStopped); });
+  const finish = () => { finished = true; host?.close(); bridge.close(); };
+  child.on('error', () => { console.error(strings.agentStartFailed); finish(); process.exitCode=1; });
+  child.on('exit', code => { finish(); process.exitCode=code ?? 1; });
+  for (const signal of ['SIGTERM','SIGINT']) process.on(signal, () => { child.kill(signal); finish(); });
 }
 module.exports = {openAgentInput, endpoint, createBridge, agentLaunch};
 if (require.main === module) main().catch(() => { console.error(strings.bridgeStartFailed); process.exitCode=1; });

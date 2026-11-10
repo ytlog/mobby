@@ -123,7 +123,10 @@ def add_agents(root, files, links, ndk):
             if package['name'] == '@openai/codex':
                 # The sandbox launcher searches PATH before package-relative resources.
                 # Keep the official helper available for explicit sandboxed CLI invocations.
-                for source_name, target in [('bin/codex', 'bin/codex'), ('codex-resources/bwrap', 'bin/bwrap')]:
+                # Code-mode-only models run every tool through codex-code-mode-host; Codex cannot find it
+                # in the Android native-library directory, so the gateway starts it and passes its address.
+                for source_name, target in [('bin/codex', 'bin/codex'), ('bin/codex-code-mode-host', 'bin/codex-code-mode-host'),
+                                            ('codex-resources/bwrap', 'bin/bwrap')]:
                     name = 'package/vendor/aarch64-unknown-linux-musl/' + source_name
                     try:
                         member = archive.getmember(name)

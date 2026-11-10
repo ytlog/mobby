@@ -209,3 +209,76 @@ test('bridge diagnostics use the selected language without changing protocol val
     assert.equal(result.stdout, expected);
   }
 });
+
+// Codex 0.155.1 looks for codex-code-mode-host only beside its own executable, which on Android is the
+// APK native-library directory. The bridge starts the packaged helper and hands Codex its loopback URL.
+function codeModeFixture(hostSource) {
+  const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'mobby-code-mode-'));
+  fs.mkdirSync(path.join(root,'bin'));
+  // A shell wrapper keeps the fixture independent of spaces in the Node path.
+  const script=(file,source)=>{fs.writeFileSync(file+'.js',source);
+    fs.writeFileSync(file,`#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(file+'.js')} "$@"\n`);fs.chmodSync(file,0o755);return file;};
+  if (hostSource) script(path.join(root,'bin/codex-code-mode-host'),hostSource);
+  const codex=script(path.join(root,'codex'),`require('fs').writeFileSync(${JSON.stringify(path.join(root,'codex-args.json'))},JSON.stringify(process.argv.slice(2)));`);
+  return {root,codex,script,file:name=>path.join(root,name),remove:()=>fs.rmSync(root,{recursive:true,force:true})};
+}
+const liveHost=pidFile=>`require('fs').writeFileSync(${JSON.stringify(pidFile)},String(process.pid));
+  if (JSON.stringify(process.argv.slice(2))!=='["--listen","grpc://127.0.0.1:0"]') process.exit(9);
+  if (process.env.MOBBY_GATEWAY_TOKEN) process.exit(8);
+  console.error('INFO host log');console.log('http://127.0.0.1:43123');setInterval(()=>{},1000);`;
+function runBridge(fixture,args,env={}) {
+  const {spawnSync}=require('node:child_process'),path=require('node:path');
+  return spawnSync(process.execPath,[path.join(__dirname,'../android/src/main/assets/gateway/bridge.cjs'),'CODEX',fixture.codex,...args],{
+    encoding:'utf8',timeout:20000,
+    env:{PATH:process.env.PATH,PREFIX:fixture.root,HOME:fixture.root,MOBBY_LANGUAGE:'en',
+      MOBBY_GATEWAY_CONFIG:JSON.stringify({endpoint:'http://127.0.0.1:9/v1',protocol:'responses',model:'gpt-5.6-sol',key:''}),...env}});
+}
+const alive=pid=>{try{process.kill(pid,0);return true;}catch(_){return false;}};
+
+test('Codex app-server receives the packaged code-mode host and the host stops with Codex',()=>{
+  const fs=require('node:fs');
+  const fixture=codeModeFixture(null);
+  try {
+    fixture.script(fixture.file('bin/codex-code-mode-host'),liveHost(fixture.file('host.pid')));
+    const result=runBridge(fixture,['--sandbox','danger-full-access','app-server','--listen','stdio://']);
+    assert.equal(result.status,0,result.stderr);
+    const args=JSON.parse(fs.readFileSync(fixture.file('codex-args.json'),'utf8'));
+    assert.deepEqual(args.slice(-4),['--listen','stdio://','--code-mode-host','http://127.0.0.1:43123']);
+    assert.equal(args.filter(arg=>arg==='--code-mode-host').length,1);
+    assert.doesNotMatch(result.stdout+result.stderr,/INFO host log/,'Host logs must not mix into the agent stream');
+    assert.equal(alive(Number(fs.readFileSync(fixture.file('host.pid'),'utf8'))),false);
+  } finally {fixture.remove();}
+});
+
+test('a code-mode host that cannot start fails the Codex run before Codex starts',()=>{
+  const fs=require('node:fs');
+  for (const [name,source,reason] of [['missing',null,/ENOENT/],['exits',`console.error('boom');process.exit(3);`,/exit 3: boom/],
+    ['wrong address',`console.log('http://0.0.0.0:43123');setInterval(()=>{},1000);`,/invalid address http:\/\/0\.0\.0\.0:43123/]]) {
+    const fixture=codeModeFixture(source);
+    try {
+      const result=runBridge(fixture,['app-server','--listen','stdio://']);
+      assert.equal(result.status,1,name);
+      assert.match(result.stderr,/Could not start Codex code-mode host/,name);
+      assert.match(result.stderr,reason,name);
+      assert.equal(fs.existsSync(fixture.file('codex-args.json')),false,name+': Codex must not run without its host');
+    } finally {fixture.remove();}
+  }
+});
+
+test('code-mode host startup times out instead of waiting forever',async()=>{
+  const {startCodeModeHost}=require('../../runtime/android/src/main/assets/gateway/codex-code-mode-host.cjs');
+  const fixture=codeModeFixture(`setInterval(()=>{},1000);`);
+  try {
+    const started=Date.now();
+    await assert.rejects(startCodeModeHost(fixture.file('bin/codex-code-mode-host'),{env:{},timeoutMs:300}),/code-mode host/);
+    assert.ok(Date.now()-started<5000);
+  } finally {fixture.remove();}
+});
+
+test('only the Codex app-server launch needs a code-mode host',()=>{
+  const {needsCodeModeHost}=require('../../runtime/android/src/main/assets/gateway/codex-code-mode-host.cjs');
+  assert.equal(needsCodeModeHost('CODEX',['-c','x=1','app-server','--listen','stdio://']),true);
+  assert.equal(needsCodeModeHost('CODEX',['exec','app-server']),false);
+  for (const mode of ['CLAUDE','PI','OPEN_CODE']) assert.equal(needsCodeModeHost(mode,['app-server']),false);
+});

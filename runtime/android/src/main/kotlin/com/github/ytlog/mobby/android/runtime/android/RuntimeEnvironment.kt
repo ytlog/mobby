@@ -93,7 +93,7 @@ class RuntimeEnvironment(private val context: Context) {
         File(context.filesDir, "pi-live.cjs").outputStream().use { target ->
             context.assets.open("gateway/pi-live.cjs").use { it.copyTo(target) }
         }
-        for (name in listOf("native-network.cjs", "native-auth.cjs")) {
+        for (name in listOf("native-network.cjs", "native-auth.cjs", "codex-code-mode-host.cjs")) {
             File(context.filesDir, name).outputStream().use { target -> context.assets.open("gateway/$name").use { it.copyTo(target) } }
         }
         if (dependenciesReady) output(AppStrings.dependenciesInstalledAndVerifiedConfigureAddressProtocolModelAnd)

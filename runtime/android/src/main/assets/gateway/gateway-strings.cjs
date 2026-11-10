@@ -17,6 +17,8 @@ class GatewayStrings {
   get bridgeRequired() { return this.text('必须使用本地桥接', 'A local bridge is required'); }
   get unsupportedAgent() { return this.text('不支持的 Agent', 'Unsupported Agent'); }
   get invalidInputFile() { return this.text('不支持的 Agent 输入文件', 'Unsupported Agent input file'); }
+  codeModeHostFailed(detail) { return this.text(`无法启动 Codex code-mode host（${detail}）`, `Could not start Codex code-mode host (${detail})`); }
+  get codeModeHostStopped() { return this.text('Codex code-mode host 已意外退出', 'Codex code-mode host exited unexpectedly'); }
   get agentStartFailed() { return this.text('无法启动 Agent', 'Could not start Agent'); }
   get bridgeStartFailed() { return this.text('无法启动本地桥接，请检查 Agent 协议与网关配置', 'Could not start local bridge. Check Agent protocol and gateway configuration'); }
 }
