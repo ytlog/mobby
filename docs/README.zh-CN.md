@@ -22,44 +22,16 @@
 </p>
 
 <p align="center">
-  <a href="#看着页面直接问">页面问答</a> ·
-  <a href="#处理照片和文件">照片与文件</a> ·
   <a href="#让它帮你操作-app">操作 App</a> ·
   <a href="#在设备上写个能用的小程序">设备上编程</a> ·
+  <a href="#看着页面直接问">页面问答</a> ·
+  <a href="#处理照片和文件">照片与文件</a> ·
   <a href="#开始使用">开始使用</a>
 </p>
 
 ## 能做什么
 
 <table>
-<tr>
-<td width="55%" valign="middle">
-
-### 看着页面，直接问
-
-浏览网页时遇到一段没看懂的英文，点开悬浮球，进入悬浮对话，再点“识别屏幕”。mobby 会读取当前页面，你可以让它翻译、解释，或者接着追问。
-
-> 💬 *这个页面在讲什么？Python 有哪些特点，初学者应该从哪里开始？*
-
-</td>
-<td width="45%" align="center">
-<img src="media/cn/framed/screen-qa.gif" width="280" alt="手机演示：在 Python 网页上打开悬浮对话，用中文解释当前页面">
-</td>
-</tr>
-<tr>
-<td width="45%" align="center">
-<img src="media/cn/framed/media-files.gif" width="280" alt="手机演示：照片识别和文件导出完成后的对话">
-</td>
-<td width="55%" valign="middle">
-
-### 处理照片和文件
-
-给当前任务加入“查看照片”或“访问文件”，选好要开放的照片和目录，就可以让它识别图片、复制文件、整理清单，再把结果保存回设备。
-
-> 💬 *看一下最近的照片，把最新一张复制到指定文件夹，再写一份图片说明和文件清单。*
-
-</td>
-</tr>
 <tr>
 <td width="55%" valign="middle">
 
@@ -91,6 +63,34 @@
 > 💬 *做一个旅行打包清单，按证件、衣物、电子和洗漱用品分类。可以勾选、添加、删除，刷新后还能保留。*
 
 [了解在手机上写程序 →](https://ytlog.github.io/articles/mobby-coding-on-your-phone.html?lang=zh) · [示例源码](examples/travel-checklist/)
+
+</td>
+</tr>
+<tr>
+<td width="55%" valign="middle">
+
+### 看着页面，直接问
+
+浏览网页时遇到一段没看懂的英文，点开悬浮球，进入悬浮对话，再点“识别屏幕”。mobby 会读取当前页面，你可以让它翻译、解释，或者接着追问。
+
+> 💬 *这个页面在讲什么？Python 有哪些特点，初学者应该从哪里开始？*
+
+</td>
+<td width="45%" align="center">
+<img src="media/cn/framed/screen-qa.gif" width="280" alt="手机演示：在 Python 网页上打开悬浮对话，用中文解释当前页面">
+</td>
+</tr>
+<tr>
+<td width="45%" align="center">
+<img src="media/cn/framed/media-files.gif" width="280" alt="手机演示：照片识别和文件导出完成后的对话">
+</td>
+<td width="55%" valign="middle">
+
+### 处理照片和文件
+
+给当前任务加入“查看照片”或“访问文件”，选好要开放的照片和目录，就可以让它识别图片、复制文件、整理清单，再把结果保存回设备。
+
+> 💬 *看一下最近的照片，把最新一张复制到指定文件夹，再写一份图片说明和文件清单。*
 
 </td>
 </tr>

@@ -22,44 +22,16 @@
 </p>
 
 <p align="center">
-  <a href="#ask-about-whats-on-your-screen">Screen Q&amp;A</a> ·
-  <a href="#work-with-photos-and-files">Photos and files</a> ·
   <a href="#let-it-use-apps-for-you">App control</a> ·
   <a href="#build-something-useful-on-your-device">Coding on Android</a> ·
+  <a href="#ask-about-whats-on-your-screen">Screen Q&amp;A</a> ·
+  <a href="#work-with-photos-and-files">Photos and files</a> ·
   <a href="#getting-started">Getting started</a>
 </p>
 
 ## What it can do
 
 <table>
-<tr>
-<td width="55%" valign="middle">
-
-### Ask about what's on your screen
-
-Reading a page you don't understand? Tap the floating button, open the floating chat, and use screen recognition. Ask mobby to translate the text, explain it, or answer a follow-up question.
-
-> 💬 *What is this page about? What makes Python useful, and where should a beginner start?*
-
-</td>
-<td width="45%" align="center">
-<img src="docs/media/en/framed/screen-qa.gif" width="280" alt="Phone demo: floating chat explaining the Python website">
-</td>
-</tr>
-<tr>
-<td width="45%" align="center">
-<img src="docs/media/en/framed/media-files.gif" width="280" alt="Phone demo: completed photo analysis and file export">
-</td>
-<td width="55%" valign="middle">
-
-### Work with photos and files
-
-Add photo or file access to a task and choose the photos or folder to share. Ask mobby to describe an image, copy files, make a list, and save the results back to your phone.
-
-> 💬 *Look at my recent photos, copy the latest one to the folder I selected, and create an image summary and a file list.*
-
-</td>
-</tr>
 <tr>
 <td width="55%" valign="middle">
 
@@ -91,6 +63,34 @@ Git, Node.js and four coding agents come built in. Describe what you need: the a
 > 💬 *Make a travel packing list with categories for documents, clothes, electronics, and toiletries. Let me check off, add, and delete items, and keep my changes after a refresh.*
 
 [Coding on your phone →](https://ytlog.github.io/articles/mobby-coding-on-your-phone.html?lang=en) · [Example code](docs/examples/travel-checklist-en/)
+
+</td>
+</tr>
+<tr>
+<td width="55%" valign="middle">
+
+### Ask about what's on your screen
+
+Reading a page you don't understand? Tap the floating button, open the floating chat, and use screen recognition. Ask mobby to translate the text, explain it, or answer a follow-up question.
+
+> 💬 *What is this page about? What makes Python useful, and where should a beginner start?*
+
+</td>
+<td width="45%" align="center">
+<img src="docs/media/en/framed/screen-qa.gif" width="280" alt="Phone demo: floating chat explaining the Python website">
+</td>
+</tr>
+<tr>
+<td width="45%" align="center">
+<img src="docs/media/en/framed/media-files.gif" width="280" alt="Phone demo: completed photo analysis and file export">
+</td>
+<td width="55%" valign="middle">
+
+### Work with photos and files
+
+Add photo or file access to a task and choose the photos or folder to share. Ask mobby to describe an image, copy files, make a list, and save the results back to your phone.
+
+> 💬 *Look at my recent photos, copy the latest one to the folder I selected, and create an image summary and a file list.*
 
 </td>
 </tr>
