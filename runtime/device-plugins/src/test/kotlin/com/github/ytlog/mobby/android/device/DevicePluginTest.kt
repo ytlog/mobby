@@ -224,6 +224,7 @@ class DevicePluginTest {
         assertTrue(markdown.contains("login page"))
         assertTrue(markdown.contains("Do not end your turn to ask in chat"))
         assertTrue(markdown.contains("the user accepts or declines it there"))
+        assertTrue(markdown.contains("""request_handoff {"reason":"""))
     }
 
     @Test fun `skill text includes only the actions enabled for this run`() {

@@ -45,7 +45,8 @@ internal class DeviceActions(private val context: Context, private val inbox: Fi
         return when (plugin) {
             "screen" -> if (action == "request_input" || action == "request_handoff") {
                 if (screenSession() == null) deviceFailure(DeviceErrorCode.UNSUPPORTED_CAPABILITY)
-                val tookOver = ScreenControl.requestUserInput(context, args["label"], action == "request_handoff", execution, gate::checkActive)
+                val tookOver = ScreenControl.requestUserInput(context, args["label"], action == "request_handoff", execution, gate::checkActive,
+                    args["reason"].orEmpty())
                 if (tookOver) deviceText("The user returned control. Take a fresh snapshot before your next action.", EffectState.NONE)
                 else deviceText("The user filled the requested fields.", EffectState.CONFIRMED)
             } else screen(action, args)

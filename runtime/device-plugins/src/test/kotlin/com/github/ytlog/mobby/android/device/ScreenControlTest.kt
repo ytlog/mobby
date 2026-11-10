@@ -80,6 +80,19 @@ class ScreenControlTest {
         }
     }
 
+    @Test fun `input and handoff requests take an optional reason for the user`() {
+        fun args(vararg pairs: Pair<String, String>) = kotlinx.serialization.json.buildJsonObject {
+            pairs.forEach { (key, value) -> put(key, kotlinx.serialization.json.JsonPrimitive(value)) }
+        }
+        val reason = "抖音登录页需要你的手机号"
+        assertEquals(mapOf("reason" to reason), DeviceActionDefinition("screen", "request_handoff").validate(args("reason" to reason)))
+        assertEquals(emptyMap<String, String>(), DeviceActionDefinition("screen", "request_handoff").validate(args()))
+        DeviceActionDefinition("screen", "request_input").validate(args("label" to "Code", "reason" to reason))
+        assertThrows(DeviceFailure::class.java) {
+            DeviceActionDefinition("screen", "request_handoff").validate(args("reason" to "x".repeat(201)))
+        }
+    }
+
     @Test fun `manual control rejects reads and writes and handback first requires a fresh snapshot`() {
         val manual = ScreenControlState(mode = ScreenMode.ADB, active = true, displayId = 7, manualControlId = "fixture")
         for (action in listOf("snapshot", "inspect", "tap", "request_input")) {

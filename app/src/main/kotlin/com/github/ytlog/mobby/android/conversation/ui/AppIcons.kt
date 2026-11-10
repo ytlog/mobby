@@ -42,6 +42,7 @@ internal object AppIcons {
     val Plus = glyph("M12 5v14M5 12h14")
     val Minus = glyph("M5 12h14")
     val Mic = glyph("M9 5a3 3 0 0 1 6 0v7a3 3 0 0 1-6 0zM5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8")
+    val Lock = glyph("M6 11h12v10H6z M8 11V8a4 4 0 0 1 8 0v3")
     val Keyboard = glyph("M4 6h16v12H4z M7 9h2 M11 9h2 M15 9h2 M7 12h2 M11 12h2 M15 12h2 M7 15h10")
     val Stop = mark("M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z")
     val Send = glyph("m5 12 7-7 7 7M12 5v15")

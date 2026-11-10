@@ -168,13 +168,20 @@ final class VirtualScreen implements AutoCloseable {
                 clearPrivateInputTarget();
                 privateInputFocusedOnly = args.optBoolean("focusedOnly");
                 privateInputTargets.addAll(privateInputFields(privateInputFocusedOnly));
+                // A handoff offers the focused field when there is one and otherwise only the takeover.
+                if (privateInputTargets.isEmpty() && args.optBoolean("allowNone"))
+                    return metadata(new JSONObject().put("labels", new JSONArray()).put("secret", new JSONArray()));
                 if (privateInputTargets.isEmpty() || privateInputTargets.size() + privateValues.size() > 20) {
                     clearPrivateInputTarget();
                     throw new IllegalStateException("private_input_field_count");
                 }
                 JSONArray labels = new JSONArray();
-                for (AccessibilityNodeInfo field : privateInputTargets) labels.put(privateInputLabel(field));
-                return metadata(new JSONObject().put("labels", labels));
+                JSONArray secret = new JSONArray();
+                for (AccessibilityNodeInfo field : privateInputTargets) {
+                    labels.put(privateInputLabel(field));
+                    secret.put(field.isPassword());
+                }
+                return metadata(new JSONObject().put("labels", labels).put("secret", secret));
             }
             if ("cancel_private_input".equals(action)) {
                 clearPrivateInputTarget();

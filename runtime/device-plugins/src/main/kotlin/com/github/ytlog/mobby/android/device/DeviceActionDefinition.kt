@@ -24,7 +24,8 @@ internal class DeviceActionDefinition(val plugin: String, val action: String) {
     }
     private val fields: Map<String, Int> = when ("$plugin.$action") {
         "screen.click" -> mapOf("query" to 200)
-        "screen.request_input" -> mapOf("label" to 80)
+        "screen.request_input" -> mapOf("label" to 80, "reason" to 200)
+        "screen.request_handoff" -> mapOf("reason" to 200)
         "screen.type" -> mapOf("text" to 2000)
         "screen.tap" -> mapOf("x" to 24, "y" to 24)
         "screen.swipe" -> mapOf("x" to 24, "y" to 24, "toX" to 24, "toY" to 24)
@@ -47,7 +48,8 @@ internal class DeviceActionDefinition(val plugin: String, val action: String) {
     /** Argument names with their maximum lengths, and those that may be omitted. */
     val arguments: Map<String, Int> get() = fields
     val optionalArguments: Set<String> get() = when ("$plugin.$action") {
-        "screen.request_input" -> setOf("label")
+        "screen.request_input" -> setOf("label", "reason")
+        "screen.request_handoff" -> setOf("reason")
         "contacts.create" -> setOf("phone")
         "programs.dry-run" -> setOf("events", "timeoutMs")
         "programs.records" -> setOf("limit")

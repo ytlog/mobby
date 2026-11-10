@@ -13,7 +13,7 @@ class PrivateScreenInputTest {
             assertTrue(PrivateScreenInput.chooseTakeOver("operation", prompt))
             assertFalse(PrivateScreenInput.submit("operation", prompt, listOf("fixture")))
         }
-        assertEquals(PrivateScreenInput.Answer.TakeOver, PrivateScreenInput.await(execution, listOf("Code")) {})
+        assertEquals(PrivateScreenInput.Answer.TakeOver, PrivateScreenInput.await(execution, listOf(PrivateScreenInput.Field("Code"))) {})
     }
 
     @Test fun `a takeover started from the preview answers the pending prompt`() {
@@ -23,6 +23,19 @@ class PrivateScreenInputTest {
         val answer = PrivateScreenInput.await(execution, emptyList(), userTookOver = { userControls.also { userControls = true } }) {}
         assertTrue(prompted)
         assertEquals(PrivateScreenInput.Answer.TakeOver, answer)
+    }
+
+    @Test fun `a handoff prompt carries the agent's reason and the display's focused field`() {
+        val field = PrivateScreenInput.Field("手机号")
+        val execution = DeviceExecution("operation") { _, phase, attention ->
+            assertEquals("screen.handoff", phase)
+            val promptId = requireNotNull(attention).promptId
+            assertEquals(PrivateScreenInput.Request(listOf(field), "抖音登录页需要你的手机号", handoff = true),
+                PrivateScreenInput.request("operation", promptId))
+            assertTrue(PrivateScreenInput.submit("operation", promptId, listOf("fixture-number")))
+        }
+        assertEquals(PrivateScreenInput.Answer.Value(listOf("fixture-number")),
+            PrivateScreenInput.await(execution, listOf(field), "抖音登录页需要你的手机号", handoff = true) {})
     }
 
     @Test fun `a local response only reaches its matching live field request`() {
@@ -38,7 +51,7 @@ class PrivateScreenInputTest {
             assertTrue(PrivateScreenInput.submit("operation", promptId, fixture))
             assertFalse(PrivateScreenInput.submit("operation", promptId, fixture))
         }
-        assertEquals(PrivateScreenInput.Answer.Value(fixture), PrivateScreenInput.await(execution, listOf("Account", "Password")) {})
+        assertEquals(PrivateScreenInput.Answer.Value(fixture), PrivateScreenInput.await(execution, listOf(PrivateScreenInput.Field("Account"), PrivateScreenInput.Field("Password", secret = true))) {})
         assertFalse(PrivateScreenInput.submit("operation", promptId, fixture))
     }
 
@@ -46,7 +59,7 @@ class PrivateScreenInputTest {
         val execution = DeviceExecution("operation") { _, _, attention ->
             assertTrue(PrivateScreenInput.submit("operation", requireNotNull(attention).promptId, null))
         }
-        val error = assertThrows(DeviceFailure::class.java) { PrivateScreenInput.await(execution, listOf("Account", "Password")) {} }
+        val error = assertThrows(DeviceFailure::class.java) { PrivateScreenInput.await(execution, listOf(PrivateScreenInput.Field("Account"), PrivateScreenInput.Field("Password", secret = true))) {} }
         assertEquals(DeviceErrorCode.CANCELLED, error.error.code)
     }
 }

@@ -451,24 +451,30 @@ object ScreenControl {
         }
     }
 
+    /**
+     * Asks the user through one dialog. A handoff offers the display's focused field, when there is one, beside the
+     * way into the takeover page; an input request lists the fields to fill. [reason] is the agent's text for the user.
+     */
     internal fun requestUserInput(context: Context, label: String?, handoffOnly: Boolean, execution: DeviceExecution,
-        checkActive: () -> Unit): Boolean {
+        checkActive: () -> Unit, reason: String = ""): Boolean {
         val (connection, display) = activeDisplay()
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(125)
         // The user already took over on their own: wait for them to return control instead of prompting again.
         if (handoffOnly) state.value.takeIf { it.displayId == display }?.manualControlId?.let { id ->
             return awaitHandBack(id, connection, display, deadline, execution, checkActive)
         }
-        val labels = agentAction(display, if (handoffOnly) "request_handoff" else "request_input", checkActive) {
+        val fields = agentAction(display, if (handoffOnly) "request_handoff" else "request_input", checkActive) {
             requireUnlocked(context)
-            if (handoffOnly) emptyList() else {
-                val fields = request(connection, "prepare_private_input",
-                    mapOf("focusedOnly" to (label != null).toString()), expectedDisplay = display).getJSONArray("labels")
-                if (label != null) listOf(label) else List(fields.length(), fields::getString)
+            val prepared = request(connection, "prepare_private_input", mapOf("focusedOnly" to (handoffOnly || label != null).toString(),
+                "allowNone" to handoffOnly.toString()), expectedDisplay = display)
+            val labels = prepared.getJSONArray("labels")
+            val secret = prepared.optJSONArray("secret")
+            List(labels.length()) { index ->
+                PrivateScreenInput.Field(if (label != null && !handoffOnly) label else labels.getString(index), secret?.optBoolean(index) == true)
             }
         }
         try {
-            val answer = PrivateScreenInput.await(execution, labels, checkActive = checkActive, userTookOver = {
+            val answer = PrivateScreenInput.await(execution, fields, reason, handoffOnly, checkActive = checkActive, userTookOver = {
                 state.value.let { it.displayId == display && it.manualControlId != null }
             })
             return when (answer) {
@@ -487,7 +493,7 @@ object ScreenControl {
                 PrivateScreenInput.Answer.Cancel -> deviceFailure(DeviceErrorCode.CANCELLED)
             }
         } finally {
-            if (!handoffOnly && state.value.manualControlId == null) ScreenCoordinator.chatAction {
+            if (fields.isNotEmpty() && state.value.manualControlId == null) ScreenCoordinator.chatAction {
                 if (state.value.manualControlId == null && state.value.displayId == display && channel === connection)
                     clearPrivateInput(connection, display)
             }

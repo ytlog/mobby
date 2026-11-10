@@ -239,6 +239,13 @@ open class StringCatalog(private val fixedLanguage: AppLanguage? = null) {
     val virtualScreenReadAfterHandoff get() = text("用户已交还副屏，请先读取当前页面再操作。", "The user returned control. Read the current page before acting.")
     val virtualScreenHandoffPrompt get() = text("请在副屏完成验证或输入，可点副屏输入框用键盘输入；离开验证页面后再交还给 Agent。",
         "Complete the verification or typing on the virtual display; tap a field there to use its keyboard. Leave any verification page before returning control.")
+    fun virtualScreenInputTitle(field: String) = text("需要你输入「{0}」", "Enter {0}", field)
+    val virtualScreenInputAnyTitle get() = text("需要你输入内容", "Enter text on the display")
+    val virtualScreenInputFieldsTitle get() = text("需要你填写副屏字段", "Fill the fields on the display")
+    val virtualScreenOperateTitle get() = text("需要你操作副屏", "Your turn on the display")
+    val virtualScreenInputPrivacy get() = text("填入副屏里的这个输入框，Agent 读屏时看不到内容。", "This goes into the field on the display. The Agent can't read it.")
+    val virtualScreenEnterTakeover get() = text("进入接手页面", "Open takeover page")
+    val virtualScreenEnterTakeoverDetail get() = text("自己点副屏，例如获取验证码、滑块", "Tap the display yourself, for example to get a code or solve a slider")
     val virtualScreenManualInput get() = text("输入文字", "Enter text")
     val virtualScreenManualFill get() = text("填入副屏", "Fill on display")
     val virtualScreenManualTargetHelp get() = text("内容会填入刚选中的副屏输入框。", "Your text goes into the selected field on the virtual display.")

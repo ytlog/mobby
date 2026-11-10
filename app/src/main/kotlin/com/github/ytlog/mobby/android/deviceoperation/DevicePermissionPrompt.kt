@@ -5,6 +5,19 @@ import androidx.activity.compose.LocalActivityResultRegistryOwner
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.input.VisualTransformation
+import com.github.ytlog.mobby.android.conversation.ui.AppIcon
+import com.github.ytlog.mobby.android.conversation.ui.AppIcons
+import com.github.ytlog.mobby.android.conversation.ui.toolCallInk
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,7 +27,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -158,58 +170,91 @@ internal fun ConversationDevicePermissionDialog(detail: ConversationDetail, vm: 
 @Composable
 private fun PrivateScreenInputDialog(operation: DeviceOperation) {
     val prompt = operation.requiresAttention ?: return
-    val labels = remember(prompt.promptId) { PrivateScreenInput.labels(operation.operationId, prompt.promptId) } ?: return
-    val values = remember(prompt.promptId) { mutableStateListOf<String>().apply { addAll(List(labels.size) { "" }) } }
-    var submitted by remember(prompt.promptId) { mutableStateOf(false) }
+    val request = remember(prompt.promptId) { PrivateScreenInput.request(operation.operationId, prompt.promptId) } ?: return
     var takingOver by rememberSaveable(prompt.promptId) { mutableStateOf(false) }
     val screen = ScreenUi.controller?.state?.collectAsStateWithLifecycle()?.value
     if (takingOver || screen?.manualControlId != null) return
-    val handoffOnly = labels.isEmpty()
-    fun takeOver() {
-        if (submitted || !PrivateScreenInput.chooseTakeOver(operation.operationId, prompt.promptId)) return
-        values.indices.forEach { values[it] = "" }
+    PrivateScreenInputPrompt(request, canTakeOver = screen?.active == true,
+        onFill = { PrivateScreenInput.submit(operation.operationId, prompt.promptId, it) },
+        onTakeOver = { PrivateScreenInput.chooseTakeOver(operation.operationId, prompt.promptId).also { if (it) takingOver = true } },
+        onCancel = { PrivateScreenInput.submit(operation.operationId, prompt.promptId, null) })
+}
+
+/**
+ * The agent's request for the user, in the style of the authorization dialog: what to type into the display's field,
+ * which the agent never reads, and a way into the takeover page for steps the user must tap themselves.
+ */
+@Composable
+internal fun PrivateScreenInputPrompt(request: PrivateScreenInput.Request, canTakeOver: Boolean,
+    onFill: (List<String>) -> Boolean, onTakeOver: () -> Boolean, onCancel: () -> Unit) {
+    val fields = request.fields
+    val values = remember(request) { mutableStateListOf<String>().apply { addAll(List(fields.size) { "" }) } }
+    var submitted by remember(request) { mutableStateOf(false) }
+    val muted = toolCallInk()
+    fun finish(done: Boolean) {
+        if (!done) return
         submitted = true
-        takingOver = true
+        values.indices.forEach { values[it] = "" }
     }
-    fun respond(text: List<String>?) {
-        if (submitted) return
-        submitted = PrivateScreenInput.submit(operation.operationId, prompt.promptId, text)
-        if (submitted) values.indices.forEach { values[it] = "" }
+    val title = when {
+        fields.isEmpty() -> UiStrings.virtualScreenOperateTitle
+        fields.size > 1 -> UiStrings.virtualScreenInputFieldsTitle
+        fields.single().label.isBlank() -> UiStrings.virtualScreenInputAnyTitle
+        else -> UiStrings.virtualScreenInputTitle(fields.single().label)
     }
+    val reason = request.reason.ifBlank { if (fields.isEmpty()) UiStrings.virtualScreenHandoffPrompt else "" }
     AlertDialog(
-        onDismissRequest = { respond(null) },
+        onDismissRequest = { if (!submitted) { submitted = true; onCancel() } },
         properties = DialogProperties(securePolicy = SecureFlagPolicy.SecureOn),
-        title = { Text(if (handoffOnly) UiStrings.virtualScreenTakeOver else DeviceLabels.text("请填写副屏字段", "Fill the field on the secondary display")) },
+        title = { Text(title) },
         text = {
-            Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (handoffOnly) Text(UiStrings.virtualScreenHandoffPrompt)
-                labels.forEachIndexed { index, label ->
+            Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (reason.isNotBlank()) Text(reason, style = MaterialTheme.typography.bodyMedium, color = muted)
+                fields.forEachIndexed { index, field ->
                     OutlinedTextField(
                         value = values[index],
                         onValueChange = { if (it.length <= 2000) values[index] = it },
-                        label = { Text(label.ifBlank { DeviceLabels.text("字段 ${index + 1}", "Field ${index + 1}") }) },
+                        label = { Text(field.label.ifBlank { DeviceLabels.text("字段 ${index + 1}", "Field ${index + 1}") }) },
                         modifier = Modifier.fillMaxWidth(),
                         enabled = !submitted,
                         singleLine = true,
-                        visualTransformation = PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        visualTransformation = if (field.secret) PasswordVisualTransformation() else VisualTransformation.None,
+                        keyboardOptions = KeyboardOptions(keyboardType = if (field.secret) KeyboardType.Password else KeyboardType.Text),
                     )
                 }
-                if (!handoffOnly) OutlinedButton(onClick = ::takeOver, enabled = !submitted && screen?.active == true) {
-                    Text(UiStrings.virtualScreenTakeOver)
+                if (fields.isNotEmpty()) Row(verticalAlignment = Alignment.Top) {
+                    AppIcon(AppIcons.Lock, null, Modifier.padding(top = 2.dp).size(14.dp), tint = muted)
+                    Text(UiStrings.virtualScreenInputPrivacy, Modifier.padding(start = 6.dp),
+                        style = MaterialTheme.typography.bodySmall, color = muted)
+                }
+                val enabled = canTakeOver && !submitted
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(14.dp))
+                        .clickable(enabled = enabled, role = Role.Button) { finish(onTakeOver()) }
+                        .heightIn(min = 56.dp).padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    val ink = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                    AppIcon(AppIcons.Hand, null, Modifier.size(20.dp), tint = ink)
+                    Column(Modifier.weight(1f)) {
+                        Text(UiStrings.virtualScreenEnterTakeover, style = MaterialTheme.typography.titleSmall, color = ink)
+                        Text(UiStrings.virtualScreenEnterTakeoverDetail, style = MaterialTheme.typography.bodySmall, color = muted)
+                    }
+                    AppIcon(AppIcons.ChevronRight, null, Modifier.size(16.dp), tint = muted)
                 }
             }
         },
         confirmButton = {
-            if (handoffOnly) TextButton(onClick = ::takeOver, enabled = !submitted && screen?.active == true) {
-                Text(UiStrings.virtualScreenTakeOver)
-            } else TextButton(onClick = { respond(values.toList()) }, enabled = !submitted && values.any(String::isNotEmpty)) {
-                Text(DeviceLabels.text("填入副屏", "Fill field"))
+            if (fields.isNotEmpty()) TextButton(onClick = { if (!submitted) finish(onFill(values.toList())) },
+                enabled = !submitted && values.any(String::isNotEmpty)) {
+                Text(UiStrings.virtualScreenManualFill)
             }
         },
         dismissButton = {
-            TextButton(onClick = { respond(null) }, enabled = !submitted) {
+            TextButton(onClick = { if (!submitted) { submitted = true; onCancel() } }, enabled = !submitted) {
                 Text(DeviceLabels.text("取消", "Cancel"))
             }
         },
