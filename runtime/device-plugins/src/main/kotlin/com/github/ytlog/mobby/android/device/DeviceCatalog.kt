@@ -34,9 +34,11 @@ object DeviceCatalog {
             "Use this skill to read or control the selected screen. Follow the backend instructions below. In current-screen mode the display stays on for this run and the previous screen timeout returns when the run ends. Snapshot the target app before interacting; in virtual mode use apps and launch first if no app is open. Password fields appear as [secure]. Each successful screen action attempts a screenshot. When result.data.observationRef is present, use the resource command to export its JPEG and inspect it; screenshotStatus reports capture failure without changing the action outcome. Report failures; do not invent controls or success. Do not change the system screen timeout.",
             DeviceAccess.ACCESSIBILITY,
             commands = listOf(
-                DeviceCommand("snapshot", "snapshot", "Read the current window before other actions."),
+                DeviceCommand("snapshot", "snapshot", "Read the current window before other actions. Lists the controls visible on screen; a last line starting with [truncated] means more were not listed."),
                 DeviceCommand("apps", "apps", "List launchable application packages."),
                 DeviceCommand("launch", """launch {"package":"com.example.app"}""", "Launch on the selected screen; virtual mode never launches on the main display."),
+                DeviceCommand("force_stop", """force_stop {"package":"com.example.app"}""",
+                    "ADB or root virtual display only. Ends all processes and activities of a launchable app, including its tasks on the main display, so the next launch starts it fresh. Use it when the app did not fully exit and will not open its page normally, or when launch reports the app is already open on another display; then launch it again. Unsaved state in that app is lost."),
                 DeviceCommand("click", """click {"query":"visible text"}""", "query is at most 200 characters."),
                 DeviceCommand("request_input", "request_input",
                     "On a virtual display, offer a private form for visible editable fields or let the user take over. Use it for passwords, verification codes and other values you must not see. To request only the focused field, pass an optional label. An optional reason is shown to the user. Never put credentials in the command or chat. Take a fresh snapshot after the user returns control."),

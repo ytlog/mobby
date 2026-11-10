@@ -575,6 +575,8 @@ object ScreenControl {
                     "click_refused" -> deviceFailure(DeviceErrorCode.UNAVAILABLE, AppStrings.virtualScreenClickRefused, EffectState.UNKNOWN)
                     "app_already_on_other_display" ->
                         deviceFailure(DeviceErrorCode.UNSUPPORTED_CAPABILITY, AppStrings.virtualScreenAppOnOtherDisplay)
+                    "invalid_package", "app_not_launchable" ->
+                        deviceFailure(DeviceErrorCode.NOT_FOUND, AppStrings.virtualScreenAppNotLaunchable)
                     "app_not_on_virtual_display" ->
                         deviceFailure(DeviceErrorCode.RESULT_UNCONFIRMED, AppStrings.virtualScreenAppNotVisible, EffectState.UNKNOWN)
                 }

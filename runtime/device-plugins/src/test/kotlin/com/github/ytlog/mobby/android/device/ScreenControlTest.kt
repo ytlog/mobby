@@ -80,6 +80,16 @@ class ScreenControlTest {
         }
     }
 
+    @Test fun `force stop is an authorized write that takes only a package name`() {
+        val stop = DeviceActionDefinition("screen", "force_stop")
+        assertTrue(stop.writes)
+        fun args(value: String) = kotlinx.serialization.json.buildJsonObject { put("package", kotlinx.serialization.json.JsonPrimitive(value)) }
+        assertEquals(mapOf("package" to "com.ss.android.ugc.aweme"), stop.validate(args("com.ss.android.ugc.aweme")))
+        for (value in listOf("com.example --user 0", "com.example; reboot", "example", ""))
+            assertThrows(DeviceFailure::class.java) { stop.validate(args(value)) }
+        assertThrows(DeviceFailure::class.java) { stop.validate(kotlinx.serialization.json.buildJsonObject { }) }
+    }
+
     @Test fun `input and handoff requests take an optional reason for the user`() {
         fun args(vararg pairs: Pair<String, String>) = kotlinx.serialization.json.buildJsonObject {
             pairs.forEach { (key, value) -> put(key, kotlinx.serialization.json.JsonPrimitive(value)) }

@@ -127,6 +127,8 @@ class ScreenAccessService : AccessibilityService() {
                 "back" -> global(GLOBAL_ACTION_BACK, AppStrings.wentBack, AppStrings.couldNotGoBack)
                 "home" -> global(GLOBAL_ACTION_HOME, AppStrings.returnedToHomeScreen, AppStrings.couldNotReturnToHomeScreen)
                 "recents" -> global(GLOBAL_ACTION_RECENTS, AppStrings.openedRecentApps, AppStrings.couldNotOpenRecentApps)
+                // Stopping another app needs the shell or root identity of a virtual-display backend; the app UID has neither.
+                "force_stop" -> deviceFailure(DeviceErrorCode.UNSUPPORTED_CAPABILITY, AppStrings.forceStopNeedsVirtualScreen)
                 else -> error(AppStrings.unsupportedOperation2(action))
             }
             if (action != "snapshot") delay(200)
@@ -198,26 +200,7 @@ class ScreenAccessService : AccessibilityService() {
 
     private fun snapshot(): String {
         val root = rootInActiveWindow ?: error(AppStrings.noReadableWindowMakeSureAccessibilityIsEnabledAnd)
-        return try { buildString { dump(root, 0, 0) } } finally { root.recycle() }
-    }
-
-    private fun StringBuilder.dump(node: AccessibilityNodeInfo, depth: Int, seen: Int): Int {
-        var count = seen
-        if (count >= 150 || depth > 12) return count
-        val text = if (node.isPassword) "[secure]" else node.text?.toString().orEmpty().ifBlank { node.contentDescription?.toString().orEmpty() }.take(80)
-        val clickable = if (node.isClickable) " clickable" else ""
-        val focused = if (node.isFocused) " focused" else ""
-        append("  ".repeat(depth)).append(node.className?.toString()?.substringAfterLast('.') ?: "View")
-        if (text.isNotBlank()) append(" \"").append(text.replace("\"", "'")).append('"')
-        append(clickable).append(focused).append('\n')
-        count++
-        for (index in 0 until node.childCount) {
-            val child = node.getChild(index) ?: continue
-            count = dump(child, depth + 1, count)
-            child.recycle()
-            if (count >= 150) break
-        }
-        return count
+        return try { WindowOutline.of(root) { it } } finally { root.recycle() }
     }
 
     private fun click(query: String): String {

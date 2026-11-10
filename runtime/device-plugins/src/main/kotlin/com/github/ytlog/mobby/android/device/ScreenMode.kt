@@ -33,7 +33,7 @@ internal class RecoveringAdbScreenSession(
         checkActive()
         checkAuthorization()
         if (!displayAlive()) recover(checkActive)
-        if (needsObservation && action !in setOf("apps", "snapshot", "launch"))
+        if (needsObservation && action !in setOf("apps", "snapshot", "launch", "force_stop"))
             deviceFailure(DeviceErrorCode.UNAVAILABLE, AppStrings.adbScreenReadAfterReconnect)
         val result = try {
             session.operate(action, args, checkActive)

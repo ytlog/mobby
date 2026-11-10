@@ -90,7 +90,7 @@ CLI 中的 Node 不能调用 Android API。模型阅读技能文件，用 Bash �
 
 | 插件 | 授权 | 动作 | 返回给模型的内容 |
 | --- | --- | --- | --- |
-| 屏幕 | 系统无障碍设置 | `snapshot` `click` `type` `tap` `back` `home` `recents` | 窗口树文本，单次最多约 150 个节点，密码框为 `[secure]`；每次成功操作尽量附带 JPEG 截图资源 |
+| 屏幕 | 系统无障碍设置 | `snapshot` `click` `type` `tap` `back` `home` `recents`；副屏另有 `force_stop` | 可见控件文本，跳过隐藏子树和空容器，最多 300 行，截断时末行为 `[truncated]`，密码框为 `[secure]`；每次成功操作尽量附带 JPEG 截图资源 |
 | 短信 | `READ_SMS`；发送另要 `SEND_SMS` | `list`；发送为 `send` | 最近约 20 条，正文截断 |
 | 通讯录 | `READ_CONTACTS`；修改另要 `WRITE_CONTACTS` | `list`；修改为 `create` `update` `delete` | 有限条文本 |
 | 日历 | `READ_CALENDAR`；修改另要 `WRITE_CALENDAR` | `list`；修改为 `create` `update` `delete` | 有限条文本 |

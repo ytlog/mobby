@@ -38,6 +38,7 @@ object DeviceLabels {
             "export" -> text("导出", "Export"); "click", "tap" -> text("点击", "Tap"); "type" -> text("输入", "Type")
             "invoke" -> text("调用", "Invoke")
             "back" -> text("返回", "Back"); "home" -> text("回到桌面", "Home"); "recents" -> text("最近应用", "Recent apps")
+            "launch" -> text("打开应用", "Open app"); "force_stop" -> text("强制停止应用", "Force stop app")
             else -> ""
         }
         return if (actionName.isBlank()) name else "$name · $actionName"

@@ -21,6 +21,7 @@ import android.util.Base64;
 import android.view.*;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityWindowInfo;
+import com.github.ytlog.mobby.android.device.WindowOutline;
 import org.json.JSONObject;
 import org.json.JSONArray;
 import java.io.*;
@@ -111,10 +112,20 @@ final class VirtualScreen implements AutoCloseable {
             automation = (UiAutomation) UiAutomation.class.getConstructor(Looper.class, connection).newInstance(callbacks.getLooper(), binder);
             UiAutomation.class.getMethod("connect", int.class).invoke(automation, 1); // Do not suppress existing accessibility services.
             AccessibilityServiceInfo info = automation.getServiceInfo();
-            info.flags |= AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS | AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS;
+            info.flags = automationFlags(info.flags);
             automation.setServiceInfo(info);
             return metadata(new JSONObject());
         });
+    }
+
+    /**
+     * UiAutomationConnection registers with FLAG_INCLUDE_NOT_IMPORTANT_VIEWS, so every layout wrapper becomes a node. The
+     * current-screen accessibility service never sees those; dropping the flag gives both backends the same tree, as
+     * {@code uiautomator dump --compressed} does.
+     */
+    static int automationFlags(int registered) {
+        return (registered | AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS | AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS)
+            & ~AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS;
     }
 
     JSONObject execute(String action, JSONObject arguments) throws Exception {
@@ -226,6 +237,10 @@ final class VirtualScreen implements AutoCloseable {
             if ("launch".equals(action)) {
                 String name = args.getString("package"); launch(name);
                 return observe("Opened " + name + " on virtual display", false);
+            }
+            if ("force_stop".equals(action)) {
+                String name = args.getString("package"); forceStop(name);
+                return observe("Force-stopped " + name, true);
             }
             if ("tap".equals(action) || "swipe".equals(action)) {
                 float x = fraction(args, "x") * (WIDTH - 1), y = fraction(args, "y") * (HEIGHT - 1);
@@ -447,13 +462,7 @@ final class VirtualScreen implements AutoCloseable {
         return agentScreenshot(result);
     }
     private JSONObject snapshot(AccessibilityNodeInfo root) throws Exception {
-        StringBuilder text = new StringBuilder();
-        walk(root, 0, new int[]{0}, (node, depth) -> {
-            String label = node.isPassword() ? "[secure]" : redactPrivateValues(
-                node.getText() != null ? node.getText().toString() : String.valueOf(node.getContentDescription()));
-            text.append("  ".repeat(depth)).append(node.getClassName()).append(' ').append(label.substring(0, Math.min(label.length(), 80)))
-                .append(node.isClickable() ? " clickable" : "").append('\n');
-        });
+        String text = WindowOutline.of(root, this::redactPrivateValues);
         return agentScreenshot(metadata(new JSONObject().put("text", text).put("packageName", String.valueOf(root.getPackageName()))));
     }
     private JSONObject evidence(AccessibilityNodeInfo root, JSONObject args) throws Exception {
@@ -539,9 +548,21 @@ final class VirtualScreen implements AutoCloseable {
             .invoke(taskManager, null, "com.android.shell", id, 0, options);
         awaitPackage(name);
     }
-    private void launch(String name) throws Exception {
+    private static void requireAppPackage(String name) {
         if (!name.matches("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+") || name.equals("com.github.ytlog.mobby.android"))
             throw new IllegalArgumentException("invalid_package");
+    }
+    /**
+     * Ends every process and activity of a launchable app, including its tasks on the main display, so the next launch
+     * starts it fresh. Apps without a launcher entry, such as system UI and services, are refused.
+     */
+    private void forceStop(String name) throws Exception {
+        requireAppPackage(name);
+        if (!Arrays.asList(apps().split("\n")).contains(name)) throw new IllegalStateException("app_not_launchable");
+        command("/system/bin/am", "force-stop", "--user", "current", name);
+    }
+    private void launch(String name) throws Exception {
+        requireAppPackage(name);
         for (ActivityManager.RunningTaskInfo task : tasks(displayId)) {
             if (taskDisplay(task) == displayId && belongsTo(task, name)) { focusTask(task.taskId); return; }
         }
@@ -572,9 +593,9 @@ final class VirtualScreen implements AutoCloseable {
     }
     private interface NodeVisitor { void visit(AccessibilityNodeInfo node, int depth); }
     private void walk(AccessibilityNodeInfo node, int depth, int[] count, NodeVisitor visitor) {
-        if (count[0]++ >= 150 || depth > 12) return;
+        if (count[0]++ >= WindowOutline.MAX_VISITED || depth > WindowOutline.MAX_DEPTH) return;
         visitor.visit(node, depth);
-        for (int i = 0; i < node.getChildCount() && count[0] < 150; i++) {
+        for (int i = 0; i < node.getChildCount() && count[0] < WindowOutline.MAX_VISITED; i++) {
             AccessibilityNodeInfo child = node.getChild(i);
             if (child != null) try { walk(child, depth + 1, count, visitor); } finally { child.recycle(); }
         }
