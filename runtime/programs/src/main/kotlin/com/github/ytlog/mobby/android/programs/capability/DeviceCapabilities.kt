@@ -139,7 +139,8 @@ internal fun DeviceFailure.toCapability(): CapabilityException {
         DeviceErrorCode.UNSUPPORTED_CAPABILITY, DeviceErrorCode.INCOMPATIBLE_VERSION -> ProgramErrorCode.UNSUPPORTED
         DeviceErrorCode.REQUEST_CONFLICT -> ProgramErrorCode.REQUEST_CONFLICT
         DeviceErrorCode.NOT_FOUND, DeviceErrorCode.RESOURCE_MISSING -> ProgramErrorCode.RESOURCE_MISSING
-        DeviceErrorCode.UNAVAILABLE -> ProgramErrorCode.SOURCE_DISCONNECTED
+        // A user takeover keeps the error programs saw before the agent-facing code existed.
+        DeviceErrorCode.UNAVAILABLE, DeviceErrorCode.USER_IN_CONTROL -> ProgramErrorCode.SOURCE_DISCONNECTED
         DeviceErrorCode.TIMEOUT -> ProgramErrorCode.TIMEOUT
         DeviceErrorCode.CANCELLED, DeviceErrorCode.INTERRUPTED -> ProgramErrorCode.CANCELLED
         DeviceErrorCode.RESULT_UNCONFIRMED -> ProgramErrorCode.EFFECT_UNKNOWN

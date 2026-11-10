@@ -16,6 +16,15 @@ class PrivateScreenInputTest {
         assertEquals(PrivateScreenInput.Answer.TakeOver, PrivateScreenInput.await(execution, listOf("Code")) {})
     }
 
+    @Test fun `a takeover started from the preview answers the pending prompt`() {
+        var prompted = false
+        val execution = DeviceExecution("operation") { _, _, _ -> prompted = true }
+        var userControls = false
+        val answer = PrivateScreenInput.await(execution, emptyList(), userTookOver = { userControls.also { userControls = true } }) {}
+        assertTrue(prompted)
+        assertEquals(PrivateScreenInput.Answer.TakeOver, answer)
+    }
+
     @Test fun `a local response only reaches its matching live field request`() {
         val fixture = listOf("test account", "test credential")
         var promptId = ""

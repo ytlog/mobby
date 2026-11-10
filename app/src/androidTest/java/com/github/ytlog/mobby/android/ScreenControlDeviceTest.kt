@@ -275,7 +275,15 @@ class ScreenControlDeviceTest {
                     assertTrue("The virtual screen must scroll while the finger is still down",
                         inputProbe(ScreenControlFixtureActivity.CHECK_MANUAL_SCROLL, "previousY", previousY))
                     touch(ScreenTouchPhase.UP, 0.5f, 0.40f)
+                    // During the user's takeover a field opens the system keyboard inside the virtual display.
+                    assertTrue(inputProbe(ScreenControlFixtureActivity.ALLOW_KEYBOARD))
+                    touch(ScreenTouchPhase.DOWN, fieldX, fieldY)
+                    touch(ScreenTouchPhase.UP, fieldX, fieldY)
+                    waitFor("The takeover keyboard must show on the virtual display") {
+                        inputProbe(ScreenControlFixtureActivity.CHECK_KEYBOARD)
+                    }
                     ScreenControl.handBack(context, owner)
+                    waitFor("Returning control must close the keyboard") { !inputProbe(ScreenControlFixtureActivity.CHECK_KEYBOARD) }
                     val handoffResult = handoff.get(10, java.util.concurrent.TimeUnit.SECONDS)
                     assertEquals("succeeded", handoffResult.optString("status"))
                     assertFalse(handoffResult.toString().contains(manualCode))
@@ -288,6 +296,22 @@ class ScreenControlDeviceTest {
                         scrollPosition(afterHandoff.getString("text")) > scrollPosition(afterPrivateInput.getString("text")))
                     assertFalse(afterHandoff.toString().contains(manualCode))
                     assertEquals("private_input", afterHandoff.optString("screenshotStatus"))
+                    // While the agent operates, focusing the same field opens no keyboard anywhere.
+                    perform("click", mapOf("query" to "Probe input"))
+                    SystemClock.sleep(1500)
+                    assertFalse("The agent must not open a keyboard", inputProbe(ScreenControlFixtureActivity.CHECK_KEYBOARD))
+                    // A takeover from the preview stops the agent at once; request_handoff then waits without a new prompt.
+                    val userOwner = ScreenControl.takeOver(context)
+                    val refusedAt = SystemClock.elapsedRealtime()
+                    val stopped = request("click", mapOf("query" to "Increment"))
+                    assertEquals("USER_IN_CONTROL", stopped.optJSONObject("error")?.optString("code"))
+                    assertTrue("A refused action must not wait for the user", SystemClock.elapsedRealtime() - refusedAt < 5_000)
+                    val waiting = java.util.concurrent.CompletableFuture.supplyAsync { request("request_handoff") }
+                    SystemClock.sleep(1000)
+                    assertFalse("The agent must wait while the user controls the display", waiting.isDone)
+                    ScreenControl.handBack(context, userOwner)
+                    assertEquals("succeeded", waiting.get(10, java.util.concurrent.TimeUnit.SECONDS).optString("status"))
+                    assertTrue("The refused click must not have run", perform("snapshot").getString("text").contains("Count: 3"))
                 }
                 perform("back")
                 session.awaitIdle { }

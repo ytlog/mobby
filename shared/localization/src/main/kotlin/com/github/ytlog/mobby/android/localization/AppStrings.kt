@@ -231,12 +231,19 @@ open class StringCatalog(private val fixedLanguage: AppLanguage? = null) {
     val virtualScreenHandBack get() = text("交还给 Agent", "Return control to Agent")
     val virtualScreenMinimizeManual get() = text("暂时收起", "Minimize")
     val virtualScreenResumeManual get() = text("继续操作副屏", "Resume manual control")
-    val virtualScreenInUserControl get() = text("你正在操作副屏，Agent 已暂停读屏和操作。", "You control the display. Agent screen reads and actions are paused.")
+    val virtualScreenInUserControl get() = text("你正在操作副屏，Agent 的读屏和操作已停止，交还后继续。", "You control the display. Agent screen reads and actions are stopped until you return control.")
+    val virtualScreenAgentStopped get() = text("用户已接手副屏，此操作未执行。请停止屏幕操作，调用 request_handoff 等待用户交还，再读取页面后继续。",
+        "The user took over the display, so this action was not performed. Stop screen actions, call request_handoff to wait for the user to return control, then read the page before continuing.")
+    val virtualScreenStillInUserControl get() = text("用户仍在操作副屏。请再次调用 request_handoff 继续等待，不要执行其他屏幕操作。",
+        "The user still controls the display. Call request_handoff again to keep waiting; do not run other screen actions.")
     val virtualScreenReadAfterHandoff get() = text("用户已交还副屏，请先读取当前页面再操作。", "The user returned control. Read the current page before acting.")
-    val virtualScreenHandoffPrompt get() = text("请在副屏完成验证，离开验证页面后交还给 Agent。", "Complete verification on the virtual display, then leave the verification page before returning control.")
+    val virtualScreenHandoffPrompt get() = text("请在副屏完成验证或输入，可点副屏输入框用键盘输入；离开验证页面后再交还给 Agent。",
+        "Complete the verification or typing on the virtual display; tap a field there to use its keyboard. Leave any verification page before returning control.")
     val virtualScreenManualInput get() = text("输入文字", "Enter text")
     val virtualScreenManualFill get() = text("填入副屏", "Fill on display")
     val virtualScreenManualTargetHelp get() = text("内容会填入刚选中的副屏输入框。", "Your text goes into the selected field on the virtual display.")
+    val virtualScreenManualPrivateHint get() = text("副屏键盘输入的内容，交还后 Agent 能看到；验证码等需要隐藏的内容请用「输入文字」。",
+        "After you return control, the Agent can see what you typed on the display's keyboard. Use Enter text for codes and anything else to keep hidden.")
     val virtualScreenManualSelectField get() = text("请先点一下副屏里的输入框。", "Tap an input field on the virtual display first.")
     val virtualScreenManualFieldChanged get() = text("副屏输入框已变化，请重新点选。", "The field on the virtual display changed. Select it again.")
     val showVirtualScreen get() = text("展开预览", "Show preview")

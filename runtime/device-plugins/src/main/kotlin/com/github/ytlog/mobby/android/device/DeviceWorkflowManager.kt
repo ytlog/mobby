@@ -160,6 +160,7 @@ internal class DeviceWorkflowManager(
                 error = when {
                     reason in setOf("adb_authorization_required", "adb_authorization_required_unknown_effect") ->
                         DeviceError(DeviceErrorCode.ADB_AUTHORIZATION_REQUIRED, effectState = effect)
+                    reason == "user_in_control" -> DeviceError(DeviceErrorCode.USER_IN_CONTROL, effectState = effect)
                     status in setOf(DeviceStatus.FAILED, DeviceStatus.UNCONFIRMED) -> DeviceError(DeviceErrorCode.RESULT_UNCONFIRMED, effectState = effect)
                     else -> null
                 }))
@@ -223,8 +224,10 @@ internal class DeviceWorkflowManager(
             val input = if (step.action == "type") step.transientText ?: values["input_${index + 1}"] ?: step.slot?.let(values::get) else null
             if (step.action == "type" && input.isNullOrBlank()) { reason = "missing_input_${index + 1}"; break }
             val resumeHere = checkpoint?.takeIf { index == start }
-            val before = try { observe(step.query, resumeHere?.verifiedInput, propagateAdbAuthorization = true) }
+            val before = try { observe(step.query, resumeHere?.verifiedInput, propagateStops = true) }
                 catch (failure: DeviceFailure) {
+                    // The user took over: stop here and leave the rest of the plan to the agent's fresh read.
+                    if (failure.error.code == DeviceErrorCode.USER_IN_CONTROL) { reason = "user_in_control"; break }
                     if (failure.error.code != DeviceErrorCode.ADB_AUTHORIZATION_REQUIRED) throw failure
                     reason = "adb_authorization_required"
                     lastVerifiedPage?.let { page ->
@@ -261,8 +264,11 @@ internal class DeviceWorkflowManager(
                 reason = "adb_authorization_required_unknown_effect"
                 break
             }
-            val after = try { observe(step.query, input, propagateAdbAuthorization = true) }
+            // The screen refuses an action before running it once the user has taken over.
+            if (response.error?.code == DeviceErrorCode.USER_IN_CONTROL) { reason = "user_in_control"; break }
+            val after = try { observe(step.query, input, propagateStops = true) }
                 catch (failure: DeviceFailure) {
+                    if (failure.error.code == DeviceErrorCode.USER_IN_CONTROL) { reason = "user_in_control"; break }
                     if (failure.error.code != DeviceErrorCode.ADB_AUTHORIZATION_REQUIRED) throw failure
                     reason = "adb_authorization_required_unknown_effect"
                     break
@@ -294,11 +300,11 @@ internal class DeviceWorkflowManager(
             before.packageName != after.packageName || before.shape != after.shape
     }
 
-    private fun observe(query: String?, input: String?, propagateAdbAuthorization: Boolean = false): ScreenEvidence? =
+    private fun observe(query: String?, input: String?, propagateStops: Boolean = false): ScreenEvidence? =
         try { inspect(query, input) }
         catch (failure: Exception) {
-            if (propagateAdbAuthorization && failure is DeviceFailure &&
-                failure.error.code == DeviceErrorCode.ADB_AUTHORIZATION_REQUIRED) throw failure
+            if (propagateStops && failure is DeviceFailure && failure.error.code in
+                setOf(DeviceErrorCode.ADB_AUTHORIZATION_REQUIRED, DeviceErrorCode.USER_IN_CONTROL)) throw failure
             null
         }
 

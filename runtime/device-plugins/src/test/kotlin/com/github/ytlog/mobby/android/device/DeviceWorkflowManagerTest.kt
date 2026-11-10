@@ -153,6 +153,23 @@ class DeviceWorkflowManagerTest {
         assertEquals("page_or_target_mismatch", result.result!!.data["stoppedReason"]!!.jsonPrimitive.content)
     }
 
+    @Test fun `a user takeover stops the workflow before its next step`() {
+        var userControls = false
+        val manager = DeviceWorkflowManager(context) { query, expected ->
+            if (userControls) deviceFailure(DeviceErrorCode.USER_IN_CONTROL)
+            ScreenEvidence("com.example.store", page, if (query == null) 0 else matches,
+                if (page == "search") 1 else 0, page == "search", expected != null && input == expected)
+        }.also(actors::add)
+        val takeOverAfterClick: (String) -> String = { line -> perform(line).also { userControls = true } }
+        val line = """{"token":"fixture","protocolVersion":1,"requestId":"${java.util.UUID.randomUUID()}","plugin":"workflow","action":"run","args":{"steps":[{"action":"click","query":"搜索"},{"action":"type","text":"测试"}]}}"""
+        val result = DeviceJson.decodeFromString<DeviceResponse>(manager.handle(line, "fixture", allow, takeOverAfterClick))
+        assertEquals(1, actions)
+        assertEquals("", input)
+        assertEquals(DeviceErrorCode.USER_IN_CONTROL, result.error?.code)
+        assertEquals("user_in_control", result.result!!.data["stoppedReason"]!!.jsonPrimitive.content)
+        assertNull(result.result!!.data["resumeId"])
+    }
+
     @Test fun `workflow command requires the active token and screen grant`() {
         val manager = manager()
         assertEquals(DeviceErrorCode.UNAUTHORIZED, invoke(manager, "list", token = "wrong").error?.code)

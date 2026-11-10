@@ -20,6 +20,9 @@ public final class ScreenControlFixtureActivity extends Activity {
     /** A tooltip popup above the page, as apps show over a search box. It takes no focus and covers no control. */
     static final String SHOW_TIP = "com.github.ytlog.mobby.android.test.SHOW_TIP";
     static final String HIDE_TIP = "com.github.ytlog.mobby.android.test.HIDE_TIP";
+    /** Lets the probe field open the system keyboard, as an ordinary app field does, and reports whether one shows. */
+    static final String ALLOW_KEYBOARD = "com.github.ytlog.mobby.android.test.ALLOW_KEYBOARD";
+    static final String CHECK_KEYBOARD = "com.github.ytlog.mobby.android.test.CHECK_KEYBOARD";
     static final String MANUAL_TEXT = "mobby-manual-code-fixture";
     private int count;
     private BroadcastReceiver inputProbe;
@@ -93,6 +96,12 @@ public final class ScreenControlFixtureActivity extends Activity {
                     tip = new PopupWindow(label, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, false);
                     tip.showAtLocation(content, android.view.Gravity.TOP | android.view.Gravity.END, 0, 0);
                     passed = tip.isShowing();
+                } else if (ALLOW_KEYBOARD.equals(intent.getAction())) {
+                    input.setShowSoftInputOnFocus(true);
+                    passed = true;
+                } else if (CHECK_KEYBOARD.equals(intent.getAction())) {
+                    android.view.WindowInsets insets = getWindow().getDecorView().getRootWindowInsets();
+                    passed = insets != null && insets.isVisible(android.view.WindowInsets.Type.ime());
                 } else if (HIDE_TIP.equals(intent.getAction())) {
                     if (tip != null) tip.dismiss();
                     passed = tip != null && !tip.isShowing();
@@ -107,6 +116,8 @@ public final class ScreenControlFixtureActivity extends Activity {
         filter.addAction(CHECK_MANUAL_SLIDER);
         filter.addAction(SHOW_TIP);
         filter.addAction(HIDE_TIP);
+        filter.addAction(ALLOW_KEYBOARD);
+        filter.addAction(CHECK_KEYBOARD);
         registerReceiver(inputProbe, filter, Context.RECEIVER_EXPORTED);
     }
     @Override protected void onDestroy() {

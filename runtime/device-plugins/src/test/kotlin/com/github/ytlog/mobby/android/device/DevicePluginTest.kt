@@ -213,6 +213,15 @@ class DevicePluginTest {
         assertTrue(markdown.contains("Do not change the system screen timeout"))
     }
 
+    @Test fun `virtual screen skill hands keyboard steps to the user and stops on a user takeover`() {
+        val markdown = DeviceSkillPack.write(temporary.newFolder(), "/bin/node", 9, "tok", setOf("plugin:device:screen"),
+            ScreenMode.ADB).single().readText()
+        assertTrue(markdown.contains("request_handoff"))
+        assertTrue(markdown.contains("keyboard"))
+        assertTrue(markdown.contains("USER_IN_CONTROL"))
+        assertTrue(markdown.contains("user_in_control"))
+    }
+
     @Test fun `skill text includes only the actions enabled for this run`() {
         val root = temporary.newFolder()
         val skill = DeviceSkillPack.write(root, "/bin/node", 43123, """tok"en""", setOf("plugin:device:sms")).single()

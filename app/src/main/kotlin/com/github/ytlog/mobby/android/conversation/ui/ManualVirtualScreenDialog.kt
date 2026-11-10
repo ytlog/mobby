@@ -189,6 +189,12 @@ internal fun ManualVirtualScreenPanel(
                     Text(UiStrings.virtualScreenHandoffPrompt, Modifier.padding(start = 10.dp),
                         style = MaterialTheme.typography.bodySmall, color = ink)
                 }
+                // Text typed on the display's own keyboard is not redacted after handback; the local editor's is.
+                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.Top) {
+                    AppIcon(AppIcons.Keyboard, null, Modifier.padding(top = 1.dp).size(14.dp), tint = muted)
+                    Text(UiStrings.virtualScreenManualPrivateHint, Modifier.padding(start = 10.dp),
+                        style = MaterialTheme.typography.bodySmall, color = muted)
+                }
                 error?.let { ScreenErrorBanner(it) }
             }
             ScreenFrame(bitmap, screenTouch, Modifier.weight(1f).fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp))

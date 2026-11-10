@@ -72,6 +72,7 @@ object DeviceLabels {
         DeviceErrorCode.STORAGE_FULL -> text("无法保存操作状态", "Could not persist operation state")
         DeviceErrorCode.PROTOCOL_ERROR -> text("设备结果格式无效", "Invalid device result")
         DeviceErrorCode.UNAVAILABLE -> text("当前无法完成操作", "Operation unavailable")
+        DeviceErrorCode.USER_IN_CONTROL -> text("你已接手副屏，Agent 操作已停止", "You took over the display; Agent actions stopped")
     }
     fun field(key: String) = when (key) {
         "recipientMasked" -> text("号码尾号", "Number ending"); "recipientLabel" -> text("收件人", "Recipient")

@@ -370,26 +370,20 @@ object ScreenControl {
         current.requireAgentScreenAccess(action)
     }
 
-    private fun <T : Any> agentAction(display: Int, action: String, checkActive: () -> Unit, block: () -> T): T {
-        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(120)
-        while (true) {
+    /**
+     * Runs one agent action unless the user controls the display. A takeover stops the agent instead of queueing its
+     * actions: the action is refused before it runs and the agent waits with request_handoff.
+     */
+    private fun <T : Any> agentAction(display: Int, action: String, checkActive: () -> Unit, block: () -> T): T =
+        ScreenCoordinator.chatAction {
             checkActive()
-            val result = if (state.value.manualControlId != null) null else ScreenCoordinator.chatAction {
-                checkActive()
-                val current = state.value
-                if (current.displayId == display && current.manualControlId != null) return@chatAction null
-                requireAgentAccess(display, action)
-                block().also {
-                    if (action == "snapshot") changes.update { latest ->
-                        if (latest.displayId == display) latest.copy(readRequiredAfterHandoff = false) else latest
-                    }
+            requireAgentAccess(display, action)
+            block().also {
+                if (action == "snapshot") changes.update { latest ->
+                    if (latest.displayId == display) latest.copy(readRequiredAfterHandoff = false) else latest
                 }
             }
-            if (result != null) return result
-            if (System.nanoTime() >= deadline) deviceFailure(DeviceErrorCode.TIMEOUT, AppStrings.virtualScreenInUserControl)
-            Thread.sleep(100)
         }
-    }
 
     private fun activeDisplay(): Pair<ScreenChannel, Int> {
         val current = state.value
@@ -461,6 +455,10 @@ object ScreenControl {
         checkActive: () -> Unit): Boolean {
         val (connection, display) = activeDisplay()
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(125)
+        // The user already took over on their own: wait for them to return control instead of prompting again.
+        if (handoffOnly) state.value.takeIf { it.displayId == display }?.manualControlId?.let { id ->
+            return awaitHandBack(id, connection, display, deadline, execution, checkActive)
+        }
         val labels = agentAction(display, if (handoffOnly) "request_handoff" else "request_input", checkActive) {
             requireUnlocked(context)
             if (handoffOnly) emptyList() else {
@@ -470,19 +468,15 @@ object ScreenControl {
             }
         }
         try {
-            return when (val answer = PrivateScreenInput.await(execution, labels, checkActive)) {
+            val answer = PrivateScreenInput.await(execution, labels, checkActive = checkActive, userTookOver = {
+                state.value.let { it.displayId == display && it.manualControlId != null }
+            })
+            return when (answer) {
                 PrivateScreenInput.Answer.TakeOver -> {
                     checkActive()
+                    // Joins a takeover the user already started from the preview.
                     val id = takeOver(context, connection to display)
-                    execution.waiting("screen.user_control", id, allowCancel = false)
-                    while (state.value.manualControlId == id) {
-                        checkActive()
-                        if (System.nanoTime() >= deadline) deviceFailure(DeviceErrorCode.TIMEOUT, AppStrings.virtualScreenInUserControl)
-                        Thread.sleep(100)
-                    }
-                    checkActive()
-                    if (activeDisplay() != (connection to display)) deviceFailure(DeviceErrorCode.UNAVAILABLE, AppStrings.virtualScreenDisconnected)
-                    true
+                    awaitHandBack(id, connection, display, deadline, execution, checkActive)
                 }
                 is PrivateScreenInput.Answer.Value -> agentAction(display, "request_input", checkActive) {
                     requireUnlocked(context)
@@ -498,6 +492,19 @@ object ScreenControl {
                     clearPrivateInput(connection, display)
             }
         }
+    }
+
+    private fun awaitHandBack(id: String, connection: ScreenChannel, display: Int, deadline: Long,
+        execution: DeviceExecution, checkActive: () -> Unit): Boolean {
+        execution.waiting("screen.user_control", id, allowCancel = false)
+        while (state.value.manualControlId == id) {
+            checkActive()
+            if (System.nanoTime() >= deadline) deviceFailure(DeviceErrorCode.TIMEOUT, AppStrings.virtualScreenStillInUserControl)
+            Thread.sleep(100)
+        }
+        checkActive()
+        if (activeDisplay() != (connection to display)) deviceFailure(DeviceErrorCode.UNAVAILABLE, AppStrings.virtualScreenDisconnected)
+        return true
     }
 
     private fun clearPrivateInput(connection: ScreenChannel, display: Int) {
@@ -605,7 +612,7 @@ object ScreenControl {
 }
 
 internal fun ScreenControlState.requireAgentScreenAccess(action: String) {
-    if (manualControlId != null) deviceFailure(DeviceErrorCode.UNAVAILABLE, AppStrings.virtualScreenInUserControl)
+    if (manualControlId != null) deviceFailure(DeviceErrorCode.USER_IN_CONTROL, AppStrings.virtualScreenAgentStopped)
     if (readRequiredAfterHandoff && action !in setOf("snapshot", "apps"))
         deviceFailure(DeviceErrorCode.UNAVAILABLE, AppStrings.virtualScreenReadAfterHandoff)
 }

@@ -36,7 +36,9 @@ object PrivateScreenInput {
     fun chooseTakeOver(operationId: String, promptId: String): Boolean =
         pending[promptId]?.takeIf { it.operationId == operationId }?.respond(Answer.TakeOver) == true
 
-    internal fun await(execution: DeviceExecution, labels: List<String>, checkActive: () -> Unit): Answer {
+    /** [userTookOver] reports a takeover the user started from the preview; it answers the prompt like the dialog's takeover. */
+    internal fun await(execution: DeviceExecution, labels: List<String>, userTookOver: () -> Boolean = { false },
+        checkActive: () -> Unit): Answer {
         val id = UUID.randomUUID().toString()
         val prompt = Prompt(execution.operationId, labels.toList())
         pending[id] = prompt
@@ -45,6 +47,7 @@ object PrivateScreenInput {
             execution.waiting(if (labels.isEmpty()) "screen.handoff" else "screen.private_input", id)
             while (System.nanoTime() < deadline) {
                 checkActive()
+                if (userTookOver()) prompt.respond(Answer.TakeOver)
                 when (val answer = prompt.answer.poll(100, TimeUnit.MILLISECONDS)) {
                     Answer.Cancel -> deviceFailure(DeviceErrorCode.CANCELLED)
                     null -> Unit

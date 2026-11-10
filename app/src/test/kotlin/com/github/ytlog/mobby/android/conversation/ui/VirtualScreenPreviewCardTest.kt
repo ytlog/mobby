@@ -170,5 +170,14 @@ class VirtualScreenPreviewCardTest {
         compose.onAllNodes(isDialog()).assertCountEquals(1)
     }
 
+    @Test fun takeoverPageNamesTheEntryThatHidesTextFromTheAgent() {
+        val controller = Proxy.newProxyInstance(ScreenControlPort::class.java.classLoader,
+            arrayOf(ScreenControlPort::class.java)) { _, _, _ -> Unit } as ScreenControlPort
+        compose.setContent { MaterialTheme {
+            ManualVirtualScreenDialog(controller, "handoff-fixture", ImageBitmap(72, 128), null, onMinimize = {})
+        } }
+        compose.onNodeWithText(UiStrings.virtualScreenManualPrivateHint).assertIsDisplayed()
+    }
+
     private val DpRect.ratio get() = (right - left).value / (bottom - top).value
 }
