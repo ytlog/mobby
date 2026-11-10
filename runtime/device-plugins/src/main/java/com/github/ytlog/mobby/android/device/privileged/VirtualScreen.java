@@ -231,8 +231,8 @@ final class VirtualScreen implements AutoCloseable {
             if ("observe".equals(action)) return observe("Closed virtual navigation", true);
             if ("navigation_snapshot".equals(action)) {
                 awaitPackage("com.github.ytlog.mobby.android");
-                AccessibilityNodeInfo node = root();
-                try { return snapshot(node); } finally { node.recycle(); }
+                List<Layer> layers = layers();
+                try { return snapshot(layers); } finally { release(layers); }
             }
             if ("launch".equals(action)) {
                 String name = args.getString("package"); launch(name);
@@ -257,12 +257,12 @@ final class VirtualScreen implements AutoCloseable {
                 inject(down); inject(up);
                 return observe("Key delivered to virtual display", true);
             }
-            AccessibilityNodeInfo root = root();
+            List<Layer> layers = layers();
             try {
-                if ("snapshot".equals(action)) return snapshot(root);
-                if ("inspect".equals(action)) return evidence(root, args);
+                if ("snapshot".equals(action)) return snapshot(layers);
+                if ("inspect".equals(action)) return evidence(layers, args);
                 if ("click".equals(action)) {
-                    List<AccessibilityNodeInfo> matches = matches(root, args.getString("query"));
+                    List<AccessibilityNodeInfo> matches = matches(layers, args.getString("query"));
                     try {
                         if (matches.size() != 1) throw new IllegalStateException(matches.isEmpty() ? "control_not_found" : "control_not_unique");
                         if (!matches.get(0).performAction(AccessibilityNodeInfo.ACTION_CLICK)) throw new IllegalStateException("click_refused");
@@ -270,16 +270,16 @@ final class VirtualScreen implements AutoCloseable {
                 } else if ("type".equals(action)) {
                     String text = args.getString("text");
                     if (text.length() > 2000 || text.isEmpty()) throw new IllegalArgumentException("invalid_text");
-                    AccessibilityNodeInfo focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
+                    AccessibilityNodeInfo focused = inputFocus(layers);
                     try {
                         if (focused != null && !focused.isEditable()) { focused.recycle(); focused = null; }
-                        if (focused == null) focused = soleEditable(root);
+                        if (focused == null) focused = soleEditable(layers);
                         if (focused == null || focused.isPassword()) throw new IllegalStateException("no_editable_field");
                         Bundle bundle = new Bundle(); bundle.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text);
                         if (!focused.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, bundle)) throw new IllegalStateException("text_refused");
                     } finally { if (focused != null) focused.recycle(); }
                 } else throw new IllegalArgumentException("unsupported_action");
-            } finally { root.recycle(); }
+            } finally { release(layers); }
             return observe("Action delivered to virtual display", true);
         });
     }
@@ -301,7 +301,7 @@ final class VirtualScreen implements AutoCloseable {
                 if (root == null) continue;
                 List<AccessibilityNodeInfo> fields = new ArrayList<>();
                 try {
-                    walk(root, 0, new int[]{0}, (node, depth) -> {
+                    walk(root, 0, (node, depth) -> {
                         if (editablePrivateField(node)) fields.add(AccessibilityNodeInfo.obtain(node));
                     });
                 } finally { root.recycle(); }
@@ -367,7 +367,7 @@ final class VirtualScreen implements AutoCloseable {
                 if (root == null) return;
                 int[] deepest = {-1};
                 try {
-                    walk(root, 0, new int[]{0}, (node, depth) -> {
+                    walk(root, 0, (node, depth) -> {
                         if (depth < deepest[0] || !editablePrivateField(node)) return;
                         node.getBoundsInScreen(bounds);
                         if (!bounds.contains(x, y)) return;
@@ -431,76 +431,130 @@ final class VirtualScreen implements AutoCloseable {
         privateInputTargets.clear();
     }
 
-    private AccessibilityNodeInfo root() {
-        List<AccessibilityWindowInfo> windows = automation.getWindowsOnAllDisplays().get(displayId);
-        if (windows == null) throw new IllegalStateException("no_virtual_window");
+    /** A window the agent reads and acts on, with its root node and its area on the display. */
+    private static final class Layer {
+        final AccessibilityNodeInfo root;
+        final Rect bounds = new Rect();
+        final boolean focused;
+        Layer(AccessibilityNodeInfo root, AccessibilityWindowInfo window) {
+            this.root = root;
+            window.getBoundsInScreen(bounds);
+            focused = window.isFocused();
+        }
+    }
+
+    private static void release(List<Layer> layers) {
+        for (Layer layer : layers) layer.root.recycle();
+    }
+
+    /** The window under the others in [layers]: the focused page that windows above it partly cover. */
+    private static AccessibilityNodeInfo base(List<Layer> layers) {
+        return layers.get(layers.size() - 1).root;
+    }
+
+    /**
+     * The windows the agent reads and acts on, topmost first: mobby's navigation list while it is shown, otherwise the
+     * application windows from the top down to the one with input focus. A window above the focused one, such as the tooltip
+     * Douyin shows over its search box, takes no focus and covers part of the page without replacing it, so both are read.
+     * Windows below the focused one are behind it. When no window on the display has focus, every application window is read.
+     */
+    private List<Layer> layers() {
+        List<AccessibilityWindowInfo> windows = virtualWindows();
+        if (windows.isEmpty()) throw new IllegalStateException("no_virtual_window");
+        List<Layer> layers = new ArrayList<>();
         try {
-            windows.sort(Comparator.comparingInt(AccessibilityWindowInfo::getLayer).reversed());
             for (AccessibilityWindowInfo window : windows) {
                 AccessibilityNodeInfo node = window.getRoot();
-                if (node != null) {
-                    if (node.isVisibleToUser() && "com.github.ytlog.mobby.android".contentEquals(node.getPackageName())) return node;
-                    node.recycle();
+                if (node == null) continue;
+                if (node.isVisibleToUser() && "com.github.ytlog.mobby.android".contentEquals(node.getPackageName())) {
+                    layers.add(new Layer(node, window));
+                    return layers;
                 }
+                node.recycle();
             }
             for (AccessibilityWindowInfo window : windows) {
-                if (window.getType() == AccessibilityWindowInfo.TYPE_APPLICATION) {
-                    AccessibilityNodeInfo node = window.getRoot();
-                    if (node != null) return node;
-                }
+                if (window.getType() != AccessibilityWindowInfo.TYPE_APPLICATION) continue;
+                AccessibilityNodeInfo node = window.getRoot();
+                if (node == null) continue;
+                Layer layer = new Layer(node, window);
+                layers.add(layer);
+                if (layer.focused) break;
             }
-            throw new IllegalStateException("no_virtual_app_window");
-        } finally { for (AccessibilityWindowInfo window : windows) window.recycle(); }
+            if (layers.isEmpty()) throw new IllegalStateException("no_virtual_app_window");
+            return layers;
+        } finally { recycle(windows); }
+    }
+
+    /** Typing goes to the input focus of the focused window; a covering window that takes no focus has none. */
+    private static AccessibilityNodeInfo inputFocus(List<Layer> layers) {
+        for (Layer layer : layers) {
+            AccessibilityNodeInfo focused = layer.root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
+            if (focused != null) return focused;
+        }
+        return null;
     }
 
     private JSONObject observe(String text, boolean wait) throws Exception {
         if (wait) SystemClock.sleep(200);
         JSONObject result = metadata(new JSONObject().put("text", text));
         // A delivered input is still reported honestly if the app closes its last readable window.
-        try { AccessibilityNodeInfo node = root(); try { result.put("packageName", String.valueOf(node.getPackageName())); } finally { node.recycle(); } }
+        try { List<Layer> layers = layers(); try { result.put("packageName", String.valueOf(base(layers).getPackageName())); } finally { release(layers); } }
         catch (IllegalStateException noWindow) { result.put("packageName", ""); }
         return agentScreenshot(result);
     }
-    private JSONObject snapshot(AccessibilityNodeInfo root) throws Exception {
-        String text = WindowOutline.of(root, this::redactPrivateValues);
-        return agentScreenshot(metadata(new JSONObject().put("text", text).put("packageName", String.valueOf(root.getPackageName()))));
+    private JSONObject snapshot(List<Layer> layers) throws Exception {
+        StringBuilder text = new StringBuilder();
+        for (int index = 0; index < layers.size(); index++) {
+            Layer layer = layers.get(index);
+            if (layers.size() > 1) {
+                text.append("-- window ").append(index + 1).append(" of ").append(layers.size()).append(": ")
+                    .append(layer.root.getPackageName()).append(index == 0 ? ", on top" : "").append(layer.focused ? ", focused" : "")
+                    .append(index > 0 ? ", parts under the windows above are covered" : "").append(" --\n");
+            }
+            text.append(WindowOutline.of(layer.root, this::redactPrivateValues));
+        }
+        return agentScreenshot(metadata(new JSONObject().put("text", text).put("packageName", String.valueOf(base(layers).getPackageName()))));
     }
-    private JSONObject evidence(AccessibilityNodeInfo root, JSONObject args) throws Exception {
+    private JSONObject evidence(List<Layer> layers, JSONObject args) throws Exception {
         StringBuilder shape = new StringBuilder();
         MessageDigest scene = MessageDigest.getInstance("SHA-256");
         final int[] editable = {0};
-        walk(root, 0, new int[]{0}, (node, depth) -> {
-            shape.append(node.getClassName()).append(':').append(node.isClickable()).append(':').append(node.isEditable()).append(':').append(node.getChildCount()).append(';');
-            if (node.isEditable()) editable[0]++;
-            if (node.isVisibleToUser()) {
-                String label = node.isPassword() || node.isEditable() ? "" : redactPrivateValues(
-                    String.valueOf(node.getText() != null ? node.getText() : node.getContentDescription()));
-                String fingerprint = depth + ":" + node.getViewIdResourceName() + ":" + node.isChecked() + ":" +
-                    label.substring(0, Math.min(label.length(), 256));
-                scene.update(fingerprint.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-                scene.update((byte) 0);
-            }
-        });
+        for (Layer layer : layers) {
+            shape.append('|');
+            scene.update((byte) 1);
+            walk(layer.root, 0, (node, depth) -> {
+                shape.append(node.getClassName()).append(':').append(node.isClickable()).append(':').append(node.isEditable()).append(':').append(node.getChildCount()).append(';');
+                if (node.isEditable()) editable[0]++;
+                if (node.isVisibleToUser()) {
+                    String label = node.isPassword() || node.isEditable() ? "" : redactPrivateValues(
+                        String.valueOf(node.getText() != null ? node.getText() : node.getContentDescription()));
+                    String fingerprint = depth + ":" + node.getViewIdResourceName() + ":" + node.isChecked() + ":" +
+                        label.substring(0, Math.min(label.length(), 256));
+                    scene.update(fingerprint.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                    scene.update((byte) 0);
+                }
+            });
+        }
         byte[] digest = MessageDigest.getInstance("SHA-256").digest(shape.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
         StringBuilder hash = new StringBuilder(); for (byte b : digest) hash.append(String.format("%02x", b));
         StringBuilder sceneHash = new StringBuilder(); for (byte b : scene.digest()) sceneHash.append(String.format("%02x", b));
-        List<AccessibilityNodeInfo> found = args.has("query") ? matches(root, args.getString("query")) : new ArrayList<>();
+        List<AccessibilityNodeInfo> found = args.has("query") ? matches(layers, args.getString("query")) : new ArrayList<>();
         int count = found.size(); for (AccessibilityNodeInfo node : found) node.recycle();
-        AccessibilityNodeInfo focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
+        AccessibilityNodeInfo focused = inputFocus(layers);
         boolean focusedEditable = focused != null && focused.isEditable();
-        if (!focusedEditable) { if (focused != null) focused.recycle(); focused = soleEditable(root); }
+        if (!focusedEditable) { if (focused != null) focused.recycle(); focused = soleEditable(layers); }
         try {
             boolean input = focused != null && focused.isEditable();
             boolean password = input && (focused.isPassword() || !redactPrivateValues(String.valueOf(focused.getText())).equals(String.valueOf(focused.getText())));
-            return metadata(new JSONObject().put("packageName", String.valueOf(root.getPackageName())).put("shape", hash.toString())
+            return metadata(new JSONObject().put("packageName", String.valueOf(base(layers).getPackageName())).put("shape", hash.toString())
                 .put("scene", sceneHash.toString())
                 .put("matches", count).put("editable", editable[0]).put("focusedEditable", focusedEditable).put("passwordInput", password)
                 .put("inputMatches", input && !password && args.has("expectedInput") && args.getString("expectedInput").contentEquals(focused.getText() == null ? "" : focused.getText())));
         } finally { if (focused != null) focused.recycle(); }
     }
-    private AccessibilityNodeInfo soleEditable(AccessibilityNodeInfo root) {
+    private AccessibilityNodeInfo soleEditable(List<Layer> layers) {
         List<AccessibilityNodeInfo> inputs = new ArrayList<>();
-        walk(root, 0, new int[]{0}, (node, depth) -> {
+        for (Layer layer : layers) walk(layer.root, 0, (node, depth) -> {
             if (node.isEditable() && node.isEnabled() && node.isVisibleToUser()) inputs.add(AccessibilityNodeInfo.obtain(node));
         });
         if (inputs.size() == 1) return inputs.get(0);
@@ -584,35 +638,47 @@ final class VirtualScreen implements AutoCloseable {
         long until = SystemClock.uptimeMillis() + 3000;
         do {
             try {
-                AccessibilityNodeInfo node = root();
-                try { if (name.contentEquals(node.getPackageName())) return; } finally { node.recycle(); }
+                List<Layer> layers = layers();
+                try { if (name.contentEquals(base(layers).getPackageName())) return; } finally { release(layers); }
             } catch (IllegalStateException noWindow) { /* A launch transition may not have a window yet. */ }
             SystemClock.sleep(50);
         } while (SystemClock.uptimeMillis() < until);
         throw new IllegalStateException("app_not_on_virtual_display");
     }
     private interface NodeVisitor { void visit(AccessibilityNodeInfo node, int depth); }
-    private void walk(AccessibilityNodeInfo node, int depth, int[] count, NodeVisitor visitor) {
-        if (count[0]++ >= WindowOutline.MAX_VISITED || depth > WindowOutline.MAX_DEPTH) return;
+    /** Visits the whole tree with no node or depth limit; it is as deep as the app's own recursively drawn view tree. */
+    private void walk(AccessibilityNodeInfo node, int depth, NodeVisitor visitor) {
         visitor.visit(node, depth);
-        for (int i = 0; i < node.getChildCount() && count[0] < WindowOutline.MAX_VISITED; i++) {
+        for (int i = 0; i < node.getChildCount(); i++) {
             AccessibilityNodeInfo child = node.getChild(i);
-            if (child != null) try { walk(child, depth + 1, count, visitor); } finally { child.recycle(); }
+            if (child != null) try { walk(child, depth + 1, visitor); } finally { child.recycle(); }
         }
     }
-    private List<AccessibilityNodeInfo> matches(AccessibilityNodeInfo root, String query) {
+    /**
+     * Clickable controls whose text or description contains [query], in every read window. A control whose centre lies
+     * under a window above its own is covered, as it is for a finger, and is not a match.
+     */
+    private List<AccessibilityNodeInfo> matches(List<Layer> layers, String query) {
         if (query.isEmpty() || query.length() > 200) throw new IllegalArgumentException("invalid_query");
         List<AccessibilityNodeInfo> result = new ArrayList<>();
-        walk(root, 0, new int[]{0}, (node, depth) -> {
-            if (!node.isVisibleToUser() || node.isPassword()) return;
-            String text = redactPrivateValues(String.valueOf(node.getText()) + " " + node.getContentDescription());
-            if (!text.toLowerCase(Locale.ROOT).contains(query.toLowerCase(Locale.ROOT))) return;
-            AccessibilityNodeInfo target = AccessibilityNodeInfo.obtain(node);
-            while (target != null && !target.isClickable()) {
-                AccessibilityNodeInfo parent = target.getParent(); target.recycle(); target = parent;
-            }
-            if (target != null) { if (!result.contains(target)) result.add(target); else target.recycle(); }
-        });
+        Rect bounds = new Rect();
+        for (int index = 0; index < layers.size(); index++) {
+            List<Layer> above = layers.subList(0, index);
+            walk(layers.get(index).root, 0, (node, depth) -> {
+                if (!node.isVisibleToUser() || node.isPassword()) return;
+                String text = redactPrivateValues(String.valueOf(node.getText()) + " " + node.getContentDescription());
+                if (!text.toLowerCase(Locale.ROOT).contains(query.toLowerCase(Locale.ROOT))) return;
+                AccessibilityNodeInfo target = AccessibilityNodeInfo.obtain(node);
+                while (target != null && !target.isClickable()) {
+                    AccessibilityNodeInfo parent = target.getParent(); target.recycle(); target = parent;
+                }
+                if (target == null) return;
+                target.getBoundsInScreen(bounds);
+                boolean covered = false;
+                for (Layer layer : above) covered |= layer.bounds.contains(bounds.centerX(), bounds.centerY());
+                if (covered || result.contains(target)) target.recycle(); else result.add(target);
+            });
+        }
         return result;
     }
     private static float fraction(JSONObject args, String name) throws Exception {

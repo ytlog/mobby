@@ -76,20 +76,17 @@ class ScreenAccessService : AccessibilityService() {
             var editable = 0
             var soleInput: String? = null
             var solePassword = false
-            fun walk(node: AccessibilityNodeInfo, depth: Int, seen: Int): Int {
-                if (seen >= 150 || depth > 12) return seen
+            // The whole tree, with no node or depth limit, so a field or control deep in the page is not missed.
+            fun walk(node: AccessibilityNodeInfo) {
                 shape.append(node.className).append(':').append(node.isClickable).append(':')
                     .append(node.isEditable).append(':').append(node.childCount).append(';')
                 if (node.isEditable) { editable++; soleInput = node.text?.toString(); solePassword = node.isPassword }
-                var count = seen + 1
                 for (i in 0 until node.childCount) {
                     val child = node.getChild(i) ?: continue
-                    try { count = walk(child, depth + 1, count) } finally { child.recycle() }
-                    if (count >= 150) break
+                    try { walk(child) } finally { child.recycle() }
                 }
-                return count
             }
-            walk(root, 0, 0)
+            walk(root)
             val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
             val focusedEditable = focused?.isEditable == true
             val actualInput = if (focusedEditable) focused?.text?.toString() else if (editable == 1) soleInput else null
@@ -262,9 +259,7 @@ class ScreenAccessService : AccessibilityService() {
 
     private fun findTargets(root: AccessibilityNodeInfo, query: String): List<AccessibilityNodeInfo> {
         val matches = mutableListOf<AccessibilityNodeInfo>()
-        var visited = 0
         fun walk(node: AccessibilityNodeInfo) {
-            if (++visited > 500) deviceFailure(DeviceErrorCode.UNAVAILABLE, "Too many controls to match safely")
             val text = node.text?.toString().orEmpty()
             val description = node.contentDescription?.toString().orEmpty()
             if ((text.contains(query, true) || description.contains(query, true)) && (node.isClickable || node.isEnabled)) {

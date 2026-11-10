@@ -34,7 +34,7 @@ object DeviceCatalog {
             "Use this skill to read or control the selected screen. Follow the backend instructions below. In current-screen mode the display stays on for this run and the previous screen timeout returns when the run ends. Snapshot the target app before interacting; in virtual mode use apps and launch first if no app is open. Password fields appear as [secure]. Each successful screen action attempts a screenshot. When result.data.observationRef is present, use the resource command to export its JPEG and inspect it; screenshotStatus reports capture failure without changing the action outcome. Report failures; do not invent controls or success. Do not change the system screen timeout.",
             DeviceAccess.ACCESSIBILITY,
             commands = listOf(
-                DeviceCommand("snapshot", "snapshot", "Read the current window before other actions. Lists the controls visible on screen; a last line starting with [truncated] means more were not listed."),
+                DeviceCommand("snapshot", "snapshot", "Read the current window before other actions. Lists every on-screen node that has text, a description (desc), an image or an action, at any depth, indented under its listed ancestors. On a virtual display a window above the page, such as a popup or tooltip, is listed first as its own window; click skips controls it covers."),
                 DeviceCommand("apps", "apps", "List launchable application packages."),
                 DeviceCommand("launch", """launch {"package":"com.example.app"}""", "Launch on the selected screen; virtual mode never launches on the main display."),
                 DeviceCommand("force_stop", """force_stop {"package":"com.example.app"}""",
