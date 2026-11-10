@@ -65,9 +65,13 @@ Add photo or file access to a task and choose the photos or folder to share. Ask
 
 ### Let it use apps for you
 
-Add phone or tablet access to a task and describe what you want to do. mobby reads the screen, taps buttons, types text, and moves between pages to carry out the steps.
+Add **AI controls phone** to a task and say what you want done. The agent opens apps on a separate virtual display, reading the screen before every tap and keystroke, while you watch a live preview and keep using your phone. For sign-ins, codes or slider checks it pauses and hands control to you, then carries on when you hand it back.
 
 > 💬 *Install Via browser from the app store and open Bookmarks.*
+
+Built-in ADB virtual display · No root, no computer · Android 13+
+
+[How mobby uses your phone →](https://ytlog.github.io/articles/mobby-ai-uses-your-phone.html?lang=en)
 
 </td>
 <td width="45%" align="center">
@@ -82,11 +86,11 @@ Add phone or tablet access to a task and describe what you want to do. mobby rea
 
 ### Build something useful on your device
 
-Describe what you need. The agent writes the code in your device's workspace, starts a local server, and opens the result in your browser.
+Git, Node.js and four coding agents come built in. Describe what you need: the agent writes the code on your device, starts a local server and opens the result in your browser. To keep it around, have it written as a mobby program, installed with one confirmation, that runs on schedule in the background, sends notifications, stores data and receives shares.
 
 > 💬 *Make a travel packing list with categories for documents, clothes, electronics, and toiletries. Let me check off, add, and delete items, and keep my changes after a refresh.*
 
-[Browse the example code →](docs/examples/travel-checklist-en/)
+[Coding on your phone →](https://ytlog.github.io/articles/mobby-coding-on-your-phone.html?lang=en) · [Example code](docs/examples/travel-checklist-en/)
 
 </td>
 </tr>

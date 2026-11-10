@@ -65,9 +65,13 @@
 
 ### 让它帮你操作 App
 
-把“AI 操作手机”或“AI 操作平板”加入任务，告诉它要去哪、做什么。它会读取屏幕，点击按钮、输入文字、切换页面，按步骤操作设备。
+把“AI 操作手机”加入任务，说出要做的事。Agent 在独立的副屏上打开应用、读屏、点按、输入，每一步都先看再动；你留在 mobby 里看实时预览，手机照常可用。遇到登录、验证码或滑块，它会停下来请你接手，交还后自动继续。
 
 > 💬 *去应用商店下载番茄ToDo，打开添加待办的功能。*
+
+内置 ADB 副屏 · 无需 root 和电脑 · Android 13+
+
+[了解 AI 如何操作手机 →](https://ytlog.github.io/articles/mobby-ai-uses-your-phone.html?lang=zh)
 
 </td>
 <td width="45%" align="center">
@@ -82,11 +86,11 @@
 
 ### 在设备上写个能用的小程序
 
-说清楚想做什么，让 Agent 在设备工作区写代码、启动服务，再用设备上的浏览器打开。
+手机里自带 Git、Node.js 和四个编程 Agent。说清楚想做什么，Agent 就在本机写代码、启动服务，用浏览器打开给你看。想长期留着用，就让它写成 mobby 程序：一页确认安装，按时在后台运行、发通知、存数据、接收分享。
 
 > 💬 *做一个旅行打包清单，按证件、衣物、电子和洗漱用品分类。可以勾选、添加、删除，刷新后还能保留。*
 
-[查看示例源码 →](examples/travel-checklist/)
+[了解在手机上写程序 →](https://ytlog.github.io/articles/mobby-coding-on-your-phone.html?lang=zh) · [示例源码](examples/travel-checklist/)
 
 </td>
 </tr>
