@@ -9,6 +9,28 @@ import com.github.ytlog.mobby.android.localization.AppStrings
 
 /** Renders persisted turn output and preserves the directory recorded when each message was sent. */
 internal class MessageManager {
+    /**
+     * A message sent into a running turn is drawn inside that turn, at the position the runtime recorded when it took the
+     * message. One still sending, refused or without a recorded position stays a row of its own so its status shows.
+     */
+    fun render(rows: List<TurnRow>, content: (TurnRow) -> Map<String, ChunkRow>): List<Turn> {
+        val positions = rows.mapNotNull { row ->
+            val runId = row.runId ?: return@mapNotNull null
+            val inserted = row.snapshot?.let { storageJson.decodeFromString<RunSnapshot>(it) }?.insertions.orEmpty()
+            if (inserted.isEmpty()) null else runId to inserted.associate { it.commandId to it.order }
+        }.toMap()
+        val absorbed = mutableMapOf<String, MutableList<InsertedMessage>>()
+        val shown = rows.filter { row ->
+            val target = row.insertionRunId ?: return@filter true
+            val order = positions[target]?.get(row.id)?.takeIf { !row.pending && row.error == null } ?: return@filter true
+            absorbed.getOrPut(target) { mutableListOf() } += InsertedMessage(TurnId(row.id), row.userText, order)
+            false
+        }
+        return shown.map { row ->
+            val turn = render(row, content(row))
+            row.runId?.let(absorbed::get)?.let { turn.copy(insertions = it.sortedBy { inserted -> inserted.order }) } ?: turn
+        }
+    }
     fun render(row: TurnRow, content: Map<String, ChunkRow>): Turn = row.run {
         val snapshot = snapshot?.let { storageJson.decodeFromString<RunSnapshot>(it) }
         fun List<OutputSegment>.renderSegments(separator: String = ""): String = buildString {

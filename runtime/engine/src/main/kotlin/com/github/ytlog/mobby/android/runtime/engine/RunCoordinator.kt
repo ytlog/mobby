@@ -29,6 +29,8 @@ class RunCoordinator(
     val active = activeState.asStateFlow()
     private var stop: MutableStateFlow<StopCause?>? = null
     private var activeRequest: RequestId? = null
+    /** Writes what the active run has buffered and returns the next output position. Callers hold the mutex. */
+    private var insertionSlot: (suspend () -> Long)? = null
     private var healthy = true
 
     /** Called after platform process cleanup, once before admission. Never resumes side effects after host death. */
@@ -103,7 +105,16 @@ class RunCoordinator(
                         current.phase !in setOf(RunPhase.RUNNING, RunPhase.AWAITING_APPROVAL) ->
                         CommandResult.Rejected(RuntimeError(ErrorCode.NOT_READY, true))
                     else -> when (runCatching { process.offerInsertion(activeRequest!!, request.text) }.getOrDefault(InsertionOffer.NOT_READY)) {
-                        InsertionOffer.ACCEPTED -> CommandResult.Accepted
+                        InsertionOffer.ACCEPTED -> {
+                            // The message sits after everything the agent produced before it was sent. When the agent
+                            // reads it differs per CLI, so this is the closest position every agent shares.
+                            insertionSlot?.invoke()?.let { order ->
+                                val state = checkNotNull(journal.snapshot(request.runId))
+                                val input = InsertedInput(request.commandId.value, order)
+                                append(state, RuntimeEvent.InputInserted(input), state.copy(insertions = state.insertions + input))
+                            }
+                            CommandResult.Accepted
+                        }
                         InsertionOffer.NOT_READY -> CommandResult.Rejected(RuntimeError(ErrorCode.NOT_READY, true))
                         InsertionOffer.UNSUPPORTED -> CommandResult.Rejected(RuntimeError(ErrorCode.UNSUPPORTED_CAPABILITY))
                     }
@@ -368,6 +379,7 @@ class RunCoordinator(
                     }
                 }
             }
+            mutex.withLock { insertionSlot = { flushLocked(); chunk++ } }
             result = if (signal.value != null) ProcessResult(null, true) else process.execute(request, signal, devicePort(id) { chunk++ }) { line, stderr ->
                 try {
                     if (stderr) emitFact(AgentFact.Diagnostic("stderr", line))
@@ -386,6 +398,7 @@ class RunCoordinator(
         withContext(NonCancellable) {
             flusher?.cancelAndJoin()
             mutex.withLock {
+                insertionSlot = null
                 try {
                     if (healthy && journal.snapshot(id)?.phase?.terminal == false) flushLocked()
                     val old = journal.snapshot(id) ?: return@withLock

@@ -1155,6 +1155,11 @@ internal fun timelineGap(previous: TimelineBlock?, next: TimelineBlock): Dp = wh
                 block("user:${turn.id.value}", TimelineBlock.USER) { Row(Modifier.fillMaxWidth().padding(start = 48.dp), horizontalArrangement = Arrangement.End) { UserMessageBubble { androidx.compose.foundation.text.selection.SelectionContainer { Text(displayRuntimePaths(turn.userText)) }; AttachmentList(turn.attachments, turn.workspace, vm) } } }
                 turnEntries.forEach { entry ->
                     when (entry) {
+                        is TimelineEntry.Inserted -> block(entry.itemKey(turn), TimelineBlock.USER) {
+                            Row(Modifier.fillMaxWidth().padding(start = 48.dp), horizontalArrangement = Arrangement.End) {
+                                UserMessageBubble { androidx.compose.foundation.text.selection.SelectionContainer { Text(displayRuntimePaths(entry.message.text)) } }
+                            }
+                        }
                         is TimelineEntry.Device -> block(entry.itemKey(turn), TimelineBlock.PROCESS) {
                             com.github.ytlog.mobby.android.deviceoperation.ConversationDeviceCard(entry.record.operation, turn, detail.conversation, vm)
                         }

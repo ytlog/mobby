@@ -237,6 +237,20 @@ class ExecutionFlowTest {
         assertEquals(listOf("d"), process.devices.map { it.operation.operationId })
     }
 
+    // A message sent while the turn ran stayed under everything the agent wrote after it.
+    @Test fun `a message sent during the run splits the work at the point it was sent`() {
+        val sent = InsertedMessage(TurnId("insert-1"), "more context", 3)
+        val turn = empty.copy(
+            messages = listOf(Message("m1", "one", order = 1), Message("m2", "two", order = 6)),
+            steps = listOf(step.copy(id = "a", order = 2), step.copy(id = "b", order = 4)),
+            insertions = listOf(sent))
+        val entries = turn.timelineEntries()
+        assertEquals(listOf(TimelineEntry.Reply::class, TimelineEntry.Process::class, TimelineEntry.Inserted::class,
+            TimelineEntry.Process::class, TimelineEntry.Reply::class), entries.map { it::class })
+        assertEquals(sent, (entries[2] as TimelineEntry.Inserted).message)
+        assertEquals(entries[2].itemKey(turn), turn.timelineKeyAliases()["user:insert-1"])
+    }
+
     @Test fun `operations that need a look stay out of the folded summary`() {
         val photo = DeviceResult("capture_resource", EffectState.NONE, buildJsonObject { put("mediaType", "image/jpeg") }, resourceRefs = listOf("r"))
         listOf(

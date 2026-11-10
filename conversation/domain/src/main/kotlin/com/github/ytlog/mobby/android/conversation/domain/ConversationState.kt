@@ -41,14 +41,16 @@ data class Turn(
     val expanded: Boolean? = null, val expandedSteps: Set<String> = emptySet(),
     val skillProposals: List<SkillProposal> = emptyList(), val creatingSkill: Boolean = false, val proposalsLoading: Boolean = false, val attachments: List<String> = emptyList(),
     val permissions: List<PermissionRequest> = emptyList(), val deviceOperations: List<DeviceRecord> = emptyList(),
-    val workspace: String = "default", val project: String? = null
+    val workspace: String = "default", val project: String? = null,
+    val insertions: List<InsertedMessage> = emptyList()
 ) {
     /**
      * Replies stay where they were produced. Adjacent tool calls form one run and collapse after they finish. Blank replies,
      * such as the newlines Pi writes between tool calls, show nothing and do not split a run.
      */
     fun transcript(): List<TranscriptEntry> {
-        val ordered = (messages.filter { it.text.isNotBlank() }.map { it.order to TranscriptPiece.Reply(it) } + steps.map { it.order to TranscriptPiece.Tool(it) } + deviceOperations.map { it.order to TranscriptPiece.Device(it) })
+        val ordered = (messages.filter { it.text.isNotBlank() }.map { it.order to TranscriptPiece.Reply(it) } + steps.map { it.order to TranscriptPiece.Tool(it) } + deviceOperations.map { it.order to TranscriptPiece.Device(it) } +
+            insertions.map { it.order to TranscriptPiece.Inserted(it) })
             .sortedWith(compareBy<Pair<Long, TranscriptPiece>>({ it.first }, { if (it.second is TranscriptPiece.Reply) 0 else 1 }))
         val result = mutableListOf<TranscriptEntry>()
         val run = mutableListOf<Step>()
@@ -62,6 +64,7 @@ data class Turn(
             is TranscriptPiece.Reply -> { flush(); result += TranscriptEntry.Reply(piece.message) }
             is TranscriptPiece.Tool -> run += piece.step
             is TranscriptPiece.Device -> { flush(); result += TranscriptEntry.Device(piece.record) }
+            is TranscriptPiece.Inserted -> { flush(); result += TranscriptEntry.Inserted(piece.message) }
         }
         flush()
         return result
@@ -71,12 +74,16 @@ private sealed interface TranscriptPiece {
     data class Device(val record: DeviceRecord) : TranscriptPiece
     data class Reply(val message: Message) : TranscriptPiece
     data class Tool(val step: Step) : TranscriptPiece
+    data class Inserted(val message: InsertedMessage) : TranscriptPiece
 }
 sealed interface TranscriptEntry {
     data class Device(val record: DeviceRecord) : TranscriptEntry
     data class Reply(val message: Message) : TranscriptEntry
     data class ToolRun(val steps: List<Step>) : TranscriptEntry
+    data class Inserted(val message: InsertedMessage) : TranscriptEntry
 }
+/** A message the user sent while this turn was running, shown at [order] among the turn's output. */
+data class InsertedMessage(val id: TurnId, val text: String, val order: Long)
 /** [execution] is the run occupying the conversation, if any; [run] is the run [phase] describes, set also after it ends. */
 data class ConversationSummary(val conversation: Conversation, val phase: ExecutionPhase? = null, val occupied: Boolean = false, val execution: ExecutionId? = null, val deviceOperation: com.github.ytlog.mobby.android.runtime.api.device.DeviceOperation? = null, val run: ExecutionId? = null)
 data class ConversationDetail(val conversation: Conversation, val turns: List<Turn>, val hasEarlier: Boolean = false)

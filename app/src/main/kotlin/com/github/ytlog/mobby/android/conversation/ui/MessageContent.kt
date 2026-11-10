@@ -77,6 +77,8 @@ internal sealed interface TimelineEntry {
     data class Reply(val message: Message) : TimelineEntry
     data class Device(val record: DeviceRecord) : TimelineEntry
     data class Process(val steps: List<Step>, val devices: List<DeviceRecord> = emptyList()) : TimelineEntry
+    /** A message the user sent while the turn ran, drawn where the run had got to. */
+    data class Inserted(val message: InsertedMessage) : TimelineEntry
 }
 
 private fun DeviceRecord.folds() = operation.status == DeviceStatus.SUCCEEDED && operation.requiresAttention == null && !operation.showsFoldedPreview()
@@ -93,6 +95,7 @@ internal fun Turn.timelineEntries(): List<TimelineEntry> {
         is TranscriptEntry.Reply -> { flush(); result += TimelineEntry.Reply(entry.message) }
         is TranscriptEntry.ToolRun -> steps += entry.steps
         is TranscriptEntry.Device -> if (entry.record.folds()) devices += entry.record else { flush(); result += TimelineEntry.Device(entry.record) }
+        is TranscriptEntry.Inserted -> { flush(); result += TimelineEntry.Inserted(entry.message) }
     } }
     flush()
     return result
@@ -101,6 +104,7 @@ internal fun Turn.timelineEntries(): List<TimelineEntry> {
 internal fun TimelineEntry.itemKey(turn: Turn): String = when (this) {
     is TimelineEntry.Reply -> "message:${turn.id.value}:${message.id}"
     is TimelineEntry.Device -> "device:${turn.id.value}:${record.operation.operationId}"
+    is TimelineEntry.Inserted -> "inserted:${turn.id.value}:${message.id.value}"
     is TimelineEntry.Process -> steps.firstOrNull()?.let { "tools:${turn.id.value}:${it.id}" }
         ?: "device:${turn.id.value}:${devices.first().operation.operationId}"
 }
@@ -109,7 +113,7 @@ internal fun TimelineEntry.itemKey(turn: Turn): String = when (this) {
 internal fun Turn.timelineKeyAliases(): Map<String, String> = timelineEntries().filterIsInstance<TimelineEntry.Process>().flatMap { entry ->
     val summary = entry.itemKey(this)
     entry.steps.map { "tools:${id.value}:${it.id}" to summary } + entry.devices.map { "device:${id.value}:${it.operation.operationId}" to summary }
-}.toMap()
+}.toMap() + insertions.associate { "user:${it.id.value}" to "inserted:${id.value}:${it.id.value}" }
 
 /** The turn draws its own status row, so a step group need not repeat how the run ended. */
 internal fun Turn.reportsOutcome(): Boolean = queued || failure != null || (phase == ExecutionPhase.FAILED && diagnostics.isNotEmpty()) || phase in setOf(

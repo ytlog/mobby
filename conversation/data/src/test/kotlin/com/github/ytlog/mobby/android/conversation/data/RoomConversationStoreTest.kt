@@ -229,6 +229,36 @@ class RoomConversationStoreTest {
         assertEquals(0, runtime.submissions)
     }
 
+    @Test fun `an inserted message shows inside the running turn where the runtime placed it`() = runBlocking {
+        val conversation = state().selected!!.conversation
+        repository.editDraft(conversation.id, "first", 5, 5)
+        val first = (repository.prepareTurn(conversation.id, TurnId("active-turn")) as PrepareTurnResult.Prepared).turn
+        runtime.admit(first)
+        repository.recordSubmission(first, Submission.Accepted(ExecutionId(first.turnId.value)))
+        state { it.selected?.turns?.singleOrNull()?.occupied == true }
+        repository.editDraft(conversation.id, "more context", 12, 12)
+        val insertion = (repository.prepareInsertion(conversation.id, TurnId("insert-1")) as PrepareInsertionResult.Prepared).insertion
+        repository.recordInsertion(insertion, RuntimeExecutionAdapter(runtime).insert(insertion))
+
+        val before = ResourceRef("active-turn/0"); val after = ResourceRef("active-turn/2")
+        runtime.artifactBodies[before] = "reply before".toByteArray()
+        runtime.artifactBodies[after] = "reply after".toByteArray()
+        runtime.snapshots["active-turn"] = runtime.snapshots.getValue("active-turn").copy(phase = RunPhase.SUCCEEDED,
+            outputSegments = listOf(OutputSegment("before", 0, before), OutputSegment("after", 2, after)),
+            insertions = listOf(InsertedInput("insert-1", 1)), terminalEvidence = TerminalEvidence(true, 0))
+        repository.refreshExecution(ExecutionId("active-turn"))
+        val turn = state { it.selected?.turns?.singleOrNull()?.messages?.map { m -> m.text } == listOf("reply before", "reply after") }
+            .selected!!.turns.single()
+        assertEquals(listOf("reply before", "more context", "reply after"), turn.transcript().map {
+            when (it) {
+                is TranscriptEntry.Reply -> it.message.text
+                is TranscriptEntry.Inserted -> it.message.text
+                else -> error("unexpected $it")
+            }
+        })
+        assertEquals(TurnId("insert-1"), turn.insertions.single().id)
+    }
+
     @Test fun `cancelling a queued message keeps later draft edits and prevents dispatch`() = runBlocking {
         val conversation = state().selected!!.conversation
         repository.editDraft(conversation.id, "first", 5, 5)

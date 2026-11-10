@@ -244,8 +244,11 @@ data class RunSnapshot(
     val pendingApprovals: List<PendingApproval> = emptyList(), val terminalEvidence: TerminalEvidence? = null,
     val artifacts: List<ResourceRef> = emptyList(), val outputSegments: List<OutputSegment> = emptyList(),
     val steps: List<ToolSnapshot> = emptyList(), val progress: ProgressNotice? = null,
-    val deviceOperations: List<DeviceRecord> = emptyList()
+    val deviceOperations: List<DeviceRecord> = emptyList(), val insertions: List<InsertedInput> = emptyList()
 )
+/** A message the user sent into this run while it was working; [order] is its place among the run's output and steps. */
+@Serializable
+data class InsertedInput(val commandId: String, val order: Long)
 @Serializable
 sealed interface SnapshotResult {
     @Serializable
@@ -289,6 +292,8 @@ sealed interface RuntimeEvent {
     data class ApprovalResolved(val approvalId: String, val choice: ApprovalChoice) : RuntimeEvent
     @Serializable
     data class ArtifactAvailable(val ref: ResourceRef) : RuntimeEvent
+    @Serializable
+    data class InputInserted(val input: InsertedInput) : RuntimeEvent
     @Serializable
     data class CancellationRequested(val reason: CancelReason) : RuntimeEvent
     @Serializable

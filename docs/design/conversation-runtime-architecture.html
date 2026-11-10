@@ -110,6 +110,8 @@ ConnectionState 只表达连接情况，不覆盖 RunPhase。</pre><p>所有非�
          → RuntimeExecutionAdapter → RuntimeClient.insert
          → 当前适配器接收 / 明确拒绝（不转成队列）
          → Accepted 后只清除原 draftRevision；相同消息 ID 不重复投递
+         → Runtime 接收时先写出已缓冲输出，再按输出序号给消息记一个位置（InputInserted）
+         → 会话时间线把它画在该 run 那一轮里的这个位置，之后的输出排在它下面
 
 点击停止 → StopRunUseCase → cancel(runId)
         → Cancelling → 终止进程组 / 等待退出证据

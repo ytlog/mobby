@@ -1004,7 +1004,7 @@ JDK 17 离线验证覆盖设备插件 16 项、悬浮球 9 项、Runtime Android
 
 Codex、Claude Code、OpenCode 运行时，输入框仍允许编辑与发送。发送的新消息冻结当时的 Agent、模型、网关、工作区、附件及技能，持久化为排队轮次，清空对应草稿；当前轮次结束后依次自动提交。停止当前轮次不会悄悄丢弃队列。排队卡片可取消，取消后可把原消息恢复到输入框；已有草稿编辑不会被覆盖。应用重启时会先核对未确认提交，再继续排队消息，避免重复执行。
 
-上层统一使用 `ConversationUseCases.prepareMessage(conversationId, mode)` 与 `deliverMessage(prepared)`，`mode` 为 `QUEUE` 或 `INSERT`，不调用具体 Agent API。排队轮次由 `TurnManager` 持久化并在当前任务结束后提交。直接插入只接受当前会话内正在运行的任务和文本消息；它把消息 ID 与目标执行 ID 持久化，以相同 ID 调用 `RuntimeClient.insert`，失败时保留草稿，不会转成排队。重复命令只投递一次。`Accepted` 表示实时适配器接收命令，不表示模型已处理。
+上层统一使用 `ConversationUseCases.prepareMessage(conversationId, mode)` 与 `deliverMessage(prepared)`，`mode` 为 `QUEUE` 或 `INSERT`，不调用具体 Agent API。排队轮次由 `TurnManager` 持久化并在当前任务结束后提交。直接插入只接受当前会话内正在运行的任务和文本消息；它把消息 ID 与目标执行 ID 持久化，以相同 ID 调用 `RuntimeClient.insert`，失败时保留草稿，不会转成排队。重复命令只投递一次。`Accepted` 表示实时适配器接收命令，不表示模型已处理。Runtime 接收插入时先写出已缓冲的输出，再从与步骤、回复和设备操作相同的输出序号里给这条消息分配位置，记为 `InputInserted` 事件和快照里的 `insertions`；会话时间线把已接收且有位置的插入消息显示在目标轮次的这个位置，发送中、被拒绝或结果待确认的插入仍单独显示状态。位置取发送时刻：各 Agent 实际读到插入消息的时机不同，这是所有 Agent 共用的近似位置。
 
 Codex 通过 app-server `turn/steer` 插入当前 turn；Claude Code 通过仍打开的 stream-json 输入发送用户消息。OpenCode 当前版本不提供可靠的忙碌会话 steer，返回 `UNSUPPORTED_CAPABILITY`。输入框运行中有草稿内容时，右侧的停止按钮切换为单个发送按钮，点击后仍可选择“排队发送”或“插入当前运行”；草稿为空时恢复停止按钮。插入附件暂不支持，会明确拒绝。Codex 和 Claude Code 的真 CLI 运行中插入仍需设备验收，尤其要核对 Claude Code 进程重启后的上下文保留情况。
 

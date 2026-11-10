@@ -17,6 +17,11 @@ class RunProjectionTest {
         assertNull(RunProjection.apply(updated, event(3, RuntimeEvent.AssistantDelta(part), "other")))
         assertNull(RunProjection.apply(updated, event(3, RuntimeEvent.AssistantDelta(part)).copy(apiMajor = 2)))
     }
+    @Test fun `an inserted message keeps the position the runtime gave it`() {
+        val inserted = RunProjection.apply(initial, event(2, RuntimeEvent.InputInserted(InsertedInput("message-1", 3))))!!
+        assertEquals(listOf(InsertedInput("message-1", 3)), inserted.insertions)
+        assertEquals(inserted, RunProjection.apply(inserted, event(2, RuntimeEvent.InputInserted(InsertedInput("message-1", 3)))))
+    }
     @Test fun `message completion is not run completion and session event cannot undo cancelling`() {
         assertEquals(RunPhase.RUNNING, RunProjection.apply(initial, event(2, RuntimeEvent.AssistantCompleted("m")))!!.phase)
         val stopping = RunProjection.apply(initial, event(2, RuntimeEvent.CancellationRequested(CancelReason.USER_REQUEST)))!!

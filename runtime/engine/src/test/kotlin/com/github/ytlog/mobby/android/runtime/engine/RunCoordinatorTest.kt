@@ -103,6 +103,39 @@ class RunCoordinatorTest {
         assertEquals(CommandResult.AlreadyTerminal, runtime.insert(InsertRequest(CommandId("after"), id, "late")))
         assertEquals(listOf("more context"), inserted)
     }
+    @Test fun `an inserted message is placed between the output before and after it`() = runTest {
+        val journal = MemoryJournal()
+        val output = MemoryOutput()
+        val before = CompletableDeferred<Unit>()
+        val resume = CompletableDeferred<Unit>()
+        val process = object : ProcessPort {
+            override fun offerInsertion(requestId: RequestId, text: String) = InsertionOffer.ACCEPTED
+            override suspend fun execute(request: RunRequest, stop: StateFlow<StopCause?>, devices: DeviceOperationPort,
+                output: suspend (String, Boolean) -> Unit): ProcessResult {
+                // The reply is still buffered when the message arrives; it was produced first, so it stays above.
+                output("""{"type":"item.completed","item":{"id":"before","type":"agent_message","text":"reply before"}}""", false)
+                before.complete(Unit)
+                resume.await()
+                output("""{"type":"item.completed","item":{"id":"tool","type":"command_execution","command":"ls","aggregated_output":"x","exit_code":0}}""", false)
+                output("""{"type":"item.completed","item":{"id":"after","type":"agent_message","text":"reply after"}}""", false)
+                output("""{"type":"turn.completed"}""", false)
+                return ProcessResult(0, true)
+            }
+        }
+        val runtime = RunCoordinator(backgroundScope, environment, process, journal, output)
+        runtime.recover()
+        val id = (runtime.submit(request()) as SubmitResult.Accepted).runId
+        before.await()
+        assertEquals(CommandResult.Accepted, runtime.insert(InsertRequest(CommandId("message-1"), id, "more context")))
+        resume.complete(Unit); runCurrent()
+        val snapshot = journal.states.getValue(id)
+        val inserted = snapshot.insertions.single()
+        assertEquals("message-1", inserted.commandId)
+        assertTrue(snapshot.outputSegments.single { it.messageId == "before" }.chunkIndex < inserted.order)
+        assertTrue(inserted.order < snapshot.steps.single { it.stepId == "tool" }.order)
+        assertTrue(inserted.order < snapshot.outputSegments.single { it.messageId == "after" }.chunkIndex)
+        assertEquals(1, journal.events.count { it.payload is RuntimeEvent.InputInserted })
+    }
     @Test fun `device facts are durable before dispatch and duplicate admission never dispatches again`() = runTest {
         val journal = MemoryJournal()
         val process = object : ProcessPort {

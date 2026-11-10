@@ -660,7 +660,11 @@ private fun pluginCatalogTabs(tablet: Boolean) = listOf(if (tablet) AppStrings.t
     }, confirmButton = { TextButton(onClick = onDismiss) { Text(AppStrings.close) } })
 }
 @Composable internal fun ShareDialog(detail: ConversationDetail, share: (String) -> Unit, onDismiss: () -> Unit) {
-    val messages = detail.turns.flatMap { turn -> listOf("user:${turn.id.value}" to turn.userText) + turn.messages.map { "${turn.id.value}:${it.id}" to it.text } }
+    val messages = detail.turns.flatMap { turn -> listOf("user:${turn.id.value}" to turn.userText) + turn.transcript().mapNotNull { entry -> when (entry) {
+        is TranscriptEntry.Reply -> "${turn.id.value}:${entry.message.id}" to entry.message.text
+        is TranscriptEntry.Inserted -> "user:${entry.message.id.value}" to entry.message.text
+        else -> null
+    } } }
     var selected by remember { mutableStateOf(emptySet<String>()) }
     AlertDialog(onDismissRequest = onDismiss, title = { Text(AppStrings.selectMessagesToShare) }, text = {
         LazyColumn(Modifier.heightIn(max = 420.dp)) {

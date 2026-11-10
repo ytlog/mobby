@@ -37,6 +37,7 @@ internal object RunProjection {
                 current.copy(phase = if (remaining.isEmpty()) RunPhase.RUNNING else RunPhase.AWAITING_APPROVAL, pendingApprovals = remaining)
             }
             is RuntimeEvent.ArtifactAvailable -> current.copy(artifacts = current.artifacts + payload.ref)
+            is RuntimeEvent.InputInserted -> current.copy(insertions = current.insertions.filterNot { it.commandId == payload.input.commandId } + payload.input)
             is RuntimeEvent.CancellationRequested -> current.copy(phase = RunPhase.CANCELLING, pendingApprovals = emptyList())
             is RuntimeEvent.RunFinished -> if (current.phase.terminal) current else current.copy(phase = payload.phase, terminalEvidence = payload.evidence, pendingApprovals = emptyList(), deviceOperations = current.deviceOperations.map { it.copy(operation = DeviceOperationRules.stopped(it.operation, payload.phase != RunPhase.CANCELLED)) })
             RuntimeEvent.ProcessTerminationConfirmed -> if (current.phase.terminal)

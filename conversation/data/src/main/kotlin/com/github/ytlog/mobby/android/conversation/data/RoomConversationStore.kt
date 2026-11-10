@@ -58,8 +58,9 @@ internal class RoomConversationStore(
             }.distinctUntilChanged().flatMapLatest { (limit, count) ->
                 combine(summaries, dao.observeConversation(selected).distinctUntilChanged(), dao.timeline(selected, limit).distinctUntilChanged()) { conversations, selectedRow, entries ->
                     val c = selectedRow?.domain()
-                    val turns = entries.map { entry -> messages.render(entry.turn, entry.chunks.associateBy { it.ref }) }
-                    ConversationState(conversations, c?.let { ConversationDetail(it, turns, count > turns.size) }, loading = false)
+                    val chunks = entries.associate { it.turn.id to it.chunks.associateBy { chunk -> chunk.ref } }
+                    val turns = messages.render(entries.map { it.turn }) { chunks.getValue(it.id) }
+                    ConversationState(conversations, c?.let { ConversationDetail(it, turns, count > entries.size) }, loading = false)
                 }
             })
         }.flowOn(Dispatchers.Default)
@@ -118,7 +119,7 @@ internal class RoomConversationStore(
         db.withTransaction {
             val c = requireNotNull(dao.conversation(id.value)).domain()
             val content = dao.historyChunks(id.value).associateBy { it.ref }
-            ConversationDetail(c, dao.conversationTurns(id.value).map { messages.render(it, content) })
+            ConversationDetail(c, messages.render(dao.conversationTurns(id.value)) { content })
         }
     }
     companion object { const val PAGE_SIZE = 40 }
