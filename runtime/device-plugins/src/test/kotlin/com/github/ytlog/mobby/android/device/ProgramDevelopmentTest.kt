@@ -31,7 +31,7 @@ class ProgramDevelopmentTest {
     private fun actions(attached: Set<String>) = DeviceActions(RuntimeEnvironment.getApplication(), dir, dir, DeviceActionGate(),
         { _, _ -> "" }, { _, _ -> "" }, { mapOf("sms" to setOf("list"), "programs" to setOf("catalog")) }, attached)
     private fun run(actions: DeviceActions, action: String, args: Map<String, String> = emptyMap()) =
-        actions.perform("programs", action, args, DeviceExecution("op") { _, _, _ -> })
+        kotlinx.coroutines.runBlocking { actions.perform("programs", action, args, DeviceExecution("op") { _, _, _ -> }) }
 
     @Test fun `the plugin is available only while the platform port is installed`() {
         assertFalse(DeviceHost.granted(RuntimeEnvironment.getApplication(), "plugin:device:programs"))

@@ -107,12 +107,16 @@ class VirtualScreenPreviewCardTest {
         } }
         compose.onNode(hasSetTextAction()).assertDoesNotExist()
         compose.onNodeWithText(UiStrings.virtualScreenManualInput).performClick()
-        compose.runOnIdle { assertEquals(listOf("prepareManualText" to listOf("handoff-fixture")), calls) }
+        compose.runOnIdle {
+            assertEquals(listOf("showTakeoverKeyboard" to listOf("handoff-fixture", true),
+                "prepareManualText" to listOf("handoff-fixture"),
+                "showTakeoverKeyboard" to listOf("handoff-fixture", false)), calls)
+        }
         compose.onAllNodes(isDialog()).assertCountEquals(2)
         compose.onNode(hasSetTextAction()).assertIsFocused()
         compose.onNode(hasSetTextAction()).performTextInput("123456")
         compose.onNodeWithText(UiStrings.virtualScreenManualFill).performClick()
-        compose.runOnIdle { assertEquals("manualInput" to listOf("handoff-fixture", ManualScreenInput.Text("123456")), calls.last()) }
+        compose.runOnIdle { assertTrue("manualInput" to listOf("handoff-fixture", ManualScreenInput.Text("123456")) in calls) }
         compose.onAllNodes(isDialog()).assertCountEquals(1)
     }
 
@@ -123,15 +127,16 @@ class VirtualScreenPreviewCardTest {
             calls += method.name to arguments.orEmpty().dropLast(1)
             Unit
         } as ScreenControlPort
-        var minimized = false
+        val minimized = androidx.compose.runtime.mutableStateOf(false)
         val bitmap = ImageBitmap(72, 128)
         compose.setContent { MaterialTheme {
-            ManualVirtualScreenDialog(controller, "handoff-fixture", bitmap, null, onMinimize = { minimized = true })
+            if (!minimized.value) ManualVirtualScreenDialog(controller, "handoff-fixture", bitmap, null,
+                onMinimize = { minimized.value = true })
         } }
         val screen = compose.onNodeWithContentDescription(UiStrings.virtualScreenPreview)
         screen.performTouchInput { down(centerLeft) }
         compose.runOnIdle {
-            assertEquals(ScreenTouchPhase.DOWN, (calls.single().second[1] as ManualScreenInput.Touch).phase)
+            assertEquals(ScreenTouchPhase.DOWN, (calls.last().second[1] as ManualScreenInput.Touch).phase)
         }
         screen.performTouchInput { moveTo(centerRight, delayMillis = 400) }
         compose.runOnIdle {
@@ -139,8 +144,7 @@ class VirtualScreenPreviewCardTest {
         }
         screen.performTouchInput { up() }
         compose.runOnIdle {
-            val touches = calls.map { (method, args) ->
-                assertEquals("manualInput", method)
+            val touches = calls.filter { it.first == "manualInput" }.map { (_, args) ->
                 assertEquals("handoff-fixture", args[0])
                 args[1] as ManualScreenInput.Touch
             }
@@ -152,7 +156,13 @@ class VirtualScreenPreviewCardTest {
         screen.performTouchInput { cancel() }
         compose.runOnIdle { assertEquals(ManualScreenInput.CancelTouch, calls.last().second[1]) }
         compose.onNodeWithText(UiStrings.virtualScreenMinimizeManual).performClick()
-        compose.runOnIdle { assertTrue(minimized); assertEquals(5, calls.size) }
+        compose.runOnIdle {
+            assertTrue(minimized.value)
+            assertEquals("showTakeoverKeyboard" to listOf("handoff-fixture", false), calls.last())
+            assertTrue(calls.none { it.first == "handBack" })
+            minimized.value = false
+        }
+        compose.runOnIdle { assertEquals("showTakeoverKeyboard" to listOf("handoff-fixture", true), calls.last()) }
         compose.onNodeWithText(UiStrings.virtualScreenHandBack).performClick()
         compose.runOnIdle { assertEquals("handBack" to listOf("handoff-fixture"), calls.last()) }
     }

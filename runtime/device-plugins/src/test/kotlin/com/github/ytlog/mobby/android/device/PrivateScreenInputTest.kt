@@ -3,11 +3,12 @@ package com.github.ytlog.mobby.android.device
 import com.github.ytlog.mobby.android.runtime.api.device.DeviceErrorCode
 import com.github.ytlog.mobby.android.runtime.api.device.DeviceFailure
 import com.github.ytlog.mobby.android.runtime.api.device.DeviceStatus
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
 
 class PrivateScreenInputTest {
-    @Test fun `the user can choose takeover instead of submitting the private form`() {
+    @Test fun `the user can choose takeover instead of submitting the private form`() = runBlocking {
         val execution = DeviceExecution("operation") { _, _, attention ->
             val prompt = requireNotNull(attention).promptId
             assertTrue(PrivateScreenInput.chooseTakeOver("operation", prompt))
@@ -16,7 +17,7 @@ class PrivateScreenInputTest {
         assertEquals(PrivateScreenInput.Answer.TakeOver, PrivateScreenInput.await(execution, listOf(PrivateScreenInput.Field("Code"))) {})
     }
 
-    @Test fun `a takeover started from the preview answers the pending prompt`() {
+    @Test fun `a takeover started from the preview answers the pending prompt`() = runBlocking {
         var prompted = false
         val execution = DeviceExecution("operation") { _, _, _ -> prompted = true }
         var userControls = false
@@ -25,7 +26,7 @@ class PrivateScreenInputTest {
         assertEquals(PrivateScreenInput.Answer.TakeOver, answer)
     }
 
-    @Test fun `a handoff prompt carries the agent's reason and the display's focused field`() {
+    @Test fun `a handoff prompt carries the agent's reason and the display's focused field`() = runBlocking {
         val field = PrivateScreenInput.Field("手机号")
         val execution = DeviceExecution("operation") { _, phase, attention ->
             assertEquals("screen.handoff", phase)
@@ -38,7 +39,7 @@ class PrivateScreenInputTest {
             PrivateScreenInput.await(execution, listOf(field), "抖音登录页需要你的手机号", handoff = true) {})
     }
 
-    @Test fun `a local response only reaches its matching live field request`() {
+    @Test fun `a local response only reaches its matching live field request`() = runBlocking {
         val fixture = listOf("test account", "test credential")
         var promptId = ""
         val execution = DeviceExecution("operation") { status, phase, attention ->
@@ -55,11 +56,11 @@ class PrivateScreenInputTest {
         assertFalse(PrivateScreenInput.submit("operation", promptId, fixture))
     }
 
-    @Test fun `cancelling a local prompt returns no field value`() {
+    @Test fun `cancelling a local prompt returns no field value`() = runBlocking {
         val execution = DeviceExecution("operation") { _, _, attention ->
             assertTrue(PrivateScreenInput.submit("operation", requireNotNull(attention).promptId, null))
         }
-        val error = assertThrows(DeviceFailure::class.java) { PrivateScreenInput.await(execution, listOf(PrivateScreenInput.Field("Account"), PrivateScreenInput.Field("Password", secret = true))) {} }
+        val error = assertThrows(DeviceFailure::class.java) { runBlocking { PrivateScreenInput.await(execution, listOf(PrivateScreenInput.Field("Account"), PrivateScreenInput.Field("Password", secret = true))) {} } }
         assertEquals(DeviceErrorCode.CANCELLED, error.error.code)
     }
 }

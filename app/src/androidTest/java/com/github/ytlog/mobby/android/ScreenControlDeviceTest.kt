@@ -1,5 +1,6 @@
 package com.github.ytlog.mobby.android
 
+import android.app.AlertDialog
 import android.content.Context
 import android.content.BroadcastReceiver
 import android.content.ContextWrapper
@@ -10,9 +11,13 @@ import android.graphics.BitmapFactory
 import android.os.Bundle
 import android.os.SystemClock
 import android.provider.Settings
+import android.view.InputDevice
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowInsets
 import android.view.WindowManager
+import android.widget.EditText
 import android.view.inspector.WindowInspector
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
@@ -99,15 +104,25 @@ class ScreenControlDeviceTest {
                 val script = File(session.skills.single().parentFile, "scripts/device.cjs").readText()
                 val port = Regex("const PORT=(\\d+);").find(script)!!.groupValues[1].toInt()
                 val token = Regex("const TOKEN=\"([^\"]+)\";").find(script)!!.groupValues[1]
-                fun request(action: String, args: Map<String, String> = emptyMap()): JSONObject {
+                fun request(action: String, args: Map<String, String> = emptyMap(), plugin: String = "screen"): JSONObject {
                     val body = JSONObject().put("token", token).put("protocolVersion", 1).put("requestId", UUID.randomUUID().toString())
-                        .put("plugin", "screen").put("action", action).put("args", JSONObject(args))
+                        .put("plugin", plugin).put("action", action).put("args", JSONObject(args))
                     return Socket("127.0.0.1", port).use { socket ->
                         socket.soTimeout = 30_000
                         socket.getOutputStream().write((body.toString() + "\n").toByteArray())
                         socket.getOutputStream().flush()
                         JSONObject(socket.getInputStream().bufferedReader().readLine())
                     }
+                }
+                fun status(receipt: JSONObject) = request("status", mapOf("requestId" to receipt.getString("requestId")), "operation")
+                fun waitForSuccess(receipt: JSONObject): JSONObject {
+                    var latest = receipt
+                    waitFor("The original screen request must finish") {
+                        latest = status(receipt)
+                        latest.optString("status") in setOf("succeeded", "failed", "cancelled", "unconfirmed")
+                    }
+                    assertEquals(latest.toString(), "succeeded", latest.optString("status"))
+                    return latest
                 }
                 fun perform(action: String, args: Map<String, String> = emptyMap()): JSONObject {
                     val response = request(action, args)
@@ -190,19 +205,15 @@ class ScreenControlDeviceTest {
                     // A tooltip popup without fields must not hide the page's fields from the private form.
                     assertTrue(inputProbe(ScreenControlFixtureActivity.SHOW_TIP))
                     val fixture = "mobby-probe-only-secret"
-                    val response = java.util.concurrent.CompletableFuture.supplyAsync {
-                        request("request_input")
-                    }
-                    waitFor("Private entry prompt must appear") { journal.privateInput() != null || response.isDone }
-                    val operation = checkNotNull(journal.privateInput()) {
-                        "No prompt: " + response.get().optJSONObject("error")?.optString("code")
-                    }
+                    val response = request("request_input")
+                    assertEquals("awaiting_user", response.optString("status"))
+                    val operation = checkNotNull(journal.privateInput())
                     val promptId = requireNotNull(operation.requiresAttention).promptId
                     assertEquals(listOf("Probe input", "Probe code"),
                         com.github.ytlog.mobby.android.device.PrivateScreenInput.labels(operation.operationId, promptId))
                     assertTrue(com.github.ytlog.mobby.android.device.PrivateScreenInput.submit(
                         operation.operationId, promptId, listOf(fixture, "probe-code-fixture")))
-                    val result = response.get(10, java.util.concurrent.TimeUnit.SECONDS)
+                    val result = waitForSuccess(response)
                     assertEquals("succeeded", result.optString("status"))
                     assertFalse(result.toString().contains(fixture))
                     assertTrue(inputProbe(ScreenControlFixtureActivity.HIDE_TIP))
@@ -211,8 +222,8 @@ class ScreenControlDeviceTest {
                     assertFalse(afterPrivateInput.toString().contains("probe-code-fixture"))
                     assertEquals("private_input", afterPrivateInput.optString("screenshotStatus"))
 
-                    val handoff = java.util.concurrent.CompletableFuture.supplyAsync { request("request_handoff") }
-                    waitFor("Manual control prompt must appear") { journal.attention("screen.handoff") != null || handoff.isDone }
+                    val handoff = request("request_handoff")
+                    assertEquals("awaiting_user", handoff.optString("status"))
                     val handoffPrompt = checkNotNull(journal.attention("screen.handoff"))
                     assertTrue(com.github.ytlog.mobby.android.device.PrivateScreenInput.chooseTakeOver(
                         handoffPrompt.operationId, requireNotNull(handoffPrompt.requiresAttention).promptId))
@@ -276,15 +287,20 @@ class ScreenControlDeviceTest {
                         inputProbe(ScreenControlFixtureActivity.CHECK_MANUAL_SCROLL, "previousY", previousY))
                     touch(ScreenTouchPhase.UP, 0.5f, 0.40f)
                     // During the user's takeover a field opens the system keyboard inside the virtual display.
+                    ScreenControl.showTakeoverKeyboard(context, owner, true)
                     assertTrue(inputProbe(ScreenControlFixtureActivity.ALLOW_KEYBOARD))
                     touch(ScreenTouchPhase.DOWN, fieldX, fieldY)
                     touch(ScreenTouchPhase.UP, fieldX, fieldY)
                     waitFor("The takeover keyboard must show on the virtual display") {
                         inputProbe(ScreenControlFixtureActivity.CHECK_KEYBOARD)
                     }
+                    instrumentation.sendStatus(0, Bundle().apply { putString("screen_probe_phase", "virtual_keyboard_visible") })
+                    ScreenControl.showTakeoverKeyboard(context, owner, false)
+                    assertEquals("Minimizing preserves manual control", owner, ScreenControl.state.value.manualControlId)
+                    verifyMainKeyboardAfterTakeover(returned)
+                    assertEquals("awaiting_user", status(handoff).optString("status"))
                     ScreenControl.handBack(context, owner)
-                    waitFor("Returning control must close the keyboard") { !inputProbe(ScreenControlFixtureActivity.CHECK_KEYBOARD) }
-                    val handoffResult = handoff.get(10, java.util.concurrent.TimeUnit.SECONDS)
+                    val handoffResult = waitForSuccess(handoff)
                     assertEquals("succeeded", handoffResult.optString("status"))
                     assertFalse(handoffResult.toString().contains(manualCode))
                     val staleTap = request("tap", mapOf("x" to x.toString(), "y" to y.toString()))
@@ -296,21 +312,17 @@ class ScreenControlDeviceTest {
                         scrollPosition(afterHandoff.getString("text")) > scrollPosition(afterPrivateInput.getString("text")))
                     assertFalse(afterHandoff.toString().contains(manualCode))
                     assertEquals("private_input", afterHandoff.optString("screenshotStatus"))
-                    // While the agent operates, focusing the same field opens no keyboard anywhere.
-                    perform("click", mapOf("query" to "Probe input"))
-                    SystemClock.sleep(1500)
-                    assertFalse("The agent must not open a keyboard", inputProbe(ScreenControlFixtureActivity.CHECK_KEYBOARD))
                     // A takeover from the preview stops the agent at once; request_handoff then waits without a new prompt.
                     val userOwner = ScreenControl.takeOver(context)
                     val refusedAt = SystemClock.elapsedRealtime()
                     val stopped = request("click", mapOf("query" to "Increment"))
                     assertEquals("USER_IN_CONTROL", stopped.optJSONObject("error")?.optString("code"))
                     assertTrue("A refused action must not wait for the user", SystemClock.elapsedRealtime() - refusedAt < 5_000)
-                    val waiting = java.util.concurrent.CompletableFuture.supplyAsync { request("request_handoff") }
-                    SystemClock.sleep(1000)
-                    assertFalse("The agent must wait while the user controls the display", waiting.isDone)
+                    val waiting = request("request_handoff")
+                    assertEquals("awaiting_user", waiting.optString("status"))
+                    assertEquals("awaiting_user", status(waiting).optString("status"))
                     ScreenControl.handBack(context, userOwner)
-                    assertEquals("succeeded", waiting.get(10, java.util.concurrent.TimeUnit.SECONDS).optString("status"))
+                    waitForSuccess(waiting)
                     assertTrue("The refused click must not have run", perform("snapshot").getString("text").contains("Count: 3"))
                 }
                 perform("back")
@@ -329,6 +341,55 @@ class ScreenControlDeviceTest {
             }
             root.deleteRecursively()
             foregroundMobby()
+        }
+    }
+
+    private fun verifyMainKeyboardAfterTakeover(main: MainActivity) {
+        lateinit var editor: EditText
+        lateinit var dialog: AlertDialog
+        instrumentation.runOnMainSync {
+            editor = EditText(main)
+            dialog = AlertDialog.Builder(main).setView(editor).create()
+            dialog.window!!.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
+            dialog.show()
+            editor.requestFocus()
+        }
+        try {
+            val center = IntArray(2)
+            waitFor("The main-display input dialog must lay out its editor") {
+                var laidOut = false
+                instrumentation.runOnMainSync {
+                    laidOut = editor.isShown && editor.width > 0 && editor.height > 0
+                    if (laidOut) {
+                        editor.getLocationOnScreen(center)
+                        center[0] += editor.width / 2
+                        center[1] += editor.height / 2
+                    }
+                }
+                laidOut
+            }
+            // Match the user's tap on the main screen rather than only changing view focus.
+            val downAt = SystemClock.uptimeMillis()
+            for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
+                val event = MotionEvent.obtain(downAt, SystemClock.uptimeMillis(), action,
+                    center[0].toFloat(), center[1].toFloat(), 0)
+                try {
+                    event.source = InputDevice.SOURCE_TOUCHSCREEN
+                    instrumentation.sendPointerSync(event)
+                } finally { event.recycle() }
+            }
+            waitFor("An input dialog on the main display must show its keyboard after leaving takeover") {
+                var visible = false
+                instrumentation.runOnMainSync {
+                    visible = editor.display?.displayId == 0 &&
+                        editor.rootWindowInsets?.isVisible(WindowInsets.Type.ime()) == true
+                    if (!visible && editor.hasWindowFocus()) editor.windowInsetsController?.show(WindowInsets.Type.ime())
+                }
+                visible
+            }
+            instrumentation.sendStatus(0, Bundle().apply { putString("screen_probe_phase", "main_keyboard_visible") })
+        } finally {
+            instrumentation.runOnMainSync { dialog.dismiss() }
         }
     }
 

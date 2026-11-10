@@ -1,7 +1,9 @@
 package com.github.ytlog.mobby.android.deviceoperation
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.test.junit4.createComposeRule
 import com.github.ytlog.mobby.android.conversation.ui.UiStrings
 import com.github.ytlog.mobby.android.device.PrivateScreenInput
@@ -32,6 +34,8 @@ class PrivateScreenInputPromptTest {
         compose.onNodeWithText("抖音登录页需要你的手机号").assertIsDisplayed()
         compose.onNodeWithText(UiStrings.virtualScreenInputPrivacy).assertIsDisplayed()
         compose.onNode(hasSetTextAction()).performTextInput("fixture-number")
+        compose.onNode(hasSetTextAction()).assert(SemanticsMatcher.expectValue(
+            SemanticsProperties.EditableText, AnnotatedString("•".repeat("fixture-number".length))))
         compose.onNodeWithText(UiStrings.virtualScreenManualFill).performClick()
         assertEquals(listOf("fixture-number"), filled)
         compose.onNodeWithText(UiStrings.virtualScreenEnterTakeover).assertIsDisplayed()

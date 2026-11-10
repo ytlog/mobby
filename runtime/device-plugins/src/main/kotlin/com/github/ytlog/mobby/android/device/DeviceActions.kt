@@ -38,7 +38,7 @@ internal class DeviceActions(private val context: Context, private val inbox: Fi
     /** Programs the user attached to this chat; records are readable only for these. */
     private val attachedPrograms: Set<String> = emptySet(),
     private val screenSession: () -> ScreenSession? = { null }) {
-    fun perform(plugin: String, action: String, args: Map<String, String>, execution: DeviceExecution): DeviceResult {
+    suspend fun perform(plugin: String, action: String, args: Map<String, String>, execution: DeviceExecution): DeviceResult {
         gate.checkActive()
         val ref = DeviceCatalog.actionRef(plugin, action)
         if (!DeviceHost.granted(context, ref)) deviceFailure(DeviceErrorCode.PERMISSION_REVOKED)

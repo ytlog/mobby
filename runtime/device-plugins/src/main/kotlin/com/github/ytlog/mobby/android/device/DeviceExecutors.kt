@@ -40,6 +40,6 @@ object DeviceExecutors {
         execution.tempDir.mkdirs()
         val registrar = DeviceResourceRegistrar(execution.registerFile)
         val actions = DeviceActions(context, execution.tempDir, execution.workDir, DeviceActionGate(execution.isCancelled), registrar, registrar)
-        return actions.perform(plugin, action, args, DeviceExecution("program") { _, _, _ -> })
+        return kotlinx.coroutines.runBlocking { actions.perform(plugin, action, args, DeviceExecution("program") { _, _, _ -> }) }
     }
 }

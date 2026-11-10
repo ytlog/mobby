@@ -188,6 +188,8 @@ private fun PrivateScreenInputDialog(operation: DeviceOperation) {
 internal fun PrivateScreenInputPrompt(request: PrivateScreenInput.Request, canTakeOver: Boolean,
     onFill: (List<String>) -> Boolean, onTakeOver: () -> Boolean, onCancel: () -> Unit) {
     val fields = request.fields
+    // The projected handoff must remain visible. Mask every value entered in that dialog.
+    val projectable = request.handoff
     val values = remember(request) { mutableStateListOf<String>().apply { addAll(List(fields.size) { "" }) } }
     var submitted by remember(request) { mutableStateOf(false) }
     val muted = toolCallInk()
@@ -205,13 +207,14 @@ internal fun PrivateScreenInputPrompt(request: PrivateScreenInput.Request, canTa
     val reason = request.reason.ifBlank { if (fields.isEmpty()) UiStrings.virtualScreenHandoffPrompt else "" }
     AlertDialog(
         onDismissRequest = { if (!submitted) { submitted = true; onCancel() } },
-        properties = DialogProperties(securePolicy = SecureFlagPolicy.SecureOn),
+        properties = DialogProperties(securePolicy = if (projectable) SecureFlagPolicy.Inherit else SecureFlagPolicy.SecureOn),
         title = { Text(title) },
         text = {
             Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (reason.isNotBlank()) Text(reason, style = MaterialTheme.typography.bodyMedium, color = muted)
                 fields.forEachIndexed { index, field ->
+                    val masked = projectable || field.secret
                     OutlinedTextField(
                         value = values[index],
                         onValueChange = { if (it.length <= 2000) values[index] = it },
@@ -219,8 +222,8 @@ internal fun PrivateScreenInputPrompt(request: PrivateScreenInput.Request, canTa
                         modifier = Modifier.fillMaxWidth(),
                         enabled = !submitted,
                         singleLine = true,
-                        visualTransformation = if (field.secret) PasswordVisualTransformation() else VisualTransformation.None,
-                        keyboardOptions = KeyboardOptions(keyboardType = if (field.secret) KeyboardType.Password else KeyboardType.Text),
+                        visualTransformation = if (masked) PasswordVisualTransformation() else VisualTransformation.None,
+                        keyboardOptions = KeyboardOptions(keyboardType = if (masked) KeyboardType.Password else KeyboardType.Text),
                     )
                 }
                 if (fields.isNotEmpty()) Row(verticalAlignment = Alignment.Top) {

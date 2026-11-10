@@ -1,6 +1,10 @@
 package com.github.ytlog.mobby.android.device
 
 import com.github.ytlog.mobby.android.runtime.api.device.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.boolean
@@ -16,7 +20,7 @@ class DevicePluginTest {
     @get:Rule val temporary = TemporaryFolder()
 
     private class MemoryDevices : DeviceOperationPort {
-        val records = mutableMapOf<String, Pair<DeviceAdmission, DeviceOperation>>()
+        val records = java.util.concurrent.ConcurrentHashMap<String, Pair<DeviceAdmission, DeviceOperation>>()
         override suspend fun admit(request: DeviceAdmission): AdmittedDevice {
             records[request.requestId]?.let {
                 if (it.first.fingerprint != request.fingerprint) deviceFailure(DeviceErrorCode.REQUEST_CONFLICT)
@@ -130,6 +134,36 @@ class DevicePluginTest {
             }
             assertEquals(1, calls)
         } finally { bridge.close() }
+    }
+
+    @Test(timeout = 5_000) fun `handoff returns a pending receipt and finishes under the same request id`() {
+        val port = MemoryDevices()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        try {
+            val allow = mapOf("screen" to setOf("request_handoff"))
+            fun command(line: String) = DeviceJson.decodeFromString<DeviceResponse>(
+                DeviceCommands.handle(line, "fixture", allow, port, pendingScreenInput = scope) { _, _, _, execution ->
+                    PrivateScreenInput.await(execution, emptyList()) {}
+                    error("A cancelled handoff must not succeed")
+                })
+            val request = request(action = "request_handoff")
+            val pending = command(request)
+            assertEquals(DeviceStatus.AWAITING_USER, pending.status)
+            assertEquals(pending, command(request))
+            val status = request("operation", "status", """{"requestId":"request"}""", id = "lookup")
+            assertEquals(pending, command(status))
+            val prompt = port.records.getValue("request").second.requiresAttention!!
+            assertTrue(PrivateScreenInput.submit(pending.operationId!!, prompt.promptId, null))
+            while (true) {
+                val receipt = command(status)
+                if (receipt.status == DeviceStatus.CANCELLED) {
+                    assertEquals(pending.operationId, receipt.operationId)
+                    assertEquals(DeviceErrorCode.CANCELLED, receipt.error?.code)
+                    break
+                }
+                Thread.sleep(10)
+            }
+        } finally { scope.cancel() }
     }
 
     @Test fun `write grant is absent until its own ref is enabled`() {

@@ -60,9 +60,9 @@ final class VirtualScreen implements AutoCloseable {
     private Object taskManager;
     private Object windowManager;
     private java.lang.reflect.Method setDisplayImePolicy;
-    // WindowManager.DISPLAY_IME_POLICY_LOCAL and DISPLAY_IME_POLICY_HIDE.
+    // WindowManager.DISPLAY_IME_POLICY_LOCAL and DISPLAY_IME_POLICY_FALLBACK_DISPLAY.
     private static final int IME_ON_VIRTUAL_DISPLAY = 0;
-    private static final int IME_HIDDEN = 2;
+    private static final int IME_ON_MAIN_DISPLAY = 1;
     private Class<?> taskInterface;
     private Method getTasks;
 
@@ -107,8 +107,8 @@ final class VirtualScreen implements AutoCloseable {
             Class<?> windowInterface = Class.forName("android.view.IWindowManager");
             windowManager = Class.forName("android.view.IWindowManager$Stub").getMethod("asInterface", IBinder.class).invoke(null, windowBinder);
             setDisplayImePolicy = windowInterface.getMethod("setDisplayImePolicy", int.class, int.class);
-            // Agent text uses ACTION_SET_TEXT, so no keyboard shows while the agent operates. It never shows on the main display.
-            setImePolicy(IME_HIDDEN);
+            // Outside the takeover page, Android routes any keyboard request to the main display.
+            setImePolicy(IME_ON_MAIN_DISPLAY);
             Class<?> connection = Class.forName("android.app.IUiAutomationConnection");
             Object binder = Class.forName("android.app.UiAutomationConnection").getConstructor().newInstance();
             automation = (UiAutomation) UiAutomation.class.getConstructor(Looper.class, connection).newInstance(callbacks.getLooper(), binder);
@@ -128,16 +128,19 @@ final class VirtualScreen implements AutoCloseable {
             if ("manual_begin".equals(action)) {
                 clearPrivateInputTarget();
                 rememberFocusedManualTextTarget();
-                // The keyboard shows inside the virtual display, so the user types on it through the takeover preview.
-                setImePolicy(IME_ON_VIRTUAL_DISPLAY);
                 manualControl = true;
+                return metadata(new JSONObject());
+            }
+            if ("manual_ime".equals(action)) {
+                if (!manualControl) throw new IllegalStateException("manual_control_inactive");
+                setImePolicy("true".equals(args.getString("visible")) ? IME_ON_VIRTUAL_DISPLAY : IME_ON_MAIN_DISPLAY);
                 return metadata(new JSONObject());
             }
             if ("manual_end".equals(action)) {
                 if (!manualControl) throw new IllegalStateException("manual_control_inactive");
                 cancelManualTouch();
                 clearPrivateInputTarget();
-                setImePolicy(IME_HIDDEN);
+                setImePolicy(IME_ON_MAIN_DISPLAY);
                 synchronized (frameLock) {
                     try (Image discarded = reader.acquireLatestImage()) { }
                     jpeg = null;
@@ -275,14 +278,14 @@ final class VirtualScreen implements AutoCloseable {
         });
     }
 
-    /**
-     * The focused field, or every editable field of the topmost application window that has one. A popup without fields,
-     * such as the tooltip Douyin shows over its search box, does not hide the page's fields below it.
-     */
     private void setImePolicy(int policy) throws Exception {
         setDisplayImePolicy.invoke(windowManager, displayId, policy);
     }
 
+    /**
+     * The focused field, or every editable field of the topmost application window that has one. A popup without fields,
+     * such as the tooltip Douyin shows over its search box, does not hide the page's fields below it.
+     */
     private List<AccessibilityNodeInfo> privateInputFields(boolean focusedOnly) {
         if (focusedOnly) {
             AccessibilityNodeInfo focused = focusedEditableField();

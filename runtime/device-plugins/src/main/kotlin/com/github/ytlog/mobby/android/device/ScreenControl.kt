@@ -347,8 +347,17 @@ object ScreenControl {
             }
             override fun close() {
                 synchronized(connected) {
-                    try { try { navigation.hide() } finally { if (connected.alive) request(connected, "close") } }
-                    finally {
+                    try {
+                        try { navigation.hide() }
+                        finally {
+                            if (connected.alive) {
+                                try { request(connected, "close") }
+                                catch (_: IOException) {
+                                    // The channel records the disconnect and the worker releases the display on socket close.
+                                }
+                            }
+                        }
+                    } finally {
                         changes.update { current ->
                             if (current.displayId == id && channel === connected)
                                 current.copy(active = false, displayId = null, jpeg = null, packageName = "",
@@ -418,6 +427,14 @@ object ScreenControl {
         return connection to display
     }
 
+    /** The page can be hidden while the user still owns the display. */
+    fun showTakeoverKeyboard(context: Context, id: String, visible: Boolean) = ScreenCoordinator.chatAction {
+        if (state.value.manualControlId != id) return@chatAction
+        val (connection, display) = manualDisplay(context, id, requireInteractive = false)
+        request(connection, "manual_ime", mapOf("visible" to visible.toString()), expectedDisplay = display)
+        Unit
+    }
+
     fun prepareManualText(context: Context, id: String): String = ScreenCoordinator.chatAction {
         val (connection, display) = manualDisplay(context, id)
         request(connection, "manual_prepare_text", expectedDisplay = display).getString("label")
@@ -455,13 +472,12 @@ object ScreenControl {
      * Asks the user through one dialog. A handoff offers the display's focused field, when there is one, beside the
      * way into the takeover page; an input request lists the fields to fill. [reason] is the agent's text for the user.
      */
-    internal fun requestUserInput(context: Context, label: String?, handoffOnly: Boolean, execution: DeviceExecution,
+    internal suspend fun requestUserInput(context: Context, label: String?, handoffOnly: Boolean, execution: DeviceExecution,
         checkActive: () -> Unit, reason: String = ""): Boolean {
         val (connection, display) = activeDisplay()
-        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(125)
         // The user already took over on their own: wait for them to return control instead of prompting again.
         if (handoffOnly) state.value.takeIf { it.displayId == display }?.manualControlId?.let { id ->
-            return awaitHandBack(id, connection, display, deadline, execution, checkActive)
+            return awaitHandBack(id, connection, display, execution, checkActive)
         }
         val fields = agentAction(display, if (handoffOnly) "request_handoff" else "request_input", checkActive) {
             requireUnlocked(context)
@@ -474,7 +490,11 @@ object ScreenControl {
             }
         }
         try {
-            val answer = PrivateScreenInput.await(execution, fields, reason, handoffOnly, checkActive = checkActive, userTookOver = {
+            val answer = PrivateScreenInput.await(execution, fields, reason, handoffOnly, checkActive = {
+                checkActive()
+                if (activeDisplay() != (connection to display))
+                    deviceFailure(DeviceErrorCode.UNAVAILABLE, AppStrings.virtualScreenDisconnected)
+            }, userTookOver = {
                 state.value.let { it.displayId == display && it.manualControlId != null }
             })
             return when (answer) {
@@ -482,13 +502,15 @@ object ScreenControl {
                     checkActive()
                     // Joins a takeover the user already started from the preview.
                     val id = takeOver(context, connection to display)
-                    awaitHandBack(id, connection, display, deadline, execution, checkActive)
+                    awaitHandBack(id, connection, display, execution, checkActive)
                 }
-                is PrivateScreenInput.Answer.Value -> agentAction(display, "request_input", checkActive) {
-                    requireUnlocked(context)
+                is PrivateScreenInput.Answer.Value -> {
                     execution.running("screen.private_input")
-                    request(connection, "private_input", mapOf("values" to JSONArray(answer.fields).toString()), expectedDisplay = display)
-                    false
+                    agentAction(display, "request_input", checkActive) {
+                        requireUnlocked(context)
+                        request(connection, "private_input", mapOf("values" to JSONArray(answer.fields).toString()), expectedDisplay = display)
+                        false
+                    }
                 }
                 PrivateScreenInput.Answer.Cancel -> deviceFailure(DeviceErrorCode.CANCELLED)
             }
@@ -500,14 +522,14 @@ object ScreenControl {
         }
     }
 
-    private fun awaitHandBack(id: String, connection: ScreenChannel, display: Int, deadline: Long,
+    private suspend fun awaitHandBack(id: String, connection: ScreenChannel, display: Int,
         execution: DeviceExecution, checkActive: () -> Unit): Boolean {
-        execution.waiting("screen.user_control", id, allowCancel = false)
+        execution.awaiting("screen.user_control", id, allowCancel = false)
         while (state.value.manualControlId == id) {
             checkActive()
-            // Still in the user's hands, not unanswered: the agent keeps waiting with another request_handoff.
-            if (System.nanoTime() >= deadline) deviceFailure(DeviceErrorCode.USER_IN_CONTROL, AppStrings.virtualScreenStillInUserControl)
-            Thread.sleep(100)
+            if (activeDisplay() != (connection to display))
+                deviceFailure(DeviceErrorCode.UNAVAILABLE, AppStrings.virtualScreenDisconnected)
+            delay(100)
         }
         checkActive()
         if (activeDisplay() != (connection to display)) deviceFailure(DeviceErrorCode.UNAVAILABLE, AppStrings.virtualScreenDisconnected)

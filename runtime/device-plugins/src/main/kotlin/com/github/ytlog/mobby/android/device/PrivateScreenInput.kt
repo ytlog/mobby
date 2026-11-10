@@ -3,10 +3,9 @@ package com.github.ytlog.mobby.android.device
 import com.github.ytlog.mobby.android.runtime.api.device.DeviceErrorCode
 import com.github.ytlog.mobby.android.runtime.api.device.deviceFailure
 import java.util.UUID
-import java.util.concurrent.ArrayBlockingQueue
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
 
 /** Screen prompts are answered locally. Field values only travel in memory. */
 object PrivateScreenInput {
@@ -23,9 +22,8 @@ object PrivateScreenInput {
 
     private class Prompt(val operationId: String, val request: Request) {
         val labels get() = request.fields.map(Field::label)
-        val answer = ArrayBlockingQueue<Answer>(1)
-        private val answered = AtomicBoolean()
-        fun respond(value: Answer): Boolean = answered.compareAndSet(false, true) && answer.offer(value)
+        val answer = CompletableDeferred<Answer>()
+        fun respond(value: Answer): Boolean = answer.complete(value)
     }
     private val pending = ConcurrentHashMap<String, Prompt>()
 
@@ -45,25 +43,23 @@ object PrivateScreenInput {
         pending[promptId]?.takeIf { it.operationId == operationId }?.respond(Answer.TakeOver) == true
 
     /** [userTookOver] reports a takeover the user started from the preview; it answers the prompt like the dialog's takeover. */
-    internal fun await(execution: DeviceExecution, fields: List<Field>, reason: String = "", handoff: Boolean = fields.isEmpty(),
+    internal suspend fun await(execution: DeviceExecution, fields: List<Field>, reason: String = "", handoff: Boolean = fields.isEmpty(),
         userTookOver: () -> Boolean = { false }, checkActive: () -> Unit): Answer {
         require(handoff || fields.isNotEmpty())
         val id = UUID.randomUUID().toString()
         val prompt = Prompt(execution.operationId, Request(fields.toList(), reason, handoff))
         pending[id] = prompt
         try {
-            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(90)
-            execution.waiting(if (handoff) "screen.handoff" else "screen.private_input", id)
-            while (System.nanoTime() < deadline) {
+            execution.awaiting(if (handoff) "screen.handoff" else "screen.private_input", id)
+            while (true) {
                 checkActive()
                 if (userTookOver()) prompt.respond(Answer.TakeOver)
-                when (val answer = prompt.answer.poll(100, TimeUnit.MILLISECONDS)) {
+                when (val answer = withTimeoutOrNull(100) { prompt.answer.await() }) {
                     Answer.Cancel -> deviceFailure(DeviceErrorCode.CANCELLED)
                     null -> Unit
                     else -> return answer
                 }
             }
-            deviceFailure(DeviceErrorCode.TIMEOUT)
-        } finally { pending.remove(id) }
+        } finally { pending.remove(id); prompt.answer.cancel() }
     }
 }

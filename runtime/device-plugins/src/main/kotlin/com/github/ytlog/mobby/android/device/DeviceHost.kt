@@ -21,6 +21,12 @@ import java.net.InetAddress
 import java.net.ServerSocket
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
 
 object DeviceHost {
     private const val SCREEN_REF = "plugin:device:screen"
@@ -127,8 +133,10 @@ object DeviceHost {
                 if (authorization != null && screen == null) dynamicScreen = openScreen()
                 screen
             }
-            fun mayReadScreen(): Boolean = authorization == null ||
-                runCatching { kotlinx.coroutines.runBlocking { authorization.permits("plugin:device:screen") } }.getOrDefault(false)
+            val pendingScreenInput = SupervisorJob()
+            val screenInputScope = CoroutineScope(pendingScreenInput + Dispatchers.IO)
+            fun mayReadScreen(): Boolean = pendingScreenInput.children.none() &&
+                (authorization == null || runCatching { runBlocking { authorization.permits("plugin:device:screen") } }.getOrDefault(false))
             val workflow = DeviceWorkflowManager(context, ::mayReadScreen, ScreenControl::workflowPaused, prepareResume = {
                 val deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(90)
                 while (!ScreenControl.state.value.connected) {
@@ -144,12 +152,13 @@ object DeviceHost {
                 if (!mayReadScreen()) deviceFailure(DeviceErrorCode.UNAUTHORIZED)
                 (screen ?: deviceFailure(DeviceErrorCode.UNAVAILABLE)).inspect(query, input)
             }
-            val bridge = DeviceBridge(gate::close, { try { workflow.close() } finally { dynamicScreen?.close() } }) { line ->
+            val bridge = DeviceBridge(gate::close, { try { workflow.close() } finally { dynamicScreen?.close() } },
+                pendingScreenInput) { line ->
                 workflow.handle(line, token, allow) { request ->
                     DeviceCommands.handle(request, token, allow, operations, gate::checkActive, exportResource,
                         authorize = { plugin, action, execution ->
                             authorization?.require(DeviceCatalog.actionRef(plugin, action), execution)
-                        }) { plugin, action, args, execution -> actions.perform(plugin, action, args, execution) }
+                        }, pendingScreenInput = screenInputScope) { plugin, action, args, execution -> actions.perform(plugin, action, args, execution) }
                 }
             }
             try {
@@ -184,7 +193,7 @@ class DeviceSession internal constructor(
     private val awake: AutoCloseable? = null,
 ) : AutoCloseable {
     private val closed = AtomicBoolean(false)
-    fun awaitIdle(checkActive: () -> Unit) = bridge.awaitIdle(checkActive)
+    suspend fun awaitIdle(checkActive: () -> Unit) = bridge.awaitIdle(checkActive)
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
         try {
@@ -198,6 +207,7 @@ class DeviceSession internal constructor(
 internal class DeviceBridge(
     private val onClose: () -> Unit = {},
     private val afterWorker: () -> Unit = {},
+    private val pendingScreenInput: Job? = null,
     private val handle: (String) -> String,
 ) : AutoCloseable {
     private val running = AtomicBoolean(true)
@@ -231,19 +241,28 @@ internal class DeviceBridge(
             } finally {
                 synchronized(socketLock) { if (accepted === socket) accepted = null }
             }
-        } } finally { afterWorker() }
+        } } finally {
+            runBlocking {
+                pendingScreenInput?.cancel()
+                pendingScreenInput?.join()
+            }
+            afterWorker()
+        }
     }
-    fun awaitIdle(checkActive: () -> Unit) {
+    suspend fun awaitIdle(checkActive: () -> Unit) {
         val deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(125)
-        while (synchronized(socketLock) { accepted != null }) {
+        while (true) {
             checkActive()
-            if (System.nanoTime() >= deadline) deviceFailure(DeviceErrorCode.TIMEOUT)
-            Thread.sleep(25)
+            val waitingForInput = pendingScreenInput?.children?.any() == true
+            if (!waitingForInput && synchronized(socketLock) { accepted == null }) return
+            if (!waitingForInput && System.nanoTime() >= deadline) deviceFailure(DeviceErrorCode.TIMEOUT)
+            delay(25)
         }
     }
     override fun close() {
         onClose()
         running.set(false)
+        pendingScreenInput?.cancel()
         server.close()
         synchronized(socketLock) { accepted?.close() }
         // An already dispatched Android gesture completes through its callback; do not block main.
