@@ -258,6 +258,7 @@ open class StringCatalog(private val fixedLanguage: AppLanguage? = null) {
     val appName get() = "mobby"
     val agentLabel get() = "Agent"
     val piName get() = "Pi"
+    val piAgentName get() = "Pi Agent"
     val piSkillsPrompt get() = text("请使用下列已选择的技能，读取对应 SKILL.md 并遵守其中的指令：", "Use the selected skills below. Read each SKILL.md and follow its instructions:")
     val codexName get() = "Codex"
     val claudeCodeName get() = "Claude Code"

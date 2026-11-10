@@ -293,6 +293,8 @@ internal fun agentTileWidth(labelWidths: List<Int>, available: Int, gap: Int): I
 /** Only the icon carries the selection, so names of any length leave the tiles looking alike. */
 @Composable
 internal fun AgentTiles(agents: List<AgentId>, selected: AgentId, select: (AgentId) -> Unit) {
+    fun tileLabel(agent: AgentId) = if (agent == AgentId.PI) AppStrings.piAgentName else agent.label()
+
     val scroll = rememberScrollState()
     val ink = menuInk()
     val accent = menuAccent()
@@ -301,7 +303,7 @@ internal fun AgentTiles(agents: List<AgentId>, selected: AgentId, select: (Agent
     val density = LocalDensity.current
     BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 4.dp)) {
         val width = with(density) {
-            agentTileWidth(agents.map { measurer.measure(it.label(), style, maxLines = 1).size.width }, maxWidth.roundToPx(), 8.dp.roundToPx())
+            agentTileWidth(agents.map { measurer.measure(tileLabel(it), style, maxLines = 1).size.width }, maxWidth.roundToPx(), 8.dp.roundToPx())
         }
         LaunchedEffect(agents, selected, width, scroll.viewportSize) {
             val index = agents.indexOf(selected)
@@ -325,7 +327,7 @@ internal fun AgentTiles(agents: List<AgentId>, selected: AgentId, select: (Agent
                     Box(Modifier.size(44.dp, 36.dp).then(fill), contentAlignment = Alignment.Center) {
                         AppIcon(agent.glyph(), null, Modifier.size(18.dp), tint = tint)
                     }
-                    Text(agent.label(), maxLines = 1, softWrap = false, style = style, color = tint)
+                    Text(tileLabel(agent), maxLines = 1, softWrap = false, style = style, color = tint)
                 }
             }
         }

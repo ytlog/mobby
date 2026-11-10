@@ -371,7 +371,9 @@ class WorkspacePickerTest {
     }
     @Test fun `agent tiles are equally wide whatever their names`() {
         compose.setContent { MaterialTheme { AgentTiles(AgentId.entries, AgentId.PI) {} } }
-        val widths = AgentId.entries.map { compose.onNodeWithText(it.label()).fetchSemanticsNode().size.width }
+        val widths = listOf("Pi Agent", "Codex", "Claude Code", "OpenCode").map {
+            compose.onNodeWithText(it).fetchSemanticsNode().size.width
+        }
         Assert.assertEquals(setOf(widths.first()), widths.toSet())
     }
     @Test fun `agent tiles scroll sideways instead of offering arrow buttons`() {
@@ -387,13 +389,13 @@ class WorkspacePickerTest {
         compose.waitForIdle()
         var submitted: Pair<NextTurnConfig, String?>? = null
         compose.setContent { MaterialTheme { ConfigDialog(vm, null, {}, { config, project -> submitted = config to project }) } }
-        compose.onNodeWithText("Pi").assertIsSelected()
+        compose.onNodeWithText("Pi Agent").assertIsSelected()
         compose.onNodeWithText("Claude Code").assertIsNotSelected().performClick().assertIsSelected()
         compose.onNodeWithText("默认工作区（无项目）").assertExists()
         compose.onNodeWithText("Project A").assertDoesNotExist()
         compose.onNodeWithText("项目").performClick()
         compose.onNodeWithText("选择项目").assertExists()
-        compose.onNodeWithText("Pi").assertDoesNotExist()
+        compose.onNodeWithText("Pi Agent").assertDoesNotExist()
         compose.onNodeWithText("Project A").performClick()
         compose.onNodeWithText("选择项目").assertDoesNotExist()
         compose.onNodeWithText("Project A").assertExists()
