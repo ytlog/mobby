@@ -8,9 +8,9 @@
     },
     {
       "name": "ca-certificates",
-      "version": "1:2026.11.05",
-      "url": "https://packages.termux.dev/apt/termux-main/pool/main/c/ca-certificates/ca-certificates_1:2026.11.05_all.deb",
-      "sha256": "4cf292d604e14ed2878847eec2acea7c24ba10f598a5c5cd75dfc5e3750717da"
+      "version": "1:2026.11.05-1",
+      "url": "https://packages.termux.dev/apt/termux-main/pool/main/c/ca-certificates/ca-certificates_1:2026.11.05-1_all.deb",
+      "sha256": "12fc350fc5ad638338b06b04835bce897615f8c93f96d30ac396cdb39b850c6b"
     },
     {
       "name": "git",
@@ -44,15 +44,15 @@
     },
     {
       "name": "libiconv",
-      "version": "1.19",
-      "url": "https://packages.termux.dev/apt/termux-main/pool/main/libi/libiconv/libiconv_1.19_aarch64.deb",
-      "sha256": "fe9481b1dc101c6c3552943f25435109fd522aecc615ae49594f9fbee863bb37"
+      "version": "1.19.1",
+      "url": "https://packages.termux.dev/apt/termux-main/pool/main/libi/libiconv/libiconv_1.19.1_aarch64.deb",
+      "sha256": "a1c6323eff4f660e16ae6f5832356444b3269c19a4f61146355a49e7c4be5ed1"
     },
     {
       "name": "libicu",
-      "version": "78.3",
-      "url": "https://packages.termux.dev/apt/termux-main/pool/main/libi/libicu/libicu_78.3_aarch64.deb",
-      "sha256": "f536403f65a08fe0df6e7304184e902d54def77d5c3bd5edfd9109d57601d276"
+      "version": "79.1",
+      "url": "https://packages.termux.dev/apt/termux-main/pool/main/libi/libicu/libicu_79.1_aarch64.deb",
+      "sha256": "83c980a010e957738e3567127801d66a1b9bd7e404a4fda98788048ee57d606c"
     },
     {
       "name": "libnghttp2",
@@ -92,9 +92,9 @@
     },
     {
       "name": "nodejs-lts",
-      "version": "24.22.2",
-      "url": "https://packages.termux.dev/apt/termux-main/pool/main/n/nodejs-lts/nodejs-lts_24.22.2_aarch64.deb",
-      "sha256": "150d7dd382e92587808d96813b9538fe5c6c41fa33f1a1033daa4e30c6ff2695"
+      "version": "24.22.2-1",
+      "url": "https://packages.termux.dev/apt/termux-main/pool/main/n/nodejs-lts/nodejs-lts_24.22.2-1_aarch64.deb",
+      "sha256": "837bbc7e422ef44583d590b7735c8736916183a185fc6f8c547c42b44cabfd01"
     },
     {
       "name": "npm",
