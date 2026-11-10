@@ -14,7 +14,9 @@ import com.github.ytlog.mobby.android.runtime.api.device.ManualScreenInput
 import com.github.ytlog.mobby.android.runtime.api.device.ScreenControlPort
 import com.github.ytlog.mobby.android.runtime.api.device.ScreenTouchPhase
 import java.lang.reflect.Proxy
+import android.view.WindowManager
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -22,6 +24,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import org.robolectric.shadows.ShadowDialog
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -187,6 +190,21 @@ class VirtualScreenPreviewCardTest {
             ManualVirtualScreenDialog(controller, "handoff-fixture", ImageBitmap(72, 128), null, onMinimize = {})
         } }
         compose.onNodeWithText(UiStrings.virtualScreenManualPrivateHint).assertIsDisplayed()
+    }
+
+    @Test fun touchingTheTakeoverPageLeavesTheVirtualDisplayKeyboardOpen() {
+        val controller = Proxy.newProxyInstance(ScreenControlPort::class.java.classLoader,
+            arrayOf(ScreenControlPort::class.java)) { _, _, _ -> Unit } as ScreenControlPort
+        compose.setContent { MaterialTheme {
+            ManualVirtualScreenDialog(controller, "handoff-fixture", ImageBitmap(72, 128), null, onMinimize = {})
+        } }
+        compose.runOnIdle {
+            // Each touch on the page focuses its window again. A window that may use the input method makes Android
+            // hide the keyboard the user is typing on in the virtual display.
+            val flags = ShadowDialog.getLatestDialog().window!!.attributes.flags
+            assertFalse(WindowManager.LayoutParams.mayUseInputMethod(flags))
+            assertEquals("the page still receives Back", 0, flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
+        }
     }
 
     private val DpRect.ratio get() = (right - left).value / (bottom - top).value

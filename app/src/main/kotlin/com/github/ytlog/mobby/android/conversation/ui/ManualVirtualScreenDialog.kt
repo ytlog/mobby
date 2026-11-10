@@ -35,6 +35,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.compose.ui.platform.LocalView
+import android.view.WindowManager
 import androidx.compose.ui.window.SecureFlagPolicy
 import com.github.ytlog.mobby.android.runtime.api.device.ManualScreenInput
 import com.github.ytlog.mobby.android.runtime.api.device.ScreenControlPort
@@ -121,6 +124,10 @@ internal fun ManualVirtualScreenDialog(controller: ScreenControlPort, id: String
     val canOperatePreview = !busy && inputTarget == null
     Dialog(onDismissRequest = { if (canOperatePreview) onMinimize() }, properties = DialogProperties(usePlatformDefaultWidth = false,
         dismissOnClickOutside = false)) {
+        // Every touch on this page focuses its window again. Android hides the keyboard shown in the virtual display
+        // when a window that may use the input method gains focus, so this window opts out and keeps Back.
+        val window = (LocalView.current.parent as DialogWindowProvider).window
+        SideEffect { window.addFlags(WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM) }
         ManualVirtualScreenPanel(
             bitmap = bitmap,
             error = if (inputTarget == null) error ?: screenError else null,
