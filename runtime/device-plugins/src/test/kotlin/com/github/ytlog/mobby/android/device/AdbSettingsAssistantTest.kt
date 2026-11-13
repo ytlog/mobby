@@ -50,11 +50,51 @@ class AdbSettingsAssistantTest {
         assertEquals(37297, AdbSettingsAssistant.connectionPortForLabel(label))
     }
 
+    @Test fun `MagicOS wireless switch can sit outside the title and its parent`() {
+        val row = node()
+        val titleFrame = node()
+        val titleContainer = node()
+        val label = node("android:id/title", "无线调试")
+        val widgetFrame = node("android:id/widget_frame")
+        val switch = node("android:id/switch_widget").apply {
+            className = "android.widget.Switch"
+            isCheckable = true
+            isClickable = true
+            isEnabled = true
+        }
+        shadowOf(row).addChild(titleFrame)
+        shadowOf(titleFrame).addChild(titleContainer)
+        shadowOf(titleContainer).addChild(label)
+        shadowOf(row).addChild(widgetFrame)
+        shadowOf(widgetFrame).addChild(switch)
+
+        assertEquals(switch, AdbSettingsAssistant.switchTargetForLabel(label))
+        switch.isChecked = true
+        assertNull(AdbSettingsAssistant.switchTargetForLabel(label))
+    }
+
+    @Test fun `a neighboring preference cannot supply the switch`() {
+        val container = node()
+        val label = node("android:id/title", "无线调试")
+        val otherRow = node().apply { isClickable = true; isEnabled = true }
+        shadowOf(container).addChild(label)
+        shadowOf(container).addChild(otherRow)
+        shadowOf(otherRow).addChild(node("android:id/title", "USB 调试"))
+        shadowOf(otherRow).addChild(node("android:id/switch_widget").apply {
+            isCheckable = true
+            isClickable = true
+            isEnabled = true
+        })
+
+        assertNull(AdbSettingsAssistant.switchTargetForLabel(label))
+    }
+
     private fun node(id: String? = null, value: String? = null) =
         AccessibilityNodeInfo.obtain(View(RuntimeEnvironment.getApplication())).apply {
             packageName = "com.android.settings"
             viewIdResourceName = id
             text = value
             isVisibleToUser = true
+            isEnabled = true
         }
 }

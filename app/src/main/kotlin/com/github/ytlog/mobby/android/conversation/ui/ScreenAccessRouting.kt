@@ -88,12 +88,18 @@ internal object ScreenAccessRouting {
 
     fun openSettings(context: Context, target: ScreenSettingsTarget, pairing: Boolean = true,
         assistNavigation: Boolean = false, openPairing: Boolean = false): Boolean {
-        for (intent in settingsIntents(context, target, pairing)) {
+        val intents = settingsIntents(context, target, pairing)
+        val needsUsbSetup = target == ScreenSettingsTarget.WIRELESS && assistNavigation && !openPairing &&
+            Settings.Global.getInt(context.contentResolver, Settings.Global.ADB_ENABLED, 0) == 0
+        val destinations = if (needsUsbSetup) intents.sortedBy {
+            it.action != Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS
+        } else intents
+        for (intent in destinations) {
             try {
                 context.startActivity(intent)
                 if (assistNavigation && (target == ScreenSettingsTarget.WIRELESS || target == ScreenSettingsTarget.ABOUT) &&
                     intent.action != Settings.ACTION_SETTINGS) {
-                    assistAdbSettings(target, openPairing)
+                    assistAdbSettings(target, openPairing, context.hostActivity()?.componentName)
                 }
                 return true
             } catch (_: ActivityNotFoundException) { }

@@ -53,9 +53,9 @@ internal class AdbSettingsAssistant(private val service: ScreenAccessService) {
         return (aliases + label).distinct()
     }
 
-    fun start(destination: ScreenAccessService.AdbSetupDestination) {
-        val timeout = if (destination == ScreenAccessService.AdbSetupDestination.PAIR) 30_000L else 10_000L
-        withSettingsWindow(timeout) { navigate(destination) }
+    fun start(destination: ScreenAccessService.AdbSetupDestination, wizard: ComponentName?) {
+        val timeout = 30_000L
+        withSettingsWindow(timeout) { navigate(wizard, destination) }
     }
 
     fun returnAfterPairing(component: ComponentName) {
@@ -88,11 +88,14 @@ internal class AdbSettingsAssistant(private val service: ScreenAccessService) {
 
     fun stop() { task?.cancel(); task = null }
 
-    private suspend fun navigate(destination: ScreenAccessService.AdbSetupDestination) {
+    private suspend fun navigate(wizard: ComponentName?, destination: ScreenAccessService.AdbSetupDestination) {
         var enteredSettings = false
         var openedPage = false
         var awaitingPairingDialog = false
         var scrolls = 0
+        var versionClicks = 0
+        var requestedWireless = false
+        var requestedUsb = false
         while (true) {
             delay(if (enteredSettings) 350 else 200)
             if (!screenAvailable() || destination == ScreenAccessService.AdbSetupDestination.PAIR &&
@@ -111,6 +114,42 @@ internal class AdbSettingsAssistant(private val service: ScreenAccessService) {
                 }
                 enteredSettings = true
                 ScreenCoordinator.programAction {
+                    val ready = when (destination) {
+                        ScreenAccessService.AdbSetupDestination.VERSION ->
+                            Settings.Global.getInt(service.contentResolver, Settings.Global.DEVELOPMENT_SETTINGS_ENABLED, 0) == 1
+                        ScreenAccessService.AdbSetupDestination.WIRELESS ->
+                            Settings.Global.getInt(service.contentResolver, "adb_wifi_enabled", 0) == 1
+                        else -> false
+                    }
+                    if (ready && hasHeading(root, ABOUT + SOFTWARE_DETAILS + wirelessLabels + developerLabels) &&
+                        !hasLabel(root, listOf("取消", "Cancel"))) {
+                        wizard?.takeIf { it.packageName == service.packageName }?.let {
+                            service.startActivity(AdbPairingService.wizardIntent(it))
+                        }
+                        return@programAction Result.DONE
+                    }
+                    if (destination == ScreenAccessService.AdbSetupDestination.VERSION &&
+                        hasHeading(root, ABOUT + SOFTWARE_DETAILS) && hasLabel(root, VERSION_CONTROL)) {
+                        if (versionClicks == 7 || !clickUnique(root, VERSION_CONTROL)) return@programAction Result.WAIT
+                        versionClicks++
+                        return@programAction Result.WAIT
+                    }
+                    if (destination != ScreenAccessService.AdbSetupDestination.PAIR &&
+                        hasLabel(root, listOf("取消", "Cancel"))) return@programAction Result.WAIT
+                    if (destination == ScreenAccessService.AdbSetupDestination.WIRELESS && !requestedUsb &&
+                        hasHeading(root, developerLabels) &&
+                        Settings.Global.getInt(service.contentResolver, Settings.Global.ADB_ENABLED, 0) == 0 &&
+                        enableSwitch(root, listOf("USB 调试", "USB偵錯", "USB debugging"))) {
+                        requestedUsb = true
+                        return@programAction Result.WAIT
+                    }
+                    if (destination == ScreenAccessService.AdbSetupDestination.WIRELESS &&
+                        (hasHeading(root, wirelessLabels) || openedPage && hasLabel(root, wirelessLabels))) {
+                        if (!requestedWireless) {
+                            requestedWireless = enableSwitch(root, wirelessLabels + listOf("开启", "On", "Use wireless debugging"))
+                        }
+                        return@programAction Result.WAIT
+                    }
                     if (destination == ScreenAccessService.AdbSetupDestination.PAIR) {
                         val result = readPairingDialog(root)
                         if (result != null) return@programAction result
@@ -119,12 +158,19 @@ internal class AdbSettingsAssistant(private val service: ScreenAccessService) {
                     }
                     visit(root, destination, openedPage, scrolls < 8)
                 }
+            } catch (_: SecurityException) {
+                return
+            } catch (_: android.content.ActivityNotFoundException) {
+                return
             } catch (_: ScreenRefused) {
                 return
             } finally { root.recycle() }
             when (result) {
-                Result.STOP -> if (destination == ScreenAccessService.AdbSetupDestination.PAIR) awaitingPairingDialog = true else return
-                Result.PAIRING_SUBMITTED -> return
+                Result.STOP -> when {
+                    destination == ScreenAccessService.AdbSetupDestination.PAIR -> awaitingPairingDialog = true
+                    destination != ScreenAccessService.AdbSetupDestination.WIRELESS || !openedPage -> return
+                }
+                Result.DONE, Result.PAIRING_SUBMITTED -> return
                 Result.OPENED_PAGE -> { openedPage = true; delay(450) }
                 Result.OPENED_PAIRING -> awaitingPairingDialog = true
                 Result.SCROLLED -> scrolls++
@@ -217,7 +263,6 @@ internal class AdbSettingsAssistant(private val service: ScreenAccessService) {
     private fun visit(root: AccessibilityNodeInfo, destination: ScreenAccessService.AdbSetupDestination,
         openedPage: Boolean, canScroll: Boolean): Result {
         if (destination == ScreenAccessService.AdbSetupDestination.VERSION) {
-            if (hasLabel(root, VERSION_CONTROL)) return Result.STOP
             if (!hasHeading(root, ABOUT + SOFTWARE_DETAILS)) return Result.STOP
             if (!openedPage && hasHeading(root, ABOUT) && clickUnique(root, SOFTWARE_DETAILS)) return Result.OPENED_PAGE
             return scroll(root, canScroll)
@@ -239,6 +284,21 @@ internal class AdbSettingsAssistant(private val service: ScreenAccessService) {
             if (clickUnique(root, pairLabels)) return Result.OPENED_PAIRING
         }
         return Result.STOP
+    }
+
+    private fun enableSwitch(root: AccessibilityNodeInfo, names: List<String>): Boolean {
+        val labels = exactNodes(root, names)
+        val targets = mutableSetOf<AccessibilityNodeInfo>()
+        try {
+            for (label in labels) {
+                val target = switchTargetForLabel(label) ?: continue
+                if (!targets.add(target)) target.recycle()
+            }
+            return targets.singleOrNull()?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true
+        } finally {
+            targets.forEach(AccessibilityNodeInfo::recycle)
+            labels.forEach(AccessibilityNodeInfo::recycle)
+        }
     }
 
     private fun fullLabel(node: AccessibilityNodeInfo): Boolean {
@@ -305,7 +365,9 @@ internal class AdbSettingsAssistant(private val service: ScreenAccessService) {
         val nodes = exactNodes(root, labels)
         return try { nodes.any {
             val id = it.viewIdResourceName?.substringAfterLast('/')
-            it.isHeading || id?.startsWith("action_bar_title") == true || id in HEADING_IDS
+            it.isHeading || id?.startsWith("action_bar_title") == true || id in HEADING_IDS ||
+                (id == null && it.className == "android.widget.TextView" &&
+                    Rect().also(it::getBoundsInScreen).top < 100 * service.resources.displayMetrics.density)
         } } finally { nodes.forEach(AccessibilityNodeInfo::recycle) }
     }
 
@@ -321,18 +383,65 @@ internal class AdbSettingsAssistant(private val service: ScreenAccessService) {
         return matches
     }
 
-    private enum class Result { STOP, OPENED_PAGE, OPENED_PAIRING, SCROLLED, WAIT, PAIRING_SUBMITTED }
+    private enum class Result { DONE, STOP, OPENED_PAGE, OPENED_PAIRING, SCROLLED, WAIT, PAIRING_SUBMITTED }
 
     companion object {
         private const val PAIRING_CODE = "pairing_code"
         private const val PAIRING_ADDRESS = "ip_addr"
         private val HEADING_IDS = setOf("toolbar_title", "collapsing_toolbar_title", "alertTitle", "dialog_title", "sesl_dialog_title")
         private val ABOUT = listOf("关于手机", "关于本机", "我的设备", "關於手機", "About phone", "About device", "My device")
-        private val SOFTWARE_DETAILS = listOf("全部参数", "详细信息与规格", "软件信息", "版本信息", "版本",
-            "All specs", "Detailed info and specs", "Software information", "Version information", "Version")
-        private val VERSION_CONTROL = listOf("MIUI 版本", "MIUI version", "OS 版本", "OS version", "版本号", "软件版本号", "编译编号",
-            "Build number", "Software version", "Version number")
+        private val SOFTWARE_DETAILS = listOf("全部参数", "详细信息与规格", "软件信息", "版本信息", "版本", "Android 版本",
+            "All specs", "Detailed info and specs", "Software information", "Version information", "Version", "Android version")
+        private val VERSION_CONTROL = listOf("MIUI 版本", "MIUI version", "OS 版本", "OS version", "版本号", "软件版本号", "编译编号", "构建号", "版本编号",
+            "Build number", "Version number")
         internal val DEVELOPER_LABELS = listOf("开发者选项", "开发人员选项", "開發人員選項", "開發者選項", "Developer options")
+
+        internal fun switchTargetForLabel(label: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+            if (!label.isEnabled) return null
+            if (label.isCheckable) return label.takeIf { it.isClickable && !it.isChecked }
+                ?.let(AccessibilityNodeInfo::obtain)
+            if (label.viewIdResourceName != "android:id/title") return null
+
+            // MagicOS nests the title three levels below the row that contains the switch.
+            var container = label.parent
+            repeat(3) {
+                val row = container ?: return null
+                try {
+                    if (!row.isVisibleToUser || !row.isEnabled || row.isScrollable ||
+                        row.packageName != label.packageName || row.windowId != label.windowId) return null
+                    val switches = mutableListOf<AccessibilityNodeInfo>()
+                    try {
+                        if (!collectRowSwitches(row, label, switches)) return null
+                        if (switches.isNotEmpty()) {
+                            val switch = switches.singleOrNull()?.takeIf { it.isEnabled && !it.isChecked } ?: return null
+                            val target = if (switch.isClickable) switch else row.takeIf { it.isClickable }
+                            return target?.let(AccessibilityNodeInfo::obtain)
+                        }
+                    } finally { switches.forEach(AccessibilityNodeInfo::recycle) }
+                    container = row.parent
+                } finally { row.recycle() }
+            }
+            container?.recycle()
+            return null
+        }
+
+        private fun collectRowSwitches(node: AccessibilityNodeInfo, label: AccessibilityNodeInfo,
+            switches: MutableList<AccessibilityNodeInfo>, depth: Int = 0): Boolean {
+            if (!node.isVisibleToUser) return true
+            if (depth > 4 || node.packageName != label.packageName || node.windowId != label.windowId ||
+                node.isScrollable || node.viewIdResourceName == "android:id/title" && node != label) return false
+            if (node.isCheckable) {
+                switches += AccessibilityNodeInfo.obtain(node)
+                return true
+            }
+            for (i in 0 until node.childCount) {
+                val child = node.getChild(i) ?: continue
+                try {
+                    if (!collectRowSwitches(child, label, switches, depth + 1)) return false
+                } finally { child.recycle() }
+            }
+            return true
+        }
 
         internal fun connectionPortForLabel(label: AccessibilityNodeInfo): Int? {
             // MagicOS places the title and summary in separate containers inside the same row.

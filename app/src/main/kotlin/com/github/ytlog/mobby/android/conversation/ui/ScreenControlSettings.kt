@@ -236,6 +236,13 @@ class ScreenControlSettingsActivity : ComponentActivity() {
             val target = next(step)
             openWirelessOnArrival = target == ScreenSetupStep.WIRELESS && (openWirelessOnArrival || status.accessibilityEnabled)
             go(target)
+            if (step == ScreenSetupStep.WIRELESS && status.accessibilityEnabled) {
+                when (target) {
+                    ScreenSetupStep.PAIR -> execute { startPairing() }
+                    ScreenSetupStep.CONNECT -> connect()
+                    else -> Unit
+                }
+            }
         }
     }
     LaunchedEffect(step, openWirelessOnArrival, status.resumed) {

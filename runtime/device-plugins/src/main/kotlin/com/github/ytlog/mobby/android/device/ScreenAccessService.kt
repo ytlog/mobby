@@ -428,8 +428,8 @@ class ScreenAccessService : AccessibilityService() {
                 else -> Status.NOT_RUNNING
             }
         }
-        fun assistAdbSettings(destination: AdbSetupDestination) {
-            instance?.adbSettings?.start(destination)
+        fun assistAdbSettings(destination: AdbSetupDestination, wizard: android.content.ComponentName?) {
+            instance?.adbSettings?.start(destination, wizard)
         }
         internal fun returnFromAdbPairing(component: android.content.ComponentName) { instance?.adbSettings?.returnAfterPairing(component) }
         fun stopAdbSettingsAssist() { instance?.adbSettings?.stop() }
