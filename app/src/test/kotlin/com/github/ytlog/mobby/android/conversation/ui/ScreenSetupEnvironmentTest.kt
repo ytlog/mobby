@@ -81,6 +81,14 @@ class ScreenSetupEnvironmentTest {
             downloadedApps.getStringExtra(":settings:show_fragment"))
         assertEquals(Settings.ACTION_ACCESSIBILITY_SETTINGS, intents[intents.lastIndex - 1].action)
     }
+    @Test fun `ColorOS opens downloaded apps before the general accessibility page`() {
+        val action = "oplus.intent.action.settings.ACCESSIBILITY_DOWNLOAD"
+        settingsHandler(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS), "com.android.settings.AccessibilitySettingsActivity")
+        settingsHandler(Intent(action).setPackage("com.android.settings"), "com.oplus.settings.DownloadedAccessibilitySettings")
+        val intents = ScreenAccessRouting.settingsIntents(context, ScreenSettingsTarget.ACCESSIBILITY)
+        assertEquals(listOf(action, Settings.ACTION_ACCESSIBILITY_SETTINGS, Settings.ACTION_SETTINGS), intents.map(Intent::getAction))
+        assertEquals("com.android.settings", intents.first().component?.packageName)
+    }
     @Test fun `protected service details fall back to the system accessibility page`() {
         settingsHandler(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS), "com.android.settings.AccessibilitySettingsActivity")
         settingsHandler(Intent("android.settings.ACCESSIBILITY_DETAILS_SETTINGS").setPackage("com.android.settings"),

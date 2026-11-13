@@ -58,6 +58,12 @@ internal object ScreenAccessRouting {
     private fun accessibilityIntents(context: Context): List<Intent> = buildList {
         val accessibility = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
         val settings = context.openableSystemSettings(accessibility)
+        settings?.packageName?.let { packageName ->
+            val downloadedApps = Intent("oplus.intent.action.settings.ACCESSIBILITY_DOWNLOAD").setPackage(packageName)
+            context.openableSystemSettings(downloadedApps)?.let { activity ->
+                add(downloadedApps.setComponent(ComponentName(activity.packageName, activity.name)))
+            }
+        }
         if (settings?.packageName == "com.android.settings" &&
             settings.name == "com.android.settings.accessibility.MiuiAccessibilitySettingsActivity") {
             // This is the list fragment MIUI opens from its Downloaded apps preference.

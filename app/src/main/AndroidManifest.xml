@@ -5,7 +5,10 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Normal ColorOS permission for opening the downloaded accessibility services list. -->
+    <uses-permission android:name="oplus.permission.settings.LAUNCH_FOR_EXPORT" />
     <queries>
+        <intent><action android:name="oplus.intent.action.settings.ACCESSIBILITY_DOWNLOAD" /></intent>
         <intent><action android:name="android.settings.ACCESSIBILITY_SETTINGS" /></intent>
         <intent><action android:name="android.settings.ACCESSIBILITY_DETAILS_SETTINGS" /></intent>
     </queries>
