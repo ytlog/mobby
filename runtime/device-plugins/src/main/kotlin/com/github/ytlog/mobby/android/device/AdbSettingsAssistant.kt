@@ -37,7 +37,7 @@ internal class AdbSettingsAssistant(private val service: ScreenAccessService) {
         try { settingsPackage?.let(service.packageManager::getResourcesForApplication) }
         catch (_: PackageManager.NameNotFoundException) { null }
     }
-    private val developerLabels by lazy { systemLabels("development_settings_title", DEVELOPER) }
+    private val developerLabels by lazy { systemLabels("development_settings_title", DEVELOPER_LABELS) }
     private val wirelessLabels by lazy { systemLabels("adb_wireless_settings", WIRELESS) }
     private val pairLabels by lazy { systemLabels("adb_pair_method_code_title", PAIR) }
     private val dialogTitles by lazy { systemLabels("adb_pairing_device_dialog_title", PAIR_DIALOG) }
@@ -181,15 +181,7 @@ internal class AdbSettingsAssistant(private val service: ScreenAccessService) {
         val labels = exactNodes(root, addressLabels)
         return try {
             val title = labels.singleOrNull { it.viewIdResourceName == "android:id/title" } ?: return null
-            val row = title.parent ?: return null
-            try {
-                val summaries = row.findAccessibilityNodeInfosByViewId("android:id/summary")
-                try {
-                    val value = summaries.singleOrNull { it.isVisibleToUser && it.packageName?.toString() == settingsPackage &&
-                        it.windowId == root.windowId }?.text?.toString()
-                    AdbPairingFields.parsePort(value)
-                } finally { summaries.forEach(AccessibilityNodeInfo::recycle) }
-            } finally { row.recycle() }
+            connectionPortForLabel(title)
         } finally { labels.forEach(AccessibilityNodeInfo::recycle) }
     }
 
@@ -331,21 +323,62 @@ internal class AdbSettingsAssistant(private val service: ScreenAccessService) {
 
     private enum class Result { STOP, OPENED_PAGE, OPENED_PAIRING, SCROLLED, WAIT, PAIRING_SUBMITTED }
 
-    private companion object {
-        const val PAIRING_CODE = "pairing_code"
-        const val PAIRING_ADDRESS = "ip_addr"
-        val HEADING_IDS = setOf("toolbar_title", "collapsing_toolbar_title", "alertTitle", "dialog_title", "sesl_dialog_title")
-        val ABOUT = listOf("关于手机", "关于本机", "我的设备", "關於手機", "About phone", "About device", "My device")
-        val SOFTWARE_DETAILS = listOf("全部参数", "详细信息与规格", "软件信息", "版本信息", "版本",
+    companion object {
+        private const val PAIRING_CODE = "pairing_code"
+        private const val PAIRING_ADDRESS = "ip_addr"
+        private val HEADING_IDS = setOf("toolbar_title", "collapsing_toolbar_title", "alertTitle", "dialog_title", "sesl_dialog_title")
+        private val ABOUT = listOf("关于手机", "关于本机", "我的设备", "關於手機", "About phone", "About device", "My device")
+        private val SOFTWARE_DETAILS = listOf("全部参数", "详细信息与规格", "软件信息", "版本信息", "版本",
             "All specs", "Detailed info and specs", "Software information", "Version information", "Version")
-        val VERSION_CONTROL = listOf("MIUI 版本", "MIUI version", "OS 版本", "OS version", "版本号", "软件版本号", "编译编号",
+        private val VERSION_CONTROL = listOf("MIUI 版本", "MIUI version", "OS 版本", "OS version", "版本号", "软件版本号", "编译编号",
             "Build number", "Software version", "Version number")
-        val DEVELOPER = listOf("开发者选项", "開發人員選項", "開發者選項", "Developer options")
-        val WIRELESS = listOf("无线调试", "無線偵錯", "無線除錯", "Wireless debugging")
-        val PAIR = listOf("使用配对码配对设备", "使用配對碼配對裝置", "Pair device with pairing code", "Pair using pairing code")
-        val PAIR_DIALOG = listOf("与设备配对", "與裝置配對", "Pair with device")
-        val CODE_LABELS = listOf("WLAN 配对码", "Wi-Fi 配对码", "Wi‑Fi 配对码", "Wi-Fi 配對碼", "Wi-Fi pairing code", "Wi‑Fi pairing code")
-        val CONNECTION_ADDRESS = listOf("IP 地址和端口", "IP 地址与端口", "IP 位址和通訊埠", "IP address & Port", "IP address and port")
+        internal val DEVELOPER_LABELS = listOf("开发者选项", "开发人员选项", "開發人員選項", "開發者選項", "Developer options")
+
+        internal fun connectionPortForLabel(label: AccessibilityNodeInfo): Int? {
+            // MagicOS places the title and summary in separate containers inside the same row.
+            val parent = label.parent ?: return null
+            try {
+                val value = ConnectionSummary(label)
+                value.read(parent)
+                if (value.count == 0) {
+                    val row = parent.parent ?: return null
+                    try { value.read(row) } finally { row.recycle() }
+                }
+                return if (value.count == 1) AdbPairingFields.parsePort(value.text) else null
+            } finally { parent.recycle() }
+        }
+
+        private class ConnectionSummary(private val label: AccessibilityNodeInfo) {
+            var count = 0
+                private set
+            var text: String? = null
+                private set
+
+            fun read(node: AccessibilityNodeInfo, depth: Int = 0) {
+                if (depth > 4 || count > 1 || !node.isVisibleToUser ||
+                    node.packageName != label.packageName || node.windowId != label.windowId) return
+                when (node.viewIdResourceName) {
+                    "android:id/title" -> if (node != label) {
+                        // A larger container with other preferences is not a single address row.
+                        count = 2
+                        return
+                    }
+                    "android:id/summary" -> {
+                        count++
+                        text = node.text?.toString()
+                    }
+                }
+                for (index in 0 until node.childCount) {
+                    val child = node.getChild(index) ?: continue
+                    try { read(child, depth + 1) } finally { child.recycle() }
+                }
+            }
+        }
+        private val WIRELESS = listOf("无线调试", "無線偵錯", "無線除錯", "Wireless debugging")
+        private val PAIR = listOf("使用配对码配对设备", "使用配對碼配對裝置", "Pair device with pairing code", "Pair using pairing code")
+        private val PAIR_DIALOG = listOf("与设备配对", "與裝置配對", "Pair with device")
+        private val CODE_LABELS = listOf("WLAN 配对码", "Wi-Fi 配对码", "Wi‑Fi 配对码", "Wi-Fi 配對碼", "Wi-Fi pairing code", "Wi‑Fi pairing code")
+        private val CONNECTION_ADDRESS = listOf("IP 地址和端口", "IP 地址与端口", "IP 位址和通訊埠", "IP address & Port", "IP address and port")
     }
 }
 
