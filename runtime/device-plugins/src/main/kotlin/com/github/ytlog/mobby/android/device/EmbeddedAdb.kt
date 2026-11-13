@@ -12,6 +12,13 @@ import io.github.muntashirakon.adb.AdbConnection
 import io.github.muntashirakon.adb.AdbPairingRequiredException
 import io.github.muntashirakon.adb.PairingConnectionCtx
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.mapNotNull
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.net.InetAddress
@@ -68,7 +75,7 @@ internal object EmbeddedAdb {
     }
 
     /** ADB authenticates the app and locates the shell worker. The transport closes once attached. */
-    suspend fun connect(context: Context, connectionPort: Int? = port, useRememberedPort: Boolean = true): ScreenChannel {
+    suspend fun connect(context: Context, connectionPort: Int? = port, useRememberedPort: Boolean = true, discoveredPortHint: Int? = null): ScreenChannel {
         var created: ScreenChannel? = null
         try {
             return withContext(Dispatchers.IO) {
@@ -77,16 +84,16 @@ internal object EmbeddedAdb {
                 val hint = preferences.getInt(LAST_CONNECTION_PORT, 0).takeIf {
                     connectionPort == null && useRememberedPort && it in 1..65535
                 }
-                val remembered = hint?.let {
-                    try { authenticate(context, it, identity, 3) }
-                    catch (_: IOException) {
-                        // Wireless debugging can change ports when restarted. Resolve the current endpoint.
-                        preferences.edit().remove(LAST_CONNECTION_PORT).apply()
-                        null
+                val (selected, connection) = if (connectionPort != null) {
+                    connectionPort to authenticateExplicit(context, connectionPort, identity)
+                } else {
+                    val candidates = flow {
+                        (discoveredPortHint ?: hint)?.let { emit(it) }
+                        emitAll(localPorts(context, pairing = false))
                     }
+                    selectConnection(candidates) { authenticate(it, identity, 3) }
                 }
-                val selected = if (remembered != null) checkNotNull(hint) else connectionPort ?: discoverConnection(context)
-                (remembered ?: authenticate(context, selected, identity, 15)).use { adb ->
+                connection.use { adb ->
                     ensureActive()
                     val peerKey = checkNotNull(adb.tlsPeerPublicKey).encoded
                     adb.open(bootstrapCommand(context.applicationInfo.sourceDir)).use { stream ->
@@ -108,24 +115,44 @@ internal object EmbeddedAdb {
         }
     }
 
-    private suspend fun discoverConnection(context: Context): Int = try {
-        discover(context)
-    } catch (cancelled: CancellationException) {
-        throw cancelled
-    } catch (failure: Exception) {
-        throw AdbConnectionException(AdbConnectionFailure.ENDPOINT_NOT_FOUND, AppStrings.adbConnectionFailed, failure)
+    internal suspend fun <T : Any> selectConnection(candidates: Flow<Int>, probe: (Int) -> T): Pair<Int, T> {
+        val attempted = mutableSetOf<Int>()
+        var lastFailure: Exception? = null
+        return candidates.mapNotNull { port ->
+            if (!attempted.add(port)) return@mapNotNull null
+            currentCoroutineContext().ensureActive()
+            try {
+                port to probe(port)
+            } catch (failure: Exception) {
+                if (failure !is IOException && failure !is AdbPairingRequiredException &&
+                    failure !is AdbAuthenticationFailedException) throw failure
+                // A different local daemon can advertise the same service type. Its rejection
+                // says nothing about the saved pairing with the intended daemon.
+                lastFailure = failure
+                null
+            }
+        }.firstOrNull() ?: throw AdbConnectionException(
+            AdbConnectionFailure.ENDPOINT_NOT_FOUND, AppStrings.adbConnectionFailed, lastFailure,
+        )
     }
 
-    private fun authenticate(context: Context, port: Int, identity: ScreenAdbIdentity.Identity, timeout: Long): AdbConnection {
+    private fun authenticateExplicit(context: Context, port: Int, identity: ScreenAdbIdentity.Identity): AdbConnection =
+        try {
+            authenticate(port, identity, 15)
+        } catch (failure: Exception) {
+            if (failure !is AdbPairingRequiredException && failure !is AdbAuthenticationFailedException) throw failure
+            forgetPairing(context)
+            throw AdbConnectionException(AdbConnectionFailure.PAIRING_REQUIRED, AppStrings.adbConnectionPairingRequired, failure)
+        }
+
+    private fun authenticate(port: Int, identity: ScreenAdbIdentity.Identity, timeout: Long): AdbConnection {
         val adb = transport(port, identity)
         try {
             if (!adb.connect(timeout, TimeUnit.SECONDS, true)) throw SocketTimeoutException("adb_connection_timeout")
             return adb
         } catch (failure: Exception) {
             try { adb.close() } catch (cleanup: Exception) { failure.addSuppressed(cleanup) }
-            if (failure !is AdbPairingRequiredException && failure !is AdbAuthenticationFailedException) throw failure
-            forgetPairing(context)
-            throw AdbConnectionException(AdbConnectionFailure.PAIRING_REQUIRED, AppStrings.adbConnectionPairingRequired, failure)
+            throw failure
         }
     }
 
@@ -182,40 +209,55 @@ internal object EmbeddedAdb {
     private fun isLocal(address: InetAddress): Boolean = address.isLoopbackAddress ||
         NetworkInterface.getNetworkInterfaces().toList().any { network -> network.inetAddresses.toList().contains(address) }
 
-    @Suppress("DEPRECATION") internal suspend fun discover(context: Context, pairing: Boolean = false): Int = withTimeoutOrNull(if (pairing) 90_000 else 10_000) {
-        suspendCancellableCoroutine { continuation ->
-            val nsd = context.getSystemService(NsdManager::class.java)
-            val queue = java.util.ArrayDeque<NsdServiceInfo>()
-            var resolving = false
-            lateinit var listener: NsdManager.DiscoveryListener
-            fun stop() { runCatching { nsd.stopServiceDiscovery(listener) } }
-            fun resolveNext() {
-                if (!continuation.isActive || resolving || queue.isEmpty()) return
-                resolving = true
-                nsd.resolveService(queue.removeFirst(), object : NsdManager.ResolveListener {
-                    override fun onResolveFailed(info: NsdServiceInfo, error: Int) { resolving = false; resolveNext() }
-                    override fun onServiceResolved(info: NsdServiceInfo) {
-                        resolving = false
-                        if (continuation.isActive && info.host?.let(::isLocal) == true && info.port in 1..65535) {
-                            continuation.resume(info.port); stop()
-                        } else resolveNext()
+    internal suspend fun discoverPairingPort(context: Context): Int =
+        localPorts(context, pairing = true).firstOrNull()
+            ?: throw java.util.concurrent.TimeoutException("adb_discovery_timeout")
+
+    @Suppress("DEPRECATION")
+    private fun localPorts(context: Context, pairing: Boolean): Flow<Int> = callbackFlow {
+        val nsd = context.getSystemService(NsdManager::class.java)
+        val queue = java.util.ArrayDeque<NsdServiceInfo>()
+        var resolving = false
+        val stopped = java.util.concurrent.atomic.AtomicBoolean()
+        fun resolveNext() {
+            if (stopped.get() || resolving || queue.isEmpty()) return
+            resolving = true
+            nsd.resolveService(queue.removeFirst(), object : NsdManager.ResolveListener {
+                override fun onResolveFailed(info: NsdServiceInfo, error: Int) { resolving = false; resolveNext() }
+                override fun onServiceResolved(info: NsdServiceInfo) {
+                    resolving = false
+                    if (info.host?.let(::isLocal) == true && info.port in 1..65535) {
+                        trySend(info.port)
                     }
-                })
-            }
-            listener = object : NsdManager.DiscoveryListener {
-                override fun onDiscoveryStarted(type: String) = Unit
-                override fun onDiscoveryStopped(type: String) = Unit
-                override fun onServiceLost(info: NsdServiceInfo) = Unit
-                override fun onServiceFound(info: NsdServiceInfo) { queue.add(info); resolveNext() }
-                override fun onStartDiscoveryFailed(type: String, error: Int) {
-                    if (continuation.isActive) continuation.resumeWithException(IllegalStateException("adb_discovery_failed")); stop()
+                    resolveNext()
                 }
-                override fun onStopDiscoveryFailed(type: String, error: Int) = Unit
-            }
-            continuation.invokeOnCancellation { stop() }
-            nsd.discoverServices(if (pairing) "_adb-tls-pairing._tcp." else "_adb-tls-connect._tcp.", NsdManager.PROTOCOL_DNS_SD, listener)
+            })
         }
-    } ?: throw java.util.concurrent.TimeoutException("adb_discovery_timeout")
+        val listener = object : NsdManager.DiscoveryListener {
+            override fun onDiscoveryStarted(type: String) = Unit
+            override fun onDiscoveryStopped(type: String) = Unit
+            override fun onServiceLost(info: NsdServiceInfo) = Unit
+            override fun onServiceFound(info: NsdServiceInfo) {
+                if (stopped.get()) return
+                queue.add(info)
+                resolveNext()
+            }
+            override fun onStartDiscoveryFailed(type: String, error: Int) {
+                close()
+            }
+            override fun onStopDiscoveryFailed(type: String, error: Int) = Unit
+        }
+        nsd.discoverServices(if (pairing) "_adb-tls-pairing._tcp." else "_adb-tls-connect._tcp.", NsdManager.PROTOCOL_DNS_SD, listener)
+        val deadline = launch {
+            delay(if (pairing) 90_000 else 10_000)
+            close()
+        }
+        awaitClose {
+            stopped.set(true)
+            deadline.cancel()
+            runCatching { nsd.stopServiceDiscovery(listener) }
+        }
+    }
 }
 
 /** The device no longer accepts this app's ADB identity. The saved pairing is cleared. */

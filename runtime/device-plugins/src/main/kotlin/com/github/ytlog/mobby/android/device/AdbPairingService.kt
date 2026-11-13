@@ -33,7 +33,7 @@ class AdbPairingService : Service() {
             discovery = scope.launch {
                 try {
                     withTimeout(120_000) {
-                        val discovered = EmbeddedAdb.discover(this@AdbPairingService, pairing = true)
+                        val discovered = EmbeddedAdb.discoverPairingPort(this@AdbPairingService)
                         if (port == null) offerReply(discovered)
                         awaitCancellation()
                     }

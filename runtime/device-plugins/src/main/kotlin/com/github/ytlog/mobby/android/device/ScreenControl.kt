@@ -156,7 +156,7 @@ object ScreenControl {
         try {
             val connected = when (mode) {
                 ScreenMode.ADB -> if (pairingSuccess == null) EmbeddedAdb.connect(context)
-                    else EmbeddedAdb.connect(context, connectionPort, useRememberedPort = false)
+                    else EmbeddedAdb.connect(context, connectionPort = null, useRememberedPort = false, discoveredPortHint = connectionPort)
                 ScreenMode.ROOT -> rootChannel(context)
                 ScreenMode.CURRENT -> error("current_screen_has_no_backend")
             }

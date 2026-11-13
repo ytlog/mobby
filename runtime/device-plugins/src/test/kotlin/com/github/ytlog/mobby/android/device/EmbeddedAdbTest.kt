@@ -1,9 +1,39 @@
 package com.github.ytlog.mobby.android.device
 
+import com.github.ytlog.mobby.android.runtime.api.device.AdbConnectionException
+import com.github.ytlog.mobby.android.runtime.api.device.AdbConnectionFailure
+import io.github.muntashirakon.adb.AdbPairingRequiredException
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
 
 class EmbeddedAdbTest {
+    @Test fun `automatic connection skips a rejecting daemon and uses the next distinct local port`() =
+        runBlocking {
+            val attempted = mutableListOf<Int>()
+            val selected = EmbeddedAdb.selectConnection(
+                flowOf(37123, 37123, 37124),
+            ) { port ->
+                attempted += port
+                if (port == 37123) throw AdbPairingRequiredException("rejected")
+                "authenticated"
+            }
+            assertEquals(37124 to "authenticated", selected)
+            assertEquals(listOf(37123, 37124), attempted)
+        }
+
+    @Test fun `an unverified endpoint cannot declare the pairing revoked`() {
+        val failure = assertThrows(AdbConnectionException::class.java) {
+            runBlocking {
+                EmbeddedAdb.selectConnection(flowOf(37123)) {
+                    throw AdbPairingRequiredException("rejected")
+                }
+            }
+        }
+        assertEquals(AdbConnectionFailure.ENDPOINT_NOT_FOUND, failure.reason)
+    }
+
     @Test fun `endpoint line can arrive fragmented and cannot grow without a bound`() {
         val expected = "{\"uid\":2000,\"port\":32123,\"token\":\"fake-test-token\"}"
         val input = object : java.io.ByteArrayInputStream((expected + "\n").toByteArray()) {
